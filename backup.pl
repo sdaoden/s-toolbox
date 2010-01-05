@@ -16,6 +16,7 @@ my @INPUT = (	"$HOME/misc/cvsroot",
 		"$HOME/misc/devel.cvsroot",
 		"$HOME/Pictures"
 );
+# Pathnames (i.e., files or directories)
 my @EXCLUDES = ('.DS_Store', '.localized', '.Trash',
 		'iChat Icons',
 		'.', '..' # DON'T drop!
@@ -25,9 +26,8 @@ use warnings;
 use strict;
 use File::Temp;
 
-# Create these (mail-file, list-file) first so that we now we have 'em
+# Messages also go into this finally mail(1)ed file
 my ($mffh,$mffn) = File::Temp::tempfile(UNLINK => 1);
-my ($lffh,$lffn) = File::Temp::tempfile(UNLINK => 1);
 
 &input_check();
 
@@ -36,20 +36,16 @@ $ctime &= ~$FS_TIME_ANDOFF;
 my $cdate = &format_epoch($ctime);
 &msg(0, "Current timestamp: $ctime ($cdate)");
 
-my ($ltime, $ldate) = (916053071, "1999-01-11T11:11:11 GMT");
+my ($ltime, $ldate) = (916053071, '1999-01-11T11:11:11 GMT');
 &tstamp_get();
 
 my ($full, $verbose) = (0, 0);
-&parse_command_line();
+&command_line_parse();
 
-my $file_count = 0;
-&create_list();
+my @filelist;
+&filelist_create();
 
-$| = 1;
-&msg(0, 'Invoking tar(1) and sending mail(1)');
-$full = $full ? '-full' : '';
-system("tar cvjLf $OUTPUT/backup${full}.tbz -T $lffn >> $mffn 2>&1");
-$| = 0;
+&archive_create();
 
 &do_exit(0);
 
@@ -74,10 +70,16 @@ sub err {
 }
 
 sub do_exit {
+	my $estat = $_[0];
+	if ($estat == 0) {
+		&msg(0, 'mail(1)ing report and exit success');
+	} else {
+		&err(0, 'mail(1)ing report and exit FAILURE');
+	}
 	$| = 1;
 	system("mail -s 'Backup report' $EMAIL < $mffn >/dev/null 2>&1");
 	$| = 0;
-	exit $_[0];
+	exit $estat;
 }
 
 sub input_check {
@@ -87,47 +89,47 @@ sub input_check {
 		if (! -d $dir) {
 			splice(@INPUT, --$i, 1);
 			&err(1, "- <$dir>: DROP!",
-				"   Not a (n accessible) directory!");
+				'   Not a (n accessible) directory!');
 		} else {
 			&msg(1, "- <$dir>: added");
 		}
 	}
 	if (@INPUT == 0) {
-		&err(0, "BAILING OUT: no (accessible) directories found");
+		&err(0, 'BAILING OUT: no (accessible) directories found');
 		&do_exit(1);
 	}
 }
 
 sub format_epoch {
 	my @e = gmtime($_[0]);
-	return sprintf("%04d-%02d-%02dT%02d:%02d:%02d GMT",
+	return sprintf('%04d-%02d-%02dT%02d:%02d:%02d GMT',
 			($e[5] + 1900), ($e[4] + 1), $e[3],
 			$e[2], $e[1], $e[0]);
 }
 
 sub tstamp_get {
 	&msg(0, "Reading old timestamp from <$TSTAMP>:");
-	unless (&tstamp_read()) {
-		&err(1, "- Timestamp file does not exist or is invalid.",
-			"  Creating it - call once again to perform backup");
-		&tstamp_write();
+	unless (&_tstamp_read()) {
+		&err(1, '- Timestamp file does not exist or is invalid.',
+			'  Creating it - call once again to perform backup');
+		&_tstamp_write();
 		&do_exit(1);
 	}
-	unless (&tstamp_write()) {
-		&err(1, "- Failed to write timestamp file.",
-			"  Please ensure writability and re-call script");
+	unless (&_tstamp_write()) {
+		&err(1, '- Failed to write timestamp file.',
+			'  Please ensure writeability and re-call script');
 		&do_exit(1);
 	}
 	$ltime &= ~$FS_TIME_ANDOFF;
 	if ($ltime >= $ctime) {
-		&err(1, "- Timestamp unacceptable (too young)");
+		&err(1, '- Timestamp unacceptable (too young)');
 		&do_exit(1);
 	}
 	$ldate = &format_epoch($ltime);
 	&msg(1, "- Got $ltime ($ldate)");
 }
 
-sub tstamp_read {
+sub _tstamp_read {
 	return 0 unless (-f $TSTAMP);
 	unless (open(TSTAMP, "<$TSTAMP")) {
 		&err(1, "- Open failed: $^E");
@@ -140,7 +142,7 @@ sub tstamp_read {
 	return 1;
 }
 
-sub tstamp_write {
+sub _tstamp_write {
 	unless (open(TSTAMP, ">$TSTAMP")) {
 		&err(1, "- Failed to open for writing: $^E");
 		return 0;
@@ -150,16 +152,16 @@ sub tstamp_write {
 	return 1;
 }
 
-sub parse_command_line {
+sub command_line_parse {
 	&msg(0, "Parsing command line");
 	while (@ARGV > 0) {
 		my $a = shift @ARGV;
 		if ($a eq '--full') {
-			&msg(1, "- Enabled full backup (ignoring timestamp)");
+			&msg(1, '- Enabled full backup (ignoring timestamp)');
 			$full = 1;
 			$ltime = 0;
 		} elsif ($a eq '--verbose') {
-			&msg(1, "- Enabled verbose mode");
+			&msg(1, '- Enabled verbose mode');
 			$verbose = 1;
 		} else {
 			&err(1, "- Ignoring unknown option <$a>");
@@ -167,20 +169,18 @@ sub parse_command_line {
 	}
 }
 
-sub create_list {
-	&msg(0, "Creating backup list file");
-	# This is $lffh,$lffn
-	foreach (@INPUT) { &parse_dir($_); }
-	if ($file_count == 0) {
-		&msg(0, "No files to backup, bailing out.");
+sub filelist_create {
+	&msg(0, "Creating backup filelist");
+	foreach (@INPUT) { &_parse_dir($_); }
+	if (@filelist == 0) {
+		&msg(0, 'No files to backup, bailing out');
 		&do_exit(0);
 	}
-	&msg(0, "I've scheduled $file_count files for backup");
+	&msg(0, '... scheduled ' .@filelist. ' files for backup');
 }
 
-sub parse_dir {
+sub _parse_dir {
 	my $fdp = $_[0];
-
 	&msg(1, "- In <$fdp>") if ($verbose);
 	unless (opendir(DIR, $fdp)) {
 		&err(2, "- Failed to opendir: $^E");
@@ -197,13 +197,38 @@ OUTER:	foreach my $f (@dents) {
 			push(@subdirs, $fpf);
 		} elsif (-r _ && -f _) {
 			my $mtime = (stat(_))[9] & ~$FS_TIME_ANDOFF;
-			next OUTER unless ($full || $mtime > $ltime);
-			&msg(2, "+ Adding <$f>") if ($verbose);
-			++$file_count;
-			print $lffh $fpf, "\n";
+			next OUTER unless ($full || $mtime >= $ltime);
+			push(@filelist, $fpf);
+			&msg(2, "+ Added <$f>") if ($verbose);
 		}
 	}
-	foreach my $sd (@subdirs) { &parse_dir($sd); }
+	foreach my $sd (@subdirs) { &_parse_dir($sd); }
+}
+
+sub archive_create {
+	select $mffh; $| = 1;
+	select STDOUT; $| = 1;
+	select STDERR; $| = 1;
+	if ($full) {
+		&msg(0, "Creating archive <$OUTPUT/backup-full.tbz");
+		my ($lffh,$lffn) = File::Temp::tempfile(UNLINK => 1);
+		foreach my $p (@filelist) { print $lffh $p, "\n"; }
+		select $lffh; $| = 1;
+		system("tar cvjLf $OUTPUT/backup-full.tbz "
+			. "-T $lffn >> $mffn 2>&1");
+	} else {
+		my $ar = "$OUTPUT/backup.tar";
+		&msg(0, "Creating/Updating archive <${ar}>");
+		unless (open(XARGS, '| xargs -0 '
+				. "tar rvLf $ar >> $mffn 2>&1")) {
+			&err(1, "Failed creating pipe: $^E");
+			&do_exit(1);
+		}
+		foreach my $p (@filelist) { print XARGS $p, "\x00"; }
+		close(XARGS);
+	}
+	select STDOUT; $| = 0;
+	select $mffn; $| = 0;
 }
 
 # vim:set fenc=utf-8 filetype=perl syntax=perl ts=8 sts=8 sw=8 tw=79:
