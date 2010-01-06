@@ -181,11 +181,11 @@ sub filelist_create {
 
 sub _parse_dir {
 	my $fdp = $_[0];
-	&msg(1, "- In <$fdp>") if ($verbose);
 	unless (opendir(DIR, $fdp)) {
-		&err(2, "- Failed to opendir: $^E");
+		&err(1, "- opendir($fdp) failed: $^E");
 		return;
 	}
+	&msg(1, "- In <$fdp>") if ($verbose);
 	my @dents = readdir(DIR);
 	closedir(DIR);
 
@@ -195,7 +195,11 @@ OUTER:	foreach my $f (@dents) {
 		my $fpf = "$fdp/$f";
 		if (-d $fpf) {
 			push(@subdirs, $fpf);
-		} elsif (-r _ && -f _) {
+		} elsif (-f _) {
+			if (! -r _) {
+				&err(2, "- <$fpf> not readable");
+				next OUTER;
+			}
 			my $mtime = (stat(_))[9] & ~$FS_TIME_ANDOFF;
 			next OUTER unless ($full || $mtime >= $ltime);
 			push(@filelist, $fpf);
@@ -208,19 +212,25 @@ OUTER:	foreach my $f (@dents) {
 sub archive_create {
 	select $mffh; $| = 1;
 	select STDOUT; $| = 1;
-	select STDERR; $| = 1;
 	if ($full) {
-		&msg(0, "Creating archive <$OUTPUT/backup-full.tbz");
+		my $ar = $cdate;
+		$ar =~ s/:/_/g;
+		$ar =~ s/^(.*?)[[:space:]]+[[:alpha:]]+[[:space:]]*$/$1/;
+		$ar = "$OUTPUT/backup.${ar}.tbz";
+		&msg(0, "Creating archive <$ar>");
 		my ($lffh,$lffn) = File::Temp::tempfile(UNLINK => 1);
 		foreach my $p (@filelist) { print $lffh $p, "\n"; }
 		select $lffh; $| = 1;
-		system("tar cvjLf $OUTPUT/backup-full.tbz "
-			. "-T $lffn >> $mffn 2>&1");
+		$ar = system("tar cjLf $ar -T $lffn > /dev/null 2>> $mffn");
+		if (($ar >> 8) != 0) {
+			&err(1, "tar(1) execution had errors");
+			&do_exit(1);
+		}
 	} else {
-		my $ar = "$OUTPUT/backup.tar";
+		my $ar = "$OUTPUT/backup.incremental.tar";
 		&msg(0, "Creating/Updating archive <${ar}>");
 		unless (open(XARGS, '| xargs -0 '
-				. "tar rvLf $ar >> $mffn 2>&1")) {
+				. "tar rLf $ar > /dev/null 2>> $mffn")) {
 			&err(1, "Failed creating pipe: $^E");
 			&do_exit(1);
 		}
