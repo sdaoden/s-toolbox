@@ -14,7 +14,7 @@ my $FS_TIME_ANDOFF = 3; # Filesystem precision adjust (must be mask) ...
 my $OUTPUT = "$HOME/misc";
 my @INPUT = (	"$HOME/misc/cvsroot",
 		"$HOME/misc/devel.cvsroot",
-		"$HOME/Pictures"
+		"$HOME/misc/multimedia"
 );
 # Pathnames (i.e., files or directories)
 my @EXCLUDES = ('.DS_Store', '.localized', '.Trash',
