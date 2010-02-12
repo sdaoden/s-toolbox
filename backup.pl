@@ -29,25 +29,25 @@ use File::Temp;
 # Messages also go into this finally mail(1)ed file
 my ($mffh,$mffn) = File::Temp::tempfile(UNLINK => 1);
 
-&input_check();
+input_check();
 
 my $ctime = time();
 $ctime &= ~$FS_TIME_ANDOFF;
-my $cdate = &format_epoch($ctime);
-&msg(0, "Current timestamp: $ctime ($cdate)");
+my $cdate = format_epoch($ctime);
+msg(0, "Current timestamp: $ctime ($cdate)");
 
 my ($ltime, $ldate) = (916053071, '1999-01-11T11:11:11 GMT');
-&tstamp_get();
+tstamp_get();
 
 my ($full, $verbose) = (0, 0);
-&command_line_parse();
+command_line_parse();
 
 my @filelist;
-&filelist_create();
+filelist_create();
 
-&archive_create();
+archive_create();
 
-&do_exit(0);
+do_exit(0);
 
 sub msg {
 	my $args = \@_;
@@ -72,9 +72,9 @@ sub err {
 sub do_exit {
 	my $estat = $_[0];
 	if ($estat == 0) {
-		&msg(0, 'mail(1)ing report and exit success');
+		msg(0, 'mail(1)ing report and exit success');
 	} else {
-		&err(0, 'mail(1)ing report and exit FAILURE');
+		err(0, 'mail(1)ing report and exit FAILURE');
 	}
 	$| = 1;
 	system("mail -s 'Backup report' $EMAIL < $mffn >/dev/null 2>&1");
@@ -83,20 +83,20 @@ sub do_exit {
 }
 
 sub input_check {
-	&msg(0, 'Checking input directories:');
+	msg(0, 'Checking input directories:');
 	for (my $i = 0; $i < @INPUT;) {
 		my $dir = $INPUT[$i++];
 		if (! -d $dir) {
 			splice(@INPUT, --$i, 1);
-			&err(1, "- <$dir>: DROP!",
+			err(1, "- <$dir>: DROP!",
 				'   Not a (n accessible) directory!');
 		} else {
-			&msg(1, "- <$dir>: added");
+			msg(1, "- <$dir>: added");
 		}
 	}
 	if (@INPUT == 0) {
-		&err(0, 'BAILING OUT: no (accessible) directories found');
-		&do_exit(1);
+		err(0, 'BAILING OUT: no (accessible) directories found');
+		do_exit(1);
 	}
 }
 
@@ -108,31 +108,31 @@ sub format_epoch {
 }
 
 sub tstamp_get {
-	&msg(0, "Reading old timestamp from <$TSTAMP>:");
-	unless (&_tstamp_read()) {
-		&err(1, '- Timestamp file does not exist or is invalid.',
+	msg(0, "Reading old timestamp from <$TSTAMP>:");
+	unless (_tstamp_read()) {
+		err(1, '- Timestamp file does not exist or is invalid.',
 			'  Creating it - call once again to perform backup');
-		&_tstamp_write();
-		&do_exit(1);
+		_tstamp_write();
+		do_exit(1);
 	}
-	unless (&_tstamp_write()) {
-		&err(1, '- Failed to write timestamp file.',
+	unless (_tstamp_write()) {
+		err(1, '- Failed to write timestamp file.',
 			'  Please ensure writeability and re-call script');
-		&do_exit(1);
+		do_exit(1);
 	}
 	$ltime &= ~$FS_TIME_ANDOFF;
 	if ($ltime >= $ctime) {
-		&err(1, '- Timestamp unacceptable (too young)');
-		&do_exit(1);
+		err(1, '- Timestamp unacceptable (too young)');
+		do_exit(1);
 	}
-	$ldate = &format_epoch($ltime);
-	&msg(1, "- Got $ltime ($ldate)");
+	$ldate = format_epoch($ltime);
+	msg(1, "- Got $ltime ($ldate)");
 }
 
 sub _tstamp_read {
 	return 0 unless (-f $TSTAMP);
 	unless (open(TSTAMP, "<$TSTAMP")) {
-		&err(1, "- Open failed: $^E");
+		err(1, "- Open failed: $^E");
 		return 0;
 	}
 	my $l = <TSTAMP>;
@@ -144,7 +144,7 @@ sub _tstamp_read {
 
 sub _tstamp_write {
 	unless (open(TSTAMP, ">$TSTAMP")) {
-		&err(1, "- Failed to open for writing: $^E");
+		err(1, "- Failed to open for writing: $^E");
 		return 0;
 	}
 	print TSTAMP "$ctime\n(That's $cdate.)\n";
@@ -153,39 +153,39 @@ sub _tstamp_write {
 }
 
 sub command_line_parse {
-	&msg(0, "Parsing command line");
+	msg(0, "Parsing command line");
 	while (@ARGV > 0) {
 		my $a = shift @ARGV;
 		if ($a eq '--full') {
-			&msg(1, '- Enabled full backup (ignoring timestamp)');
+			msg(1, '- Enabled full backup (ignoring timestamp)');
 			$full = 1;
 			$ltime = 0;
 		} elsif ($a eq '--verbose') {
-			&msg(1, '- Enabled verbose mode');
+			msg(1, '- Enabled verbose mode');
 			$verbose = 1;
 		} else {
-			&err(1, "- Ignoring unknown option <$a>");
+			err(1, "- Ignoring unknown option <$a>");
 		}
 	}
 }
 
 sub filelist_create {
-	&msg(0, "Creating backup filelist");
-	foreach (@INPUT) { &_parse_dir($_); }
+	msg(0, "Creating backup filelist");
+	foreach (@INPUT) { _parse_dir($_); }
 	if (@filelist == 0) {
-		&msg(0, 'No files to backup, bailing out');
-		&do_exit(0);
+		msg(0, 'No files to backup, bailing out');
+		do_exit(0);
 	}
-	&msg(0, '... scheduled ' .@filelist. ' files for backup');
+	msg(0, '... scheduled ' .@filelist. ' files for backup');
 }
 
 sub _parse_dir {
 	my $fdp = $_[0];
 	unless (opendir(DIR, $fdp)) {
-		&err(1, "- opendir($fdp) failed: $^E");
+		err(1, "- opendir($fdp) failed: $^E");
 		return;
 	}
-	&msg(1, "- In <$fdp>") if ($verbose);
+	msg(1, "- In <$fdp>") if ($verbose);
 	my @dents = readdir(DIR);
 	closedir(DIR);
 
@@ -197,42 +197,43 @@ OUTER:	foreach my $f (@dents) {
 			push(@subdirs, $fpf);
 		} elsif (-f _) {
 			if (! -r _) {
-				&err(2, "- <$fpf> not readable");
+				err(2, "- <$fpf> not readable");
 				next OUTER;
 			}
 			my $mtime = (stat(_))[9] & ~$FS_TIME_ANDOFF;
 			next OUTER unless ($full || $mtime >= $ltime);
 			push(@filelist, $fpf);
-			&msg(2, "+ Added <$f>") if ($verbose);
+			msg(2, "+ Added <$f>") if ($verbose);
 		}
 	}
-	foreach my $sd (@subdirs) { &_parse_dir($sd); }
+	foreach my $sd (@subdirs) { _parse_dir($sd); }
 }
 
 sub archive_create {
 	select $mffh; $| = 1;
 	select STDOUT; $| = 1;
+	my $v = $verbose ? '' : 'v';
 	if ($full) {
 		my $ar = $cdate;
 		$ar =~ s/:/_/g;
 		$ar =~ s/^(.*?)[[:space:]]+[[:alpha:]]+[[:space:]]*$/$1/;
 		$ar = "$OUTPUT/backup.${ar}.tbz";
-		&msg(0, "Creating archive <$ar>");
+		msg(0, "Creating archive <$ar>");
 		my ($lffh,$lffn) = File::Temp::tempfile(UNLINK => 1);
 		foreach my $p (@filelist) { print $lffh $p, "\n"; }
 		select $lffh; $| = 1;
-		$ar = system("tar cjLf $ar -T $lffn > /dev/null 2>> $mffn");
+		$ar = system("tar c${v}jLf $ar -T $lffn > /dev/null 2>> $mffn");
 		if (($ar >> 8) != 0) {
-			&err(1, "tar(1) execution had errors");
-			&do_exit(1);
+			err(1, "tar(1) execution had errors");
+			do_exit(1);
 		}
 	} else {
 		my $ar = "$OUTPUT/backup.incremental.tar";
-		&msg(0, "Creating/Updating archive <${ar}>");
+		msg(0, "Creating/Updating archive <${ar}>");
 		unless (open(XARGS, '| xargs -0 '
-				. "tar rLf $ar > /dev/null 2>> $mffn")) {
-			&err(1, "Failed creating pipe: $^E");
-			&do_exit(1);
+				. "tar r${v}Lf $ar > /dev/null 2>> $mffn")) {
+			err(1, "Failed creating pipe: $^E");
+			do_exit(1);
 		}
 		foreach my $p (@filelist) { print XARGS $p, "\x00"; }
 		close(XARGS);
