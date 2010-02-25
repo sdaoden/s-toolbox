@@ -1,53 +1,72 @@
 #!/usr/bin/perl
-#@ -backup: if $TSTAMP file does not exist or is invalid, only that
-#@ file is updated (to enable future incremental backups) and script exits.
-#@ (Otherwise) --full may be specified to force a non-incremental backup.
-#
-# Created: 2010-01-04
-
-my $HOME = $ENV{'HOME'};
-my $TSTAMP = "$HOME/.traffic/.backup.dat";
-my $EMAIL = defined($ENV{'EMAIL'}) ? $ENV{'EMAIL'} : 'postmaster@localhost';
-my $FS_TIME_ANDOFF = 3; # Filesystem precision adjust (must be mask) ...
+# Created: 2010-02-25
+# default: (tar -rf) backup.incremental.tar files changed since last invocation
+# -r/--reset: do not take care about timestamps, do create xy.dateTtime.tgz
+# -c/--complete: other config ($COMPLETE_), always xy.dateTtime.tgz
 
 # (All _absolute_ directories)
-my $OUTPUT = "$HOME/misc";
-my @INPUT = (	"$HOME/misc/cvsroot",
-		"$HOME/misc/devel.cvsroot",
-		"$HOME/misc/multimedia"
+my $EMAIL = defined($ENV{'EMAIL'}) ? $ENV{'EMAIL'} : 'postmaster@localhost';
+my $HOME = $ENV{'HOME'};
+my @NORMAL_INPUT = (
+	"$HOME/misc/cvsroot", "$HOME/misc/devel.cvsroot",
+	"$HOME/misc/multimedia/pictures"
 );
-# Pathnames (i.e., files or directories)
-my @EXCLUDES = ('.DS_Store', '.localized', '.Trash',
-		'iChat Icons',
-		'.', '..' # DON'T drop!
-);
+my @COMPLETE_INPUT = (
+	"$HOME/misc/cvsroot", "$HOME/misc/devel.cvsroot",
+	"$HOME/misc/backups", "$HOME/misc/multimedia"
 
+);
+my $NORMAL_TSTAMP = "$HOME/.traffic/.-backup.dat";
+my $COMPLETE_TSTAMP = "$HOME/.traffic/.-backup-complete.dat";
+my $NORMAL_OUTPUT = "$HOME/misc/burning";#"$HOME/.traffic";
+my $COMPLETE_OUTPUT = "$HOME/misc/burning";
+
+###
+
+use diagnostics -verbose;
 use warnings;
-use strict;
+#use strict;
+use sigtrap qw(die normal-signals);
 use File::Temp;
+use Getopt::Long;
+
+my ($COMPLETE, $RESET, $VERBOSE) = (0, 0, 0);
+my $FS_TIME_ANDOFF = 3; # Filesystem precision adjust (must be mask) ...
+my ($INPUT, $TSTAMP, $OUTPUT); # References to above syms
+my $EXGLOB = '._* *~ *.swp';
+my @EXLIST = qw(.DS_Store .localized .Trash);
 
 # Messages also go into this finally mail(1)ed file
-my ($mffh,$mffn) = File::Temp::tempfile(UNLINK => 1);
+my ($MFFH,$MFFN) = File::Temp::tempfile(UNLINK => 1);
 
-input_check();
+jMAIN: {
+	msg(0, "Parsing command line");
+	Getopt::Long::Configure('bundling');
+	GetOptions(	'c|complete'	=> \$COMPLETE,
+			'r|reset'	=> \$RESET,
+			'v|verbose'	=> \$VERBOSE);
+	if ($COMPLETE) {
+		msg(1, 'Using "complete" backup configuration');
+		$INPUT = \@COMPLETE_INPUT;
+		$TSTAMP = \$COMPLETE_TSTAMP;
+		$OUTPUT = \$COMPLETE_OUTPUT;
+	} else {
+		$INPUT = \@NORMAL_INPUT;
+		$TSTAMP = \$NORMAL_TSTAMP;
+		$OUTPUT = \$NORMAL_OUTPUT;
+	}
+	msg(1, 'Ignoring old timestamps due to "--reset" option') if $RESET;
 
-my $ctime = time();
-$ctime &= ~$FS_TIME_ANDOFF;
-my $cdate = format_epoch($ctime);
-msg(0, "Current timestamp: $ctime ($cdate)");
-
-my ($ltime, $ldate) = (916053071, '1999-01-11T11:11:11 GMT');
-tstamp_get();
-
-my ($full, $verbose) = (0, 0);
-command_line_parse();
-
-my @filelist;
-filelist_create();
-
-archive_create();
-
-do_exit(0);
+	Timestamp::create();
+	Filelist::create();
+	unless (Filelist::is_any()) {
+		Timestamp::save();
+		do_exit(0);
+	}
+	Archive::create();
+	Timestamp::save();
+	do_exit(0);
+}
 
 sub msg {
 	my $args = \@_;
@@ -55,7 +74,7 @@ sub msg {
 	foreach my $a (@$args) {
 		my $m = ("\t" x $lvl) . $a . "\n";
 		print STDOUT $m;
-		print $mffh $m;
+		print $MFFH $m;
 	}
 }
 
@@ -65,7 +84,7 @@ sub err {
 	foreach my $a (@$args) {
 		my $m = '!' . ("\t" x $lvl) . $a . "\n";
 		print STDERR $m;
-		print $mffh $m;
+		print $MFFH $m;
 	}
 }
 
@@ -77,169 +96,196 @@ sub do_exit {
 		err(0, 'mail(1)ing report and exit FAILURE');
 	}
 	$| = 1;
-	system("mail -s 'Backup report' $EMAIL < $mffn >/dev/null 2>&1");
+	system("mail -s 'Backup report ("
+		. Filelist::count()
+		. " file(s))' $EMAIL < $MFFN >/dev/null 2>&1");
 	$| = 0;
 	exit $estat;
 }
 
-sub input_check {
-	msg(0, 'Checking input directories:');
-	for (my $i = 0; $i < @INPUT;) {
-		my $dir = $INPUT[$i++];
-		if (! -d $dir) {
-			splice(@INPUT, --$i, 1);
-			err(1, "- <$dir>: DROP!",
-				'   Not a (n accessible) directory!');
-		} else {
-			msg(1, "- <$dir>: added");
+{package Timestamp;
+	$CURRENT = 0;
+	$CURRENT_DATE = '';
+	$LAST = 916053068;
+	$LAST_DATE = '1999-01-11T11:11:08 GMT';
+
+	sub create {
+		$CURRENT = time();
+		$CURRENT &= ~$FS_TIME_ANDOFF;
+		$CURRENT_DATE = _format_epoch($CURRENT);
+		::msg(0, "Current timestamp: $CURRENT ($CURRENT_DATE)");
+		_read() unless $RESET;
+	}
+
+	sub save {
+		::msg(0, "Writing current timestamp to <$$TSTAMP>");
+		unless (open(TSTAMP, ">$$TSTAMP")) {
+			::err(1, "Failed to open for writing: $^E",
+				'Ensure writeability and re-run!');
+			::do_exit(1);
 		}
+		print TSTAMP "$CURRENT\n(That's $CURRENT_DATE)\n";
+		close(TSTAMP);
 	}
-	if (@INPUT == 0) {
-		err(0, 'BAILING OUT: no (accessible) directories found');
-		do_exit(1);
-	}
-}
 
-sub format_epoch {
-	my @e = gmtime($_[0]);
-	return sprintf('%04d-%02d-%02dT%02d:%02d:%02d GMT',
-			($e[5] + 1900), ($e[4] + 1), $e[3],
-			$e[2], $e[1], $e[0]);
-}
-
-sub tstamp_get {
-	msg(0, "Reading old timestamp from <$TSTAMP>:");
-	unless (_tstamp_read()) {
-		err(1, '- Timestamp file does not exist or is invalid.',
-			'  Creating it - call once again to perform backup');
-		_tstamp_write();
-		do_exit(1);
-	}
-	unless (_tstamp_write()) {
-		err(1, '- Failed to write timestamp file.',
-			'  Please ensure writeability and re-call script');
-		do_exit(1);
-	}
-	$ltime &= ~$FS_TIME_ANDOFF;
-	if ($ltime >= $ctime) {
-		err(1, '- Timestamp unacceptable (too young)');
-		do_exit(1);
-	}
-	$ldate = format_epoch($ltime);
-	msg(1, "- Got $ltime ($ldate)");
-}
-
-sub _tstamp_read {
-	return 0 unless (-f $TSTAMP);
-	unless (open(TSTAMP, "<$TSTAMP")) {
-		err(1, "- Open failed: $^E");
-		return 0;
-	}
-	my $l = <TSTAMP>;
-	close(TSTAMP);
-	chomp $l;
-	$ltime = int($l);
-	return 1;
-}
-
-sub _tstamp_write {
-	unless (open(TSTAMP, ">$TSTAMP")) {
-		err(1, "- Failed to open for writing: $^E");
-		return 0;
-	}
-	print TSTAMP "$ctime\n(That's $cdate.)\n";
-	close(TSTAMP);
-	return 1;
-}
-
-sub command_line_parse {
-	msg(0, "Parsing command line");
-	while (@ARGV > 0) {
-		my $a = shift @ARGV;
-		if ($a eq '--full') {
-			msg(1, '- Enabled full backup (ignoring timestamp)');
-			$full = 1;
-			$ltime = 0;
-		} elsif ($a eq '--verbose') {
-			msg(1, '- Enabled verbose mode');
-			$verbose = 1;
+	sub _read {
+		::msg(0, "Reading old timestamp from <$$TSTAMP>");
+		unless (open(TSTAMP, "<$$TSTAMP")) {
+			::err(1, 'Timestamp file cannot be read - '
+				 . 'setting --reset option');
+			$RESET = 1;
 		} else {
-			err(1, "- Ignoring unknown option <$a>");
-		}
-	}
-}
+			my $l = <TSTAMP>;
+			close(TSTAMP);
+			chomp $l;
+			$l = int($l);
 
-sub filelist_create {
-	msg(0, "Creating backup filelist");
-	foreach (@INPUT) { _parse_dir($_); }
-	if (@filelist == 0) {
-		msg(0, 'No files to backup, bailing out');
-		do_exit(0);
-	}
-	msg(0, '... scheduled ' .@filelist. ' files for backup');
-}
-
-sub _parse_dir {
-	my $fdp = $_[0];
-	unless (opendir(DIR, $fdp)) {
-		err(1, "- opendir($fdp) failed: $^E");
-		return;
-	}
-	msg(1, "- In <$fdp>") if ($verbose);
-	my @dents = readdir(DIR);
-	closedir(DIR);
-
-	my @subdirs;
-OUTER:	foreach my $f (@dents) {
-		foreach my $i (@EXCLUDES) { next OUTER if ($f eq $i); }
-		my $fpf = "$fdp/$f";
-		if (-d $fpf) {
-			push(@subdirs, $fpf);
-		} elsif (-f _) {
-			if (! -r _) {
-				err(2, "- <$fpf> not readable");
-				next OUTER;
+			$l &= ~$FS_TIME_ANDOFF;
+			if ($l >= $CURRENT) {
+				::err(1, 'Timestamp corrupted (too young) - '
+					 . 'setting --reset option');
+				$RESET = 1;
+			} else {
+				$LAST = $l;
+				$LAST_DATE = _format_epoch($LAST);
+				::msg(1, "Got $LAST ($LAST_DATE)");
 			}
-			my $mtime = (stat(_))[9] & ~$FS_TIME_ANDOFF;
-			next OUTER unless ($full || $mtime >= $ltime);
-			push(@filelist, $fpf);
-			msg(2, "+ Added <$f>") if ($verbose);
 		}
 	}
-	foreach my $sd (@subdirs) { _parse_dir($sd); }
+
+	sub _format_epoch {
+		my @e = gmtime($_[0]);
+		return sprintf('%04d-%02d-%02dT%02d:%02d:%02d GMT',
+				($e[5] + 1900), ($e[4] + 1), $e[3],
+				$e[2], $e[1], $e[0]);
+	}
 }
 
-sub archive_create {
-	select $mffh; $| = 1;
-	select STDOUT; $| = 1;
-	my $v = $verbose ? '' : 'v';
-	if ($full) {
-		my $ar = $cdate;
-		$ar =~ s/:/_/g;
-		$ar =~ s/^(.*?)[[:space:]]+[[:alpha:]]+[[:space:]]*$/$1/;
-		$ar = "$OUTPUT/backup.${ar}.tbz";
-		msg(0, "Creating archive <$ar>");
-		my ($lffh,$lffn) = File::Temp::tempfile(UNLINK => 1);
-		foreach my $p (@filelist) { print $lffh $p, "\n"; }
-		select $lffh; $| = 1;
-		$ar = system("tar c${v}jLf $ar -T $lffn > /dev/null 2>> $mffn");
-		if (($ar >> 8) != 0) {
-			err(1, "tar(1) execution had errors");
-			do_exit(1);
+{package Filelist;
+	my @List;
+
+	sub create {
+		::msg(0, 'Checking input directories');
+		for (my $i = 0; $i < @$INPUT;) {
+			my $dir = $$INPUT[$i++];
+			if (! -d $dir) {
+				splice(@$INPUT, --$i, 1);
+				::err(1,  "DROPPED <$dir>");
+			} else {
+				::msg(1, "added <$dir>");
+			}
 		}
-	} else {
-		my $ar = "$OUTPUT/backup.incremental.tar";
-		msg(0, "Creating/Updating archive <${ar}>");
-		unless (open(XARGS, '| xargs -0 '
-				. "tar r${v}Lf $ar > /dev/null 2>> $mffn")) {
-			err(1, "Failed creating pipe: $^E");
-			do_exit(1);
+		if (@$INPUT == 0) {
+			::err(0, 'FAILURE: no (accessible) directories found');
+			::do_exit(1);
 		}
-		foreach my $p (@filelist) { print XARGS $p, "\x00"; }
-		close(XARGS);
+
+		::msg(0, 'Creating backup filelist');
+		_parse_dir($_) foreach @$INPUT;
+		::msg(0, '... scheduled ' .@List. ' files for backup');
 	}
-	select STDOUT; $| = 0;
-	select $mffn; $| = 0;
+
+	sub is_any { return @List > 0; }
+	sub count { return scalar @List; }
+	sub get_listref { return \@List; }
+
+	sub _parse_dir {
+		my ($abspath) = @_;
+		# Need to chdir() due to glob(@EXGLOB) ...
+		::msg(1, ".. checking <$abspath>") if $VERBOSE;
+		unless (chdir($abspath)) {
+			::err(1, "Cannot chdir($abspath): $^E");
+			return;
+		}
+		unless (opendir(DIR, '.')) {
+			::err(1, "opendir($abspath) failed: $^E");
+			return;
+		}
+		my @dents = readdir(DIR);
+		closedir(DIR);
+		my @exglob = glob($EXGLOB);
+
+		my @subdirs;
+jOUTER:		foreach my $dentry (@dents) {
+			next if $dentry eq '.' || $dentry eq '..';
+			foreach (@exglob) {
+				if ($dentry eq $_) {
+					::msg(2, "<$dentry> glob-excluded")
+						if $VERBOSE;
+					next jOUTER;
+				}
+			}
+			foreach (@EXLIST) {
+				if ($dentry eq $_) {
+					::msg(2, "<$dentry> list-excluded")
+						if $VERBOSE;
+					next jOUTER;
+				}
+			}
+
+			my $path = "$abspath/$dentry";
+			if (-d $dentry) {
+				push(@subdirs, $path);
+				::msg(2, "<$dentry> dir-traversal enqueued")
+					if $VERBOSE;
+			} elsif (-f _) {
+				if (! -r _) {
+					::err(2, "<$path> not readable");
+					next jOUTER;
+				}
+				my $mtime = (stat(_))[9] & ~$FS_TIME_ANDOFF;
+				if ($RESET || $mtime >= $Timestamp::LAST) {
+					push(@List, $path);
+					::msg(2, "add <$dentry>") if $VERBOSE;
+				} elsif ($VERBOSE) {
+					::msg(2, "time-miss <$dentry>");
+				}
+			}
+		}
+		foreach (@subdirs) { _parse_dir($_); }
+	}
+}
+
+{package Archive;
+	sub create {
+		select $MFFH; $| = 1;
+		select STDOUT; $| = 1;
+		my $listref = Filelist::get_listref();
+		my $v = 'v';#$VERBOSE ? '' : 'v';
+		my $backup = $COMPLETE ? 'complete-backup' : 'backup'; 
+
+		if ($RESET || $COMPLETE) {
+			my $ar = $Timestamp::CURRENT_DATE;
+			$ar =~ s/:/_/g;
+			$ar =~s/^(.*?)[[:space:]]+[[:alpha:]]+[[:space:]]*$/$1/;
+			$ar = "$$OUTPUT/$backup.${ar}.tgz";
+			::msg(0, "Creating archive <$ar>");
+
+			my ($lffh,$lffn) = File::Temp::tempfile(UNLINK => 1);
+			foreach my $p (@$listref) { print $lffh $p, "\n"; }
+			select $lffh; $| = 1;
+
+			$ar = system("tar c${v}zLf $ar -T $lffn "
+					."> /dev/null 2>> $MFFN");
+			if (($ar >> 8) != 0) {
+				::err(1, "tar(1) execution had errors");
+				::do_exit(1);
+			}
+		} else {
+			my $ar = "$$OUTPUT/$backup.tar";
+			::msg(0, "Creating/Updating archive <$ar>");
+			unless (open(XARGS, '| xargs -0 '
+				  . "tar r${v}Lf $ar > /dev/null 2>> $MFFN")) {
+				::err(1, "Failed creating pipe: $^E");
+				::do_exit(1);
+			}
+			foreach my $p (@$listref) { print XARGS $p, "\x00"; }
+			close(XARGS);
+		}
+
+		select STDOUT; $| = 0;
+		select $MFFH; $| = 0;
+	}
 }
 
 # vim:set fenc=utf-8 filetype=perl syntax=perl ts=8 sts=8 sw=8 tw=79:
