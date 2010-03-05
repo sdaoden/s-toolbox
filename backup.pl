@@ -9,11 +9,11 @@ my $EMAIL = defined($ENV{'EMAIL'}) ? $ENV{'EMAIL'} : 'postmaster@localhost';
 my $HOME = $ENV{'HOME'};
 my @NORMAL_INPUT = (
 	"$HOME/misc/cvsroot", "$HOME/misc/devel.cvsroot",
-	"$HOME/misc/multimedia/pictures"
+	"$HOME/misc/pictures"
 );
 my @COMPLETE_INPUT = (
-	"$HOME/misc/cvsroot", "$HOME/misc/devel.cvsroot",
-	"$HOME/misc/backups", "$HOME/misc/multimedia"
+	"$HOME/misc/cvsroot", "$HOME/misc/devel.cvsroot", "$HOME/misc/backups",
+	"$HOME/misc/pictures" #, "$HOME/misc/documents", "$HOME/misc/movies"
 
 );
 my $NORMAL_TSTAMP = "$HOME/.traffic/.-backup.dat";
