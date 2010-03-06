@@ -29,6 +29,7 @@ use warnings;
 use sigtrap qw(die normal-signals);
 use File::Temp;
 use Getopt::Long;
+use IO::Handle;
 
 my ($COMPLETE, $RESET, $VERBOSE) = (0, 0, 0);
 my $FS_TIME_ANDOFF = 3; # Filesystem precision adjust (must be mask) ...
@@ -76,6 +77,7 @@ sub msg {
 		print STDOUT $m;
 		print $MFFH $m;
 	}
+	$MFFH->flush();
 }
 
 sub err {
@@ -86,6 +88,7 @@ sub err {
 		print STDERR $m;
 		print $MFFH $m;
 	}
+	$MFFH->flush();
 }
 
 sub do_exit {
@@ -236,7 +239,11 @@ jOUTER:		foreach my $dentry (@dents) {
 				my $mtime = (stat(_))[9] & ~$FS_TIME_ANDOFF;
 				if ($RESET || $mtime >= $Timestamp::LAST) {
 					push(@List, $path);
-					::msg(2, "add <$dentry>") if $VERBOSE;
+					if ($VERBOSE) {
+						::msg(2, "added <$dentry>");
+					} else {
+						::msg(1, "added <$path>");
+					}
 				} elsif ($VERBOSE) {
 					::msg(2, "time-miss <$dentry>");
 				}
@@ -248,10 +255,7 @@ jOUTER:		foreach my $dentry (@dents) {
 
 {package Archive;
 	sub create {
-		select $MFFH; $| = 1;
-		select STDOUT; $| = 1;
 		my $listref = Filelist::get_listref();
-		my $v = 'v';#$VERBOSE ? '' : 'v';
 		my $backup = $COMPLETE ? 'complete-backup' : 'backup'; 
 
 		if ($RESET || $COMPLETE) {
@@ -265,7 +269,7 @@ jOUTER:		foreach my $dentry (@dents) {
 			foreach my $p (@$listref) { print $lffh $p, "\n"; }
 			select $lffh; $| = 1;
 
-			$ar = system("tar c${v}zLf $ar -T $lffn "
+			$ar = system("tar czLf $ar -T $lffn "
 					."> /dev/null 2>> $MFFN");
 			if (($ar >> 8) != 0) {
 				::err(1, "tar(1) execution had errors");
@@ -275,16 +279,13 @@ jOUTER:		foreach my $dentry (@dents) {
 			my $ar = "$$OUTPUT/$backup.tar";
 			::msg(0, "Creating/Updating archive <$ar>");
 			unless (open(XARGS, '| xargs -0 '
-				  . "tar r${v}Lf $ar > /dev/null 2>> $MFFN")) {
+				     . "tar rLf $ar > /dev/null 2>> $MFFN")) {
 				::err(1, "Failed creating pipe: $^E");
 				::do_exit(1);
 			}
 			foreach my $p (@$listref) { print XARGS $p, "\x00"; }
 			close(XARGS);
 		}
-
-		select STDOUT; $| = 0;
-		select $MFFH; $| = 0;
 	}
 }
 
