@@ -13,7 +13,7 @@ my @NORMAL_INPUT = (
 );
 my @COMPLETE_INPUT = (
 	"$HOME/misc/cvsroot", "$HOME/misc/devel.cvsroot", "$HOME/misc/backups",
-	"$HOME/misc/pictures" #, "$HOME/misc/documents", "$HOME/misc/movies"
+	"$HOME/misc/pictures", "$HOME/misc/movies" #, "$HOME/misc/documents"
 
 );
 my $NORMAL_TSTAMP = "$HOME/.traffic/.-backup.dat";
