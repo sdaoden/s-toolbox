@@ -12,7 +12,7 @@ my @NORMAL_INPUT = (
 	"$HOME/misc/pictures"
 );
 my @COMPLETE_INPUT = (
-	"$HOME/misc/cvsroot", "$HOME/misc/devel.cvsroot", "$HOME/misc/backups",
+	"$HOME/misc/cvsroot", "$HOME/misc/devel.cvsroot",#"$HOME/misc/backups",
 	"$HOME/misc/pictures", "$HOME/misc/movies" #, "$HOME/misc/documents"
 
 );
