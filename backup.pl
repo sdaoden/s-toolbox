@@ -17,7 +17,7 @@ my @COMPLETE_INPUT = (
 
 );
 my $NORMAL_TSTAMP = "$HOME/.traffic/.-backup.dat";
-my $COMPLETE_TSTAMP = "$HOME/.traffic/.-backup-complete.dat";
+my $COMPLETE_TSTAMP = $NORMAL_TSTAMP;#"$HOME/.traffic/.-backup-complete.dat";
 my $NORMAL_OUTPUT = "$HOME/misc/burning";#"$HOME/.traffic";
 my $COMPLETE_OUTPUT = "$HOME/misc/burning";
 
@@ -242,7 +242,7 @@ jOUTER:		foreach my $dentry (@dents) {
 					if ($VERBOSE) {
 						::msg(2, "added <$dentry>");
 					} else {
-						::msg(1, "added <$path>");
+						::msg(1, "a <$path>");
 					}
 				} elsif ($VERBOSE) {
 					::msg(2, "time-miss <$dentry>");
