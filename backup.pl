@@ -4,22 +4,38 @@
 # -r/--reset: do not take care about timestamps, do create xy.dateTtime.tgz
 # -c/--complete: other config ($COMPLETE_), always xy.dateTtime.tgz
 
-# (All _absolute_ directories)
+# (All _absolute_ directories and _not_ globs TODO use glob to query dirs?)
 my $EMAIL = defined($ENV{'EMAIL'}) ? $ENV{'EMAIL'} : 'postmaster@localhost';
 my $HOME = $ENV{'HOME'};
+
+my $EXGLOB = '._* *~ *.swp';
+my @EXLIST = qw(.DS_Store .localized .Trash);
+
 my @NORMAL_INPUT = (
-	"$HOME/misc/cvsroot", "$HOME/misc/devel.cvsroot",
-	"$HOME/misc/pictures"
+	"$HOME/arena/code.extern.repos",
+	"$HOME/arena/code.extern.balls",
+	"$HOME/arena/code.repos",
+	"$HOME/arena/docs.2wheel",
+	"$HOME/arena/docs.4wheel",
+	"$HOME/arena/docs.coding",
+	"$HOME/arena/docs.misc",
+	"$HOME/arena/movies.snapshots",
+	"$HOME/arena/pics.artwork",
+	"$HOME/arena/pics.snapshots"
 );
 my @COMPLETE_INPUT = (
-	"$HOME/misc/cvsroot", "$HOME/misc/devel.cvsroot",#"$HOME/misc/backups",
-	"$HOME/misc/pictures", "$HOME/misc/movies" #, "$HOME/misc/documents"
-
+#	"$HOME/arena",
+	"$HOME/arena/code.repos",
+	"$HOME/arena/movies.snapshots",
+	"$HOME/arena/pics.artwork",
+	"$HOME/arena/pics.snapshots"
 );
-my $NORMAL_TSTAMP = "$HOME/.traffic/.-backup.dat";
-my $COMPLETE_TSTAMP = $NORMAL_TSTAMP;#"$HOME/.traffic/.-backup-complete.dat";
-my $NORMAL_OUTPUT = "$HOME/misc/burning";#"$HOME/.traffic";
-my $COMPLETE_OUTPUT = "$HOME/misc/burning";
+
+my $NORMAL_OUTPUT = "$HOME/traffic";
+my $COMPLETE_OUTPUT = "$HOME/traffic";
+
+my $NORMAL_TSTAMP = "$HOME/traffic/.-backup.dat";
+my $COMPLETE_TSTAMP = $NORMAL_TSTAMP; #"$HOME/traffic/.-backup-complete.dat";
 
 ###
 
@@ -34,8 +50,6 @@ use IO::Handle;
 my ($COMPLETE, $RESET, $VERBOSE) = (0, 0, 0);
 my $FS_TIME_ANDOFF = 3; # Filesystem precision adjust (must be mask) ...
 my ($INPUT, $TSTAMP, $OUTPUT); # References to above syms
-my $EXGLOB = '._* *~ *.swp';
-my @EXLIST = qw(.DS_Store .localized .Trash);
 
 # Messages also go into this finally mail(1)ed file
 my ($MFFH,$MFFN) = File::Temp::tempfile(UNLINK => 1);
@@ -289,4 +303,4 @@ jOUTER:		foreach my $dentry (@dents) {
 	}
 }
 
-# vim:set fenc=utf-8 filetype=perl syntax=perl ts=8 sts=8 sw=8 tw=79:
+# vim:set fenc=utf-8 filetype=perl syntax=perl ts=8 sts=8 sw=8 noet tw=79:
