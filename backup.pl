@@ -283,7 +283,7 @@ jOUTER:		foreach my $dentry (@dents) {
 			foreach my $p (@$listref) { print $lffh $p, "\n"; }
 			select $lffh; $| = 1;
 
-			$ar = system("tar czLf $ar -T $lffn "
+			$ar = system("tar cyLf $ar -T $lffn "
 					."> /dev/null 2>> $MFFN");
 			if (($ar >> 8) != 0) {
 				::err(1, "tar(1) execution had errors");
