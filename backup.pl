@@ -275,15 +275,15 @@ jOUTER:		foreach my $dentry (@dents) {
 		if ($RESET || $COMPLETE) {
 			my $ar = $Timestamp::CURRENT_DATE;
 			$ar =~ s/:/_/g;
-			$ar =~s/^(.*?)[[:space:]]+[[:alpha:]]+[[:space:]]*$/$1/;
-			$ar = "$$OUTPUT/$backup.${ar}.tgz";
+			$ar=~s/^(.*?)[[:space:]]+[[:alpha:]]+[[:space:]]*$/$1/;
+			$ar = "$$OUTPUT/$backup.${ar}.tbz"; # ALGO below!
 			::msg(0, "Creating archive <$ar>");
 
 			my ($lffh,$lffn) = File::Temp::tempfile(UNLINK => 1);
 			foreach my $p (@$listref) { print $lffh $p, "\n"; }
 			select $lffh; $| = 1;
 
-			$ar = system("tar cyLf $ar -T $lffn "
+			$ar = system("tar cyLf $ar -T $lffn " # .EXT above
 					."> /dev/null 2>> $MFFN");
 			if (($ar >> 8) != 0) {
 				::err(1, "tar(1) execution had errors");
