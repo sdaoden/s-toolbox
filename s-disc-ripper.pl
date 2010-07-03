@@ -315,7 +315,7 @@ sub cdsuck_freebsd {
 
 sub cdsuck_darwin {
 	my $drive = defined $CDROM ? $CDROM : 1;
-	my $disk = defined $CDROMDEV ? $CDROMDEV : $CDROM;
+	my $disk = defined $CDROMDEV ? $CDROMDEV : $drive;
 	print "CD-Suck darwin/Mac OS X: using drive $drive, /dev/disk$disk\n";
 
 	# Unfortunately running drutil(1) may block the FS layer - in fact it
@@ -554,18 +554,24 @@ jREDO:	print 'Choose the number to use: ';
 			$alb = substr($aa, ++$i);
 		}
 		$art =~ s/^\s*(.*?)\s*$/$1/;
-		Encode::from_to($art, 'iso-8859-1', 'utf-8');
-		Encode::_utf8_off($art);
+			$i = $art;
+			eval { Encode::from_to($art, 'iso-8859-1', 'utf-8'); };
+			$art = $i if $@;
+			Encode::_utf8_off($art);
 		$TAG{ARTIST} = $art;
 		$alb =~ s/^\s*(.*?)\s*$/$1/;
-		Encode::from_to($alb, 'iso-8859-1', 'utf-8');
-		Encode::_utf8_off($alb);
+			$i = $alb;
+			eval { Encode::from_to($alb, 'iso-8859-1', 'utf-8'); };
+			$alb = $i if $@;
+			Encode::_utf8_off($alb);
 		$TAG{ALBUM} = $alb;
 	}
 	$TAG{YEAR} = defined $dinf->{dyear} ? $dinf->{dyear} : '';
 	foreach (@{$dinf->{ttitles}}) {
 		s/^\s*(.*?)\s*$/$1/;
-		Encode::from_to($_, 'iso-8859-1', 'utf-8');
+		my $save = $_;
+		eval { Encode::from_to($_, 'iso-8859-1', 'utf-8'); };
+		$_ = $save if $@;
 		Encode::_utf8_off($_);
 	}
 	$TAG{TITLES} = $dinf->{ttitles};
@@ -752,7 +758,7 @@ sub calculate_volume_adjust {
 		$VOL_ADJUST = $avg unless defined $VOL_ADJUST;
 		$VOL_ADJUST = $avg if $avg < $VOL_ADJUST;
 	}
-	v("\tMinimum volume adjustment over all files: $VOL_ADJUST");
+	print "\tMinimum volume adjustment: $VOL_ADJUST\n";
 }
 
 sub encode_all_files {
@@ -775,7 +781,7 @@ sub _mp3tag_file {
 	v("Creating MP3 tag file headers");
 
 	my $tag = _mp3_frame('TLEN',
-			('' . (int($TAG{SECONDS}->[$no-1]) * 1000)), 1);
+			('' . (int($TAG{SECONDS}->[$no-1]) * 1000)), 'NUM');
 	$tag .= _mp3_frame('TPE1', $hr->{TPE1});
 	$tag .= _mp3_frame('TCOM', $hr->{TCOM}) if defined $hr->{TCOM};
 	$tag .= _mp3_frame('TALB', $hr->{TALB});
@@ -784,7 +790,12 @@ sub _mp3tag_file {
 	$tag .= _mp3_frame('TRCK', $hr->{TRCK});
 	$tag .= _mp3_frame('TPOS', $hr->{TPOS}) if defined $hr->{TPOS};
 	$tag .= _mp3_frame('TCON', '(' . $hr->{GENREID} . ')' . $hr->{GENRE});
-	$tag .= _mp3_frame('TYER', $hr->{YEAR}, 1) if defined $hr->{YEAR};
+	$tag .= _mp3_frame('TYER', $hr->{YEAR}, 'NUM') if defined $hr->{YEAR};
+	$hr = $hr->{COMM};
+	if (defined $hr) {
+		$hr = "engS-MUSICBOX:COMM\x00$hr";
+		$tag .= _mp3_frame('COMM', $hr, 'UNI');
+	}
 
 	# (5.) Apply unsynchronization to all frames
 	my $has_unsynced = int($tag =~ s/\xFF/\xFF\x00/gs);
@@ -830,8 +841,13 @@ sub _mp3_frame {
 	my ($len, $txtenc);
 	# Numerical strings etc. always latin-1
 	if (@_ > 2) {
-		$len = length($ftxt);
-		$txtenc = "\x00";
+		my $add = $_[2];
+		if ($add eq 'NUM') {
+			$len = length($ftxt);
+			$txtenc = "\x00";
+		} else { #if ($add eq 'UNI') {
+			$txtenc = _mp3_string(1, \$ftxt, \$len);
+		}
 	} else {
 		$txtenc = _mp3_string(0, \$ftxt, \$len);
 	}
@@ -860,7 +876,6 @@ sub _mp3_string {
 	if ($force_uni || $@ || !defined $isuni) {
 		Encode::from_to($$txtr, 'utf-8', 'utf-16');
 		$$lenr = bytes::length($$txtr);
-		$isuni = 1;
 		return "\x01";
 	} else {
 		$$txtr = $i;
@@ -881,7 +896,12 @@ sub _faac_comment {
 	$AACTAG .= "--track \"$hr->{TRCK}\" "
 		. (defined $hr->{TPOS} ? "--disc \"$hr->{TPOS}\" " : '')
 		. "--genre '$hr->{GENRE}' "
-		. (defined $hr->{YEAR} ? "--year \"$hr->{YEAR}\" " : '');
+		. (defined $hr->{YEAR} ? "--year \"$hr->{YEAR}\"" : '');
+	$i = $hr->{COMM};
+	if (defined $i) {
+		$i =~ s/"/\\"/g;
+		$AACTAG .=" --comment \"S-MUSICBOX:COMM=$i\"";
+	}
 	v("AACTAG: $AACTAG");
 }
 
@@ -894,16 +914,21 @@ sub _oggenc_comment {
 	$i = $hr->{ALBUM};  $i =~ s/"/\\"/g; $OGGTAG .= "--album \"$i\" ";
 	$i = $hr->{TITLE};  $i =~ s/"/\\"/g; $OGGTAG .= "--title \"$i\" ";
 	$OGGTAG .= "--tracknum \"$hr->{TRACKNUM}\" "
-		. "--genre \"$hr->{GENRE}\" "
-		. (defined $hr->{YEAR} ? "--date \"$hr->{YEAR}\" " : '')
 		. (defined $hr->{TPOS} ? "--comment=\"TPOS=$hr->{TPOS}\" " :'')
-		. "--comment=\"TRCK=$hr->{TRCK}\"";
+		. "--comment=\"TRCK=$hr->{TRCK}\" "
+		. "--genre \"$hr->{GENRE}\" "
+		. (defined $hr->{YEAR} ? "--date \"$hr->{YEAR}\"" : '');
+	$i = $hr->{COMM};
+	if (defined $i) {
+		$i =~ s/"/\\"/g;
+		$OGGTAG .=" --comment \"S-MUSICBOX:COMM=$i\"";
+	}
 	v("OGGTAG: $OGGTAG");
 }
 
 sub _encode_file {
 	my ($src_path, $tpath) = @_;
-	print "Encoding (volume: +-$VOL_ADJUST) track $tpath\n";
+	print "Encoding track $tpath\n";
 
 	open(SOX, "sox -v $VOL_ADJUST -t raw -r44100 -c2 -w -s $src_path " .
 			'-t raw - |')
@@ -926,27 +951,27 @@ sub _encode_file {
 	}
 	if ($AACHI) {
 		v('Creating MP4/AAC faac(1) high-quality encoder pipe');
-		open(AACHI, '| faac -XP --mpeg-vers 4 -ws --tns -q 255 ' .
+		open(AACHI, '| faac -XP --mpeg-vers 4 -ws --tns -q 300 ' .
 				"$AACTAG -o $tpath.hi.mp4 - >/dev/null 2>&1")
 			or die "Cannot open FAAC-high pipe: $! -- $^E";
 		binmode(AACHI) or die "binmode FAAC-high failed: $! -- $^E";
 	}
 	if ($AACLO) {
 		v('Creating MP4/AAC faac(1) low-quality encoder pipe');
-		open(AACLO, '| faac -XP --mpeg-vers 4 -ws --tns -q 75 ' .
+		open(AACLO, '| faac -XP --mpeg-vers 4 -ws --tns -q 80 ' .
 				"$AACTAG -o $tpath.lo.mp4 - >/dev/null 2>&1")
 			or die "Cannot open FAAC-low pipe: $! -- $^E";
 		binmode(AACLO) or die "binmode FAAC-low failed: $! -- $^E";
 	}
 	if ($OGGHI) {
 		v('Creating Ogg/Vorbis oggenc(1) high-quality encoder pipe');
-		open(OGGHI, "| oggenc -Q -r -b 256 $OGGTAG -o $tpath.hi.ogg -")
+		open(OGGHI, "| oggenc -Q -r -q 8.5 $OGGTAG -o $tpath.hi.ogg -")
 			or die "Cannot open OGGENC-high pipe: $! -- $^E";
 		binmode(OGGHI) or die "binmode OGGENC-high failed: $! -- $^E";
 	}
 	if ($OGGLO) {
 		v('Creating Ogg/Vorbis oggenc(1) low-quality encoder pipe');
-		open(OGGLO, "| oggenc -Q -r -b 112 $OGGTAG -o $tpath.lo.ogg -")
+		open(OGGLO, "| oggenc -Q -r -q 3.8 $OGGTAG -o $tpath.lo.ogg -")
 			or die "Cannot open OGGENC-low pipe: $! -- $^E";
 		binmode(OGGLO) or die "binmode OGGENC-low failed: $! -- $^E";
 	}
@@ -1147,6 +1172,9 @@ sub _encode_file {
 					? $DBEntry::AlbumSet->{GENRE}
 				: $TAG{GENRE}))));
 		$tag{GENREID} = ::genre_id($tag{GENRE});
+
+		# COMM,--comment,--comment - MAYBE UNDEF
+		$tag{COMM} = $track->{COMMENT};
 	}
 
 {package DBEntry::ALBUMSET;
@@ -1406,7 +1434,7 @@ _EOT
 {package DBEntry::TRACK;
 	sub db_help_text {
 		return <<_EOT;
-# [TRACK]: NUMBER, TITLE, (YEAR, GENRE, [CAST]-fields)
+# [TRACK]: NUMBER, TITLE, (YEAR, GENRE, COMMENT, [CAST]-fields)
 #	GENRE is one of the widely (un)known ID3 genres.
 #	If any CAST field is set no more deriviation from the global [CAST]
 #	or the active [GROUP] takes place, thus all CAST fields must be
@@ -1426,7 +1454,7 @@ _EOT
 		push(@DBCONTENT, '[TRACK]');
 		my $self = { objectname => 'TRACK',
 				NUMBER => undef, TITLE => undef,
-				YEAR => undef, GENRE => undef,
+				YEAR => undef, GENRE => undef, COMMENT =>undef,
 				group => $DBEntry::Group, cast => undef
 		};
 		$self = bless($self, $class);
