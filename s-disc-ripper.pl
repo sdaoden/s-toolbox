@@ -123,8 +123,7 @@ my @Genres = (
 	[ 28, 'Vocal' ]
 );
 
-# (ENC_ONLY will be warped to bool by command_line())
-my ($RIP_ONLY, $ENC_ONLY, $VERBOSE) = (0, undef, 0);
+my ($RIP_ONLY, $ENC_ONLY, $VERBOSE) = (0, 0, 0);
 
 my $INTRO = "s-disc-ripper.pl\n$COPYRIGHTS\nAll rights reserved.\n\n";
 my ($CDID, @TRACK_OFFSETS, $TOTAL_SECONDS);
@@ -212,7 +211,7 @@ sub command_line {
 		$emsg = "S-MusicBox DB directory <$MUSICDB> unaccessible";
 		goto jdocu;
 	}
-	if (defined $ENC_ONLY) {
+	if ($ENC_ONLY) {
 		if ($RIP_ONLY) {
 			$emsg = '--rip-only and --encode-only are mutual ' .
 				'exclusive';
@@ -604,24 +603,23 @@ sub create_database {
 # - Lines starting with # are comments and discarded
 # - [GROUPNAME] on a line of its own begins a group
 # - And there are 'KEY = VALUE' lines - surrounding whitespace is trimmed away
-# - S-MusicBox entries are all-optional, but if they are used:
 # - Definition order is important, because fields in an entry which are not set
-#   are derived from ones yet existent - or even the CDDB entries otherwise!
-
-# The [CDDB] section mirrors 1:1 what has been queried from the CDDB server
-[CDDB]
-CDID = $CDID
-GENRE = $TAG{GENRE}
-ARTIST = $TAG{ARTIST} 
-ALBUM = $TAG{ALBUM}
-YEAR = $TAG{YEAR}
+#   are derived from ones yet existent - or the raw CDDB entries otherwise!
 _EOT
-	for ($i = 0; $i < @$tar; ++$i) {
-		print DB	'TITLE', $i+1, ' = ', $tar->[$i], "\n",
-				'TIME', $i+1, ' = ', $sar->[$i], "\n"
-			or die "Error writing <$db>: $! -- $^E";
-	}
-	print DB "\n", DBEntry::db_help_text(),
+# The [CDDB] section mirrors 1:1 what has been queried from the CDDB server
+#[CDDB]
+#CDID = $CDID
+#GENRE = $TAG{GENRE}
+#ARTIST = $TAG{ARTIST} 
+#ALBUM = $TAG{ALBUM}
+#YEAR = $TAG{YEAR}
+#_EOT
+#	for ($i = 0; $i < @$tar; ++$i) {
+#		print DB	'TITLE', $i+1, ' = ', $tar->[$i], "\n",
+#				'TIME', $i+1, ' = ', $sar->[$i], "\n"
+#			or die "Error writing <$db>: $! -- $^E";
+#	}
+	print DB "\n# Possible entries are:\n", DBEntry::db_help_text(),
 	   "\n[ALBUM]\nTITLE = $TAG{ALBUM}\nTRACKCOUNT = ", scalar @$tar, "\n",
 		((length($TAG{YEAR}) > 0) ? "YEAR = $TAG{YEAR}\n" : ''),
 		"GENRE = $TAG{GENRE}\n",
@@ -1444,7 +1442,7 @@ _EOT
 	sub is_key_supported {
 		my $k = shift;
 		return	($k eq 'NUMBER' || $k eq 'TITLE' ||
-			$k eq 'YEAR' || $k eq 'GENRE' ||
+			$k eq 'YEAR' || $k eq 'GENRE' || $k eq 'COMMENT' ||
 			DBEntry::CAST::is_key_supported($k));
 	}
 
