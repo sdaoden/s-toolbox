@@ -401,14 +401,8 @@ sub create_dir_and_dat {
 
 	if (-d $TARGET_DIR) {
 		print "It seems that this CD has yet been ripped,\n",
-			"because the directory <$TARGET_DIR> yet exists.\n",
-			'Yet existent data will be overwritten, ',
-				"the database must be merged by you.\n",
-			'Note that volume adjustment may not harmonize if ',
-				"applied to single files\n",
-			"Or: did you forget the --encode-only switch?\n",
-			"Shall i continue?";
-		exit 0 unless user_confirm();
+			"because the directory <$TARGET_DIR> yet exists.\n";
+		exit(7);
 	}
 	mkdir($WORK_DIR) or die "Cannot create <$WORK_DIR>: $! -- $^E"
 		unless -d $WORK_DIR;
@@ -497,14 +491,14 @@ sub resume_file_list {
 }
 
 sub database_stuff {
-	unless (-d $TARGET_DIR) {
-		mkdir($TARGET_DIR)
-			or die "Can't create <$TARGET_DIR>: $! -- $^E";
-	}
-	unless (-f "$TARGET_DIR/musicbox.dat") {
-		cddb_query();
-		create_database();
-	}
+# TODO if yet exists and musicbox.dat exists etc simlpy read it in and fill in
+# @DBCONTENT (drop CDDB) - then let user reedit as usual -
+# user must be able to choose special tracks to rip first
+# like this individual tracks can be postinstalled / fieede
+# needs diff. control flow with dir_and_dat() and jMAIN etc..
+	mkdir($TARGET_DIR) or die "Can't create <$TARGET_DIR>: $! -- $^E";
+	cddb_query();
+	create_database();
 }
 
 sub cddb_query {
@@ -606,19 +600,10 @@ sub create_database {
 # - Definition order is important, because fields in an entry which are not set
 #   are derived from ones yet existent - or the raw CDDB entries otherwise!
 _EOT
-# The [CDDB] section mirrors 1:1 what has been queried from the CDDB server
-#[CDDB]
-#CDID = $CDID
-#GENRE = $TAG{GENRE}
-#ARTIST = $TAG{ARTIST} 
-#ALBUM = $TAG{ALBUM}
-#YEAR = $TAG{YEAR}
-#_EOT
-#	for ($i = 0; $i < @$tar; ++$i) {
-#		print DB	'TITLE', $i+1, ' = ', $tar->[$i], "\n",
-#				'TIME', $i+1, ' = ', $sar->[$i], "\n"
-#			or die "Error writing <$db>: $! -- $^E";
-#	}
+	if (@DBCONTENT > 0) {
+		print DB "\n# CONTENT OF LAST USER EDIT AT END OF FILE!\n"
+			or die "Error writing <$db>: $! -- $^E";
+	}
 	print DB "\n# Possible entries are:\n", DBEntry::db_help_text(),
 	   "\n[ALBUM]\nTITLE = $TAG{ALBUM}\nTRACKCOUNT = ", scalar @$tar, "\n",
 		((length($TAG{YEAR}) > 0) ? "YEAR = $TAG{YEAR}\n" : ''),
@@ -629,6 +614,12 @@ _EOT
 		my $j = $i + 1;
 		print DB "[TRACK]\nNUMBER = $j\nTITLE = $tar->[$i]\n\n"
 			or die "Error writing <$db>: $! -- $^E";
+	}
+	if (@DBCONTENT > 0) {
+		print DB "\n# CONTENT OF LAST USER EDIT:\n"
+			or die "Error writing <$db>: $! -- $^E";
+		print DB "#$_\n" or die "Error writing <$db>: $! -- $^E"
+			foreach (@DBCONTENT);
 	}
 	print DB
 	 '# vim:set fenc=utf-8 filetype=txt syntax=cfg ts=8 sts=8 sw=8 tw=79:',
@@ -752,7 +743,7 @@ sub calculate_volume_adjust {
 		close(SOX) or die "Cannot close SOX status pipe: $! -- $^E";
 		chomp($avg);
 
-		v("\tAverage for $f: $avg");
+		print "\t<$f>: $avg\n";
 		$VOL_ADJUST = $avg unless defined $VOL_ADJUST;
 		$VOL_ADJUST = $avg if $avg < $VOL_ADJUST;
 	}
@@ -760,7 +751,7 @@ sub calculate_volume_adjust {
 }
 
 sub encode_all_files {
-	v("Starting to encode files");
+	print "Encoding files\n";
 	foreach my $f (@SRC_FILES) {
 		$f =~ /(\d+)\.raw$/;
 		my $i = $1;
@@ -926,7 +917,7 @@ sub _oggenc_comment {
 
 sub _encode_file {
 	my ($src_path, $tpath) = @_;
-	print "Encoding track $tpath\n";
+	print "Track <$tpath.*>\n";
 
 	open(SOX, "sox -v $VOL_ADJUST -t raw -r44100 -c2 -w -s $src_path " .
 			'-t raw - |')
@@ -1066,10 +1057,6 @@ sub _encode_file {
 		$tag{TPE1} =
 		$tag{ARTIST} = $TAG{ARTIST};
 		$c = $track->{cast};
-		$c = $DBEntry::Group->{cast}
-			unless (defined $c || !defined $DBEntry::Group);
-		$c = $DBEntry::Cast
-			unless (defined $c || !defined $DBEntry::Cast);
 		$composers = undef;
 		if (defined $c) {
 			my ($i, $s, $x) = (-1, '', 0);
@@ -1303,41 +1290,83 @@ _EOT
 {package DBEntry::CAST;
 	sub db_help_text {
 		return <<_EOT;
-# [CAST]: ARTIST, (COMPOSER/SONGWRITER, CONDUCTOR, SOLOIST)
+# [CAST]: (ARTIST, SOLOIST, CONDUCTOR, COMPOSER/SONGWRITER, SORT)
 #	The CAST includes all the humans responsible for an artwork in detail.
+#	Cast information not only applies to the ([ALBUMSET] and) [ALBUM],
+#	but also to all following tracks; thus, if any [GROUP] or [TRACK] is to
+#	be defined which shall not inherit the [CAST] fields, they need to be
+#	defined first!  (Order is not important for album/sets...)
+#	SORT fields are special in that they *always* apply globally; whereas
+#	the other fields should be real names ("Wolfgang Amadeus Mozart") these
+#	specify how sorting is to be applied ("Mozart, Wolfgang Amadeus").
 #	For classical music the orchestra should be the ARTIST.
+#	SOLOIST should include the instrument in parenthesis (Midori (Violin)).
 #	The difference between COMPOSER and SONGWRITER is only noticeable for
 #	output file formats which do not support a COMPOSER information frame:
 #	whereas the SONGWRITER is simply discarded then, the COMPOSER becomes
 #	part of the ALBUM (Vivaldi: Le quattro stagioni - "La Primavera");
 #	all of this only applies to in-file information, not to the S-MusicBox
 #	interface, which of course uses the complete entry of the database.
-#	SOLOIST should include the instrument in parenthesis (Midori (Violin)).
 _EOT
 	}
 	sub is_key_supported {
 		my $k = shift;
 		return	($k eq 'ARTIST' ||
+			$k eq 'SOLOIST' || $k eq 'CONDUCTOR' ||
 			$k eq 'COMPOSER' || $k eq 'SONGWRITER' ||
-			$k eq 'CONDUCTOR' || $k eq 'SOLOIST');
+			$k eq 'SORT');
 	}
 
 	sub new {
 		my ($class, $emsgr) = @_;
-		my $isdupobj = @_ > 2;
-		if (!$isdupobj && defined $DBEntry::Cast) {
+		my $parent = (@_ > 2) ? $_[2] : undef;
+		if (!defined $parent && defined $DBEntry::Cast) {
 			$$emsgr = 'CAST yet defined';
 			return undef;
 		}
-		::v("DBEntry::CAST::new()");
-		push(@DBCONTENT, '[CAST]') unless $isdupobj;
-		my $self = { objectname => 'CAST',
+		::v("DBEntry::CAST::new(" .
+			(defined $parent ? "parent=$parent)" : ')'));
+		push(@DBCONTENT, '[CAST]') unless defined $parent;
+		my $self = { objectname => 'CAST', parent => $parent,
 				ARTIST => [],
+				SOLOIST => [], CONDUCTOR => [],
 				COMPOSER => [], SONGWRITER => [],
-				CONDUCTOR => [], SOLOIST => []
+				SORT => []
 			};
 		$self = bless($self, $class);
-		$DBEntry::Cast = $self unless $isdupobj;
+		$DBEntry::Cast = $self unless defined $parent;
+		return $self;
+	}
+	sub new_state_clone {
+		my $parent = shift;
+		my $self = DBEntry::CAST->new(undef, $parent);
+		if ($parent eq 'TRACK' && defined $DBEntry::Group) {
+			$parent = $DBEntry::Group->{cast};
+		} elsif (defined $DBEntry::Cast) {
+			$parent = $DBEntry::Cast;
+		}
+		if (defined $parent) {
+			foreach (@{$parent->{ARTIST}}) {
+				push(@{$self->{ARTIST}}, $_);
+				#push(@DBCONTENT, "ARTIST = $_");
+			}
+			foreach (@{$parent->{SOLOIST}}) {
+				push(@{$self->{SOLOIST}}, $_);
+				#push(@DBCONTENT, "SOLOIST = $_");
+			}
+			foreach (@{$parent->{CONDUCTOR}}) {
+				push(@{$self->{CONDUCTOR}}, $_);
+				#push(@DBCONTENT, "CONDUCTOR = $_");
+			}
+			foreach (@{$parent->{COMPOSER}}) {
+				push(@{$self->{COMPOSER}}, $_);
+				#push(@DBCONTENT, "COMPOSER = $_");
+			}
+			foreach (@{$parent->{SONGWRITER}}) {
+				push(@{$self->{SONGWRITER}}, $_);
+				#push(@DBCONTENT, "SONGWRITER = $_");
+			}
+		}
 		return $self;
 	}
 	sub set_tuple {
@@ -1345,6 +1374,9 @@ _EOT
 		$k = uc($k);
 		return "$self->{objectname}: $k not supported"
 			unless is_key_supported($k);
+		#return "CAST: SORT always global: should be in [CAST], " .
+		#		"not in $self->{parent}"
+		#	if (defined $self->{parent} && $k eq 'SORT');
 		::v("DBEntry::CAST::set_tuple($k=$v)");
 		push(@{$self->{$k}}, $v);
 		push(@DBCONTENT, "$k = $v");
@@ -1353,8 +1385,9 @@ _EOT
 	sub finalize {
 		my $self = shift;
 		my $emsg = undef;
-		unless (@{$self->{ARTIST}} > 0) {
-			$emsg .= 'CAST requires at least one ARTIST;';
+		if (defined $self->{parent} && $self->{parent} eq 'TRACK' &&
+		    @{$self->{ARTIST}} == 0) {
+			$emsg .= 'TRACK requires at least one ARTIST;';
 		}
 		return $emsg;
 	}
@@ -1370,8 +1403,8 @@ _EOT
 #	GENRE is one of the widely (un)known ID3 genres.
 #	GAPLESS states wether there shall be no silence in between tracks,
 #	and COMPILATION wether this is a compilation of various-artists or so.
-#	If any CAST field is set no more deriviation from the global [CAST]
-#	takes place, thus all CAST fields must be explicitely set!
+#	CAST-fields may be used to *append* to global [CAST] fields; to specify
+#	CAST fields exclusively, place the GROUP before the global [CAST].
 _EOT
 	}
 	sub is_key_supported {
@@ -1388,7 +1421,7 @@ _EOT
 		my $self = { objectname => 'GROUP',
 				LABEL => undef, YEAR => undef, GENRE => undef,
 				GAPLESS => 0, COMPILATION => 0,
-				cast => undef
+				cast => DBEntry::CAST::new_state_clone('GROUP')
 		};
 		$self = bless($self, $class);
 		$DBEntry::Group = $self;
@@ -1409,8 +1442,6 @@ _EOT
 			$self->{$k} = $v;	
 			push(@DBCONTENT, "$k = $v");
 		} else {
-			$self->{cast} = DBEntry::CAST->new(undef, 1)
-				unless defined $self->{cast};
 			$self->{cast}->set_tuple($k, $v);
 		}
 		return undef;
@@ -1421,10 +1452,8 @@ _EOT
 		unless (defined $self->{LABEL}) {
 			$emsg .= 'GROUP requires LABEL;';
 		}
-		if (defined $self->{cast}) {
-			my $em = $self->{cast}->finalize();
-			$emsg .= $em if defined $em;
-		}
+		my $em = $self->{cast}->finalize();
+		$emsg .= $em if defined $em;
 		return $emsg;
 	}
 }
@@ -1434,9 +1463,11 @@ _EOT
 		return <<_EOT;
 # [TRACK]: NUMBER, TITLE, (YEAR, GENRE, COMMENT, [CAST]-fields)
 #	GENRE is one of the widely (un)known ID3 genres.
-#	If any CAST field is set no more deriviation from the global [CAST]
-#	or the active [GROUP] takes place, thus all CAST fields must be
-#	explicitely set!
+#	CAST-fields may be used to *append* to global [CAST] (and those of the
+#	[GROUP], if any) fields; to specify CAST fields exclusively, place the
+#	TRACK before the global [CAST].
+#	Note: all TRACKs need an ARTIST in the end, from whatever CAST it is
+#	inherited.
 _EOT
 	}
 	sub is_key_supported {
@@ -1453,7 +1484,8 @@ _EOT
 		my $self = { objectname => 'TRACK',
 				NUMBER => undef, TITLE => undef,
 				YEAR => undef, GENRE => undef, COMMENT =>undef,
-				group => $DBEntry::Group, cast => undef
+				group => $DBEntry::Group,
+				cast => DBEntry::CAST::new_state_clone('TRACK')
 		};
 		$self = bless($self, $class);
 		return $self;
@@ -1473,8 +1505,6 @@ _EOT
 			$self->{$k} = $v;
 			push(@DBCONTENT, "$k = $v");
 		} else {
-			$self->{cast} = DBEntry::CAST->new(undef, 1)
-				unless defined $self->{cast};
 			$self->{cast}->set_tuple($k, $v);
 		}
 		return undef;
@@ -1485,10 +1515,8 @@ _EOT
 		unless (defined $self->{NUMBER} && defined $self->{TITLE}) {
 			$emsg .= 'TRACK requires NUMBER and TITLE;';
 		}
-		if (defined $self->{cast}) {
-			my $em = $self->{cast}->finalize();
-			$emsg .= $em if defined $em;
-		}
+		my $em = $self->{cast}->finalize();
+		$emsg .= $em if defined $em;
 
 		DBEntry::_create_track_tag($self) unless defined $emsg;
 		return $emsg;
