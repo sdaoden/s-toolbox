@@ -508,8 +508,27 @@ sub cddb_query {
 	print "\nStarting CDDB query for $CDID\n";
 	my $cddb = new CDDB or die "Cannot create CDDB object: $! -- $^E";
 	my @discs = $cddb->get_discs($CDID, \@TRACK_OFFSETS, $TOTAL_SECONDS);
-	die "CDDB did not find an entry - maybe the network is down?"
-		unless @discs > 0;
+
+	if (@discs == 0) {
+		print	"CDDB did not find an entry - i would fake!\n",
+			'Is this ok - or is simply the network down? - ',
+			"shall i quit? ";
+		exit(10) if user_confirm();
+
+		%TAG = ();
+		$TAG{GENRE} = 'Humour';
+		$TAG{ARTIST} = 'Unknown';
+		$TAG{ALBUM} = 'Unknown';
+		$TAG{YEAR} = '2001';
+		my @tits;
+		$TAG{TITLES} = \@tits;
+		for (my $i = 0; $i < @SRC_FILES; ++$i) {
+			my $s = "TITLE" . ($i+1);
+			Encode::_utf8_off($s);
+			push(@tits, $s);
+		}
+		return;
+	}
 
 	my ($usr, $dinf);
 jAREDO:	$usr = 1;
@@ -571,7 +590,6 @@ jREDO:	print 'Choose the number to use: ';
 		Encode::_utf8_off($_);
 	}
 	$TAG{TITLES} = $dinf->{ttitles};
-	$TAG{SECONDS} = $dinf->{seconds};
 	print	"Full CD info for CD(DB)ID=$CDID\n",
 		"(NOTE: terminal may not be able to display charset):\n",
 		"\tGenre=$TAG{GENRE}, Year=$TAG{YEAR}\n",
@@ -585,7 +603,7 @@ jREDO:	print 'Choose the number to use: ';
 
 sub create_database {
 	# This uses the DBEntry package defined at the end of the file
-	my ($tar, $sar, $db, $i) = ($TAG{TITLES}, $TAG{SECONDS});
+	my ($tar, $db, $i) = ($TAG{TITLES});
 
 	# Write template
 	$db = "$WORK_DIR/content.dat";
@@ -782,8 +800,7 @@ sub _mp3tag_file {
 	my $hr = $TAG{$no};
 	v("Creating MP3 tag file headers");
 
-	my $tag = _mp3_frame('TLEN',
-			('' . (int($TAG{SECONDS}->[$no-1]) * 1000)), 'NUM');
+	my $tag;
 	$tag .= _mp3_frame('TPE1', $hr->{TPE1});
 	$tag .= _mp3_frame('TCOM', $hr->{TCOM}) if defined $hr->{TCOM};
 	$tag .= _mp3_frame('TALB', $hr->{TALB});
