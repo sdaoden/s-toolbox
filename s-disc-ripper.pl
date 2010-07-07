@@ -399,7 +399,7 @@ sub create_dir_and_dat {
 	$WORK_DIR = "$ENV{TMPDIR}/s-disc-ripper.$CDID";
 	v('Directories:', "WORK: <$WORK_DIR>", "TARGET: <$TARGET_DIR>");
 
-	if (-d $TARGET_DIR) {
+	if (-d $TARGET_DIR && -f "$TARGET_DIR/musicbox.dat") {
 		print "It seems that this CD has yet been ripped,\n",
 			"because the directory <$TARGET_DIR> yet exists.\n";
 		exit(7);
@@ -429,7 +429,7 @@ sub create_dir_and_dat {
 }
 
 sub user_tracks {
-	print	"The CD $CDID contains ", scalar @SRC_FILES, ' songs - ',
+	print	"\nThe CD $CDID contains ", scalar @SRC_FILES, ' songs - ',
 		'shall all be ripped?';
 	if (user_confirm()) {
 		print "Whee - all songs will be ripped\n";
@@ -496,13 +496,16 @@ sub database_stuff {
 # user must be able to choose special tracks to rip first
 # like this individual tracks can be postinstalled / fieede
 # needs diff. control flow with dir_and_dat() and jMAIN etc..
-	mkdir($TARGET_DIR) or die "Can't create <$TARGET_DIR>: $! -- $^E";
+	unless (-d $TARGET_DIR) {
+		mkdir($TARGET_DIR)
+			or die "Can't create <$TARGET_DIR>: $! -- $^E";
+	}
 	cddb_query();
 	create_database();
 }
 
 sub cddb_query {
-	print "Starting CDDB query for $CDID\n";
+	print "\nStarting CDDB query for $CDID\n";
 	my $cddb = new CDDB or die "Cannot create CDDB object: $! -- $^E";
 	my @discs = $cddb->get_discs($CDID, \@TRACK_OFFSETS, $TOTAL_SECONDS);
 	die "CDDB did not find an entry - maybe the network is down?"
@@ -629,15 +632,16 @@ _EOT
 
 	# Let user verify, adjust and fill-in
 	{	my $ed = defined $ENV{EDITOR} ? $ENV{EDITOR} : '/usr/bin/vi';
-		print	"Editable database: <$db>\n",
+		print	"\nEditable database: <$db>\n",
 			"Please do verify and edit this file as necessary\n",
 			"Shall i invoke EDITOR <$ed>? ";
 		if (user_confirm()) {
 			my @args = ($ed, $db);
 			system(@args);
+		} else {
+			print "Hit <RETURN> to continue ...";
+			$ed = <STDIN>;
 		}
-		print "'Hope it's edited ... hit <RETURN> to continue ...";
-		$ed = <STDIN>;
 	}
 
 	# Re-Read final database
@@ -703,22 +707,31 @@ jERROR:			$DBERROR = 1;
 		print 'Errors detected - the database will be rewritten; ',
 			"edit once again!\n";
 		create_database();
-	} else {
-		$db = "$TARGET_DIR/musicbox.dat";
-		v("Creating final DB as <$db>");
-		open(DB, ">$db") or die "Cannot open <$db>: $! -- $^E";
-		print DB "[CDDB]\nCDID = $CDID\nTRACK_OFFSETS = ",
+		return;
+	}
+
+	print "\nPlease verify the database:\n";
+	print "\t$_\n" foreach (@DBCONTENT);
+	print "Is the database OK? ";
+	unless (user_confirm()) {
+		create_database();
+		return;
+	}
+
+	$db = "$TARGET_DIR/musicbox.dat";
+	v("Creating final DB as <$db>");
+	open(DB, ">$db") or die "Cannot open <$db>: $! -- $^E";
+	print DB "[CDDB]\nCDID = $CDID\nTRACK_OFFSETS = ",
 				join(' ', @TRACK_OFFSETS),
 			"\nTOTAL_SECONDS = $TOTAL_SECONDS\n",
-				or die "Error writing <$db>: $! -- $^E";
-		print DB $_, "\n" or die "Error writing <$db>: $! -- $^E"
-			foreach (@DBCONTENT);
-		close(DB) or die "Cannot close <$db>: $! -- $^E";
-	}
+		or die "Error writing <$db>: $! -- $^E";
+	print DB $_, "\n" or die "Error writing <$db>: $! -- $^E"
+		foreach (@DBCONTENT);
+	close(DB) or die "Cannot close <$db>: $! -- $^E";
 }
 
 sub rip_files {
-	v("Starting ripping files from CD");
+	print "\nRipping files\n";
 	my @tfiles;
 	for (my $i = 0; $i < @SRC_FILES; ++$i) {
 		next unless defined $SRC_FILES[$i];
@@ -726,7 +739,7 @@ sub rip_files {
 		my ($sf, $tf) = ($SRC_FILES[$i], "$WORK_DIR/$t.raw");
 		push(@tfiles, $tf);
 
-		print "Ripping track $t ($sf)\n";
+		print "\tRipping track $t ($sf)\n";
 		system "dd bs=2352 if=$sf of=$tf";
 		die "Error ripping track $i: $! -- $^E" if ($? >> 8) != 0;
 	}
@@ -734,7 +747,7 @@ sub rip_files {
 }
 
 sub calculate_volume_adjust {
-	print "Calculating average volume adjustment over all files\n";
+	print "\nCalculating average volume adjustment over all files\n";
 	$VOL_ADJUST = undef;
 	foreach my $f (@SRC_FILES) {
 		open(SOX, "sox -t raw -r44100 -c2 -w -s $f -e stat -v 2>&1 |")
@@ -751,7 +764,7 @@ sub calculate_volume_adjust {
 }
 
 sub encode_all_files {
-	print "Encoding files\n";
+	print "\nEncoding files\n";
 	foreach my $f (@SRC_FILES) {
 		$f =~ /(\d+)\.raw$/;
 		my $i = $1;
@@ -917,7 +930,7 @@ sub _oggenc_comment {
 
 sub _encode_file {
 	my ($src_path, $tpath) = @_;
-	print "Track <$tpath.*>\n";
+	print "\tTrack <$tpath.*>\n";
 
 	open(SOX, "sox -v $VOL_ADJUST -t raw -r44100 -c2 -w -s $src_path " .
 			'-t raw - |')
