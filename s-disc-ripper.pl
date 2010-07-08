@@ -445,7 +445,7 @@ jREDO:	print 'So, then: enter a space separated list of the ',
 	print "Is the following list correct?\n\t", join(' ', @dt);
 	goto jREDO unless user_confirm();
 
-	@res = undef;
+	$#res = @SRC_FILES - 1;
 	foreach my $i (@dt) {
 		if ($i == 0 || $i > @SRC_FILES) {
 			print "\tTrack number $i does not exist!\n\n";
@@ -485,9 +485,17 @@ sub resume_file_list {
 		'TRACK_OFFSETS: ' . join(' ', @TRACK_OFFSETS),
 		"TOTAL_SECONDS: $TOTAL_SECONDS");
 
-	@SRC_FILES = glob("$WORK_DIR/*.raw");
-	v("Glob results for <$WORK_DIR/*.raw>:", join(', ', @SRC_FILES));
-	die "No dangling files for $CDID can be found" unless @SRC_FILES > 0;
+	my @res = glob("$WORK_DIR/*.raw");
+	v("Glob results for <$WORK_DIR/*.raw>:", join(', ', @res));
+	die "No dangling files for $CDID can be found" unless @res > 0;
+
+	$#SRC_FILES = @TRACK_OFFSETS - 1;
+	foreach my $f (@res) {
+		$f =~ /(\d+)\.raw$/;
+		die "Illegal file found - rerip of entire disc needed!"
+			unless (defined $1 && $1 > 0 && $1 <= @SRC_FILES);
+		$SRC_FILES[$1 - 1] = $f;
+	}
 }
 
 sub database_stuff {
@@ -515,15 +523,17 @@ sub cddb_query {
 			"shall i quit? ";
 		exit(10) if user_confirm();
 
-		%TAG = ();
+jFAKE:		%TAG = ();
 		$TAG{GENRE} = 'Humour';
 		$TAG{ARTIST} = 'Unknown';
+		Encode::_utf8_off($TAG{ARTIST});
 		$TAG{ALBUM} = 'Unknown';
+		Encode::_utf8_off($TAG{ALBUM});
 		$TAG{YEAR} = '2001';
 		my @tits;
 		$TAG{TITLES} = \@tits;
 		for (my $i = 0; $i < @SRC_FILES; ++$i) {
-			my $s = "TITLE" . ($i+1);
+			my $s = 'TITLE ' . ($i + 1);
 			Encode::_utf8_off($s);
 			push(@tits, $s);
 		}
@@ -537,13 +547,18 @@ jAREDO:	$usr = 1;
 		print "\t[$usr] Genre:$genre, Title:$title\n";
 		++$usr;
 	}
+	print "\t[0] None of those (creates a local fake entry)\n";
 
 jREDO:	print 'Choose the number to use: ';
 	$usr = <STDIN>;
 	chomp($usr);
-	unless ($usr =~ /\d+/ && ($usr = int($usr)) > 0 && $usr <= @discs) {
+	unless ($usr =~ /\d+/ && ($usr = int($usr)) >= 0 && $usr <= @discs) {
 		print "I'm expecting one of the [numbers] ... !\n";
 		goto jREDO;
+	}
+	if ($usr == 0) {
+		print "OK, creating a local fake entry\n";
+		goto jFAKE;
 	}
 	$usr = $discs[--$usr];
 
@@ -631,10 +646,16 @@ _EOT
 		"GENRE = $TAG{GENRE}\n",
 	   "\n[CAST]\nARTIST = $TAG{ARTIST}\n\n"
 		or die "Error writing <$db>: $! -- $^E";
-	for ($i = 0; $i < @$tar; ++$i) {
+	for ($i = 0; $i < @SRC_FILES; ++$i) {
 		my $j = $i + 1;
-		print DB "[TRACK]\nNUMBER = $j\nTITLE = $tar->[$i]\n\n"
-			or die "Error writing <$db>: $! -- $^E";
+		if (defined $SRC_FILES[$i]) {
+			my $t = defined $tar->[$i] ? $tar->[$i] : "TITLE $j";
+			print DB "[TRACK]\nNUMBER = $j\nTITLE = $t\n\n"
+				or die "Error writing <$db>: $! -- $^E";
+		} else {
+			print DB "#[TRACK] NUMBER = $j not selected\n\n"
+				or die "Error writing <$db>: $! -- $^E";
+		}
 	}
 	if (@DBCONTENT > 0) {
 		print DB "\n# CONTENT OF LAST USER EDIT:\n"
@@ -668,7 +689,7 @@ _EOT
 	@DBCONTENT = ();
 	open(DB, "<$db")
 		or die "Cannot open <$db>: $! -- $^E";
-	my ($em, $ename, $entry) = (undef, undef, undef, undef);
+	my ($em, $ename, $entry) = (undef, undef, undef);
 	while (<DB>) {
 		s/^\s*(.*?)\s*$/$1/;
 		next if length() == 0 || /^#/;
@@ -732,6 +753,8 @@ jERROR:			$DBERROR = 1;
 	print "\t$_\n" foreach (@DBCONTENT);
 	print "Is the database OK? ";
 	unless (user_confirm()) {
+		$DBERROR = 1;
+		DBEntry::finalize_db_read();
 		create_database();
 		return;
 	}
@@ -1052,25 +1075,29 @@ sub _encode_file {
 			DBEntry::TRACK::db_help_text();
 	}
 
-	# create_database() finalization hook
-	sub finalize_db_read {
-		if ($DBERROR) {
-			$DBEntry::AlbumSet =
-			$DBEntry::Album =
-			$DBEntry::Cast =
-			$DBEntry::Group = undef;
-			return;
-		}
-
+	# create_database() finalization hooks
+	sub clear_db {
+		$DBEntry::AlbumSet =
+		$DBEntry::Album =
+		$DBEntry::Cast =
+		$DBEntry::Group = undef;
 		my ($tar, $i) = ($TAG{TITLES});
 		for ($i = 0; $i < @$tar; ++$i) {
 			my $j = $i + 1;
+			delete $TAG{$j};
+		}
+	}
+	sub finalize_db_read {
+		return clear_db() if $DBERROR;
+		for (my $i = 0; $i < @SRC_FILES; ++$i) {
+			my $j = $i + 1;
 			next if exists $TAG{$j};
+			next unless defined $SRC_FILES[$i];
 
 			::v("DBEntry::finalize_db_read(): new faker for $j");
 			my $t = DBEntry::TRACK->new(undef);
 			$t->set_tuple('NUMBER', $j);
-			$t->set_tuple('TITLE', $tar->[$i]);
+			$t->set_tuple('TITLE', 'TITLE '.$j);
 			_create_track_tag($t);
 		}
 	}
@@ -1156,8 +1183,8 @@ sub _encode_file {
 		# TPOS,--disc - MAYBE UNDEF
 		$tag{TPOS} = undef;
 		if (defined $DBEntry::AlbumSet && defined $DBEntry::Album) {
-			$tag{TPOS} = $DBEntry::AlbumSet->{SETCOUNT} . '/' .
-					$DBEntry::Album->{SETPART};
+			$tag{TPOS} = $DBEntry::Album->{SETPART} . '/' .
+					$DBEntry::AlbumSet->{SETCOUNT};
 		}
 
 		# TYER,--year,--date: YEAR - MAYBE UNDEF
@@ -1322,7 +1349,7 @@ _EOT
 		return <<_EOT;
 # [CAST]: (ARTIST, SOLOIST, CONDUCTOR, COMPOSER/SONGWRITER, SORT)
 #	The CAST includes all the humans responsible for an artwork in detail.
-#	Cast information not only applies to the ([ALBUMSET] and) [ALBUM],
+#	Cast information not only applies to the ([ALBUMSET] and) [ALBUM],
 #	but also to all following tracks; thus, if any [GROUP] or [TRACK] is to
 #	be defined which shall not inherit the [CAST] fields, they need to be
 #	defined first!  (Order is not important for album/sets...)
@@ -1374,6 +1401,8 @@ _EOT
 			$parent = $DBEntry::Group->{cast};
 		} elsif (defined $DBEntry::Cast) {
 			$parent = $DBEntry::Cast;
+		} else {
+			$parent = undef;
 		}
 		if (defined $parent) {
 			foreach (@{$parent->{ARTIST}}) {
@@ -1529,6 +1558,12 @@ _EOT
 			$v = ::genre($v);
 			return "TRACK: $v not a valid GENRE (try --genre-list)"
 				unless defined $v;
+		}
+		if ($k eq 'NUMBER') {
+			return "TRACK: NUMBER $v yet defined"
+				if exists $TAG{$v};
+			return "TRACK: NUMBER $v does not exist"
+				if (int($v) <= 0 || int($v) > @SRC_FILES);
 		}
 		::v("DBEntry::TRACK::set_tuple($k=$v)");
 		if (exists $self->{$k}) {
