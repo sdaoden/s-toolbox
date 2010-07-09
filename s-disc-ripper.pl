@@ -10,6 +10,15 @@ require 5.008;
 #@	- if Ogg/Vorbis is used: oggenc(1) (www.xiph.org)
 #@ TODO: Implement CDDB query ourselfs
 #@ TODO: Recognize changes in [CDDB] section and upload the corrected entries
+#@ TODO: BIG FAT TODO in database_stuff()!
+#@ TODO: Rewrite: use Title OBJECT, drop SRC_FILES etc.; use Data::Dumper to
+#@	store those objects, i.e. always perform CDDB query (then optional) on
+#@	first invocation??? A rip is finished if all tracks have been ripped
+#@	(individual may be deselected or dropped if rip fails) AND have been
+#@	encoded AND database has been written - no earlier.
+#@	ONLY THEN drop temporaries, state YET EXISTS etc.
+#@	Later individual tracks may be re-ripped - auto-use database for this!
+#@	I.e.: even title->rip(), title->remove() and PTF to real impl....
 #
 # Created: 2010-06-21
 # $SFramework$
@@ -500,7 +509,7 @@ sub resume_file_list {
 
 sub database_stuff {
 # TODO if yet exists and musicbox.dat exists etc simlpy read it in and fill in
-# @DBCONTENT (drop CDDB) - then let user reedit as usual -
+# @DBCONTENT (drop CDDB query) - then let user reedit as usual -
 # user must be able to choose special tracks to rip first
 # like this individual tracks can be postinstalled / fieede
 # needs diff. control flow with dir_and_dat() and jMAIN etc..
@@ -624,23 +633,11 @@ sub create_database {
 	$db = "$WORK_DIR/content.dat";
 	v("Creating editable DB template as <$db>");
 	open(DB, ">$db") or die "Cannot open <$db>: $! -- $^E";
-	print DB <<_EOT or die "Error writing <$db>: $! -- $^E";
-# S-MusicBox database, CD(DB)ID $TAG{GENRE}/$CDID
-# This file is and used to be in UTF-8 encoding (codepage,charset) ONLY!
-# Syntax (processing is line based):
-# - Leading and trailing whitespace is ignored
-# - Empty lines are ignored
-# - Lines starting with # are comments and discarded
-# - [GROUPNAME] on a line of its own begins a group
-# - And there are 'KEY = VALUE' lines - surrounding whitespace is trimmed away
-# - Definition order is important, because fields in an entry which are not set
-#   are derived from ones yet existent - or the raw CDDB entries otherwise!
-_EOT
 	if (@DBCONTENT > 0) {
-		print DB "\n# CONTENT OF LAST USER EDIT AT END OF FILE!\n"
+		print DB "\n# CONTENT OF LAST USER EDIT AT END OF FILE!\n\n"
 			or die "Error writing <$db>: $! -- $^E";
 	}
-	print DB "\n# Possible entries are:\n", DBEntry::db_help_text(),
+	print DB DBEntry::db_help_text(),
 	   "\n[ALBUM]\nTITLE = $TAG{ALBUM}\nTRACKCOUNT = ", scalar @$tar, "\n",
 		((length($TAG{YEAR}) > 0) ? "YEAR = $TAG{YEAR}\n" : ''),
 		"GENRE = $TAG{GENRE}\n",
@@ -648,14 +645,11 @@ _EOT
 		or die "Error writing <$db>: $! -- $^E";
 	for ($i = 0; $i < @SRC_FILES; ++$i) {
 		my $j = $i + 1;
-		if (defined $SRC_FILES[$i]) {
-			my $t = defined $tar->[$i] ? $tar->[$i] : "TITLE $j";
-			print DB "[TRACK]\nNUMBER = $j\nTITLE = $t\n\n"
-				or die "Error writing <$db>: $! -- $^E";
-		} else {
-			print DB "#[TRACK] NUMBER = $j not selected\n\n"
-				or die "Error writing <$db>: $! -- $^E";
-		}
+		my $pre = (defined $SRC_FILES[$i] ? ''
+			: "# TRACK $j NOT SELECTED - IT WILL NOT BE RIPPED\n");
+		my $t = defined $tar->[$i] ? $tar->[$i] : "TITLE $j";
+		print DB "${pre}[TRACK]\nNUMBER = $j\nTITLE = $t\n\n"
+			or die "Error writing <$db>: $! -- $^E";
 	}
 	if (@DBCONTENT > 0) {
 		print DB "\n# CONTENT OF LAST USER EDIT:\n"
@@ -678,7 +672,7 @@ _EOT
 			my @args = ($ed, $db);
 			system(@args);
 		} else {
-			print "Hit <RETURN> to continue ...";
+			print "Waiting: hit <RETURN> to continue ...";
 			$ed = <STDIN>;
 		}
 	}
@@ -778,11 +772,26 @@ sub rip_files {
 		next unless defined $SRC_FILES[$i];
 		my $t = $i + 1;
 		my ($sf, $tf) = ($SRC_FILES[$i], "$WORK_DIR/$t.raw");
-		push(@tfiles, $tf);
+
+		if (-f $tf) {
+			print	"Track $t has yet been ripped?! ",
+				'Shall i re-rip it? ';
+			unless (user_confirm()) {
+				push(@tfiles, $tf);
+				next;
+			}
+		}
 
 		print "\tRipping track $t ($sf)\n";
 		system "dd bs=2352 if=$sf of=$tf";
-		die "Error ripping track $i: $! -- $^E" if ($? >> 8) != 0;
+		if (($? >> 8) == 0) {
+			push(@tfiles, $tf);
+		} else {
+			print	"Error ripping track $t: $! -- $^E\n",
+				'Track will be excluded from ripping. - ',
+				"shall i quit? ";
+			exit(5) if user_confirm();
+		}
 	}
 	@SRC_FILES = @tfiles;
 }
@@ -1068,7 +1077,21 @@ sub _encode_file {
 	}
 
 	sub db_help_text {
-		return	DBEntry::ALBUMSET::db_help_text() .
+		sub __help {
+			return <<_EOT;		
+# S-MusicBox database, CD(DB)ID $TAG{GENRE}/$CDID
+# This file is and used to be in UTF-8 encoding (codepage,charset) ONLY!
+# Syntax (processing is line based):
+# - Leading and trailing whitespace is ignored
+# - Empty lines are ignored
+# - Lines starting with # are comments and discarded
+# - [GROUPNAME] on a line of its own begins a group
+# - And there are 'KEY = VALUE' lines - surrounding whitespace is trimmed away
+# - Definition ORDER IS IMPORTANT!
+_EOT
+		}
+		return __help() .
+			DBEntry::ALBUMSET::db_help_text() .
 			DBEntry::ALBUM::db_help_text() .
 			DBEntry::CAST::db_help_text() .
 			DBEntry::GROUP::db_help_text() .
@@ -1282,7 +1305,7 @@ _EOT
 #	If the album is part of an ALBUMSET TITLE may only be 'CD 1' - it is
 #	required nevertheless even though it could be deduced automatically
 #	from the ALBUMSET's TITLE and the ALBUM's SETPART - sorry!
-#	That is to say: the two TITLEs are *concatenated*.
+#	I.e. SETPART is required, then, and the two TITLEs are *concatenated*.
 #	GENRE is one of the widely (un)known ID3 genres.
 #	GAPLESS states wether there shall be no silence in between tracks,
 #	and COMPILATION wether this is a compilation of various-artists or so.
@@ -1352,7 +1375,7 @@ _EOT
 #	Cast information not only applies to the ([ALBUMSET] and) [ALBUM],
 #	but also to all following tracks; thus, if any [GROUP] or [TRACK] is to
 #	be defined which shall not inherit the [CAST] fields, they need to be
-#	defined first!  (Order is not important for album/sets...)
+#	defined first!
 #	SORT fields are special in that they *always* apply globally; whereas
 #	the other fields should be real names ("Wolfgang Amadeus Mozart") these
 #	specify how sorting is to be applied ("Mozart, Wolfgang Amadeus").
