@@ -1088,6 +1088,7 @@ sub _encode_file {
 # - [GROUPNAME] on a line of its own begins a group
 # - And there are 'KEY = VALUE' lines - surrounding whitespace is trimmed away
 # - Definition ORDER IS IMPORTANT!
+
 _EOT
 		}
 		return __help() .
