@@ -197,7 +197,7 @@ _EOT
 				'you need to re-rip it.'
 				unless ($i > 0 && $i <= $CDInfo::TrackCount);
 			my $t = $Title::List[$i - 1];
-			$t->{IS_SELECTED} = $t->{RIP_OK} = 1;
+			$t->{IS_SELECTED} = 1;
 		}
 		#print "\nThe following raw tracks will now be encoded:\n\t";
 		#print "$_->{NUMBER} " foreach (@Title::List);
@@ -777,7 +777,6 @@ jREDO:	print 'So, then: enter a space separated list of the ',
 		print "\nRipping selected tracks:\n";
 		foreach my $t (@Title::List) {
 			next unless $t->{IS_SELECTED};
-			$t->{RIP_OK} = 1;
 			if (-f $t->{RAW_FILE}) {
 				print "\tRaw ripped track $t->{NUMBER} exists",
 					' - shall i re-rip? ';
@@ -791,7 +790,7 @@ jREDO:	print 'So, then: enter a space separated list of the ',
 					"!\tTrack will be deselected - ",
 					'or shall i quit? ';
 				exit(5) if ::user_confirm();
-				$t->{RIP_OK} = 0;
+				$t->{IS_SELECTED} = 0;
 				unlink($t->{RAW_FILE}) if -f $t->{RAW_FILE};
 			}
 		}
@@ -808,7 +807,6 @@ jREDO:	print 'So, then: enter a space separated list of the ',
 			RAW_FILE => "$WORK_DIR/$nos.raw",
 			TARGET_PLAIN => "$TARGET_DIR/$nos",
 			IS_SELECTED => 0,
-			RIP_OK => 0,
 			TAG_INFO => Title::TagInfo->new()
 		};
 		$self = bless($self, $class);
@@ -940,18 +938,25 @@ jREDO:		@old_data = @MBDB::Data;
 
 		my $cddbt = $CDDB{TITLES};
 
-		print DF _help_text(),
+		print DF _help_text(), "\n",
+				MBDB::ALBUMSET::help_text(), "\n",
+				MBDB::ALBUM::help_text(),
 				"[ALBUM]\n",
 				"TITLE = $CDDB{ALBUM}\n",
 				"TRACKCOUNT = ", scalar @$cddbt, "\n",
 				((length($CDDB{YEAR}) > 0)
-					? "YEAR = $CDDB{YEAR}\n" : ''),
-				"GENRE = $CDDB{GENRE}\n",
+					? "YEAR = $CDDB{YEAR}"
+					: '#YEAR = '),
+				"\nGENRE = $CDDB{GENRE}\n",
+				"#GAPLESS = 0\n",
+				"#COMPILATION = 0\n",
 				"\n",
+				MBDB::CAST::help_text(),
 				"[CAST]\n",
 				"ARTIST = $CDDB{ARTIST}\n",
-				"# CHECK THE SORT FIELD!!!\n",
-				"$sort\n\n"
+				"$sort\n\n",
+				MBDB::GROUP::help_text(), "\n",
+				MBDB::TRACK::help_text()
 			or die "Error writing <$df>: $! -- $^E";
 
 		foreach my $title (@Title::List) {
@@ -977,8 +982,7 @@ jREDO:		@old_data = @MBDB::Data;
 	}
 
 	sub _help_text {
-		sub __help {
-			return <<_EOT;		
+		return <<_EOT;		
 # S-MusicBox database, CDDB info: $CDDB{GENRE}/$CDInfo::Id
 # This file is and used to be in UTF-8 encoding (codepage,charset) ONLY!
 # Syntax (processing is line based):
@@ -988,15 +992,7 @@ jREDO:		@old_data = @MBDB::Data;
 # - [GROUPNAME] on a line of its own begins a group
 # - And there are 'KEY = VALUE' lines - surrounding whitespace is trimmed away
 # - Definition ORDER IS IMPORTANT!
-
 _EOT
-		}
-		return __help() .
-			MBDB::ALBUMSET::help_text() .
-			MBDB::ALBUM::help_text() .
-			MBDB::CAST::help_text() .
-			MBDB::GROUP::help_text() .
-			MBDB::TRACK::help_text() . "\n";
 	}
 
 	sub _write_final {
@@ -1138,20 +1134,17 @@ jERROR:				$MBDB::Error = 1;
 {package MBDB::ALBUMSET;
 	sub help_text {
 		return <<_EOT;
-# [ALBUMSET]: TITLE, SETCOUNT, (YEAR, GENRE, GAPLESS, COMPILATION)
+# [ALBUMSET]: TITLE, SETCOUNT, (YEAR, GENRE)
 #	If a multi-CD-Set is ripped each CD gets its own database file, say;
 #	ALBUMSET and the SETPART field of ALBUM are how to group 'em
 #	nevertheless: repeat the same ALBUMSET and adjust the SETPART field.
 #	GENRE is one of the widely (un)known ID3 genres.
-#	GAPLESS states wether there shall be no silence in between tracks,
-#	and COMPILATION wether this is a compilation of various-artists or so.
 _EOT
 	}
 	sub is_key_supported {
 		my $k = shift;
 		return	($k eq 'TITLE' ||
-			$k eq 'SETCOUNT' || $k eq 'YEAR' || $k eq 'GENRE' ||
-			$k eq 'GAPLESS' || $k eq 'COMPILATION');
+			$k eq 'SETCOUNT' || $k eq 'YEAR' || $k eq 'GENRE');
 	}
 
 	sub new {
@@ -1164,8 +1157,7 @@ _EOT
 		push(@MBDB::Data, '[ALBUMSET]');
 		my $self = { objectname => 'ALBUMSET',
 			TITLE => undef,
-			SETCOUNT => undef, YEAR => undef, GENRE => undef,
-			GAPLESS => 0, COMPILATION => 0
+			SETCOUNT => undef, YEAR => undef, GENRE => undef
 		};
 		$self = bless($self, $class);
 		$MBDB::AlbumSet = $self;
@@ -1577,19 +1569,17 @@ _EOT
 		$tir->{TRCK} .= "/$MBDB::Album->{TRACKCOUNT}";
 
 		# TPOS,--disc - MAYBE UNDEF
-		$tir->{TPOS} = undef;
-		if (defined $MBDB::AlbumSet && defined $MBDB::Album) {
-			$tir->{TPOS} = $MBDB::Album->{SETPART} . '/' .
-					$MBDB::AlbumSet->{SETCOUNT};
-		}
+		$tir->{TPOS} = (defined $MBDB::AlbumSet
+				? ($MBDB::Album->{SETPART} . '/' .
+					$MBDB::AlbumSet->{SETCOUNT})
+				: undef);
 
 		# TYER,--year,--date: YEAR - MAYBE UNDEF
 		$tir->{YEAR} = (defined $self->{YEAR} ? $self->{YEAR}
 				: ((defined $MBDB::Group &&
 				    defined $MBDB::Group->{YEAR})
 					? $MBDB::Group->{YEAR}
-				: ((defined $MBDB::Album &&
-				    defined $MBDB::Album->{YEAR})
+				: (defined $MBDB::Album->{YEAR}
 					? $MBDB::Album->{YEAR}
 				: ((defined $MBDB::AlbumSet &&
 				    defined $MBDB::AlbumSet->{YEAR})
@@ -1604,8 +1594,7 @@ _EOT
 				: ((defined $MBDB::Group &&
 				    defined $MBDB::Group->{GENRE})
 					? $MBDB::Group->{GENRE}
-				: ((defined $MBDB::Album &&
-				    defined $MBDB::Album->{GENRE})
+				: (defined $MBDB::Album->{GENRE}
 					? $MBDB::Album->{GENRE}
 				: ((defined $MBDB::AlbumSet &&
 				    defined $MBDB::AlbumSet->{GENRE})
@@ -1635,7 +1624,7 @@ _EOT
 			"selected tracks:\n\t";
 		$VolNorm = undef;
 		foreach my $t (@Title::List) {
-			next unless ($t->{IS_SELECTED} && $t->{RIP_OK});
+			next unless $t->{IS_SELECTED};
 			my $f = $t->{RAW_FILE};
 			open(SOX,
 			 "sox -t raw -r44100 -c2 -w -s $f -e stat -v 2>&1 |")
@@ -1662,10 +1651,6 @@ _EOT
 		foreach my $t (@Title::List) {
 			unless ($t->{IS_SELECTED}) {
 				::v("\tSkipping $t->{NUMBER}: not selected");
-				next;
-			}
-			unless ($t->{RIP_OK}) {
-				::v("\tSkipping $t->{NUMBER}: rip failed");
 				next;
 			}
 			print "\tTrack $t->{NUMBER} -> $t->{TARGET_PLAIN}.*\n";
