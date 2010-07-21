@@ -13,7 +13,7 @@ require 5.008;
 # Created: 2010-07-12 (based upon first version, 2010-06-21)
 # $SFramework$
 #
-my $COPYRIGHTS = 'Copyright (c) 2010 Steffen Daode Nurpmeso.';
+my $COPYRIGHTS = 'Copyright (c) 2010 Steffen Daode Nurpmeso';
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -118,7 +118,7 @@ my @Genres = (
 
 my ($RIP_ONLY, $ENC_ONLY, $NO_VOL_NORM, $VERBOSE) = (0, 0, 0, 0);
 
-my $INTRO = "s-disc-ripper.pl\n$COPYRIGHTS\nAll rights reserved.\n\n";
+my $INTRO = "s-disc-ripper.pl\n$COPYRIGHTS\nAll rights reserved\n\n";
 my ($CLEANUP_OK, $WORK_DIR, $TARGET_DIR, %CDDB) = (0);
 
 jMAIN: {
@@ -161,23 +161,16 @@ _EOT
 	# Get the info right, and maybe the database
 	if (-f $MBDB::FinalFile) {
 		die 'Database corrupted - remove TARGET and re-rip entire disc'
-			unless MBDB::read_data($MBDB::FinalFile);
+			unless MBDB::read_data();
 		($info_ok, $needs_cddb) = (1, 0);
-	} elsif ($info_ok) {
-		CDInfo::write_data();
-		Title::create_that_many($CDInfo::TrackCount);
-	} elsif (-f $CDInfo::DatFile) {
-		CDInfo::read_data();
-		Title::create_that_many($CDInfo::TrackCount);
-		$info_ok = 1;
-		if (-f $MBDB::EditFile) {
-			die 'Database corrupted - remove WORK and re-rip'
-				unless MBDB::read_data($MBDB::EditFile);
-			$needs_cddb = 0;
-		}
 	} else {
-		CDInfo::discover();
-		CDInfo::write_data();
+		if ($info_ok) {
+			CDInfo::write_data();
+		} else {
+			# (Can only be --encode-only.. dies as approbiate...)
+			CDInfo::read_data();
+		}
+		$info_ok = 1;
 		Title::create_that_many($CDInfo::TrackCount);
 	}
 
@@ -203,8 +196,13 @@ _EOT
 				"It does not seem to belong to this disc, " .
 				'you need to re-rip it.'
 				unless ($i > 0 && $i <= $CDInfo::TrackCount);
-			$Title::List[$i - 1]->{IS_SELECTED} = 1;
+			my $t = $Title::List[$i - 1];
+			$t->{IS_SELECTED} = $t->{RIP_OK} = 1;
 		}
+		#print "\nThe following raw tracks will now be encoded:\n\t";
+		#print "$_->{NUMBER} " foreach (@Title::List);
+		#print "\n\tIs this really ok?  You may interrupt now! ";
+		#exit(5) unless user_confirm();
 	}
 
 	unless ($RIP_ONLY) {
@@ -487,7 +485,7 @@ jREDO:	print "\tChoose the number to use: ";
 	}
 	$usr = $discs[--$usr];
 
-	print "Starting CDDB detail read for $usr->[0]/$CDInfo::Id\n";
+	print "\nStarting CDDB detail read for $usr->[0]/$CDInfo::Id\n";
 	$dinf = $cddb->get_disc_details($usr->[0], $CDInfo::Id);
 	die 'CDDB failed to return disc details' unless defined $dinf;
 
@@ -776,7 +774,7 @@ jREDO:	print 'So, then: enter a space separated list of the ',
 	}
 
 	sub rip_all_selected {
-		print "\nRipping files\n";
+		print "\nRipping selected tracks:\n";
 		foreach my $t (@Title::List) {
 			next unless $t->{IS_SELECTED};
 			$t->{RIP_OK} = 1;
@@ -886,12 +884,16 @@ jREDO:	print 'So, then: enter a space separated list of the ',
 		@Data = ();
 	}
 
+	sub read_data { return _read_data($MBDB::FinalFile); }
+
 	sub create_data {
 		my $ed = defined $ENV{EDITOR} ? $ENV{EDITOR} : '/usr/bin/vi';
 		print "\nCreating S-MusicBox per-disc database\n";
 
-jREDO:		_reset_data();
-		_write_editable();
+		my @old_data;
+jREDO:		@old_data = @MBDB::Data;
+		_reset_data();
+		_write_editable(\@old_data);
 		print	"\tTemplate: $MBDB::EditFile\n",
 			"\tPlease do verify and edit this file as necessary\n",
 			"\tShall i invoke EDITOR <$ed>? ";
@@ -902,7 +904,7 @@ jREDO:		_reset_data();
 			print "\tOk, waiting: hit <RETURN> to continue ...";
 			$ed = <STDIN>;
 		}
-		if (!read_data($MBDB::EditFile)) {
+		if (!_read_data($MBDB::EditFile)) {
 			print "!\tErrors detected - edit once again!\n";
 			goto jREDO;
 		}
@@ -917,9 +919,10 @@ jREDO:		_reset_data();
 
 	sub _write_editable {
 		my $df = $MBDB::EditFile;
+		my $dataref = shift;
 		::v("Writing editable MusicBox data file as <$df>");
 		open(DF, ">$df") or die "Can't open <$df>: $! -- $^E";
-		if (@MBDB::Data > 0) {
+		if (@$dataref > 0) {
 			print DF
 			    "\n# CONTENT OF LAST USER EDIT AT END OF FILE!\n\n"
 				or die "Error writing <$df>: $! -- $^E";
@@ -930,7 +933,7 @@ jREDO:		_reset_data();
 			$sort =~ /^the\s+(.+)$/i;
 			$sort = "SORT = $1, The";
 		} elsif ($sort =~ /^([-\w]+)\s+(.+)$/) {
-			$sort = "#? SORT = $2, $1";
+			$sort = "SORT = $2, $1";
 		} else {
 			$sort = "#SORT = $sort";
 		}
@@ -947,6 +950,7 @@ jREDO:		_reset_data();
 				"\n",
 				"[CAST]\n",
 				"ARTIST = $CDDB{ARTIST}\n",
+				"# CHECK THE SORT FIELD!!!\n",
 				"$sort\n\n"
 			or die "Error writing <$df>: $! -- $^E";
 
@@ -958,12 +962,12 @@ jREDO:		_reset_data();
 				or die "Error writing <$df>: $! -- $^E";
 		}
 
-		if (@MBDB::Data > 0) {
+		if (@$dataref > 0) {
 			print DF "\n# CONTENT OF FORMER USER EDIT:\n"
 				or die "Error writing <$df>: $! -- $^E";
 			print DF "#$_\n"
 				or die "Error writing <$df>: $! -- $^E"
-				foreach (@MBDB::Data);
+				foreach (@$dataref);
 		}
 		print DF '# vim:set fenc=utf-8 filetype=txt ',
 				'syntax=cfg ts=8 sts=8 sw=8 tw=79:',
@@ -1009,7 +1013,7 @@ _EOT
 		close(DF) or die "Can't close <$df>: $! -- $^E";
 	}
 
-	sub read_data {
+	sub _read_data {
 		my $df = shift;
 		my $is_final = ($df eq $MBDB::FinalFile);
 		_reset_data();
@@ -1627,7 +1631,8 @@ _EOT
 			$VolNorm = '';
 			return;
 		}
-		print "\nCalculating average volume normalization\n";
+		print "\nCalculating average volume normalization over all ",
+			"selected tracks:\n\t";
 		$VolNorm = undef;
 		foreach my $t (@Title::List) {
 			next unless ($t->{IS_SELECTED} && $t->{RIP_OK});
@@ -1636,19 +1641,24 @@ _EOT
 			 "sox -t raw -r44100 -c2 -w -s $f -e stat -v 2>&1 |")
 			      or die "Can't open SOX stat for <$f>: $! -- $^E";
 			my $avg = <SOX>;
-			close(SOX) or die "Can't close SOX stat: $! -- $^E";
+			close(SOX)
+			     or die "Can't close SOX stat for <$f>: $! -- $^E";
 			chomp($avg);
 
-			print "\t<$f>: $avg\n";
+			if ($t->{INDEX} != 0 && $t->{INDEX} % 7 == 0) {
+				print "\n\t$t->{NUMBER}: $avg, ";
+			} else {
+				print "$t->{NUMBER}: $avg, ";
+			}
 			$VolNorm = $avg unless defined $VolNorm;
 			$VolNorm = $avg if $avg < $VolNorm;
 		}
-		print "\tMinimum volume normalization over all: $VolNorm\n";
+		print "\n\tVolume amplitude will be changed by: $VolNorm\n";
 		$VolNorm = "-v $VolNorm"; # Argument for sox(1)
 	}
 
 	sub encode_selected {
-		print "\nEncoding selected titles\n";
+		print "\nEncoding selected tracks:\n";
 		foreach my $t (@Title::List) {
 			unless ($t->{IS_SELECTED}) {
 				::v("\tSkipping $t->{NUMBER}: not selected");
@@ -1658,6 +1668,7 @@ _EOT
 				::v("\tSkipping $t->{NUMBER}: rip failed");
 				next;
 			}
+			print "\tTrack $t->{NUMBER} -> $t->{TARGET_PLAIN}.*\n";
 			_mp3tag_file($t) if ($MP3HI || $MP3LO);
 			_faac_comment($t) if ($AACHI || $AACLO);
 			_oggenc_comment($t) if ($OGGHI || $OGGLO);
@@ -1838,7 +1849,6 @@ _EOT
 
 	sub _encode_file {
 		my $title = shift;
-		print "\tTrack <$title->{NUMBER}>\n";
 		my $tpath = $title->{TARGET_PLAIN};
 
 		open(SOX, "sox $VolNorm -t raw -r44100 -c2 -w -s " .
