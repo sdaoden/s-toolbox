@@ -926,6 +926,7 @@ jREDO:		@old_data = @MBDB::Data;
 				or die "Error writing <$df>: $! -- $^E";
 		}
 
+		my $cddbt = $CDDB{TITLES};
 		my $sort = $CDDB{ARTIST};
 		if ($sort =~ /^The/i && $sort !~ /^the the$/i) {
 			$sort =~ /^the\s+(.+)$/i;
@@ -936,26 +937,27 @@ jREDO:		@old_data = @MBDB::Data;
 			$sort = "#SORT = $sort";
 		}
 
-		my $cddbt = $CDDB{TITLES};
-
 		print DF _help_text(), "\n",
-				MBDB::ALBUMSET::help_text(), "\n",
+				MBDB::ALBUMSET::help_text(),
+				"#[ALBUMSET]\n#TITLE = \n#SETCOUNT = 2\n",
+				"\n",
 				MBDB::ALBUM::help_text(),
-				"[ALBUM]\n",
+				"[ALBUM]\n#SETPART = 1\n",
 				"TITLE = $CDDB{ALBUM}\n",
 				"TRACKCOUNT = ", scalar @$cddbt, "\n",
 				((length($CDDB{YEAR}) > 0)
 					? "YEAR = $CDDB{YEAR}"
 					: '#YEAR = '),
 				"\nGENRE = $CDDB{GENRE}\n",
-				"#GAPLESS = 0\n",
-				"#COMPILATION = 0\n",
+				"#GAPLESS = 0\n#COMPILATION = 0\n",
 				"\n",
 				MBDB::CAST::help_text(),
 				"[CAST]\n",
 				"ARTIST = $CDDB{ARTIST}\n",
 				"$sort\n\n",
-				MBDB::GROUP::help_text(), "\n",
+				MBDB::GROUP::help_text(),
+				"#[GROUP]\n#LABEL = \n#GAPLESS = 0\n",
+				"\n",
 				MBDB::TRACK::help_text()
 			or die "Error writing <$df>: $! -- $^E";
 
@@ -1134,17 +1136,16 @@ jERROR:				$MBDB::Error = 1;
 {package MBDB::ALBUMSET;
 	sub help_text {
 		return <<_EOT;
-# [ALBUMSET]: TITLE, SETCOUNT, (YEAR, GENRE)
+# [ALBUMSET]: TITLE, SETCOUNT
 #	If a multi-CD-Set is ripped each CD gets its own database file, say;
 #	ALBUMSET and the SETPART field of ALBUM are how to group 'em
 #	nevertheless: repeat the same ALBUMSET and adjust the SETPART field.
-#	GENRE is one of the widely (un)known ID3 genres.
+#	(No GENRE etc.: all that is in ALBUM only ... as you can see)
 _EOT
 	}
 	sub is_key_supported {
 		my $k = shift;
-		return	($k eq 'TITLE' ||
-			$k eq 'SETCOUNT' || $k eq 'YEAR' || $k eq 'GENRE');
+		return	($k eq 'TITLE' || $k eq 'SETCOUNT');
 	}
 
 	sub new {
@@ -1156,8 +1157,7 @@ _EOT
 		::v("MBDB::ALBUMSET::new()");
 		push(@MBDB::Data, '[ALBUMSET]');
 		my $self = { objectname => 'ALBUMSET',
-			TITLE => undef,
-			SETCOUNT => undef, YEAR => undef, GENRE => undef
+			TITLE => undef, SETCOUNT => undef
 		};
 		$self = bless($self, $class);
 		$MBDB::AlbumSet = $self;
