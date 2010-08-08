@@ -928,13 +928,13 @@ jREDO:		@old_data = @MBDB::Data;
 
 		my $cddbt = $CDDB{TITLES};
 		my $sort = $CDDB{ARTIST};
-		if ($sort =~ /^The/i && $sort !~ /^the the$/i) {
+		if ($sort =~ /^The/i && $sort !~ /^the the$/i) { # The The, The
 			$sort =~ /^the\s+(.+)$/i;
-			$sort = "SORT = $1, The";
+			$sort = "SORT = $1, The (The $1)";
 		} elsif ($sort =~ /^([-\w]+)\s+(.+)$/) {
-			$sort = "SORT = $2, $1";
+			$sort = "SORT = $2, $1 ($1 $2)";
 		} else {
-			$sort = "#SORT = $sort";
+			$sort = "#SORT = $sort ($sort)";
 		}
 
 		print DF _help_text(), "\n",
@@ -954,6 +954,7 @@ jREDO:		@old_data = @MBDB::Data;
 				MBDB::CAST::help_text(),
 				"[CAST]\n",
 				"ARTIST = $CDDB{ARTIST}\n",
+				"# Please CHECK the SORT entry!\n",
 				"$sort\n\n",
 				MBDB::GROUP::help_text(),
 				"#[GROUP]\n#LABEL = \n#GAPLESS = 0\n",
@@ -1270,7 +1271,9 @@ _EOT
 #	defined first!
 #	SORT fields are special in that they *always* apply globally; whereas
 #	the other fields should be real names ("Wolfgang Amadeus Mozart") these
-#	specify how sorting is to be applied ("Mozart, Wolfgang Amadeus").
+#	specify how sorting is to be applied ("Mozart, Wolfgang Amadeus"),
+#	followed by the normal real name in parenthesis, e.g.:
+#		SORT = Hope, Daniel (Daniel Hope)
 #	For classical music the orchestra should be the ARTIST.
 #	SOLOIST should include the instrument in parenthesis (Midori (violin)).
 #	The difference between COMPOSER and SONGWRITER is only noticeable for
