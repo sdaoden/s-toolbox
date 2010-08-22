@@ -1715,7 +1715,7 @@ _EOT
 		for (my $i = 0; $i < 2; ++$i) {
 			my $f = $title->{TARGET_PLAIN};
 			if ($i == 0) {
-				$f .= '.hi.mp3';
+				$f .= '.mp3';
 				next if $MP3HI == 0;
 			} else {
 				$f .= '.lo.mp3';
@@ -1848,7 +1848,7 @@ _EOT
 			::v('Creating MP3 lame(1) high-quality encoder');
 			open(MP3HI,
 				'| lame --quiet -r -x -s 44.1 --bitwidth 16 ' .
-				"--vbr-new -V 0 -q 0 - - >> $tpath.hi.mp3")
+				"--vbr-new -V 0 -q 0 - - >> $tpath.mp3")
 				or die "Can't open LAME-high: $! -- $^E";
 			binmode(MP3HI)
 				or die "binmode LAME-high failed: $! -- $^E";
@@ -1866,7 +1866,7 @@ _EOT
 			::v('Creating AAC faac(1) high-quality encoder');
 			open(AACHI,
 				'| faac -XP --mpeg-vers 4 -ws --tns -q 300 ' .
-				"$AACTag -o $tpath.hi.mp4 - >/dev/null 2>&1")
+				"$AACTag -o $tpath.mp4 - >/dev/null 2>&1")
 				or die "Can't open FAAC-high: $! -- $^E";
 			binmode(AACHI)
 				or die "binmode FAAC-high failed: $! -- $^E";
@@ -1884,7 +1884,7 @@ _EOT
 			::v('Creating Vorbis oggenc(1) high-quality encoder');
 			open(OGGHI,
 				"| oggenc -Q -r -q 8.5 $OGGTag " .
-				"-o $tpath.hi.ogg -")
+				"-o $tpath.ogg -")
 				or die "Can't open OGGENC-high: $! -- $^E";
 			binmode(OGGHI)
 				or die "binmode OGGENC-high failed: $! -- $^E";
