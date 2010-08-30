@@ -136,7 +136,7 @@ jMAIN: {
 	}
 
 	$WORK_DIR = "$TMPDIR/s-disc-ripper.$CDInfo::Id";
-	$TARGET_DIR = "$MUSICDB/DISC.${CDInfo::Id}-";
+	$TARGET_DIR = "$MUSICDB/disc.${CDInfo::Id}-";
 	if (-d "${TARGET_DIR}1") {
 		$TARGET_DIR = quick_and_dirty_dir_selector();
 	} else {
