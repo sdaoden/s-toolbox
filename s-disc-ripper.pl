@@ -13,31 +13,30 @@ require 5.008;
 # Created: 2010-07-12 (based upon first version, 2010-06-21)
 # $SFramework$
 #
-my $COPYRIGHTS = 'Copyright (c) 2010 Steffen Daode Nurpmeso';
+my $COPYRIGHTS = 'Copyright (c) 2010 Steffen Daode Nurpmeso.';
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions
-# are met:
+# modification, are permitted provided that the following conditions are met:
 #
-# 1. Redistributions of source code must retain the above copyright
-#    notice, this list of conditions and the following disclaimer, without
-#    modification, immediately at the beginning of the file.
-# 2. Redistributions in binary form must reproduce the above copyright
-#    notice, this list of conditions and the following disclaimer in the
-#    documentation and/or other materials provided with the distribution.
-# 3. The name of the author may not be used to endorse or promote products
-#    derived from this software without specific prior written permission.
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+# 3. Neither the name of the author nor the names of its contributors
+#    may be used to endorse or promote products derived from this software
+#    without specific prior written permission.
 #
-# THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
-# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED.
-# IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
-# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
-# NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
-# USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
-# ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+# PURPOSE ARE DISCLAIMED.
+# IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
+# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
@@ -161,6 +160,7 @@ _EOT
 	# Get the info right, and maybe the database
 	if (-f $MBDB::FinalFile) {
 		die 'Database corrupted - remove TARGET and re-rip entire disc'
+			# Creates $Title::List etc. as approbiate
 			unless MBDB::read_data();
 		($info_ok, $needs_cddb) = (1, 0);
 	} else {
@@ -169,8 +169,8 @@ _EOT
 		} else {
 			# (Can only be --encode-only.. dies as approbiate...)
 			CDInfo::read_data();
+			$info_ok = 1;
 		}
-		$info_ok = 1;
 		Title::create_that_many($CDInfo::TrackCount);
 	}
 
@@ -191,7 +191,7 @@ _EOT
 		foreach (sort @rawfl) {
 			die '--encode-only session: illegal filenames exist'
 				unless /(\d+).raw$/;
-			my $i = int($1);
+			my $i = int $1;
 			die "--encode-only session: track <$_> is unknown! " .
 				"It does not seem to belong to this disc, " .
 				'you need to re-rip it.'
@@ -211,7 +211,7 @@ _EOT
 		$CLEANUP_OK = 1;
 	}
 
-	exit(0);
+	exit 0;
 }
 
 END { finalize() if $CLEANUP_OK; }
@@ -225,7 +225,7 @@ sub command_line {
 						printf("%3d %s\n",
 							$tr->[0], $tr->[1]);
 					}
-					exit(0);
+					exit 0;
 				},
 				'musicdb=s'		=> \$MUSICDB,
 				'tmpdir=s'		=> \$TMPDIR,
@@ -234,9 +234,9 @@ sub command_line {
 				'r|rip-only'		=> \$RIP_ONLY,
 				'e|encode-only=s'	=> \$ENC_ONLY,
 				'no-volume-normalize'	=> \$NO_VOL_NORM,
-				'mp3hi=i' => \$MP3HI, 'mp3lo=i' => \$MP3LO,
-				'aachi=i' => \$AACHI, 'aaclo=i' => \$AACLO,
-				'ogghi=i' => \$OGGHI, 'ogglo=i' => \$OGGLO,
+				'mp3=i' => \$MP3HI, 'mp3lo=i' => \$MP3LO,
+				'aac=i' => \$AACHI, 'aaclo=i' => \$AACLO,
+				'ogg=i' => \$OGGHI, 'ogglo=i' => \$OGGLO,
 				'v|verbose'		=> \$VERBOSE)) {
 		$emsg = 'Invocation failure';
 		goto jdocu;
@@ -260,7 +260,7 @@ sub command_line {
 			$emsg = "$ENC_ONLY is not a valid CD(DB)ID";
 			goto jdocu;
 		}
-		$CDInfo::Id = lc($ENC_ONLY);
+		$CDInfo::Id = lc $ENC_ONLY;
 		$ENC_ONLY = 1;
 	}
 	return;
@@ -278,7 +278,7 @@ s-disc-ripper.pl -g|--genre-list
 s-disc-ripper.pl [-v|--verbose] [--musicdb=PATH] [--tmpdir=PATH]
                  [--cdrom=SPEC] [--cdromdev=SPEC]
                  [-r|--rip-only] [-e|--encode-only=CD(DB)ID]
-                 [--mp3hi] [--mp3lo] [--aachi] [--aaclo] [--ogghi] [--ogglo]
+                 [--mp3] [--mp3lo] [--aac] [--aaclo] [--ogg] [--ogglo]
 
  -h,--help        prints this help text
  -g,--genre-list  dumps out a list of all GENREs
@@ -305,16 +305,16 @@ s-disc-ripper.pl [-v|--verbose] [--musicdb=PATH] [--tmpdir=PATH]
                   CDROM, and has been printed out by --rip-only before ...
  --no-volume-normalize
                   By default the average volume adjustment is calculated over
-                  all (selected) files and normalized.  If single files are
-                  re-ripped etc. that may be counterproductive.
- --mp3hi=BOOL,--mp3lo=.., --aachi=..,--aaclo=.., --ogghi=..,--ogglo=..
+                  all (selected) files and then used to normalize files.
+                  If single files are ripped that may be counterproductive.
+ --mp3=BOOL,--mp3lo=.., --aac=..,--aaclo=.., --ogg=..,--ogglo=..
                   by default one adjusts the script header once for the
                   requirements of a specific site, but these command line
                   options can also be used to define which output files shall
-                  be produced: MP3, MP4/AAC and OGG (quality: high,low).
+                  be produced: MP3, MP4/AAC and OGG in high/low quality.
                   Current settings: $MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO
 _EOT
-	exit(defined $emsg ? 1 : 0);
+	exit defined $emsg ? 1 : 0;
 }
 
 sub v {
@@ -332,7 +332,7 @@ sub genre {
 			return $tr->[1] if $tr->[0] == $g;
 		}
 	} else {
-		$g = lc($g);
+		$g = lc $g;
 		foreach my $tr (@Genres) {
 			return $tr->[1] if lc($tr->[1]) eq $g;
 		}
@@ -368,7 +368,7 @@ sub finalize {
 sub user_confirm {
 	print ' [Nn (or else)] ';
 	my $u = <STDIN>;
-	return $u =~ /n/i ? 0 : 1;
+	return ($u =~ /n/i) ? 0 : 1;
 }
 
 sub quick_and_dirty_dir_selector {
@@ -407,14 +407,14 @@ _EOT
 			next;
 		}
 		$at = "$ast - $at" if defined $ast;
-		print "\t[$i] $at\n";
+		print "\t[$i] $at\n";
 	}
 	print "\t[0] None of these - the disc should create a new entry!\n";
 
 jREDO:	print "\tChoose the number to use: ";
 	$usr = <STDIN>;
-	chomp($usr);
-	unless ($usr =~ /\d+/ && ($usr = int($usr)) >= 0 && $usr <= @dlist) {
+	chomp $usr;
+	unless ($usr =~ /\d+/ && ($usr = int $usr) >= 0 && $usr <= @dlist) {
 		print "!\tI'm expecting one of the [numbers] ... !\n";
 		goto jREDO;
 	}
@@ -474,8 +474,8 @@ jAREDO:	$usr = 1;
 
 jREDO:	print "\tChoose the number to use: ";
 	$usr = <STDIN>;
-	chomp($usr);
-	unless ($usr =~ /\d+/ && ($usr = int($usr)) >= 0 && $usr <= @discs) {
+	chomp $usr;
+	unless ($usr =~ /\d+/ && ($usr = int $usr) >= 0 && $usr <= @discs) {
 		print "!\tI'm expecting one of the [numbers] ... !\n";
 		goto jREDO;
 	}
@@ -552,7 +552,7 @@ sub user_tracks {
 jREDO:	print 'So, then: enter a space separated list of the ',
 		"desired track numbers\n";
 	$line = <STDIN>;
-	chomp($line);
+	chomp $line;
 	@dt = split(/\s+/, $line);
 	print "\tIs this list correct <", join(' ', @dt), '> ';
 	goto jREDO unless user_confirm();
@@ -568,12 +568,12 @@ jREDO:	print 'So, then: enter a space separated list of the ',
 
 {package CDInfo;
 	my ($DevId);
-	BEGIN {	# Id field maybe set from command_line()
+	BEGIN {	# Id field may also be set from command_line()
 		# Mostly set by _calc_id() or parse() only (except Ripper)
 		$CDInfo::Id =
 		$CDInfo::TotalSeconds =
 		$CDInfo::TrackCount = undef;
-		$CDInfo::FileRipper = undef;
+		$CDInfo::FileRipper = undef; # Ref to actual ripper sub
 		@CDInfo::TrackOffsets = ();
 	}
 
@@ -585,7 +585,8 @@ jREDO:	print 'So, then: enter a space separated list of the ',
 		no strict 'refs';
 		die "Operating system <$^O> not supported"
 			unless defined *{"CDInfo::_os_$^O"};
-		print "\nCDInfo: assuming an Audio-CD is in the drive ...\n";
+		print "\nCDInfo: assuming an Audio-CD is in the drive ...\n",
+			"\t(Otherwise insert it, wait a second and restart)\n";
 		&{"CDInfo::_os_$^O"}();
 		print "\tCalculated CDInfo: disc: $CDInfo::Id\n\t\t",
 			'Track offsets: ' . join(' ', @CDInfo::TrackOffsets),
@@ -596,11 +597,13 @@ jREDO:	print 'So, then: enter a space separated list of the ',
 	sub _os_openbsd { # TODO
 		my $drive = defined $CDROM ? $CDROM : '/dev/cdrom';
 		print "\tOpenBSD: using drive $drive \n";
+		die "OpenBSD support in fact missing";
 	}
 
 	sub _os_freebsd { # TODO
 		my $drive = defined $CDROM ? $CDROM : '/dev/cdrom';
 		print "\tFreeBSD: using drive $drive \n";
+		die "FreeBSD support in fact missing";
 	}
 
 	sub _os_darwin {
@@ -654,6 +657,7 @@ jREDO:	print 'So, then: enter a space separated list of the ',
 	sub _os_linux { # TODO
 		my $drive = defined $CDROM ? $CDROM : '/dev/cdrom';
 		print "\tLinux: using drive $drive \n";
+		die "Linux support in fact missing";
 	}
 
 	# Calculated CD(DB)-Id and *set*CDInfo*fields* (except $FileRipper)!
@@ -719,14 +723,14 @@ jREDO:	print 'So, then: enter a space separated list of the ',
 
 		my $emsg = undef;
 		foreach (@$laref) {
-			chomp();
+			chomp;
 			next if /^\s*#/;
 			$emsg .= "Invalid line <$_>;" and next
 				unless /^\s*(.+?)\s*=\s*(.+?)\s*$/;
 			my ($k, $v) = ($1, $2);
 			if ($k eq 'CDID') {
 				$emsg .= "Parsed CDID ($v) doesn't match;"
-					and next
+						and next
 					if (defined $old_id && $v ne $old_id);
 				$CDInfo::Id = $v;
 			} elsif ($k eq 'TRACK_OFFSETS') {
@@ -1111,7 +1115,7 @@ jERROR:				$MBDB::Error = 1;
 	}
 	sub set_tuple {
 		my ($self, $k, $v) = @_;
-		$k = uc($k);
+		$k = uc $k;
 		::v("MBDB::$self->{objectname}::set_tuple($k=$v)");
 		return "$self->{objectname}: $k not supported"
 			unless is_key_supported($k);
@@ -1166,7 +1170,7 @@ _EOT
 	}
 	sub set_tuple {
 		my ($self, $k, $v) = @_;
-		$k = uc($k);
+		$k = uc $k;
 		::v("MBDB::$self->{objectname}::set_tuple($k=$v)");
 		return "$self->{objectname}: $k not supported"
 			unless is_key_supported($k);
@@ -1225,7 +1229,7 @@ _EOT
 	}
 	sub set_tuple {
 		my ($self, $k, $v) = @_;
-		$k = uc($k);
+		$k = uc $k;
 		::v("MBDB::$self->{objectname}::set_tuple($k=$v)");
 		return "$self->{objectname}: $k not supported"
 			unless is_key_supported($k);
@@ -1337,7 +1341,7 @@ _EOT
 	}
 	sub set_tuple {
 		my ($self, $k, $v) = @_;
-		$k = uc($k);
+		$k = uc $k;
 		::v("MBDB::$self->{objectname}::set_tuple($k=$v)");
 		return "$self->{objectname}: $k not supported"
 			unless is_key_supported($k);
@@ -1397,7 +1401,7 @@ _EOT
 	}
 	sub set_tuple {
 		my ($self, $k, $v) = @_;
-		$k = uc($k);
+		$k = uc $k;
 		::v("MBDB::$self->{objectname}::set_tuple($k=$v)");
 		return "$self->{objectname}: $k not supported"
 			unless is_key_supported($k);
@@ -1465,7 +1469,7 @@ _EOT
 	}
 	sub set_tuple {
 		my ($self, $k, $v) = @_;
-		$k = uc($k);
+		$k = uc $k;
 		::v("MBDB::$self->{objectname}::set_tuple($k=$v)");
 		return "$self->{objectname}: $k not supported"
 			unless is_key_supported($k);
@@ -1635,7 +1639,7 @@ _EOT
 			my $avg = <SOX>;
 			close(SOX)
 			     or die "Can't close SOX stat for <$f>: $! -- $^E";
-			chomp($avg);
+			chomp $avg;
 
 			if ($t->{INDEX} != 0 && $t->{INDEX} % 7 == 0) {
 				print "\n\t$t->{NUMBER}: $avg, ";
