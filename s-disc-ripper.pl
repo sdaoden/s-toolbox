@@ -1283,7 +1283,9 @@ _EOT
 #	The difference between COMPOSER and SONGWRITER is only noticeable for
 #	output file formats which do not support a COMPOSER information frame:
 #	whereas the SONGWRITER is simply discarded then, the COMPOSER becomes
-#	part of the ALBUM (Vivaldi: Le quattro stagioni - "La Primavera");
+#	part of the ALBUM TITLE (Vivaldi: Le quattro stagioni - "La Primavera")
+#	if there were any COMPOSER(s) in global [CAST], or part of the TRACK
+#	TITLE (The Killing Joke: Pssyche) otherwise ([GROUP]/[TRACK]);
 #	the S-MusicBox interface always uses the complete database entry, say.
 _EOT
 	}
@@ -1309,6 +1311,7 @@ _EOT
 				ARTIST => [],
 				SOLOIST => [], CONDUCTOR => [],
 				COMPOSER => [], SONGWRITER => [],
+				_parent_composers => 0,
 				SORT => []
 			};
 		$self = bless($self, $class);
@@ -1334,6 +1337,7 @@ _EOT
 				foreach (@{$parent->{CONDUCTOR}});
 			push(@{$self->{COMPOSER}}, $_)
 				foreach (@{$parent->{COMPOSER}});
+			$self->{_parent_composers} = scalar @{$self->COMPOSER};
 			push(@{$self->{SONGWRITER}}, $_)
 				foreach (@{$parent->{SONGWRITER}});
 		}
@@ -1358,6 +1362,11 @@ _EOT
 			$emsg .= 'TRACK requires at least one ARTIST;';
 		}
 		return $emsg;
+	}
+	# For TRACK to decide where the composer list is to be placed 
+	sub has_parent_composers {
+		my $self = shift;
+		return ($self->{_parent_composers} != 0);
 	}
 }
 
@@ -1560,7 +1569,7 @@ _EOT
 				? "$MBDB::AlbumSet->{TITLE} - " : ''
 				) . $MBDB::Album->{TITLE};
 		$tir->{ALBUM} = "$composers: $tir->{ALBUM}"
-			if defined $composers;
+			if $c->has_parent_composers();
 
 		# TIT1/TIT2,--title,--title - TIT1 MAYBE UNDEF
 		$tir->{TIT1} = (defined $MBDB::Group
@@ -1569,6 +1578,8 @@ _EOT
 		$tir->{TITLE} = (defined $tir->{TIT1}
 				? "$tir->{TIT1} - $tir->{TIT2}"
 				: $tir->{TIT2});
+		$tir->{TITLE} = "$composers: $tir->{TITLE}"
+			if (!$c->has_parent_composers() && defined $composers);
 
 		# TRCK,--track: TRCK; --tracknum: TRACKNUM
 		$tir->{TRCK} =
