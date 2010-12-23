@@ -11,10 +11,10 @@ require 5.008;
 #@ TODO: Implement CDDB query ourselfs
 #
 # Created: 2010-07-12 (based upon first version, 2010-06-21)
-#
-my $COPYRIGHTS = 'Copyright (c) 2010 Steffen Daode Nurpmeso.';
-# All rights reserved.
-#
+my $COPYRIGHT =<<_EOT;
+Copyright (c) 2010 Steffen Daode Nurpmeso.
+All rights reserved.
+_EOT
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
 #
@@ -115,8 +115,10 @@ my @Genres = (
 );
 
 my ($RIP_ONLY, $ENC_ONLY, $NO_VOL_NORM, $VERBOSE) = (0, 0, 0, 0);
-
-my $INTRO = "s-disc-ripper.pl\n$COPYRIGHTS\nAll rights reserved\n\n";
+my $INTRO =<<_EOT;
+s-disc-ripper.pl (v3.0)
+$COPYRIGHT
+_EOT
 my ($CLEANUP_OK, $WORK_DIR, $TARGET_DIR, %CDDB) = (0);
 
 jMAIN: {
@@ -279,10 +281,10 @@ s-disc-ripper.pl [-v|--verbose] [--musicdb=PATH] [--tmpdir=PATH]
                  [-r|--rip-only] [-e|--encode-only=CD(DB)ID]
                  [--mp3] [--mp3lo] [--aac] [--aaclo] [--ogg] [--ogglo]
 
- -h,--help        prints this help text
- -g,--genre-list  dumps out a list of all GENREs
- -v,--verbose     mostly debug, prints more status messages and does not
-                  delete the temporary raw files and their directory
+ -h,--help        prints this help text and exits
+ -g,--genre-list  dumps out a list of all GENREs and exits
+ -v,--verbose     mostly debug, prints a lot of status messages and does
+                  neither delete temporary files nor directory!
  --musicdb=PATH   specifies the path to the S-MusicBox database directory.
                   Default setting is the S_MUSICDB environment variable.
                   Currently <$MUSICDB>
@@ -295,10 +297,10 @@ s-disc-ripper.pl [-v|--verbose] [--musicdb=PATH] [--tmpdir=PATH]
                   Mac OS X: SPEC and DEVSPEC are simple drivenumbers, e.g. <1>!
                   There (only) it may also be necessary to specify --cdromdev:
                   --cdrom= is used for the drutil(1) '-drive' option,
-                  whereis --cdromdev is used for </dev/diskDEVSPEC> access -
-                  and dependend on USB usage order these numbers may vary ...
+                  whereis --cdromdev is used for raw </dev/diskDEVSPEC> access
+                  (dependend on USB usage order these numbers may even vary..).
                   The default settings are the CDROM/CDROMDEV environ variables
- -r,--rip-only    exit after the data rip is completed
+ -r,--rip-only    exit after the data rip is completed (and see --encode-only)
  -e CDID,--encode-only=CDID
                   resume a --rip-only session.  CDID is the CDDB ID of the
                   CDROM, and has been printed out by --rip-only before ...
