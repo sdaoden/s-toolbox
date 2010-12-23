@@ -11,7 +11,6 @@ require 5.008;
 #@ TODO: Implement CDDB query ourselfs
 #
 # Created: 2010-07-12 (based upon first version, 2010-06-21)
-# $SFramework$
 #
 my $COPYRIGHTS = 'Copyright (c) 2010 Steffen Daode Nurpmeso.';
 # All rights reserved.
@@ -276,7 +275,7 @@ USAGE:
 s-disc-ripper.pl -h|--help
 s-disc-ripper.pl -g|--genre-list
 s-disc-ripper.pl [-v|--verbose] [--musicdb=PATH] [--tmpdir=PATH]
-                 [--cdrom=SPEC] [--cdromdev=SPEC]
+                 [--cdrom=SPEC] [--cdromdev=DEVSPEC]
                  [-r|--rip-only] [-e|--encode-only=CD(DB)ID]
                  [--mp3] [--mp3lo] [--aac] [--aaclo] [--ogg] [--ogglo]
 
@@ -290,15 +289,15 @@ s-disc-ripper.pl [-v|--verbose] [--musicdb=PATH] [--tmpdir=PATH]
  --tmpdir=PATH    the (top) temporary directory to use - defaults to the TMPDIR
                   environment variable.
                   Currently <$TMPDIR>
- --cdrom=SPEC,--cdromdev=SPEC
+ --cdrom=SPEC,--cdromdev=DEVSPEC
                   set CDROM drive/device to be used.  SPEC is system-dependend
-                  and may be something like </dev/cdrom> or </dev/acd1c>;
-                  on Mac OS X it is simply the number of the drive, e.g. <1>;
-                  there it may be necessary to specify a different device node
-                  (cdrom= is used for the drutil(1) '-drive' option, cdromdev=
-                  only for /dev/diskXY lookup - try it if cdrom= alone fails;
-                  dependend on USB usage order the number may even vary ..).
-                  Default settings are the CDROM/CDROMDEV environ variables
+                  and may be something like </dev/cdrom> or </dev/acd1c>.
+                  Mac OS X: SPEC and DEVSPEC are simple drivenumbers, e.g. <1>!
+                  There (only) it may also be necessary to specify --cdromdev:
+                  --cdrom= is used for the drutil(1) '-drive' option,
+                  whereis --cdromdev is used for </dev/diskDEVSPEC> access -
+                  and dependend on USB usage order these numbers may vary ...
+                  The default settings are the CDROM/CDROMDEV environ variables
  -r,--rip-only    exit after the data rip is completed
  -e CDID,--encode-only=CDID
                   resume a --rip-only session.  CDID is the CDDB ID of the
@@ -1337,7 +1336,8 @@ _EOT
 				foreach (@{$parent->{CONDUCTOR}});
 			push(@{$self->{COMPOSER}}, $_)
 				foreach (@{$parent->{COMPOSER}});
-			$self->{_parent_composers} = scalar @{$self->COMPOSER};
+			$self->{_parent_composers} =
+				scalar @{$self->{COMPOSER}};
 			push(@{$self->{SONGWRITER}}, $_)
 				foreach (@{$parent->{SONGWRITER}});
 		}
