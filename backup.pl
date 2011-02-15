@@ -1,19 +1,18 @@
 #!/usr/bin/perl
 # Created: 2010-02-25
-# default: (tar -rf) backup.incremental.tar files changed since last invocation
-# -r/--reset: do not take care about timestamps, do create xy.dateTtime.tgz
-# -c/--complete: other config ($COMPLETE_), always xy.dateTtime.tgz
-# Note: all _absolute_ directories and _not_ globs TODO use glob to query dirs?
+# default: (tar -rf) backup.tar files changed since last invocation
+# -r/--reset: do not take care about timestamps, do create xy.dateTtime.tbz
+# -c/--complete: other config ($COMPLETE_), always xy.dateTtime.tbz
+
+# Note: all _absolute_ directories and _not_ globs
 
 my $EMAIL = defined($ENV{'EMAIL'}) ? $ENV{'EMAIL'} : 'postmaster@localhost';
 my $HOME = $ENV{'HOME'};
 
-my $REPO_SRC_DIR = "$HOME/src";
-my $REPO_DIR = "$HOME/arena/code.repos";
-my $REPO_BUNDLE_DIR = "$HOME/arena/code.repos/backup-bundles";
-
-my $EXGLOB = '._* *~ *.swp';
-my @EXLIST = qw(.DS_Store .localized .Trash);
+# Mercurial work-clone-dir/repo-dir day-by-day bundles+shelve backups
+my $HG_SRC_DIR = "$HOME/src";
+my $HG_DIR = "$HOME/arena/code.repos";
+my $HG_BUNDLE_DIR = "$HOME/arena/code.repos/backup-bundles";
 
 my @NORMAL_INPUT = (
     "$HOME/arena/code.extern.repos",
@@ -34,6 +33,9 @@ my @COMPLETE_INPUT = (
     "$HOME/arena/pics.artwork",
     "$HOME/arena/pics.snapshots"
 );
+
+my $EXGLOB = '._* *~ *.swp';
+my @EXLIST = qw(.DS_Store .localized .Trash);
 
 my $NORMAL_OUTPUT = "$HOME/traffic";
 my $COMPLETE_OUTPUT = "$HOME/traffic";
@@ -76,7 +78,7 @@ jMAIN: {
     msg(1, 'Ignoring old timestamps due to "--reset" option') if $RESET;
 
     Timestamp::create();
-    BackupBundles::create();
+    HGBundles::create();
     Filelist::create();
     unless (Filelist::is_any()) {
         Timestamp::save();
@@ -91,7 +93,7 @@ sub msg {
     my $args = \@_;
     my $lvl = shift @$args;
     foreach my $a (@$args) {
-        my $m = ("\t" x $lvl) . $a . "\n";
+        my $m = '- ' . ('  ' x $lvl) . $a . "\n";
         print STDOUT $m;
         print $MFFH $m;
     }
@@ -102,7 +104,7 @@ sub err {
     my $args = \@_;
     my $lvl = shift @$args;
     foreach my $a (@$args) {
-        my $m = '!' . ("\t" x $lvl) . $a . "\n";
+        my $m = '! ' . ('  ' x $lvl) . $a . "\n";
         print STDERR $m;
         print $MFFH $m;
     }
@@ -176,57 +178,121 @@ sub do_exit {
     }
 }
 
-{package BackupBundles;
+{package HGBundles;
+    my @HG_Dirs;
+
     sub create {
-        ::msg(0, "Creating HG backup bundles");
-        unless (-d $REPO_BUNDLE_DIR) {
-            ::err(0, 'FAILURE: no HG backup bundle directory found');
+        _create_list();
+        _create_backups();
+    }
+
+    sub _create_list {
+        ::msg(0, 'Collecting repo information');
+        unless (-d $HG_BUNDLE_DIR) {
+            ::err(0, 'FAILURE: no HG backup-bundle/-shelve directory found');
             ::do_exit(1);
         }
 
-        unless (opendir(DIR, $REPO_SRC_DIR)) {
-            ::err(1, "opendir($REPO_SRC_DIR) failed: $^E");
+        unless (opendir(DIR, $HG_SRC_DIR)) {
+            ::err(1, "opendir($HG_SRC_DIR) failed: $^E");
             ::do_exit(1);
         }
         my @dents = readdir(DIR);
         closedir(DIR);
 
-        my @hgdirs;
         foreach my $dent (@dents) {
             next if $dent eq '.' || $dent eq '..';
-            my $abs = $REPO_SRC_DIR . '/' . $dent;
+            my $abs = $HG_SRC_DIR . '/' . $dent;
             next unless -d $abs;
             next unless -d "$abs/.hg";
-            push(@hgdirs, $dent);
+            push(@HG_Dirs, $dent);
+            ::msg(1, "added <$dent>");
         }
+    }
 
-        foreach my $e (@hgdirs) {
-            my $src = $REPO_SRC_DIR . '/' . $e;
-            my $target = "$REPO_BUNDLE_DIR/$e.bundle";
-            my $dest = "$REPO_DIR/$e.hg";
+    sub _create_backups {
+        ::msg(0, "Creating HG bundle/shelve backups");
+        foreach my $e (@HG_Dirs) {
+            ::msg(1, "Processing $e");
+            my $src = $HG_SRC_DIR . '/' . $e;
+            unless (chdir($src)) {
+                ::err(2, "HGBundles: cannot chdir($src): $^E");
+                ::do_exit(1);
+            }
+
+            # Bundle
+            ::msg(2, 'Checking for new bundle') if $VERBOSE;
+            my $target = "$HG_BUNDLE_DIR/$e.bundle";
+            my $dest = "$HG_DIR/$e.hg";
             my $flag = $VERBOSE ? '-v' : '';
-
-            ::msg(1, "Creating bundle for $src");
-            ::msg(1, "... target: $target") if $VERBOSE;
+            ::msg(3, "... target: $target") if $VERBOSE;
             if (-d $dest) {
-                ::msg(1, "... dest-repo: $dest") if $VERBOSE;
+                ::msg(3, "... dest-repo: $dest") if $VERBOSE;
             } else {
-                ::msg(1, "... using --all: no dest-repo: $dest") if $VERBOSE;
+                ::msg(3, "... using --all: no dest-repo: $dest") if $VERBOSE;
                 $dest = '';
                 $flag .= ' --all';
             }
 
-            unless (chdir($src)) {
-                ::err(1, "BackupBundles: cannot chdir($src): $^E");
-                ::do_exit(1);
+            # hg bundle (also) returns 1 if no changes have been found, so use
+            # modification times to decide wether an error occurred.
+            # If not we can also throw away the old bundle..
+            my $omodt = -1;
+            {   my @x = stat($target);
+                if (@x) { $omodt = $x[9]; }
+            }
+            $flag = system("hg bundle $flag $target $dest >> $MFFN 2>&1");
+            if (($flag >> 8) != 0) {
+                my ($nmodt, @x) = (-1, stat($target));
+                if (@x) { $nmodt = $x[9]; }
+
+                if ($omodt == $nmodt) {
+                    ::msg(3, 'No updates available, dropping outdated bundles')
+                        if $VERBOSE;
+                    ::err(3, "Failed to unlink outdated bundle $target: $^E")
+                        unless ($nmodt == -1 || unlink($target) == 1);
+                } else {
+                    ::err(3, "hg(1) bundle failed for $target");
+                    ::do_exit(1);
+                }
             }
 
-            $e = system("hg bundle $flag $target $dest >> $MFFN 2>&1");
-            # Returns 1 if no changes found, so..
-            #if (($e >> 8) != 0) {
-            #    ::err(1, "BackupBundles: hg(1) bundle failed for $target");
-            #    ::do_exit(1);
-            #}
+            # Shelves
+            ::msg(2, "Checking for shelves") if $VERBOSE;
+            $target = "$HG_BUNDLE_DIR/$e.shelve.tbz";
+            ::msg(3, "... target: $target") if $VERBOSE;
+            $dest = '.hg/shelves'; # Yeah - but reuse!
+            unless (-d $dest) {
+                ::msg(3, "No $dest directory, skipping") if $VERBOSE;
+                next;
+            }
+            # Only if none-empty
+            unless (opendir(DIR, $dest)) {
+                ::err(3, "opendir($dest) failed: $^E");
+                next;
+            }
+            {   my @dents = readdir(DIR);
+                closedir(DIR);
+                foreach my $dent (@dents) {
+                    next if $dent eq '.' || $dent eq '..';
+                    $flag = 1;
+                    last;
+                }
+            }
+
+            if ($flag == 0) {
+                ::msg(3, "No shelves, dropping directory and outdated backups")
+                    if $VERBOSE;
+                ::err(3, "Failed to unlink outdated shelve backup: $^E")
+                    unless (! -f $target || unlink($target) == 1);
+                ::err(3, "Failed to rmdir empty $dest: $^E")
+                    unless rmdir($dest) == 1;
+            } else {
+                ::msg(3, 'Creating new shelve backup') if $VERBOSE;
+                $flag = system("tar cjLf $target $dest > /dev/null 2>> $MFFN");
+                ::err(3, "tar(1) execution failed for $target")
+                    if ($flag >> 8) != 0;
+            }
         }
     }
 }
