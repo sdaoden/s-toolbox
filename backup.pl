@@ -204,6 +204,7 @@ sub do_exit {
             next if $dent eq '.' || $dent eq '..';
             my $abs = $HG_SRC_DIR . '/' . $dent;
             next unless -d $abs;
+            next unless $abs =~ /\.hg$/;
             next unless -d "$abs/.hg";
             push(@HG_Dirs, $dent);
             ::msg(1, "added <$dent>");
