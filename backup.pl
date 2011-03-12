@@ -224,7 +224,7 @@ sub do_exit {
             # Bundle
             ::msg(2, 'Checking for new bundle') if $VERBOSE;
             my $target = "$HG_BUNDLE_DIR/$e.bundle";
-            my $dest = "$HG_DIR/$e.hg";
+            my $dest = "$HG_DIR/$e";
             my $flag = $VERBOSE ? '-v' : '';
             ::msg(3, "... target: $target") if $VERBOSE;
             if (-d $dest) {
