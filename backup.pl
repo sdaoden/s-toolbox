@@ -9,7 +9,7 @@
 my $EMAIL = defined($ENV{'EMAIL'}) ? $ENV{'EMAIL'} : 'postmaster@localhost';
 my $HOME = $ENV{'HOME'};
 
-# Mercurial work-clone-dir/repo-dir day-by-day bundles+shelve backups
+# Mercurial work-clone-dir/repo-dir day-by-day bundles+shelve+patch backups
 my $HG_SRC_DIR = "$HOME/src";
 my $HG_DIR = "$HOME/arena/code.repos";
 my $HG_BUNDLE_DIR = "$HOME/arena/code.repos/backup-bundles";
@@ -189,7 +189,7 @@ sub do_exit {
     sub _create_list {
         ::msg(0, 'Collecting repo information');
         unless (-d $HG_BUNDLE_DIR) {
-            ::err(0, 'FAILURE: no HG backup-bundle/-shelve directory found');
+            ::err(0, 'FAILURE: no HG backup-bundle/-shelve/-patch dir found');
             ::do_exit(1);
         }
 
@@ -212,7 +212,7 @@ sub do_exit {
     }
 
     sub _create_backups {
-        ::msg(0, "Creating HG bundle/shelve backups");
+        ::msg(0, "Creating HG bundle/shelve/patch backups");
         foreach my $e (@HG_Dirs) {
             ::msg(1, "Processing $e");
             my $src = $HG_SRC_DIR . '/' . $e;
@@ -221,79 +221,97 @@ sub do_exit {
                 ::do_exit(1);
             }
 
-            # Bundle
-            ::msg(2, 'Checking for new bundle') if $VERBOSE;
-            my $target = "$HG_BUNDLE_DIR/$e.bundle";
-            my $dest = "$HG_DIR/$e";
-            my $flag = $VERBOSE ? '-v' : '';
-            ::msg(3, "... target: $target") if $VERBOSE;
-            if (-d $dest) {
-                ::msg(3, "... dest-repo: $dest") if $VERBOSE;
-            } else {
-                ::msg(3, "... using --all: no dest-repo: $dest") if $VERBOSE;
-                $dest = '';
-                $flag .= ' --all';
-            }
+            _do_bundle($e);
+            _do_shelves_or_patches($e, 'shelves');
+            _do_shelves_or_patches($e, 'patches');
+        }
+    }
 
-            # hg bundle (also) returns 1 if no changes have been found, so use
-            # modification times to decide wether an error occurred.
-            # If not we can also throw away the old bundle..
-            my $omodt = -1;
-            {   my @x = stat($target);
-                if (@x) { $omodt = $x[9]; }
-            }
-            $flag = system("hg bundle $flag $target $dest >> $MFFN 2>&1");
-            if (($flag >> 8) != 0) {
-                my ($nmodt, @x) = (-1, stat($target));
-                if (@x) { $nmodt = $x[9]; }
+    sub _do_bundle {
+        my $e = shift;
+        my ($target, $dest, $flag, $omodt);
+        ::msg(2, 'Checking for new bundle') if $VERBOSE;
 
-                if ($omodt == $nmodt) {
-                    ::msg(3, 'No updates available, dropping outdated bundles')
-                        if $VERBOSE;
-                    ::err(3, "Failed to unlink outdated bundle $target: $^E")
-                        unless ($nmodt == -1 || unlink($target) == 1);
-                } else {
-                    ::err(3, "hg(1) bundle failed for $target");
-                    ::do_exit(1);
-                }
-            }
+        $target = "$HG_BUNDLE_DIR/$e";
+        $target = $1 if $target =~ /(.+)\..+$/;
+        $target .= '.bundle';
+        $dest = "$HG_DIR/$e";
+        $flag = $VERBOSE ? '-v' : '';
+        ::msg(3, "... target: $target") if $VERBOSE;
+        if (-d $dest) {
+            ::msg(3, "... dest-repo: $dest") if $VERBOSE;
+        } else {
+            ::msg(3, "... using --all: no dest-repo: $dest") if $VERBOSE;
+            $dest = '';
+            $flag .= ' --all';
+        }
 
-            # Shelves
-            ::msg(2, "Checking for shelves") if $VERBOSE;
-            $target = "$HG_BUNDLE_DIR/$e.shelve.tbz";
-            ::msg(3, "... target: $target") if $VERBOSE;
-            $dest = '.hg/shelves'; # Yeah - but reuse!
-            unless (-d $dest) {
-                ::msg(3, "No $dest directory, skipping") if $VERBOSE;
-                next;
-            }
-            # Only if none-empty
-            unless (opendir(DIR, $dest)) {
-                ::err(3, "opendir($dest) failed: $^E");
-                next;
-            }
-            {   my @dents = readdir(DIR);
-                closedir(DIR);
-                foreach my $dent (@dents) {
-                    next if $dent eq '.' || $dent eq '..';
-                    $flag = 1;
-                    last;
-                }
-            }
+        # hg bundle (also) returns 1 if no changes have been found, so use
+        # modification times to decide wether an error occurred.
+        # If not we can also throw away the old bundle..
+        $omodt = -1;
+        {   my @x = stat($target);
+            if (@x) { $omodt = $x[9]; }
+        }
+        $flag = system("hg bundle $flag $target $dest >> $MFFN 2>&1");
+        if (($flag >> 8) != 0) {
+            my ($nmodt, @x) = (-1, stat($target));
+            if (@x) { $nmodt = $x[9]; }
 
-            if ($flag == 0) {
-                ::msg(3, "No shelves, dropping directory and outdated backups")
+            if ($omodt == $nmodt) {
+                ::msg(3, 'No updates available, dropping outdated bundles')
                     if $VERBOSE;
-                ::err(3, "Failed to unlink outdated shelve backup: $^E")
-                    unless (! -f $target || unlink($target) == 1);
-                ::err(3, "Failed to rmdir empty $dest: $^E")
-                    unless rmdir($dest) == 1;
+                ::err(3, "Failed to unlink outdated bundle $target: $^E")
+                    unless ($nmodt == -1 || unlink($target) == 1);
             } else {
-                ::msg(3, 'Creating new shelve backup') if $VERBOSE;
-                $flag = system("tar cjLf $target $dest > /dev/null 2>> $MFFN");
-                ::err(3, "tar(1) execution failed for $target")
-                    if ($flag >> 8) != 0;
+                ::err(3, "hg(1) bundle failed for $target");
+                ::do_exit(1);
             }
+        }
+    }
+
+    sub _do_shelves_or_patches {
+        my ($e, $what) = @_;
+        my ($target, $dest, $flag);
+        ::msg(2, "Checking for $what") if $VERBOSE;
+
+        $target = "$HG_BUNDLE_DIR/$e";
+        $target = $1 if $target =~ /(.+)\..+$/;
+        $target .= "-$what.tbz";
+        ::msg(3, "... target: $target") if $VERBOSE;
+        $dest = ".hg/$what";
+        unless (-d $dest) {
+            ::msg(3, "No $dest directory, skipping") if $VERBOSE;
+            return;
+        }
+
+        # Only if none-empty
+        unless (opendir(DIR, $dest)) {
+            ::err(3, "opendir($dest) failed: $^E");
+            return;
+        }
+        $flag = 0;
+        {   my @dents = readdir(DIR);
+            closedir(DIR);
+            foreach my $dent (@dents) {
+                next if $dent eq '.' || $dent eq '..';
+                $flag = 1;
+                last;
+            }
+        }
+
+        if ($flag == 0) {
+            ::msg(3, "No $what, dropping directory and outdated backups")
+                if $VERBOSE;
+            ::err(3, "Failed to unlink outdated $what backup: $^E")
+                unless (! -f $target || unlink($target) == 1);
+            ::err(3, "Failed to rmdir empty $dest: $^E")
+                unless rmdir($dest) == 1;
+        } else {
+            ::msg(3, "Creating new $what backup") if $VERBOSE;
+            $flag = system("tar cjLf $target $dest > /dev/null 2>> $MFFN");
+            ::err(3, "tar(1) execution failed for $target")
+                if ($flag >> 8) != 0;
         }
     }
 }
