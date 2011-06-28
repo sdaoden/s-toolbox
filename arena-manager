@@ -1,0 +1,136 @@
+#!/bin/bash
+
+LOGFILE="$TMPDIR/arena-manager.log"
+
+GIT=git
+HG='hg -v'
+SVN=svn
+CVS='cvs -fz 9 update -ACRPd'
+
+##
+
+ESTAT=0
+CVSROOT=/nonexistent
+CURR=/nonexistent
+
+log() {
+    echo "$*"
+    echo "$*" >> $LOGFILE
+}
+logerr() {
+    echo >&2 "ERROR: $*"
+    echo "ERROR: $*" >> $LOGFILE
+    ESTAT=1
+}
+
+SEP='================================================================'
+intro() {
+    log ''
+    log $SEP
+    log $1
+}
+final() {
+    if test $? -eq 0; then
+        log "... ok: $1"
+    else
+        logerr "ERROR: $1"
+        ESTAT=1
+    fi
+    log $SEP
+    log ''
+}
+
+##
+
+if test "$BASH" = x""; then
+    echo >&2 "This script needs the GNU bash shell interpreter"
+    exit 1
+fi
+
+cd $HOME/arena/code.extern.repos || {
+    echo >&2 "Failed to chdir to arena/code.extern.repos"
+    exit 1
+}
+
+MODE="$1"
+shift
+PARAMS="$@"
+set -u
+test $# -ne 0 || PARAMS=$(echo *.*)
+
+# Perform basename cleanup and move over to $params[]
+log "$0: script startup, mode $MODE"
+declare -a params
+for rd in $PARAMS; do
+    rd=$(echo "$rd" | sed -Ee 's/(.+)\/+$/\1/' -e 's/.*\/([^/]+)$/\1/')
+    params[${#params[*]}]="$rd"
+done
+
+case "$MODE" in
+reduce|expand)
+    if test "$MODE" == 'reduce'; then
+        git_branch='NULL'
+        hg_branch='null'
+    else
+        git_branch=
+        hg_branch=''
+    fi
+
+    for rd in ${params[@]}; do
+        if test "$rd" == "${rd/null/}"; then
+            log "[$rd: $MODE does not apply]"
+            continue
+        fi
+
+        intro "$rd: performing $MODE"
+        (   cd "$rd" || exit 1
+            if test "$rd" != "${rd/git-null}"; then
+                # On branch NULL file NULL contains master branch's name
+                if test -z "$git_branch"; then
+                    if test -f NULL; then
+                        git_branch=$(<NULL)
+                    else
+                        echo >&2 "No file NULL in $rd"
+                        git_branch=master
+                    fi
+                fi
+                $GIT checkout $git_branch
+            else
+                $HG up $hg_branch
+            fi
+            exit $?
+        ) 2>&1 | tee -a "$LOGFILE"
+        final "$rd"
+    done
+    ;;
+update)
+    for rd in ${params[@]}; do
+        intro "$rd: performing $MODE"
+        (   cd "$rd" || exit 1
+            if test "$rd" != "${rd/.git}"; then
+                git pull -v --ff-only --stat --prune && git gc
+            elif test "$rd" != "${rd/.svn-git}"; then
+                git svn rebase && git gc
+            elif test "$rd" != "${rd/.hg}"; then
+                $HG pull -u
+            elif test "$rd" != "${rd/.svn}"; then
+                $SVN update
+            elif test "$rd" != "${rd/.cvs}"; then
+                $CVS
+            else
+                echo "Unknown revision-control-system: $rd"
+                exit 1
+            fi
+        ) 2>&1 | tee -a "$LOGFILE"
+        final "$rd"
+    done
+    ;;
+*)
+    echo 'USAGE: manager reduce|expand|update LIST-OF-DIRECTORIES'
+    exit 1
+    ;;
+esac
+
+test $ESTAT -ne 0 && log 'Errors occurred!'
+exit $ESTAT
+# vim:set fenc=utf-8 filetype=sh syntax=sh ts=4 sts=4 sw=4 et tw=79:
