@@ -1,11 +1,11 @@
 #!/bin/bash
 
-LOGFILE="$TMPDIR/arena-manager.log"
-
 GIT=git
 HG='hg -v'
 SVN=svn
 CVS='cvs -fz 9 update -ACRPd'
+
+LOGFILE="$TMPDIR/arena-manager.log"
 
 ##
 
@@ -46,7 +46,10 @@ if test "$BASH" = x""; then
     echo >&2 "This script needs the GNU bash shell interpreter"
     exit 1
 fi
-
+rm -rf $LOGFILE || {
+    echo >&2 "Failed to remove stale $LOGFILE"
+    exit 1
+}
 cd $HOME/arena/code.extern.repos || {
     echo >&2 "Failed to chdir to arena/code.extern.repos"
     exit 1
