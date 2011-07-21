@@ -30,11 +30,12 @@ intro() {
     log $1
 }
 final() {
-    if test $? -eq 0; then
+    local es=$?
+    if test $es -eq 0; then
         log "... ok: $1"
     else
-        logerr "ERROR: $1"
-        ESTAT=1
+        logerr "$1"
+        ESTAT=$es
     fi
     log $SEP
     log ''
@@ -86,7 +87,8 @@ reduce|expand)
         fi
 
         intro "$rd: performing $MODE"
-        (   cd "$rd" || exit 1
+        set -o pipefail
+        (   cd "$rd" || exit 1
             if test "$rd" != "${rd/git-null}"; then
                 # On branch NULL file NULL contains master branch's name
                 if test -z "$git_branch"; then
@@ -104,16 +106,45 @@ reduce|expand)
             exit $?
         ) 2>&1 | tee -a "$LOGFILE"
         final "$rd"
+        set +o pipefail
     done
     ;;
 update)
     for rd in ${params[@]}; do
         intro "$rd: performing $MODE"
+        set -o pipefail
         (   cd "$rd" || exit 1
             if test "$rd" != "${rd/.git}"; then
                 git pull -v --ff-only --stat --prune && git gc
             elif test "$rd" != "${rd/.svn-git}"; then
                 git svn rebase && git gc
+            elif test "$rd" != "${rd/.cvs-git}"; then
+                ldir='.git/.cvsps'
+                tar xjf "$ldir.tbz" || {
+                    echo >&2 "$rd: bail: tar xjf $ldir.tbz"
+                    exit 1
+                }
+                hdir="$HOME/.cvsps"
+                test -d "$hdir" || mkdir "$hdir" || {
+                    echo >&2 "$rd: failed to create $hdir directory"
+                    exit 2
+                }
+                root="$ldir/CVSROOT"
+                repo="$ldir/MODULE"
+                cache=$(<$ldir/CVSPS_FILE)
+                mv -f $ldir/cvs-revisions .git
+                mv -f "$ldir/$cache" "$hdir/$cache"
+                git cvsimport -vaR -r origin -p '--cvs-direct' \
+                     -d $(<$root) $(<$repo) && git gc
+                es=$?
+                mv -f .git/cvs-revisions $ldir
+                mv -f "$hdir/$cache" "$ldir/$cache"
+                tar cjf "$ldir.tbz" "$ldir" || {
+                    echo >&2 "$rd: bail: tar cjf $ldir.tbz $ldir"
+                    exit 3
+                }
+                rm -rf $ldir
+                exit $es
             elif test "$rd" != "${rd/.hg}"; then
                 $HG pull -u
             elif test "$rd" != "${rd/.svn}"; then
@@ -126,6 +157,7 @@ update)
             fi
         ) 2>&1 | tee -a "$LOGFILE"
         final "$rd"
+        set +o pipefail
     done
     ;;
 *)
