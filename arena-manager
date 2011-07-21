@@ -132,14 +132,14 @@ update)
                 root="$ldir/CVSROOT"
                 repo="$ldir/MODULE"
                 cache=$(<$ldir/CVSPS_FILE)
-                mv -f $ldir/cvs-revisions .git
+                mv -f "$ldir/cvs-revisions" .git/
                 mv -f "$ldir/$cache" "$hdir/$cache"
-                git cvsimport -vaR -r origin -p '--cvs-direct' \
+                git cvsimport -aR -r origin -p '-u,--cvs-direct' \
                      -d $(<$root) $(<$repo) && git gc
                 es=$?
-                mv -f .git/cvs-revisions $ldir
+                mv -f .git/cvs-revisions "$ldir/"
                 mv -f "$hdir/$cache" "$ldir/$cache"
-                tar cjf "$ldir.tbz" "$ldir" || {
+                tar cjf "$ldir.tbz-new" "$ldir" || {
                     echo >&2 "$rd: bail: tar cjf $ldir.tbz $ldir"
                     exit 3
                 }
