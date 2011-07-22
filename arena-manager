@@ -1,7 +1,7 @@
 #!/bin/bash
 
 GIT=git
-HG='hg -v'
+HG=hg
 SVN=svn
 CVS='cvs -fz 9 update -ACRPd'
 
@@ -99,7 +99,7 @@ reduce|expand)
                         git_branch=master
                     fi
                 fi
-                $GIT checkout $git_branch
+                $GIT -q checkout $git_branch
             else
                 $HG up $hg_branch
             fi
@@ -115,9 +115,9 @@ update)
         set -o pipefail
         (   cd "$rd" || exit 1
             if test "$rd" != "${rd/.git}"; then
-                git pull -v --ff-only --stat --prune && git gc
+                $GIT pull -v --ff-only --stat --prune && $GIT gc --aggressive
             elif test "$rd" != "${rd/.svn-git}"; then
-                git svn rebase && git gc
+                $GIT svn rebase && $GIT gc --aggressive
             elif test "$rd" != "${rd/.cvs-git}"; then
                 ldir='.git/.cvsps'
                 tar xjf "$ldir.tbz" || {
@@ -134,8 +134,8 @@ update)
                 cache=$(<$ldir/CVSPS_FILE)
                 mv -f "$ldir/cvs-revisions" .git/
                 mv -f "$ldir/$cache" "$hdir/$cache"
-                git cvsimport -aR -r origin -p '-u,--cvs-direct' \
-                     -d $(<$root) $(<$repo) && git gc
+                $GIT cvsimport -aR -r origin -p '-u,--cvs-direct' \
+                     -d $(<$root) $(<$repo) && $GIT gc --aggressive
                 es=$?
                 mv -f .git/cvs-revisions "$ldir/"
                 mv -f "$hdir/$cache" "$ldir/$cache"
@@ -146,7 +146,7 @@ update)
                 rm -rf $ldir
                 exit $es
             elif test "$rd" != "${rd/.hg}"; then
-                $HG pull -u
+                $HG -v pull -u
             elif test "$rd" != "${rd/.svn}"; then
                 $SVN update
             elif test "$rd" != "${rd/.cvs}"; then
