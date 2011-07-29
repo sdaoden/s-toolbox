@@ -10,7 +10,7 @@
 
 # Oh no, unfortunately not: exec git diff-index --check --cached $against --
 git diff --cached $against | perl -e '
-    # This requires three (3) content lines to be used in the diff (-U3)
+    # XXX May not be able to swallow all possible diff output yet
     my ($estat, $l, $fname) = (0, undef, undef);
 
     for (;;) { last if stdin() =~ /^diff/o; }
@@ -66,10 +66,12 @@ JHUNK:
                 $estat = 1;
                 print "$fname:$lno: trailing whitespace.\n";
             }
-            if ($l =~ /^(\s+)/o && $1 =~ /	/o) {
+            if ($l =~ /^(\s+)/o && $1 =~ /\x09/o) {
                 $estat = 1;
                 print "$fname:$lno: tabulator in indent.\n";
             }
         }
     }
     '
+
+# vim:set fenc=utf-8 ts=4 sts=4 sw=4 et tw=79:
