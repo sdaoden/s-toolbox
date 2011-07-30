@@ -60,7 +60,7 @@ JHUNK:
 
             if (index($l, "\xA0") != -1) {
                 $estat = 1;
-                print "$fname:$lno: no-break space (NBSP, U+A0).\n";
+                print "$fname:$lno: non-breaking space (NBSP, U+A0).\n";
             }
             if ($l =~ /\s+$/o) {
                 $estat = 1;
