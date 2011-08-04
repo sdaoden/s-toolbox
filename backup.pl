@@ -80,11 +80,10 @@ jMAIN: {
     }
     msg(1, 'Ignoring old timestamps due to "--reset" option') if $RESET;
 
-    #Timestamp::create();
-    #HGBundles::create();
+    Timestamp::create();
+    HGBundles::create();
     GitBundles::create();
 
-exit(0);
     Filelist::create();
     unless (Filelist::is_any()) {
         Timestamp::save();
