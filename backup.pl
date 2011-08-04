@@ -377,7 +377,7 @@ sub do_exit {
         $target = "$GIT_BUNDLE_DIR/$e";
         $target = $1 if $target =~ /(.+)\..+$/;
         $target .= '.bundle';
-        $flag = '--all --not --remotes';
+        $flag = '--all --not --remotes --tags';
         ::msg(3, "... target: $target") if $VERBOSE;
 
         $flag = system("git bundle create $target $flag >> $MFFN 2>&1");
