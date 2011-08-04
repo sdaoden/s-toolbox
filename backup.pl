@@ -11,8 +11,11 @@ my $HOME = $ENV{'HOME'};
 
 # Mercurial work-clone-dir/repo-dir day-by-day bundles+shelve+patch backups
 my $HG_SRC_DIR = "$HOME/src";
-my $HG_DIR = "$HOME/arena/code.repos";
-my $HG_BUNDLE_DIR = "$HOME/arena/code.repos/backup-bundles";
+my $HG_REPO_DIR = "$HOME/arena/code.repos";
+my $HG_BUNDLE_DIR = "$HOME/arena/data/backups";
+# Git work-clone-dir/repo-dir day-by-day bundles backups
+my $GIT_SRC_DIR = "$HOME/src";
+my $GIT_BUNDLE_DIR = "$HOME/arena/data/backups";
 
 my @NORMAL_INPUT = (
     "$HOME/arena/code.extern.repos",
@@ -77,13 +80,17 @@ jMAIN: {
     }
     msg(1, 'Ignoring old timestamps due to "--reset" option') if $RESET;
 
-    Timestamp::create();
-    HGBundles::create();
+    #Timestamp::create();
+    #HGBundles::create();
+    GitBundles::create();
+
+exit(0);
     Filelist::create();
     unless (Filelist::is_any()) {
         Timestamp::save();
         do_exit(0);
     }
+
     Archive::create();
     Timestamp::save();
     do_exit(0);
@@ -235,7 +242,7 @@ sub do_exit {
         $target = "$HG_BUNDLE_DIR/$e";
         $target = $1 if $target =~ /(.+)\..+$/;
         $target .= '.bundle';
-        $dest = "$HG_DIR/$e";
+        $dest = "$HG_REPO_DIR/$e";
         $flag = $VERBOSE ? '-v' : '';
         ::msg(3, "... target: $target") if $VERBOSE;
         if (-d $dest) {
@@ -312,6 +319,78 @@ sub do_exit {
             $flag = system("tar cjLf $target $dest > /dev/null 2>> $MFFN");
             ::err(3, "tar(1) execution failed for $target")
                 if ($flag >> 8) != 0;
+        }
+    }
+}
+
+{package GitBundles;
+    my @Git_Dirs;
+
+    sub create {
+        _create_list();
+        _create_backups();
+    }
+
+    sub _create_list {
+        ::msg(0, 'Collecting repo information');
+        unless (-d $GIT_BUNDLE_DIR) {
+            ::err(0, 'FAILURE: no Git backup-bundle dir found');
+            ::do_exit(1);
+        }
+
+        unless (opendir(DIR, $GIT_SRC_DIR)) {
+            ::err(1, "opendir($GIT_SRC_DIR) failed: $^E");
+            ::do_exit(1);
+        }
+        my @dents = readdir(DIR);
+        closedir(DIR);
+
+        foreach my $dent (@dents) {
+            next if $dent eq '.' || $dent eq '..';
+            my $abs = $GIT_SRC_DIR . '/' . $dent;
+            next unless -d $abs;
+            next unless $abs =~ /\.git$/;
+            next unless -d "$abs/.git";
+            push(@Git_Dirs, $dent);
+            ::msg(1, "added <$dent>");
+        }
+    }
+
+    sub _create_backups {
+        ::msg(0, "Creating Git bundle backups");
+        foreach my $e (@Git_Dirs) {
+            ::msg(1, "Processing $e");
+            my $src = $GIT_SRC_DIR . '/' . $e;
+            unless (chdir($src)) {
+                ::err(2, "GitBundles: cannot chdir($src): $^E");
+                ::do_exit(1);
+            }
+
+            _do_bundle($e);
+        }
+    }
+
+    sub _do_bundle {
+        my $e = shift;
+        my ($target, $flag, $omodt);
+        ::msg(2, 'Checking for new bundle') if $VERBOSE;
+
+        $target = "$GIT_BUNDLE_DIR/$e";
+        $target = $1 if $target =~ /(.+)\..+$/;
+        $target .= '.bundle';
+        $flag = '--all --not --remotes';
+        ::msg(3, "... target: $target") if $VERBOSE;
+
+        $flag = system("git bundle create $target $flag >> $MFFN 2>&1");
+        # Does not create an empty bundle: 128
+        if (($flag >> 8) == 128) {
+            ::msg(3, 'No updates available, dropping outdated bundles, if any')
+                if $VERBOSE;
+            ::err(3, "Failed to unlink outdated bundle $target: $^E")
+                if (-f $target && unlink($target) != 1);
+        } elsif (($flag >> 8) != 0) {
+            ::err(3, "git(1) bundle failed for $target");
+            ::do_exit(1);
         }
     }
 }
