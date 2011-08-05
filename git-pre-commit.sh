@@ -9,7 +9,7 @@
 #fi
 
 # Oh no, unfortunately not: exec git diff-index --check --cached $against --
-git diff --cached $against | perl -e '
+git diff  $against | perl -e '
     # XXX May not be able to swallow all possible diff output yet
     my ($estat, $l, $fname) = (0, undef, undef);
 
@@ -41,12 +41,9 @@ git diff --cached $against | perl -e '
         stdin();
         die "hunk, 1.: cannot parse diff!" unless $l =~ /^@@ /o;
 JHUNK:
-        # regex shamelessly stolen from git(1)
-        my ($o_ofs, $o_cnt, $n_ofs, $n_cnt) =
-                    $l =~ /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
-        $o_cnt = 1 unless defined $o_cnt;
-        $n_cnt = 1 unless defined $n_cnt;
-        my $lno = $n_ofs - 1;
+        # regex shamelessly stolen from git(1), and modified
+        $l =~ /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+        my $lno = $1 - 1;
 
         for (;;) {
             stdin();
