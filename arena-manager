@@ -115,7 +115,8 @@ update)
         set -o pipefail
         (   cd "$rd" || exit 1
             if test "$rd" != "${rd/.git}"; then
-                $GIT pull -v --ff-only --stat --prune && $GIT gc --aggressive
+                #$GIT pull -v --ff-only --stat --prune && $GIT gc --aggressive
+                $GIT fetch --verbose --prune && $GIT gc --aggressive
             elif test "$rd" != "${rd/.svn-git}"; then
                 $GIT svn rebase && $GIT gc --aggressive
             elif test "$rd" != "${rd/.cvs-git}"; then
@@ -139,14 +140,14 @@ update)
                 es=$?
                 mv -f .git/cvs-revisions "$ldir/"
                 mv -f "$hdir/$cache" "$ldir/$cache"
-                tar cjf "$ldir.tbz-new" "$ldir" || {
+                tar cjf "$ldir.tbz" "$ldir" || {
                     echo >&2 "$rd: bail: tar cjf $ldir.tbz $ldir"
                     exit 3
                 }
                 rm -rf $ldir
                 exit $es
             elif test "$rd" != "${rd/.hg}"; then
-                $HG -v pull -u
+                $HG -v pull #-u
             elif test "$rd" != "${rd/.svn}"; then
                 $SVN update
             elif test "$rd" != "${rd/.cvs}"; then
