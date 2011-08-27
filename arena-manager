@@ -6,7 +6,7 @@ SVN=svn
 CVS='cvs -fz 9 update -ACRPd'
 
 # (In arena)
-LOGFILE=arena-manager.log
+LOGFILE=lastlog.txt
 
 ##
 
