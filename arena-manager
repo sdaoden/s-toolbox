@@ -99,7 +99,7 @@ reduce|expand)
                         git_branch=master
                     fi
                 fi
-                $GIT -q checkout $git_branch
+                $GIT checkout $git_branch
             else
                 $HG up $hg_branch
             fi
