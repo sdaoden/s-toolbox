@@ -1,16 +1,17 @@
 #!/bin/bash
 
+# Top dir where everything happens
+ARENA="$HOME/arena/code.extern.repos"
+
 GIT=git
 HG=hg
 SVN=svn
 CVS='cvs -fz 9 update -ACRPd'
 
-# (In arena)
-LOGFILE=lastlog.txt
-
 ##
 
 ESTAT=0
+LOGFILE=lastlog.txt
 CVSROOT=/nonexistent
 CURR=/nonexistent
 
@@ -48,8 +49,8 @@ if test "$BASH" = x""; then
     echo >&2 "This script needs the GNU bash shell interpreter"
     exit 1
 fi
-cd $HOME/arena/code.extern.repos || {
-    echo >&2 "Failed to chdir to arena/code.extern.repos"
+cd $ARENA || {
+    echo >&2 "Failed to chdir to $ARENA"
     exit 1
 }
 rm -rf $LOGFILE || {
