@@ -5,7 +5,8 @@ HG=hg
 SVN=svn
 CVS='cvs -fz 9 update -ACRPd'
 
-LOGFILE="$TMPDIR/arena-manager.log"
+# (In arena)
+LOGFILE=arena-manager.log
 
 ##
 
@@ -47,12 +48,12 @@ if test "$BASH" = x""; then
     echo >&2 "This script needs the GNU bash shell interpreter"
     exit 1
 fi
-rm -rf $LOGFILE || {
-    echo >&2 "Failed to remove stale $LOGFILE"
-    exit 1
-}
 cd $HOME/arena/code.extern.repos || {
     echo >&2 "Failed to chdir to arena/code.extern.repos"
+    exit 1
+}
+rm -rf $LOGFILE || {
+    echo >&2 "Failed to remove stale $LOGFILE"
     exit 1
 }
 
@@ -70,6 +71,7 @@ for rd in $PARAMS; do
     params[${#params[*]}]="$rd"
 done
 
+GITDID=
 case "$MODE" in
 reduce|expand)
     if test "$MODE" == 'reduce'; then
@@ -115,10 +117,12 @@ update)
         set -o pipefail
         (   cd "$rd" || exit 1
             if test "$rd" != "${rd/.git}"; then
-                #$GIT pull -v --ff-only --stat --prune && $GIT gc --aggressive
-                $GIT fetch --verbose --prune && $GIT gc --aggressive
+                #$GIT pull -v --ff-only --stat --prune
+                $GIT fetch --verbose --prune
+                GITDID=1
             elif test "$rd" != "${rd/.svn-git}"; then
-                $GIT svn rebase && $GIT gc --aggressive
+                $GIT svn rebase
+                GITDID=1
             elif test "$rd" != "${rd/.cvs-git}"; then
                 ldir='.git/.cvsps'
                 tar xjf "$ldir.tbz" || {
@@ -136,8 +140,9 @@ update)
                 mv -f "$ldir/cvs-revisions" .git/
                 mv -f "$ldir/$cache" "$hdir/$cache"
                 $GIT cvsimport -aR -r origin -p '-u,--cvs-direct' \
-                     -d $(<$root) $(<$repo) && $GIT gc --aggressive
+                     -d $(<$root) $(<$repo)
                 es=$?
+                GITDID=1
                 mv -f .git/cvs-revisions "$ldir/"
                 mv -f "$hdir/$cache" "$ldir/$cache"
                 tar cjf "$ldir.tbz" "$ldir" || {
@@ -161,11 +166,25 @@ update)
         set +o pipefail
     done
     ;;
+fullgc|gc)
+    gct=
+    test "$MODE" == fullgc && gct=--aggressive
+    for rd in ${params[@]}; do
+        intro "$rd: performing $MODE"
+        set -o pipefail
+        (   cd "$rd" || exit 1
+            test "$rd" != "${rd/.git}" && git gc $gct
+        ) 2>&1 | tee -a "$LOGFILE"
+        final "$rd"
+        set +o pipefail
+    done
+    ;;
 *)
-    echo 'USAGE: manager reduce|expand|update LIST-OF-DIRECTORIES'
+    echo 'USAGE: manager reduce|expand|update|gc|fullgc LIST-OF-DIRECTORIES'
     exit 1
     ;;
 esac
+test x"$GITDID" != x && log 'git(1) fetched data - do arena-manager [full]gc ..'
 
 test $ESTAT -ne 0 && log 'Errors occurred!'
 exit $ESTAT
