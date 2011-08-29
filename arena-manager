@@ -11,7 +11,7 @@ CVS='cvs -fz 9 update -ACRPd'
 ##
 
 ESTAT=0
-LOGFILE=lastlog.txt
+LOGFILE=lastlog
 CVSROOT=/nonexistent
 CURR=/nonexistent
 
@@ -130,6 +130,7 @@ update)
                     echo >&2 "$rd: bail: tar xjf $ldir.tbz"
                     exit 1
                 }
+                cp -f "$ldir.tbz" "$ldir.tbz.last"
                 hdir="$HOME/.cvsps"
                 test -d "$hdir" || mkdir "$hdir" || {
                     echo >&2 "$rd: failed to create $hdir directory"
