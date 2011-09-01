@@ -11,7 +11,7 @@ require 5.008;
 #@ TODO: Implement CDDB query ourselfs
 my $VERSION = 'v0.5.0';
 my $COPYRIGHT =<<_EOT;
-Copyright (c) 2010 - 2011 Steffen Daode Nurpmeso <sdaoden@gmail.com>.
+Copyright (c) 2010 - 2011 Steffen Daode Nurpmeso <sdaoden\@gmail.com>.
 All rights reserved.
 _EOT
 # Redistribution and use in source and binary forms, with or without
@@ -429,6 +429,10 @@ jREDO:  print "\tChoose the number to use: ";
 }
 
 sub cddb_query {
+    if ($CDInfo::IsFaked) {
+        print "\tcreating entry fakes, 'cause CDDB-ID couldn't be queried...\n";
+        goto jFAKE;
+    }
     print "\nShall the CDDB be contacted online ",
           '(otherwise the entries are faked) ';
     unless (user_confirm()) {
@@ -572,10 +576,11 @@ jREDO:
     my ($DevId);
     BEGIN { # Id field may also be set from command_line()
         # Mostly set by _calc_id() or parse() only (except Ripper)
+        $CDInfo::IsFaked = 0;
         $CDInfo::Id =
         $CDInfo::TotalSeconds =
         $CDInfo::TrackCount = undef;
-        $CDInfo::FileRipper = undef; # Ref to actual ripper sub
+        $CDInfo::FileRipper = $CDInfo::FallbackTrackCount = undef; # Impl subs
         @CDInfo::TrackOffsets = ();
     }
 
@@ -585,33 +590,58 @@ jREDO:
 
     sub discover {
         no strict 'refs';
-        die "Operating system <$^O> not supported"
-            unless defined *{"CDInfo::_os_$^O"};
-        print "\nCDInfo: assuming an Audio-CD is in the drive ...\n",
-              "\t(Otherwise insert it, wait a second and restart)\n";
-        &{"CDInfo::_os_$^O"}();
-        print "\tCalculated CDInfo: disc: $CDInfo::Id\n\t\t",
+        die "System $^O not supported" unless defined *{"CDInfo::_os_$^O"};
+        print "\nCDInfo: assuming an Audio-CD is in the drive ...\n";
+
+        my $what = 'Calculated';
+        my $i = &{"CDInfo::_os_$^O"}();
+        if (defined $i) {
+            print "! Error: $i\n",
+                  "  Unable to collect CD Table-Of-Contents info.\n",
+                  "  This may mean the Audio-CD was not yet fully loaded.\n",
+                  "  It can also happen for copy-protection .. or whatever.\n",
+                  "  Shall i continue?  I would collect track count info.\n",
+                  "  Note: this may require a read of *all* the disc data!\n",
+                  "  (I can't calculate a CDDB-ID anyway - no CDDB query..\n",
+                  "  But i can generate a reproducable disk-ID etc.)\n",
+                  "  A simple restart should be tried once first.  Continue? ";
+            exit 1 unless ::user_confirm();
+
+            $what = 'Faked';
+            $CDInfo::IsFaked = 1;
+            die "Don't know how to query the track count otherwise - sorry!\n"
+                unless defined $CDInfo::FallbackTrackCount;
+            $i = &$CDInfo::FallbackTrackCount();
+            die "CDInfo: $i\n  Track count query failed, bailing out"
+                if defined $i;
+
+            $CDInfo::TrackCount = scalar @CDInfo::TrackOffsets;
+            $CDInfo::Id = sprintf("%02dx%08x",
+                                  $CDInfo::TrackCount, $CDInfo::TotalSeconds);
+        }
+
+        print "  $what disc ID: $CDInfo::Id\n  ",
               'Track offsets: ' . join(' ', @CDInfo::TrackOffsets),
-              "\n\t\tTotal seconds: $CDInfo::TotalSeconds\n",
-              "\t\tTrack count: $CDInfo::TrackCount\n";
+              "\n  Total seconds: $CDInfo::TotalSeconds\n",
+              "  Track count: $CDInfo::TrackCount\n";
     }
 
     sub _os_openbsd { # TODO
         my $drive = defined $CDROM ? $CDROM : '/dev/cdrom';
-        print "\tOpenBSD: using drive $drive \n";
+        print "  OpenBSD: using drive $drive\n";
         die "OpenBSD support in fact missing";
     }
 
     sub _os_freebsd { # TODO
         my $drive = defined $CDROM ? $CDROM : '/dev/cdrom';
-        print "\tFreeBSD: using drive $drive \n";
+        print "  FreeBSD: using drive $drive\n";
         die "FreeBSD support in fact missing";
     }
 
     sub _os_darwin {
         my $drive = defined $CDROM ? $CDROM : 1;
         $DevId = defined $CDROMDEV ? $CDROMDEV : $drive;
-        print "\tDarwin/Mac OS X: using drive $drive and /dev/disk$DevId\n";
+        print "  Darwin/Mac OS X: drive $drive and /dev/disk$DevId\n";
 
         $CDInfo::FileRipper = sub {
             my $title = shift;
@@ -621,17 +651,24 @@ jREDO:
             return undef if ($? >> 8) == 0;
             return "$! -- $^E";
         };
+        $CDInfo::FallbackTrackCount = sub {
+            # It's a pity!  Give MacOS X some time to reorder itself..
+            sleep(1);
+            return _unix_fallback_trackcount('/dev/disk');
+        };
 
         # Problem: this non-UNIX thing succeeds even without media...
         ::v("Invoking drutil(1) -drive $drive toc");
+        sleep 1;
         my $l = `drutil -drive $drive toc`;
         my @res = split("\n", $l);
-        die "Drive $drive: failed reading TOC: $! -- $^E" if $?;
+        return "drive $drive: failed reading TOC: $! -- $^E" if $?;
 
         my (@cdtoc, $leadout);
         for(;;) {
             $l = shift(@res);
-            die "Drive $drive: no lead-out information found" unless defined $l;
+            return "drive $drive: no lead-out information found"
+                unless defined $l;
             if ($l =~ /^\s*Lead-out:\s+(\d+):(\d+)\.(\d+)/) {
                 $leadout = "999 $1 $2 $3";
                 last;
@@ -643,11 +680,11 @@ jREDO:
             last unless $l =~ /^\s*Session\s+\d+,\s+Track\s+(\d+):
                                 \s+(\d+):(\d+)\.(\d+)
                                 .*/x;
-            die "Drive $drive: corrupted TOC: $1 follows $li"
-                unless $1 == $li+1;
+            return "drive $drive: corrupted TOC: $1 follows $li"
+                unless $1 == $li + 1;
             $cdtoc[$li] = "$1 $2 $3 $4";
         }
-        die "Drive $drive: no track information found" unless @cdtoc > 0;
+        return "drive $drive: no track information found" unless @cdtoc > 0;
         push(@cdtoc, $leadout);
 
         _calc_cdid(\@cdtoc);
@@ -655,8 +692,40 @@ jREDO:
 
     sub _os_linux { # TODO
         my $drive = defined $CDROM ? $CDROM : '/dev/cdrom';
-        print "\tLinux: using drive $drive \n";
+        print "  Linux: using drive $drive\n";
         die "Linux support in fact missing";
+    }
+
+    sub _unix_fallback_trackcount {
+        my $diskdev = shift;
+        my $i = 0;
+        my $p = '/dev/disk' . $DevId . 's';
+        for (; my $j = $i + 1; $i = $j) {
+            my $x = $p . $j;
+            last unless -e $x;
+
+            $| = 1; print "    checking $x ... "; $| = 0;
+            my $totlen = 0;
+            open(FH, '<', $x) or return "failed to check $x";
+                my $buf;
+                while (1) {
+                    my $bread = read FH, $buf, 4096*16 - 1;
+                    unless (defined $bread) {
+                        close(FH);
+                        return "failed to read all data of $x";
+                    }
+                    last if $bread == 0;
+                    $totlen += $bread;
+                }
+            close(FH);
+            push(@CDInfo::TrackOffsets, $totlen);
+            $CDInfo::TotalSeconds += $totlen;
+            print "had $totlen bytes\n";
+        }
+        return "no such file: ${p}1.  Sure this is a CDROM?"
+            unless $i != 0;
+        $CDInfo::TrackCount = $i;
+        return undef;
     }
 
     # Calculated CD(DB)-Id and *set*CDInfo*fields* (except $FileRipper)!
@@ -969,8 +1038,10 @@ jREDO:  @old_data = @MBDB::Data;
     }
 
     sub _help_text {
+        my $adder = (!$CDInfo::IsFaked ? ''
+                     : "\n# (Disc-Id and thus [CDDB] entries were faked)\n");
         return <<_EOT;
-# S-MusicBox database, CDDB info: $CDDB{GENRE}/$CDInfo::Id
+# S-MusicBox database, CDDB info: $CDDB{GENRE}/$CDInfo::Id$adder
 # This file is and used to be in UTF-8 encoding (codepage,charset) ONLY!
 # Syntax (processing is line based):
 # - Leading and trailing whitespace is ignored
@@ -986,7 +1057,10 @@ _EOT
         my $df = $MBDB::FinalFile;
         ::v("Creating final MusicBox data file as <$df>");
         open(DF, ">$df") or die "Can't open <$df>: $! -- $^E";
-        print DF "[CDDB]\nCDID = $CDInfo::Id\n",
+        print DF "[CDDB]\n",
+                 (!$CDInfo::IsFaked ? ''
+                  : "# (The [CDDB] entries were faked: offsets=seconds)\n"),
+                 "CDID = $CDInfo::Id\n",
                  "TRACK_OFFSETS = ", join(' ', @CDInfo::TrackOffsets),
                  "\nTOTAL_SECONDS = $CDInfo::TotalSeconds\n",
             or die "Error writing <$df>: $! -- $^E";
