@@ -363,8 +363,12 @@ sub finalize {
 }
 
 sub user_confirm {
+    my $save = $|;
+    $| = 1;
     print ' [Nn (or else)] ';
     my $u = <STDIN>;
+    $| = $save;
+    chomp $u;
     return ($u =~ /n/i) ? 0 : 1;
 }
 
