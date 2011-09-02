@@ -51,7 +51,6 @@ use diagnostics -verbose;
 use warnings;
 use strict;
 
-use CDDB;
 use Encode;
 use Getopt::Long;
 
@@ -428,25 +427,32 @@ jREDO:  print "  Choose the number to use: ";
 } # }}}
 
 sub cddb_query { # {{{
+    print "\n";
     if ($CDInfo::IsFaked) {
-        print "  Creating entry fakes, 'cause CDDB-ID couldn't be queried\n";
+        print "Creating CDDB entry fakes, 'cause CDDB-ID couldn't be queried\n";
         goto jFAKE;
     }
-    print "\nShall the CDDB be contacted online ",
-          '(otherwise the entries are faked) ';
+    eval 'require CDDB';
+    if ($@) {
+        print "Failed to load the CDDB.pm module!\n",
+              "  Maybe it's not installed (search the internet for CPAN).\n",
+              "  Shall i continue nonetheless?",
+    } else {
+        print 'Shall CDDB be contacted online (otherwise entries are faked)';
+    }
     unless (user_confirm()) {
         print "  Creating entry fakes ...\n";
         goto jFAKE;
     }
 
-    print "Starting CDDB query for $CDInfo::Id\n";
+    print "  Starting CDDB query for $CDInfo::Id\n";
     my $cddb = new CDDB or die "Can't create CDDB object: $!";
     my @discs = $cddb->get_discs($CDInfo::Id, \@CDInfo::TrackOffsets,
                                  $CDInfo::TotalSeconds);
 
     if (@discs == 0) {
-        print "CDDB didn't match, i will create entry fakes!\n",
-              'Maybe there is no network connection? Shall i continue? ';
+        print "! CDDB didn't match, i will create entry fakes!\n",
+              '! Maybe there is no network connection? Shall i continue? ';
         exit 10 unless user_confirm();
 
 jFAKE:  %CDDB = ();
@@ -481,7 +487,7 @@ jREDO:
     $usr = <STDIN>;
     chomp $usr;
     unless ($usr =~ /\d+/ && ($usr = int $usr) >= 0 && $usr <= @discs) {
-        print "!  I'm expecting one of the [numbers] ... !\n";
+        print "! I'm expecting one of the [numbers] ... !\n";
         goto jREDO;
     }
     if ($usr == 0) {
@@ -533,20 +539,20 @@ jREDO:
         Encode::_utf8_off($_);
     }
 
-    print "CDDB disc info for CD(DB)ID=$CDInfo::Id\n",
-          "(NOTE: terminal may not be able to display charset):\n",
+    print "  CDDB disc info for CD(DB)ID=$CDInfo::Id\n",
+          "  (NOTE: terminal may not be able to display charset):\n",
           "    Genre=$CDDB{GENRE}, Year=$CDDB{YEAR}\n",
           "    Artist=$CDDB{ARTIST}\n",
           "    Album=$CDDB{ALBUM}\n",
-          "    Titles in order:\n",
+          "    Titles in order:\n      ",
           join("\n      ", @{$CDDB{TITLES}}),
           "\n  Is this *really* the desired CD? ";
     goto jAREDO unless user_confirm();
 } # }}}
 
 sub user_tracks { # {{{
-    print "Disc $CDInfo::Id contains $CDInfo::TrackCount songs - ",
-          'shall all be ripped?  ';
+    print "\nDisc $CDInfo::Id contains $CDInfo::TrackCount songs - ",
+          'shall all be ripped?';
     if (user_confirm()) {
         print "  Whee - all songs will be ripped!\n";
         $_->{IS_SELECTED} = 1 foreach (@Title::List);
@@ -1011,7 +1017,7 @@ jREDO:  @old_data = @MBDB::Data;
             goto jREDO;
         }
 
-        print "\n  Once again - please verify the content:\n";
+        print "  Once again - please verify the content:\n";
         print "    $_\n" foreach (@MBDB::Data);
         print "  Is this data *really* OK? ";
         goto jREDO unless ::user_confirm();
