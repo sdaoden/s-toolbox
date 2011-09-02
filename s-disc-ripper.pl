@@ -55,6 +55,7 @@ use CDDB;
 use Encode;
 use Getopt::Long;
 
+# Genre list, alpha sorted {{{
 my @Genres = (
     [ 123, 'A Cappella' ],  [ 34, 'Acid' ],         [ 74, 'Acid Jazz' ],
     [ 73, 'Acid Punk' ],    [ 99, 'Acoustic' ],     [ 20, 'Alternative' ],
@@ -111,16 +112,13 @@ my @Genres = (
     [ 144, 'Thrash Metal' ], [ 60, 'Top 40' ],      [ 70, 'Trailer' ],
     [ 31, 'Trance' ],       [ 72, 'Tribal' ],       [ 27, 'Trip-Hop' ],
     [ 28, 'Vocal' ]
-);
+); # }}}
 
 my ($RIP_ONLY, $ENC_ONLY, $NO_VOL_NORM, $VERBOSE) = (0, 0, 0, 0);
-my $INTRO =<<_EOT;
-s-disc-ripper.pl ($VERSION)
-$COPYRIGHT
-_EOT
+my $INTRO = "s-disc-ripper.pl $VERSION\n$COPYRIGHT";
 my ($CLEANUP_OK, $WORK_DIR, $TARGET_DIR, %CDDB) = (0);
 
-jMAIN: {
+jMAIN: { # {{{
     # Also verifies we have valid (DB,TMP..) paths
     command_line();
 
@@ -149,9 +147,9 @@ WORKing directory: $WORK_DIR
 _EOT
     die 'Non-existent session cannot be resumed via --encode-only'
         if ($ENC_ONLY && !-d $WORK_DIR);
-    mkdir($WORK_DIR) or die "Can't create <$WORK_DIR>: $! -- $^E"
+    mkdir $WORK_DIR or die "Can't create $WORK_DIR: $!"
         unless -d $WORK_DIR;
-    mkdir($TARGET_DIR) or die "Can't create <$TARGET_DIR>: $! -- $^E"
+    mkdir $TARGET_DIR or die "Can't create $TARGET_DIR: $!"
         unless -d $TARGET_DIR;
 
     CDInfo::init_paths();
@@ -185,22 +183,22 @@ _EOT
         Title::rip_all_selected();
         print "\nUse --encode-only=$CDInfo::Id to resume ...\n" if $RIP_ONLY;
     } elsif ($ENC_ONLY) {
-        my @rawfl = glob("$WORK_DIR/*.raw");
+        my @rawfl = glob "$WORK_DIR/*.raw";
         die '--encode-only session on empty file list' if @rawfl == 0;
         foreach (sort @rawfl) {
             die '--encode-only session: illegal filenames exist'
                 unless /(\d+).raw$/;
             my $i = int $1;
             die "\
---encode-only session: track <$_> is unknown!
+--encode-only session: track $_ is unknown!
 It does not seem to belong to this disc, you need to re-rip it."
                 unless ($i > 0 && $i <= $CDInfo::TrackCount);
             my $t = $Title::List[$i - 1];
             $t->{IS_SELECTED} = 1;
         }
-        #print "\nThe following raw tracks will now be encoded:\n\t";
+        #print "\nThe following raw tracks will now be encoded:\n  ";
         #print "$_->{NUMBER} " foreach (@Title::List);
-        #print "\n\tIs this really ok?  You may interrupt now! ";
+        #print "\n  Is this really ok?  You may interrupt now! ";
         #exit(5) unless user_confirm();
     }
 
@@ -211,18 +209,16 @@ It does not seem to belong to this disc, you need to re-rip it."
     }
 
     exit 0;
-}
+} # }}}
 
 END { finalize() if $CLEANUP_OK; }
 
-sub command_line {
+sub command_line { # {{{
     my $emsg = undef;
     Getopt::Long::Configure('bundling');
     unless (GetOptions( 'h|help|?'  => sub { goto jdocu; },
                 'g|genre-list'      => sub {
-                    foreach my $tr (@Genres) {
-                        printf("%3d %s\n", $tr->[0], $tr->[1]);
-                    }
+                    printf("%3d %s\n", $_->[0], $_->[1]) foreach (@Genres);
                     exit 0;
                 },
                 'musicdb=s'         => \$MUSICDB,
@@ -262,12 +258,12 @@ sub command_line {
     }
     return;
 
-jdocu:  print STDERR "!\t$emsg\n\n" if defined $emsg;
+jdocu:
     print STDERR <<_EOT;
 ${INTRO}S-Disc-Ripper is the disc ripper of the S-MusicBox set of tools.
 It will rip discs, query CDDB servers and finally encode the raw data to MP3,
 and/or (MP4/)AAC and/or (Ogg )Vorbis (as desired).
-Setting the EDITOR environment gives more comfort (currently <$ENV{EDITOR}>).
+Setting the EDITOR environment gives more comfort ($ENV{EDITOR}).
 
 USAGE:
 s-disc-ripper.pl -h|--help
@@ -283,10 +279,10 @@ s-disc-ripper.pl [-v|--verbose] [--musicdb=PATH] [--tmpdir=PATH]
                   neither delete temporary files nor directory!
  --musicdb=PATH   specifies the path to the S-MusicBox database directory.
                   Default setting is the S_MUSICDB environment variable.
-                  Currently <$MUSICDB>
+                  Currently $MUSICDB
  --tmpdir=PATH    the (top) temporary directory to use - defaults to the TMPDIR
                   environment variable.
-                  Currently <$TMPDIR>
+                  Currently $TMPDIR
  --cdrom=SPEC,--cdromdev=DEVSPEC
                   set CDROM drive/device to be used.  SPEC is system-dependend
                   and may be something like </dev/cdrom> or </dev/acd1c>.
@@ -311,9 +307,11 @@ s-disc-ripper.pl [-v|--verbose] [--musicdb=PATH] [--tmpdir=PATH]
                   be produced: MP3, MP4/AAC and OGG in high/low quality.
                   Current settings: $MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO
 _EOT
+    print STDERR "\n!  $emsg\n" if defined $emsg;
     exit defined $emsg ? 1 : 0;
-}
+} # }}}
 
+# v, genre, genre_id, finalize, user_confirm {{{
 sub v {
     return unless $VERBOSE > 0;
     print STDOUT '-V  ', shift, "\n";
@@ -348,18 +346,16 @@ sub genre_id {
 # (Called by END{} only if $CLEANUP_OK)
 sub finalize {
     if ($VERBOSE) {
-        v("--verbose mode: NOT removing <$WORK_DIR>");
+        v("--verbose mode: NOT removing $WORK_DIR");
         return;
     }
-
-    print "\nRemoving temporary <$WORK_DIR>\n";
-    unlink($CDInfo::DatFile, $MBDB::EditFile);
+    print "\nRemoving temporary $WORK_DIR\n";
+    unlink $CDInfo::DatFile, $MBDB::EditFile;
     foreach (@Title::List) {
         next unless -f $_->{RAW_FILE};
-        die "Can't unlink $_->{RAW_FILE}: $! -- $^E"
-            unless unlink($_->{RAW_FILE});
+        die "Can't unlink $_->{RAW_FILE}: $!" unless unlink $_->{RAW_FILE};
     }
-    rmdir($WORK_DIR) or die "rmdir <$WORK_DIR> failed: $! -- $^E";
+    rmdir $WORK_DIR or die "rmdir $WORK_DIR failed: $!";
 }
 
 sub user_confirm {
@@ -371,9 +367,10 @@ sub user_confirm {
     chomp $u;
     return ($u =~ /n/i) ? 0 : 1;
 }
+# }}}
 
-sub quick_and_dirty_dir_selector {
-    my @dlist = glob("${TARGET_DIR}*/musicbox.dat");
+sub quick_and_dirty_dir_selector { # {{{
+    my @dlist = glob "${TARGET_DIR}*/musicbox.dat";
     return "${TARGET_DIR}1" if @dlist == 0;
     print <<_EOT;
 
@@ -387,8 +384,8 @@ _EOT
     for ($i = 1; $i <= @dlist; ++$i) {
         my $d = "${TARGET_DIR}$i";
         my $f = "$d/musicbox.dat";
-        unless (open(F, "<$f")) {
-            print "\t[] Failed to open <$f>!\n\t\tSkipping!!!\n";
+        unless (open F, '<', $f) {
+            print "  [] Skipping due to failed open: $f\n";
             next;
         }
         my ($ast, $at, $tr) = (undef, undef, undef);
@@ -401,54 +398,54 @@ _EOT
                 $$tr = $1;
             }
         }
-        close(F) or die "Can't close <$f>: $! -- $^E";
+        close F or die "Can't close $f: $!";
         unless (defined $at) {
-            print "\t[] No TITLE entry in <$f>!\n\t\t",
-                "Disc is corrupted and must be re-ripped!\n";
+            print "  [] No TITLE entry in $f!\n  ",
+                  "Disc is corrupted and must be re-ripped!\n";
             next;
         }
         $at = "$ast - $at" if defined $ast;
-        print "\t[$i] $at\n";
+        print "  [$i] $at\n";
     }
-    print "\t[0] None of these - the disc should create a new entry!\n";
+    print "  [0] None of these - the disc should create a new entry!\n";
 
-jREDO:  print "\tChoose the number to use: ";
+jREDO:  print "  Choose the number to use: ";
     $usr = <STDIN>;
     chomp $usr;
     unless ($usr =~ /\d+/ && ($usr = int $usr) >= 0 && $usr <= @dlist) {
-        print "!\tI'm expecting one of the [numbers] ... !\n";
+        print "!  I'm expecting one of the [numbers] ... !\n";
         goto jREDO;
     }
     if ($usr == 0) {
-        print "\t.. forced to create a new disc entry\n";
+        print "  .. forced to create a new disc entry\n";
         return "${TARGET_DIR}$i";
     } else {
-        print "\t.. forced to resume an existent album\n";
+        print "  .. forced to resume an existent album\n";
         return "${TARGET_DIR}$usr";
     }
-}
+} # }}}
 
-sub cddb_query {
+sub cddb_query { # {{{
     if ($CDInfo::IsFaked) {
-        print "\tcreating entry fakes, 'cause CDDB-ID couldn't be queried...\n";
+        print "  Creating entry fakes, 'cause CDDB-ID couldn't be queried\n";
         goto jFAKE;
     }
     print "\nShall the CDDB be contacted online ",
           '(otherwise the entries are faked) ';
     unless (user_confirm()) {
-        print "\tcreating entry fakes ...\n";
+        print "  Creating entry fakes ...\n";
         goto jFAKE;
     }
 
     print "Starting CDDB query for $CDInfo::Id\n";
-    my $cddb = new CDDB or die "Can't create CDDB object: $! -- $^E";
+    my $cddb = new CDDB or die "Can't create CDDB object: $!";
     my @discs = $cddb->get_discs($CDInfo::Id, \@CDInfo::TrackOffsets,
                                  $CDInfo::TotalSeconds);
 
     if (@discs == 0) {
         print "CDDB didn't match, i will create entry fakes!\n",
               'Maybe there is no network connection? Shall i continue? ';
-        exit(10) unless user_confirm();
+        exit 10 unless user_confirm();
 
 jFAKE:  %CDDB = ();
         $CDDB{GENRE} = genre('Humour');
@@ -462,7 +459,7 @@ jFAKE:  %CDDB = ();
         for (my $i = 1; $i <= $CDInfo::TrackCount; ++$i) {
             my $s = 'TITLE ' . $i;
             Encode::_utf8_off($s);
-            push(@titles, $s);
+            push @titles, $s;
         }
         return;
     }
@@ -472,21 +469,21 @@ jAREDO:
     $usr = 1;
     foreach (@discs) {
         my ($genre, undef, $title) = @$_; # (cddb_id)
-        print "\t[$usr] Genre:$genre, Title:$title\n";
+        print "  [$usr] Genre:$genre, Title:$title\n";
         ++$usr;
     }
-    print "\t[0] None of those (creates a local entry fakes)\n";
+    print "  [0] None of those (creates a local entry fakes)\n";
 
 jREDO:
-    print "\tChoose the number to use: ";
+    print "  Choose the number to use: ";
     $usr = <STDIN>;
     chomp $usr;
     unless ($usr =~ /\d+/ && ($usr = int $usr) >= 0 && $usr <= @discs) {
-        print "!\tI'm expecting one of the [numbers] ... !\n";
+        print "!  I'm expecting one of the [numbers] ... !\n";
         goto jREDO;
     }
     if ($usr == 0) {
-        print "\tcreating entry fakes ...\n";
+        print "  creating entry fakes ...\n";
         goto jFAKE;
     }
     $usr = $discs[--$usr];
@@ -500,16 +497,16 @@ jREDO:
     $CDDB{GENRE} = genre($usr->[0]);
     unless (defined $CDDB{GENRE}) {
         $CDDB{GENRE} = genre('Humour');
-        print "!\tCDDB entry has illegal GENRE - using $CDDB{GENRE}\n";
+        print "! CDDB entry has illegal GENRE - using $CDDB{GENRE}\n";
     }
     {   my $aa = $usr->[2];
         my ($art, $alb, $i);
-        $i = index($aa, '/');
+        $i = index $aa, '/';
         if ($i < 0) {
             $art = $alb = $aa;
         } else {
-            $art = substr($aa, 0, $i);
-            $alb = substr($aa, ++$i);
+            $art = substr $aa, 0, $i;
+            $alb = substr $aa, ++$i;
         }
         $art =~ s/^\s*(.*?)\s*$/$1/;
             $i = $art;
@@ -536,43 +533,48 @@ jREDO:
 
     print "CDDB disc info for CD(DB)ID=$CDInfo::Id\n",
           "(NOTE: terminal may not be able to display charset):\n",
-          "\t\tGenre=$CDDB{GENRE}, Year=$CDDB{YEAR}\n",
-          "\t\tArtist=$CDDB{ARTIST}\n",
-          "\t\tAlbum=$CDDB{ALBUM}\n",
-          "\t\tTitles in order:\n",
-          join("\n\t\t\t", @{$CDDB{TITLES}}),
-          "\n\tIs this *really* the desired CD? ";
+          "    Genre=$CDDB{GENRE}, Year=$CDDB{YEAR}\n",
+          "    Artist=$CDDB{ARTIST}\n",
+          "    Album=$CDDB{ALBUM}\n",
+          "    Titles in order:\n",
+          join("\n      ", @{$CDDB{TITLES}}),
+          "\n  Is this *really* the desired CD? ";
     goto jAREDO unless user_confirm();
-}
+} # }}}
 
-sub user_tracks {
+sub user_tracks { # {{{
     print "Disc $CDInfo::Id contains $CDInfo::TrackCount songs - ",
           'shall all be ripped?  ';
     if (user_confirm()) {
-        print "\tWhee - all songs will be ripped\n";
+        print "  Whee - all songs will be ripped!\n";
         $_->{IS_SELECTED} = 1 foreach (@Title::List);
         return;
     }
 
     my ($line, @dt);
 jREDO:
-    print "Please enter a space separated list of the desired track numbers\n";
+    print '  Please enter a space separated list of the desired track numbers',
+          "\n  ";
     $line = <STDIN>;
     chomp $line;
-    @dt = split(/\s+/, $line);
-    print "\tIs this list correct <", join(' ', @dt), '> ';
+    @dt = split /\s+/, $line;
+    print "  Is this list correct <", join(' ', @dt), '>';
     goto jREDO unless user_confirm();
+    unless (@dt) {
+        print "? So why are you using a disc ripper, then?\n";
+        exit 42;
+    }
     foreach (@dt) {
         if ($_ == 0 || $_ > $CDInfo::TrackCount) {
-            print "!\tInvalid track number: $_!\n\n";
+            print "!    Invalid track number: $_!\n\n";
             goto jREDO;
         }
     }
 
     $Title::List[$_ - 1]->{IS_SELECTED} = 1 foreach (@dt);
-}
+} # }}}
 
-{package CDInfo;
+{package CDInfo; # {{{
     my ($DevId);
     BEGIN { # Id field may also be set from command_line()
         # Mostly set by _calc_id() or parse() only (except Ripper)
@@ -588,7 +590,7 @@ jREDO:
         $CDInfo::DatFile = "$WORK_DIR/cdinfo.dat";
     }
 
-    sub discover {
+    sub discover { # {{{
         no strict 'refs';
         die "System $^O not supported" unless defined *{"CDInfo::_os_$^O"};
         print "\nCDInfo: assuming an Audio-CD is in the drive ...\n";
@@ -624,7 +626,7 @@ jREDO:
               'Track offsets: ' . join(' ', @CDInfo::TrackOffsets),
               "\n  Total seconds: $CDInfo::TotalSeconds\n",
               "  Track count: $CDInfo::TrackCount\n";
-    }
+    } # }}}
 
     sub _os_openbsd { # TODO
         my $drive = defined $CDROM ? $CDROM : '/dev/cdrom';
@@ -638,7 +640,7 @@ jREDO:
         die "FreeBSD support in fact missing";
     }
 
-    sub _os_darwin {
+    sub _os_darwin { # {{{
         my $drive = defined $CDROM ? $CDROM : 1;
         $DevId = defined $CDROMDEV ? $CDROMDEV : $drive;
         print "  Darwin/Mac OS X: drive $drive and /dev/disk$DevId\n";
@@ -650,7 +652,7 @@ jREDO:
         };
         $CDInfo::FallbackTrackCount = sub {
             # It's a pity!  Give MacOS X some time to reorder itself..
-            sleep(1);
+            sleep 1;
             return _unix_fallback_trackcount('/dev/disk');
         };
 
@@ -658,12 +660,12 @@ jREDO:
         ::v("Invoking drutil(1) -drive $drive toc");
         sleep 1;
         my $l = `drutil -drive $drive toc`;
-        return "drive $drive: failed reading TOC: $! -- $^E" if $?;
-        my @res = split("\n", $l);
+        return "drive $drive: failed reading TOC: $!" if $?;
+        my @res = split "\n", $l;
 
         my (@cdtoc, $leadout);
         for(;;) {
-            $l = shift(@res);
+            $l = shift @res;
             return "drive $drive: no lead-out information found"
                 unless defined $l;
             if ($l =~ /^\s*Lead-out:\s+(\d+):(\d+)\.(\d+)/) {
@@ -672,7 +674,7 @@ jREDO:
             }
         }
         for (my $li = 0;; ++$li) {
-            $l = shift(@res);
+            $l = shift @res;
             last unless defined $l;
             last unless $l =~ /^\s*Session\s+\d+,\s+Track\s+(\d+):
                                 \s+(\d+):(\d+)\.(\d+)
@@ -682,11 +684,11 @@ jREDO:
             $cdtoc[$li] = "$1 $2 $3 $4";
         }
         return "drive $drive: no track information found" unless @cdtoc > 0;
-        push(@cdtoc, $leadout);
+        push @cdtoc, $leadout;
 
         _calc_cdid(\@cdtoc);
         return undef;
-    }
+    } # }}}
 
     sub _os_linux { # TODO
         my $drive = defined $CDROM ? $CDROM : '/dev/cdrom';
@@ -695,12 +697,12 @@ jREDO:
     }
 
     # Calculated CD(DB)-Id and *set*CDInfo*fields*
-    sub _calc_cdid {
+    sub _calc_cdid { # {{{
         # This is a stripped down version of CDDB.pm::calculate_id()
         my $cdtocr = shift;
         my ($sec_first, $sum);
         foreach (@$cdtocr) {
-            my ($no, $min, $sec, $fra) = split(/\s+/, $_, 4);
+            my ($no, $min, $sec, $fra) = split /\s+/, $_, 4;
             my $frame_off = (($min * 60 + $sec) * 75) + $fra;
             my $sec_begin = int($frame_off / 75);
             $sec_first = $sec_begin unless defined $sec_first;
@@ -709,22 +711,22 @@ jREDO:
                 $CDInfo::TotalSeconds = $sec_begin;
                 last;
             }
-            map { $sum += $_; } split(//, $sec_begin);
-            push(@CDInfo::TrackOffsets, $frame_off);
+            map { $sum += $_; } split //, $sec_begin;
+            push @CDInfo::TrackOffsets, $frame_off;
         }
         $CDInfo::TrackCount = scalar @CDInfo::TrackOffsets;
         $CDInfo::Id = sprintf("%02x%04x%02x",
                               ($sum % 255),
                               ($CDInfo::TotalSeconds - $sec_first),
                               scalar(@CDInfo::TrackOffsets));
-    }
+    } # }}}
 
-    sub _unix_default_rip {
+    sub _unix_default_rip { # {{{
         my ($byteno, $blckno, $buf, $err) = (0, 0, undef, undef);
         my ($inf, $outf) = @_;
-        open(INFH, '<', $inf) or return "can't open for reading: $inf: $!";
+        open INFH, '<', $inf or return "can't open for reading: $inf: $!";
         # (Yet-exists case handled by caller)
-        unless (open(OUTFH, '>', $outf)) {
+        unless (open OUTFH, '>', $outf) {
             $err = $!;
             close INFH;
             return "can't open for writing: $outf: $err";
@@ -756,9 +758,9 @@ jOUTER: while (1) {
         return $err if defined $err;
         print "    .. stored $blckno blocks ($byteno bytes)\n";
         return undef;
-    }
+    } # }}}
 
-    sub _unix_fallback_trackcount {
+    sub _unix_fallback_trackcount { # {{{
         my $diskdev = shift;
         my $i = 0;
         my $p = '/dev/disk' . $DevId . 's';
@@ -768,7 +770,7 @@ jOUTER: while (1) {
 
             $| = 1; print "    checking $x ... "; $| = 0;
             my $totlen = 0;
-            open(FH, '<', $x) or return "failed to check $x";
+            open FH, '<', $x or return "failed to check $x";
                 my $buf;
                 while (1) {
                     my $bread = read FH, $buf, 2352 * 20;
@@ -787,27 +789,28 @@ jOUTER: while (1) {
         return "no such file: ${p}1.  Sure this is a CDROM?" unless $i != 0;
         $CDInfo::TrackCount = $i;
         return undef;
-    }
+    } # }}}
 
+    # write_data, read_data, parse_data (CDInfo::DatFile handling) {{{
     sub write_data {
         my $f = $CDInfo::DatFile;
         ::v("CDInfo::write_data($f)");
-        open(DAT, ">$f") or die "Can't open <$f>: $! -- $^E";
+        open DAT, '>', $f or die "Can't open $f: $!";
         print DAT "# S-Disc-Ripper CDDB info for project $CDInfo::Id\n",
                   "# Don't modify!  Or project needs to be re-ripped!!\n",
                   "CDID = $CDInfo::Id\n",
                   'TRACK_OFFSETS = ', join(' ', @CDInfo::TrackOffsets), "\n",
                   "TOTAL_SECONDS = $CDInfo::TotalSeconds\n";
-        close(DAT) or die "Can't close <$f>: $! -- $^E";
+        close DAT or die "Can't close $f: $!";
     }
 
     sub read_data {
         my $f = $CDInfo::DatFile;
         ::v("CDInfo::read_data($f)");
-        open(DAT, '<', $f) or die "Can't open $f: $!.\nCan't continue " .
-                                  "- remove $WORK_DIR and re-rip disc!";
+        open DAT, '<', $f or die "Can't open $f: $!.\nCan't continue " .
+                                 "- remove $WORK_DIR and re-rip disc!";
         my @lines = <DAT>;
-        close DAT or die "Can't close $f: $! -- $^E";
+        close DAT or die "Can't close $f: $!";
         parse_data(\@lines);
     }
 
@@ -824,7 +827,7 @@ jOUTER: while (1) {
         foreach (@$laref) {
             chomp;
             next if /^\s*#/;
-            $emsg .= "Invalid line <$_>;" and next
+            $emsg .= "Invalid line $_;" and next
                 unless /^\s*(.+?)\s*=\s*(.+?)\s*$/;
             my ($k, $v) = ($1, $2);
             if ($k eq 'CDID') {
@@ -839,7 +842,7 @@ jOUTER: while (1) {
                 $emsg .= "illegal TOTAL_SECONDS: $v;" unless $v =~ /^(\d+)$/;
                 $CDInfo::TotalSeconds = $1;
             } else {
-                $emsg .= "Illegal line: <$_>;";
+                $emsg .= "Illegal line: $_;";
             }
         }
         $emsg .= 'corrupted: no CDID seen;' unless defined $CDInfo::Id;
@@ -860,11 +863,14 @@ jOUTER: while (1) {
               "  Track count: $CDInfo::TrackCount\n";
         Title::create_that_many($CDInfo::TrackCount);
     }
-}
+    # }}}
+} # }}}
 
 # Title represents - a track
-{package Title;
+{package Title; # {{{
+    # Title::vars,funs {{{
     my (@List);
+
     sub create_that_many {
         return if @List != 0;
         my $no = shift;
@@ -878,18 +884,18 @@ jOUTER: while (1) {
         foreach my $t (@Title::List) {
             next unless $t->{IS_SELECTED};
             if (-f $t->{RAW_FILE}) {
-                print "\tRaw ripped track $t->{NUMBER} exists - re-rip? ";
+                print "  Raw ripped track $t->{NUMBER} exists - re-rip? ";
                 next unless ::user_confirm();
             }
 
-            print "\tRip track $t->{NUMBER} -> $t->{RAW_FILE}\n";
+            print "  Rip track $t->{NUMBER} -> $t->{RAW_FILE}\n";
             my $emsg = &$CDInfo::FileRipper($t);
             if (defined $emsg) {
-                print   "!\tError occurred: $emsg\n",
-                        "!\tTrack will be deselected - or quit? ";
-                exit(5) if ::user_confirm();
+                print   "! Error occurred: $emsg\n",
+                        "! Shall i deselect the track (else quit)?";
+                exit 5 unless ::user_confirm();
                 $t->{IS_SELECTED} = 0;
-                unlink($t->{RAW_FILE}) if -f $t->{RAW_FILE};
+                unlink $t->{RAW_FILE} if -f $t->{RAW_FILE};
             }
         }
     }
@@ -897,7 +903,7 @@ jOUTER: while (1) {
     sub new {
         my ($class, $no) = @_;
         ::v("Title::new(number=$no)");
-        my $nos = sprintf('%03d', $no);
+        my $nos = sprintf '%03d', $no;
         my $self = {
             NUMBER => $no,
             INDEX => $no - 1,
@@ -907,19 +913,20 @@ jOUTER: while (1) {
             IS_SELECTED => 0,
             TAG_INFO => Title::TagInfo->new()
         };
-        $self = bless($self, $class);
+        $self = bless $self, $class;
         $Title::List[$no - 1] = $self;
         return $self;
     }
+    # }}}
 
 # ID3v2.3 a.k.a. supported oggenc(1)/faac(1) tag stuff is bundled in here;
 # fields are set to something useful by MBDB:: below
-{package Title::TagInfo;
+{package Title::TagInfo; # {{{
     sub new {
         my ($class) = @_;
         ::v("Title::TagInfo::new()");
         my $self = {};
-        $self = bless($self, $class);
+        $self = bless $self, $class;
         return $self->reset();
     }
 
@@ -951,8 +958,8 @@ jOUTER: while (1) {
         $self->{COMM} = undef;
         return $self;
     }
-}
-}
+} # }}}
+} # }}}
 
 # MBDB - MusicBox (per-disc) database handling.
 # This is small minded and a dead end street for all the data - but that's
@@ -960,7 +967,8 @@ jOUTER: while (1) {
 # because if the database has been falsely edited the user must correct it!
 # At least a super-object based approach should have been used though.
 # All strings come in as UTF-8 and remain unmodified
-{package MBDB;
+{package MBDB; # {{{
+    # MBDB::vars,funs # {{{
     our ($CDDB, $AlbumSet, $Album, $Cast, $Group,   # [GROUP] objects
         $Error, @Data                               # I/O & content
     );
@@ -986,24 +994,24 @@ jOUTER: while (1) {
 jREDO:  @old_data = @MBDB::Data;
         _reset_data();
         _write_editable(\@old_data);
-        print "\tTemplate: $MBDB::EditFile\n",
-              "\tPlease do verify and edit this file as necessary\n",
-              "\tShall i invoke EDITOR <$ed>? ";
+        print "  Template: $MBDB::EditFile\n",
+              "  Please do verify and edit this file as necessary\n",
+              "  Shall i invoke EDITOR $ed? ";
         if (::user_confirm()) {
             my @args = ($ed, $MBDB::EditFile);
             system(@args);
         } else {
-            print "\tOk, waiting: hit <RETURN> to continue ...";
+            print "  Ok, waiting: hit <RETURN> to continue ...";
             $ed = <STDIN>;
         }
         if (!_read_data($MBDB::EditFile)) {
-            print "!\tErrors detected - edit once again!\n";
+            print "! Errors detected - edit once again!\n";
             goto jREDO;
         }
 
-        print "\n\tOnce again - please verify the content:\n";
-        print "\t\t$_\n" foreach (@MBDB::Data);
-        print "\tIs this data *really* OK? ";
+        print "\n  Once again - please verify the content:\n";
+        print "    $_\n" foreach (@MBDB::Data);
+        print "  Is this data *really* OK? ";
         goto jREDO unless ::user_confirm();
 
         _write_final();
@@ -1012,11 +1020,11 @@ jREDO:  @old_data = @MBDB::Data;
     sub _write_editable {
         my $df = $MBDB::EditFile;
         my $dataref = shift;
-        ::v("Writing editable MusicBox data file as <$df>");
-        open(DF, ">$df") or die "Can't open <$df>: $! -- $^E";
+        ::v("Writing editable MusicBox data file as $df");
+        open DF, '>', $df or die "Can't open $df: $!";
         if (@$dataref > 0) {
             print DF "\n# CONTENT OF LAST USER EDIT AT END OF FILE!\n\n"
-                or die "Error writing <$df>: $! -- $^E";
+                or die "Error writing $df: $!";
         }
 
         my $cddbt = $CDDB{TITLES};
@@ -1051,24 +1059,24 @@ jREDO:  @old_data = @MBDB::Data;
                 "#[GROUP]\n#LABEL = \n#GAPLESS = 0\n",
                 "\n",
                 MBDB::TRACK::help_text()
-            or die "Error writing <$df>: $! -- $^E";
+            or die "Error writing $df: $!";
 
         foreach my $title (@Title::List) {
             my $n = $title->{NUMBER};
             my $i = $title->{INDEX};
             print DF "[TRACK]\nNUMBER = $n\nTITLE = $cddbt->[$i]\n\n"
-                or die "Error writing <$df>: $! -- $^E";
+                or die "Error writing $df: $!";
         }
 
         if (@$dataref > 0) {
             print DF "\n# CONTENT OF FORMER USER EDIT:\n"
-                or die "Error writing <$df>: $! -- $^E";
-            print DF "#$_\n" or die "Error writing <$df>: $! -- $^E"
+                or die "Error writing $df: $!";
+            print DF "#$_\n" or die "Error writing $df: $!"
                 foreach (@$dataref);
         }
         print DF "# vim:set fenc=utf-8 filetype=txt syntax=cfg:\n",
-            or die "Error writing <$df>: $! -- $^E";
-        close(DF) or die "Can't close <$df>: $! -- $^E";
+            or die "Error writing $df: $!";
+        close DF or die "Can't close $df: $!";
     }
 
     sub _help_text {
@@ -1089,18 +1097,17 @@ _EOT
 
     sub _write_final {
         my $df = $MBDB::FinalFile;
-        ::v("Creating final MusicBox data file as <$df>");
-        open(DF, ">$df") or die "Can't open <$df>: $! -- $^E";
+        ::v("Creating final MusicBox data file as $df");
+        open DF, '>', $df or die "Can't open $df: $!";
         print DF "[CDDB]\n",
                  (!$CDInfo::IsFaked ? ''
                   : "# (The [CDDB] entries were faked: offsets=seconds)\n"),
                  "CDID = $CDInfo::Id\n",
                  "TRACK_OFFSETS = ", join(' ', @CDInfo::TrackOffsets),
                  "\nTOTAL_SECONDS = $CDInfo::TotalSeconds\n",
-            or die "Error writing <$df>: $! -- $^E";
-        print DF $_, "\n" or die "Error writing <$df>: $! -- $^E"
-            foreach (@MBDB::Data);
-        close(DF) or die "Can't close <$df>: $! -- $^E";
+            or die "Error writing $df: $!";
+        print DF $_, "\n" or die "Error writing $df: $!" foreach (@MBDB::Data);
+        close DF or die "Can't close $df: $!";
     }
 
     sub _read_data {
@@ -1108,7 +1115,7 @@ _EOT
         my $is_final = ($df eq $MBDB::FinalFile);
         _reset_data();
 
-        open(DF, "<$df") or die "Can't open <$df>: $! -- $^E";
+        open DF, '<', $df or die "Can't open $df: $!";
         my ($emsg, $entry) = (undef, undef);
         while (<DF>) {
             s/^\s*(.*?)\s*$/$1/;
@@ -1122,7 +1129,7 @@ _EOT
                     $entry = undef;
                     if (defined $emsg) {
                         $MBDB::Error = 1;
-                        print "!\tERROR: $emsg\n";
+                        print "! ERROR: $emsg\n";
                         $emsg = undef;
                     }
                 } elsif ($is_final && $c ne 'CDDB') {
@@ -1147,33 +1154,34 @@ _EOT
                 }
                 $emsg = $entry->set_tuple($k, $v);
             } else {
-                $emsg = "Line illegal: <$_>";
+                $emsg = "Line illegal: $_";
             }
 
             if (defined $emsg) {
 jERROR:         $MBDB::Error = 1;
-                print "!\tERROR: $emsg\n";
+                print "! ERROR: $emsg\n";
                 die "Disc database is corrupted!\n" .
-                    "Remove <$TARGET_DIR> (!) and re-rip disc!"
+                    "Remove $TARGET_DIR (!) and re-rip disc!"
                     if $is_final;
                 $emsg = undef;
             }
         }
         if (defined $entry && defined($emsg = $entry->finalize())) {
             $MBDB::Error = 1;
-            print "!\tERROR: $emsg\n";
+            print "! ERROR: $emsg\n";
         }
-        close(DF) or die "Can't close <$df>: $! -- $^E";
+        close DF or die "Can't close $df: $!";
 
         for (my $i = 1; $i <= $CDInfo::TrackCount; ++$i) {
             next if $Title::List[$i - 1]->{TAG_INFO}->{IS_SET};
             $MBDB::Error = 1;
-            print "!\tERROR: no entry for track number $i found\n";
+            print "! ERROR: no entry for track number $i found\n";
         }
-        return ($MBDB::Error == 0);
+        return $MBDB::Error == 0;
     }
+    # }}}
 
-{package MBDB::CDDB;
+{package MBDB::CDDB; # {{{
     sub is_key_supported {
         my $k = shift;
         return $k eq 'CDID' || $k eq 'TRACK_OFFSETS' || $k eq 'TOTAL_SECONDS';
@@ -1186,13 +1194,14 @@ jERROR:         $MBDB::Error = 1;
             return undef;
         }
         ::v("MBDB::CDDB::new()");
-        push(@MBDB::Data, '[CDDB]');
+        push @MBDB::Data, '[CDDB]';
         my @dat;
-        my $self = { objectname => 'CDDB',
+        my $self = {
+            objectname => 'CDDB',
             CDID => undef, TRACK_OFFSETS => undef,
             TOTAL_SECONDS => undef, _data => \@dat
         };
-        $self = bless($self, $class);
+        $self = bless $self, $class;
         $MBDB::CDDB = $self;
         return $self;
     }
@@ -1204,8 +1213,8 @@ jERROR:         $MBDB::Error = 1;
             unless is_key_supported($k);
         return "$self->{objectname}: $k already set" if defined $self->{$k};
         $self->{$k} = $v;
-        push(@{$self->{_data}}, "$k = $v");
-        push(@MBDB::Data, "$k = $v");
+        push @{$self->{_data}}, "$k = $v";
+        push @MBDB::Data, "$k = $v";
         return undef;
     }
     sub finalize {
@@ -1217,9 +1226,9 @@ jERROR:         $MBDB::Error = 1;
         CDInfo::parse_data($self->{_data});
         return undef;
     }
-}
+} # }}}
 
-{package MBDB::ALBUMSET;
+{package MBDB::ALBUMSET; # {{{
     sub help_text {
         return <<_EOT;
 # [ALBUMSET]: TITLE, SETCOUNT
@@ -1242,10 +1251,11 @@ _EOT
         }
         ::v("MBDB::ALBUMSET::new()");
         push(@MBDB::Data, '[ALBUMSET]');
-        my $self = { objectname => 'ALBUMSET',
+        my $self = {
+            objectname => 'ALBUMSET',
             TITLE => undef, SETCOUNT => undef
         };
-        $self = bless($self, $class);
+        $self = bless $self, $class;
         $MBDB::AlbumSet = $self;
         return $self;
     }
@@ -1256,7 +1266,7 @@ _EOT
         return "$self->{objectname}: $k not supported"
             unless is_key_supported($k);
         $self->{$k} = $v;
-        push(@MBDB::Data, "$k = $v");
+        push @MBDB::Data, "$k = $v";
         return undef;
     }
     sub finalize {
@@ -1267,9 +1277,9 @@ _EOT
             unless (defined $self->{TITLE} && defined $self->{SETCOUNT});
         return $emsg;
     }
-}
+} # }}}
 
-{package MBDB::ALBUM;
+{package MBDB::ALBUM; # {{{
     sub help_text {
         return <<_EOT;
 # [ALBUM]: TITLE, TRACKCOUNT, (SETPART, YEAR, GENRE, GAPLESS, COMPILATION)
@@ -1298,12 +1308,13 @@ _EOT
         }
         ::v("MBDB::ALBUM::new()");
         push(@MBDB::Data, '[ALBUM]');
-        my $self = { objectname => 'ALBUM',
+        my $self = {
+            objectname => 'ALBUM',
             TITLE => undef, TRACKCOUNT => undef,
             SETPART => undef, YEAR => undef, GENRE => undef,
             GAPLESS => 0, COMPILATION => 0
         };
-        $self = bless($self, $class);
+        $self = bless $self, $class;
         $MBDB::Album = $self;
         return $self;
     }
@@ -1318,7 +1329,7 @@ _EOT
                 unless defined $MBDB::AlbumSet;
             return "ALBUM: SETPART $v not a number" unless $v =~ /^\d+$/;
             return 'ALBUM: SETPART value larger than SETCOUNT'
-                if int($v) > int($MBDB::AlbumSet->{SETCOUNT});
+                if int $v > int $MBDB::AlbumSet->{SETCOUNT};
         } elsif ($k eq 'GENRE') {
             my $g = ::genre($v);
             return "ALBUM: $v not a valid GENRE (try --genre-list)"
@@ -1326,7 +1337,7 @@ _EOT
             $v = $g;
         }
         $self->{$k} = $v;
-        push(@MBDB::Data, "$k = $v");
+        push @MBDB::Data, "$k = $v";
         return undef;
     }
     sub finalize {
@@ -1341,9 +1352,9 @@ _EOT
         }
         return $emsg;
     }
-}
+} # }}}
 
-{package MBDB::CAST;
+{package MBDB::CAST; # {{{
     sub help_text {
         return <<_EOT;
 # [CAST]: (ARTIST, SOLOIST, CONDUCTOR, COMPOSER/SONGWRITER, SORT)
@@ -1386,14 +1397,15 @@ _EOT
         ::v("MBDB::CAST::new(" .
             (defined $parent ? "parent=$parent)" : ')'));
         push(@MBDB::Data, '[CAST]') unless defined $parent;
-        my $self = { objectname => 'CAST', parent => $parent,
-                ARTIST => [],
-                SOLOIST => [], CONDUCTOR => [],
-                COMPOSER => [], SONGWRITER => [],
-                _parent_composers => 0,
-                SORT => []
-            };
-        $self = bless($self, $class);
+        my $self = {
+            objectname => 'CAST', parent => $parent,
+            ARTIST => [],
+            SOLOIST => [], CONDUCTOR => [],
+            COMPOSER => [], SONGWRITER => [],
+            _parent_composers => 0,
+            SORT => []
+        };
+        $self = bless $self, $class;
         $MBDB::Cast = $self unless defined $parent;
         return $self;
     }
@@ -1408,12 +1420,12 @@ _EOT
             $parent = undef;
         }
         if (defined $parent) {
-            push(@{$self->{ARTIST}}, $_) foreach (@{$parent->{ARTIST}});
-            push(@{$self->{SOLOIST}}, $_) foreach (@{$parent->{SOLOIST}});
-            push(@{$self->{CONDUCTOR}}, $_) foreach (@{$parent->{CONDUCTOR}});
-            push(@{$self->{COMPOSER}}, $_) foreach (@{$parent->{COMPOSER}});
+            push @{$self->{ARTIST}}, $_ foreach (@{$parent->{ARTIST}});
+            push @{$self->{SOLOIST}}, $_ foreach (@{$parent->{SOLOIST}});
+            push @{$self->{CONDUCTOR}}, $_ foreach (@{$parent->{CONDUCTOR}});
+            push @{$self->{COMPOSER}}, $_ foreach (@{$parent->{COMPOSER}});
             $self->{_parent_composers} = scalar @{$self->{COMPOSER}};
-            push(@{$self->{SONGWRITER}}, $_) foreach (@{$parent->{SONGWRITER}});
+            push @{$self->{SONGWRITER}}, $_ foreach (@{$parent->{SONGWRITER}});
         }
         return $self;
     }
@@ -1423,8 +1435,8 @@ _EOT
         ::v("MBDB::$self->{objectname}::set_tuple($k=$v)");
         return "$self->{objectname}: $k not supported"
             unless is_key_supported($k);
-        push(@{$self->{$k}}, $v);
-        push(@MBDB::Data, "$k = $v");
+        push @{$self->{$k}}, $v;
+        push @MBDB::Data, "$k = $v";
         return undef;
     }
     sub finalize {
@@ -1442,9 +1454,9 @@ _EOT
         my $self = shift;
         return ($self->{_parent_composers} != 0);
     }
-}
+} # }}}
 
-{package MBDB::GROUP;
+{package MBDB::GROUP; # {{{
     sub help_text {
         return <<_EOT;
 # [GROUP]: LABEL, (YEAR, GENRE, GAPLESS, COMPILATION, [CAST]-fields)
@@ -1473,12 +1485,13 @@ _EOT
             return undef;
         }
         push(@MBDB::Data, '[GROUP]');
-        my $self = { objectname => 'GROUP',
+        my $self = {
+            objectname => 'GROUP',
             LABEL => undef, YEAR => undef, GENRE => undef,
             GAPLESS => 0, COMPILATION => 0,
             cast => MBDB::CAST::new_state_clone('GROUP')
         };
-        $self = bless($self, $class);
+        $self = bless $self, $class;
         $MBDB::Group = $self;
         return $self;
     }
@@ -1495,7 +1508,7 @@ _EOT
         }
         if (exists $self->{$k}) {
             $self->{$k} = $v;
-            push(@MBDB::Data, "$k = $v");
+            push @MBDB::Data, "$k = $v";
         } else {
             $self->{cast}->set_tuple($k, $v);
         }
@@ -1510,9 +1523,9 @@ _EOT
         $emsg .= $em if defined $em;
         return $emsg;
     }
-}
+} # }}}
 
-{package MBDB::TRACK;
+{package MBDB::TRACK; # {{{
     sub help_text {
         return <<_EOT;
 # [TRACK]: NUMBER, TITLE, (YEAR, GENRE, COMMENT, [CAST]-fields)
@@ -1539,13 +1552,14 @@ _EOT
         }
         ::v("MBDB::TRACK::new()");
         push(@MBDB::Data, '[TRACK]');
-        my $self = { objectname => 'TRACK',
+        my $self = {
+            objectname => 'TRACK',
             NUMBER => undef, TITLE => undef,
             YEAR => undef, GENRE => undef, COMMENT =>undef,
             group => $MBDB::Group,
             cast => MBDB::CAST::new_state_clone('TRACK')
         };
-        $self = bless($self, $class);
+        $self = bless $self, $class;
         return $self;
     }
     sub set_tuple {
@@ -1587,7 +1601,7 @@ _EOT
         return $emsg;
     }
 
-    sub _create_tag_info {
+    sub _create_tag_info { # {{{
         my $self = shift;
         my ($c, $composers, $i, $s, $x);
         my $tir = $Title::List[$self->{NUMBER} - 1]->{TAG_INFO};
@@ -1620,7 +1634,7 @@ _EOT
             $s .= ', ' if ++$i > 0;
             $s .= $_;
         }
-        $composers = $s if length($s) > 0;
+        $composers = $s if length $s > 0;
         $x = ($i >= 0);
         $i = -1;
         foreach (@{$c->{SONGWRITER}}) {
@@ -1631,7 +1645,7 @@ _EOT
             $s .= '/' if ++$i > 0;
             $s .= "$_";
         }
-        $tir->{TCOM} = $s if length($s) > 0;
+        $tir->{TCOM} = $s if length $s > 0;
 
         # TALB,--album,--album
         $tir->{TALB} =
@@ -1692,11 +1706,12 @@ _EOT
 
         # COMM,--comment,--comment - MAYBE UNDEF
         $tir->{COMM} = $self->{COMMENT};
-    }
-}
-}
+    } # }}}
+} # }}}
+} # }}}
 
-{package Enc;
+{package Enc; # {{{
+    # Enc::vars,funs (public) # {{{
     my ($VolNorm, $AACTag, $OGGTag);
 
     sub calculate_volume_normalize {
@@ -1706,26 +1721,26 @@ _EOT
             $VolNorm = '';
             return;
         }
-        print "\nCalculating average volume normalization over all tracks:\n\t";
+        print "\nCalculating average volume normalization over all tracks:\n  ";
         $VolNorm = undef;
         foreach my $t (@Title::List) {
             next unless $t->{IS_SELECTED};
             my $f = $t->{RAW_FILE};
-            open(SOX, "sox -t raw -r44100 -c2 -w -s $f -e stat -v 2>&1 |")
-                or die "Can't open SOX stat for <$f>: $! -- $^E";
+            open SOX, "sox -t raw -r44100 -c2 -w -s $f -e stat -v 2>&1 |"
+                or die "Can't open SOX stat for $f: $!";
             my $avg = <SOX>;
-            close(SOX) or die "Can't close SOX stat for <$f>: $! -- $^E";
+            close SOX or die "Can't close SOX stat for $f: $!";
             chomp $avg;
 
             if ($t->{INDEX} != 0 && $t->{INDEX} % 7 == 0) {
-                print "\n\t$t->{NUMBER}: $avg, ";
+                print "\n  $t->{NUMBER}: $avg, ";
             } else {
                 print "$t->{NUMBER}: $avg, ";
             }
             $VolNorm = $avg unless defined $VolNorm;
             $VolNorm = $avg if $avg < $VolNorm;
         }
-        print "\n\tVolume amplitude will be changed by: $VolNorm\n";
+        print "\n  Volume amplitude will be changed by: $VolNorm\n";
         $VolNorm = "-v $VolNorm"; # Argument for sox(1)
     }
 
@@ -1733,17 +1748,19 @@ _EOT
         print "\nEncoding selected tracks:\n";
         foreach my $t (@Title::List) {
             unless ($t->{IS_SELECTED}) {
-                ::v("\tSkipping $t->{NUMBER}: not selected");
+                ::v("  Skipping $t->{NUMBER}: not selected");
                 next;
             }
-            print "\tTrack $t->{NUMBER} -> $t->{TARGET_PLAIN}.*\n";
+            print "  Track $t->{NUMBER} -> $t->{TARGET_PLAIN}.*\n";
             _mp3tag_file($t) if ($MP3HI || $MP3LO);
             _faac_comment($t) if ($AACHI || $AACLO);
             _oggenc_comment($t) if ($OGGHI || $OGGLO);
             _encode_file($t);
         }
     }
+    # }}}
 
+    # MP3 tag stuff {{{
     sub _mp3tag_file {
         # Stuff in (parens) refers ID3 tag version 2.3.0, www.id3.org.
         my $title = shift;
@@ -1775,7 +1792,7 @@ _EOT
         # Flags 1 byte: bit 7 (first bit MSB) =$has_unsynced
         $header .= pack('C', ($has_unsynced > 0) ? 0x80 : 0x00);
         # Tag size: 4 bytes as 4*7 bits
-        {   my $l = length($tag);
+        {   my $l = length $tag;
             my $r;
             # Don't use my own carry-flag beatin' version, but the
             # MP3-Info.pm one ...
@@ -1799,16 +1816,16 @@ _EOT
                 $f .= '.lo.mp3';
                 next if $MP3LO == 0;
             }
-            open(F, ">$f") or die "Can't open <$f>: $! -- $^E";
-            binmode(F) or die "binmode <$f> failed: $! -- $^E";
-            print F $header, $tag or die "Error writing <$f>: $! -- $^E";
-            close(F) or die "Can't close <$f>: $! -- $^E";
+            open F, '>', $f or die "Can't open $f: $!";
+            binmode F or die "binmode $f failed: $!";
+            print F $header, $tag or die "Error writing $f: $!";
+            close F or die "Can't close $f: $!";
         }
     }
 
     sub _mp3_frame {
         my ($fid, $ftxt) = @_;
-        ::v("\tMP3 frame: $fid: <$ftxt>") unless $fid eq 'COMM';
+        ::v("  MP3 frame: $fid: $ftxt") unless $fid eq 'COMM';
         my ($len, $txtenc);
         # Numerical strings etc. always latin-1
         if (@_ > 2) {
@@ -1855,7 +1872,9 @@ _EOT
             return "\x00";
         }
     }
+    # }}}
 
+    # MP4, OGG tag stuff {{{
     sub _faac_comment {
         my $title = shift;
         my $ti = $title->{TAG_INFO};
@@ -1911,83 +1930,78 @@ _EOT
         Encode::_utf8_off($OGGTag);
         ::v("OGGTag: $OGGTag");
     }
+    # }}}
 
-    sub _encode_file {
+    sub _encode_file { # {{{
         my $title = shift;
         my $tpath = $title->{TARGET_PLAIN};
 
         open(SOX, "sox $VolNorm -t raw -r44100 -c2 -w -s " .
                    $title->{RAW_FILE} . ' -t raw - |')
-            or die "Can't open SOX pipe: $! -- $^E";
-        binmode(SOX) or die "binmode SOX failed: $! -- $^E";
+            or die "Can't open SOX pipe: $!";
+        binmode SOX or die "binmode SOX failed: $!";
 
         if ($MP3HI) {
             ::v('Creating MP3 lame(1) high-quality encoder');
             open(MP3HI, '| lame --quiet -r -x -s 44.1 --bitwidth 16 ' .
                         "--vbr-new -V 0 -q 0 - - >> $tpath.mp3")
-                or die "Can't open LAME-high: $! -- $^E";
-            binmode(MP3HI) or die "binmode LAME-high failed: $! -- $^E";
+                or die "Can't open MP3 (high): $!";
+            binmode MP3HI or die "binmode MP3 (high) failed: $!";
         }
         if ($MP3LO) {
             ::v('Creating MP3 lame(1) low-quality encoder');
             open(MP3LO, '| lame --quiet -r -x -s 44.1 --bitwidth 16 ' .
                         "--vbr-new -V 7 -q 0 - - >> $tpath.lo.mp3")
-                or die "Can't open LAME-low: $! -- $^E";
-            binmode(MP3LO) or die "binmode LAME-low failed: $! -- $^E";
+                or die "Can't open MP3LO: $!";
+            binmode MP3LO or die "binmode MP3LO failed: $!";
         }
         if ($AACHI) {
             ::v('Creating AAC faac(1) high-quality encoder');
             open(AACHI, '| faac -XP --mpeg-vers 4 -ws --tns -q 300 ' .
                         "$AACTag -o $tpath.mp4 - >/dev/null 2>&1")
-                or die "Can't open FAAC-high: $! -- $^E";
-            binmode(AACHI) or die "binmode FAAC-high failed: $! -- $^E";
+                or die "Can't open AAC (high): $!";
+            binmode AACHI or die "binmode AAC (high) failed: $!";
         }
         if ($AACLO) {
             ::v('Creating AAC faac(1) low-quality encoder');
             open(AACLO, '| faac -XP --mpeg-vers 4 -ws --tns -q 80 ' .
                         "$AACTag -o $tpath.lo.mp4 - >/dev/null 2>&1")
-                or die "Can't open FAAC-low: $! -- $^E";
-            binmode(AACLO) or die "binmode FAAC-low failed: $! -- $^E";
+                or die "Can't open AACLO: $!";
+            binmode AACLO or die "binmode AACLO failed: $!";
         }
         if ($OGGHI) {
             ::v('Creating Vorbis oggenc(1) high-quality encoder');
             open(OGGHI, "| oggenc -Q -r -q 8.5 $OGGTag -o $tpath.ogg -")
-                or die "Can't open OGGENC-high: $! -- $^E";
-            binmode(OGGHI) or die "binmode OGGENC-high failed: $! -- $^E";
+                or die "Can't open OGG (high): $!";
+            binmode OGGHI or die "binmode OGG (high) failed: $!";
         }
         if ($OGGLO) {
             ::v('Creating Vorbis oggenc(1) low-quality encoder');
             open(OGGLO, "| oggenc -Q -r -q 3.8 $OGGTag -o $tpath.lo.ogg -")
-                or die "Can't open OGGENC-low: $! -- $^E";
-            binmode(OGGLO) or die "binmode OGGENC-low failed: $! -- $^E";
+                or die "Can't open OGGLO: $!";
+            binmode OGGLO or die "binmode OGGLO failed: $!";
         }
 
         for (my $data;;) {
-            my $bytes = read(SOX, $data, 1024*1000);
-            die "Error reading SOX: $! -- $^E" unless defined $bytes;
+            my $bytes = sysread SOX, $data, 1024 * 1000;
+            die "Error reading SOX: $!" unless defined $bytes;
             last if $bytes == 0;
-            print MP3HI $data or die "Error writing LAME-high: $! -- $^E"
-                if $MP3HI;
-            print MP3LO $data or die "Error writing LAME-low: $! -- $^E"
-                if $MP3LO;
-            print AACHI $data or die "Error writing FAAC-high: $! -- $^E"
-                if $AACHI;
-            print AACLO $data or die "Error writing FAAC-low: $! -- $^E"
-                if $AACLO;
-            print OGGHI $data or die "Error write OGGENC-high: $! -- $^E"
-                if $OGGHI;
-            print OGGLO $data or die "Error write OGGENC-low: $! -- $^E"
-                if $OGGLO;
+            print MP3HI $data or die "Error writing MP3 (high): $!" if $MP3HI;
+            print MP3LO $data or die "Error writing MP3LO: $!" if $MP3LO;
+            print AACHI $data or die "Error writing AAC (high): $!" if $AACHI;
+            print AACLO $data or die "Error writing AACLO: $!" if $AACLO;
+            print OGGHI $data or die "Error write OGG (high): $!" if $OGGHI;
+            print OGGLO $data or die "Error write OGGLO: $!" if $OGGLO;
         }
 
-        close(SOX) or die "Can't close SOX pipe: $! -- $^E";
-        close(MP3HI) or die "Can't close LAME-high pipe: $! -- $^E" if $MP3HI;
-        close(MP3LO) or die "Can't close LAME-low: $! -- $^E" if $MP3LO;
-        close(AACHI) or die "Can't close FAAC-high: $! -- $^E" if $AACHI;
-        close(AACLO) or die "Can't close FAAC-low: $! -- $^E" if $AACLO;
-        close(OGGHI) or die "Can't close OGGENC-high: $! -- $^E" if $OGGHI;
-        close(OGGLO) or die "Can't close OGGENC-low: $! -- $^E" if $OGGLO;
-    }
-}
+        close SOX or die "Can't close SOX pipe: $!";
+        close MP3HI or die "Can't close MP3 (high) pipe: $!" if $MP3HI;
+        close MP3LO or die "Can't close MP3LO: $!" if $MP3LO;
+        close AACHI or die "Can't close AAC (high): $!" if $AACHI;
+        close AACLO or die "Can't close AACLO $!" if $AACLO;
+        close OGGHI or die "Can't close OGG (high): $!" if $OGGHI;
+        close OGGLO or die "Can't close OGGLO: $!" if $OGGLO;
+    } # }}}
+} # }}}
 
 # vim:set fenc=utf-8 filetype=perl syntax=perl ts=4 sts=4 sw=4 et tw=79:
