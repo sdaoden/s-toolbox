@@ -646,10 +646,7 @@ jREDO:
         $CDInfo::FileRipper = sub {
             my $title = shift;
             my $sf = '/dev/disk' . $DevId . 's' . $title->{NUMBER};
-            return "Device node does not exist: $sf" unless -e $sf;
-            system "dd bs=2352 if=$sf of=$title->{RAW_FILE}";
-            return undef if ($? >> 8) == 0;
-            return "$! -- $^E";
+            return _unix_default_rip($sf, $title->{RAW_FILE});
         };
         $CDInfo::FallbackTrackCount = sub {
             # It's a pity!  Give MacOS X some time to reorder itself..
@@ -661,8 +658,8 @@ jREDO:
         ::v("Invoking drutil(1) -drive $drive toc");
         sleep 1;
         my $l = `drutil -drive $drive toc`;
-        my @res = split("\n", $l);
         return "drive $drive: failed reading TOC: $! -- $^E" if $?;
+        my @res = split("\n", $l);
 
         my (@cdtoc, $leadout);
         for(;;) {
@@ -688,6 +685,7 @@ jREDO:
         push(@cdtoc, $leadout);
 
         _calc_cdid(\@cdtoc);
+        return undef;
     }
 
     sub _os_linux { # TODO
@@ -696,39 +694,7 @@ jREDO:
         die "Linux support in fact missing";
     }
 
-    sub _unix_fallback_trackcount {
-        my $diskdev = shift;
-        my $i = 0;
-        my $p = '/dev/disk' . $DevId . 's';
-        for (; my $j = $i + 1; $i = $j) {
-            my $x = $p . $j;
-            last unless -e $x;
-
-            $| = 1; print "    checking $x ... "; $| = 0;
-            my $totlen = 0;
-            open(FH, '<', $x) or return "failed to check $x";
-                my $buf;
-                while (1) {
-                    my $bread = read FH, $buf, 4096*16 - 1;
-                    unless (defined $bread) {
-                        close(FH);
-                        return "failed to read all data of $x";
-                    }
-                    last if $bread == 0;
-                    $totlen += $bread;
-                }
-            close(FH);
-            push(@CDInfo::TrackOffsets, $totlen);
-            $CDInfo::TotalSeconds += $totlen;
-            print "had $totlen bytes\n";
-        }
-        return "no such file: ${p}1.  Sure this is a CDROM?"
-            unless $i != 0;
-        $CDInfo::TrackCount = $i;
-        return undef;
-    }
-
-    # Calculated CD(DB)-Id and *set*CDInfo*fields* (except $FileRipper)!
+    # Calculated CD(DB)-Id and *set*CDInfo*fields*
     sub _calc_cdid {
         # This is a stripped down version of CDDB.pm::calculate_id()
         my $cdtocr = shift;
@@ -753,12 +719,82 @@ jREDO:
                               scalar(@CDInfo::TrackOffsets));
     }
 
+    sub _unix_default_rip {
+        my ($byteno, $blckno, $buf, $err) = (0, 0, undef, undef);
+        my ($inf, $outf) = @_;
+        open(INFH, '<', $inf) or return "can't open for reading: $inf: $!";
+        # (Yet-exists case handled by caller)
+        unless (open(OUTFH, '>', $outf)) {
+            $err = $!;
+            close INFH;
+            return "can't open for writing: $outf: $err";
+        }
+
+jOUTER: while (1) {
+            my $r = sysread INFH, $buf, 2352 * 20;
+            unless (defined $r) {
+                $err = "I/O read failed: $!";
+                last;
+            }
+            last if $r == 0;
+            $byteno += $r;
+            $blckno += $r / 2352;
+
+            for (my $o = 0;  $r > 0; ) {
+                my $w = syswrite OUTFH, $buf, $r, $o;
+                unless (defined $w) {
+                    $err = "I/O write failed: $!";
+                    last jOUTER;
+                }
+                $o += $w;
+                $r -= $w;
+            }
+        }
+
+        close OUTFH;
+        close INFH;
+        return $err if defined $err;
+        print "    .. stored $blckno blocks ($byteno bytes)\n";
+        return undef;
+    }
+
+    sub _unix_fallback_trackcount {
+        my $diskdev = shift;
+        my $i = 0;
+        my $p = '/dev/disk' . $DevId . 's';
+        for (; my $j = $i + 1; $i = $j) {
+            my $x = $p . $j;
+            last unless -e $x;
+
+            $| = 1; print "    checking $x ... "; $| = 0;
+            my $totlen = 0;
+            open(FH, '<', $x) or return "failed to check $x";
+                my $buf;
+                while (1) {
+                    my $bread = read FH, $buf, 2352 * 20;
+                    unless (defined $bread) {
+                        close FH;
+                        return "failed to read all data of $x";
+                    }
+                    last if $bread == 0;
+                    $totlen += $bread;
+                }
+            close FH;
+            push @CDInfo::TrackOffsets, $totlen;
+            $CDInfo::TotalSeconds += $totlen;
+            print "had $totlen bytes\n";
+        }
+        return "no such file: ${p}1.  Sure this is a CDROM?" unless $i != 0;
+        $CDInfo::TrackCount = $i;
+        return undef;
+    }
+
     sub write_data {
         my $f = $CDInfo::DatFile;
         ::v("CDInfo::write_data($f)");
         open(DAT, ">$f") or die "Can't open <$f>: $! -- $^E";
         print DAT "# S-Disc-Ripper CDDB info for project $CDInfo::Id\n",
-                  "# Don't modify! or project needs to be re-ripped!!\n",
+                  "# Don't modify!  Or project needs to be re-ripped!!\n",
                   "CDID = $CDInfo::Id\n",
                   'TRACK_OFFSETS = ', join(' ', @CDInfo::TrackOffsets), "\n",
                   "TOTAL_SECONDS = $CDInfo::TotalSeconds\n";
@@ -768,12 +804,10 @@ jREDO:
     sub read_data {
         my $f = $CDInfo::DatFile;
         ::v("CDInfo::read_data($f)");
-        open(DAT, "<$f") or die "\
-Can't open <$f>: $! -- $^E.
-This project cannot be continued!
-Remove <$WORK_DIR> and re-rip the disc!";
+        open(DAT, '<', $f) or die "Can't open $f: $!.\nCan't continue " .
+                                  "- remove $WORK_DIR and re-rip disc!";
         my @lines = <DAT>;
-        close(DAT) or die "Can't close <$f>: $! -- $^E";
+        close DAT or die "Can't close $f: $! -- $^E";
         parse_data(\@lines);
     }
 
@@ -820,10 +854,10 @@ Remove <$WORK_DIR> and re-rip the disc!";
         }
         die "CDInfo: $emsg" if defined $emsg;
 
-        print "\n\tResumed (parsed) CDInfo: disc: $CDInfo::Id\n\t\t",
+        print "\nResumed (parsed) CDInfo: disc: $CDInfo::Id\n  ",
               'Track offsets: ' . join(' ', @CDInfo::TrackOffsets),
-              "\n\t\tTotal seconds: $CDInfo::TotalSeconds\n",
-              "\t\tTrack count: $CDInfo::TrackCount\n";
+              "\n  Total seconds: $CDInfo::TotalSeconds\n",
+              "  Track count: $CDInfo::TrackCount\n";
         Title::create_that_many($CDInfo::TrackCount);
     }
 }
