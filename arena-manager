@@ -11,7 +11,7 @@ CVS='cvs -fz 9 update -ACRPd'
 ##
 
 ESTAT=0
-LOGFILE=lastlog
+LOGFILE=.ARENA-LOG
 CVSROOT=/nonexistent
 CURR=/nonexistent
 
@@ -53,10 +53,13 @@ cd $ARENA || {
     echo >&2 "Failed to chdir to $ARENA"
     exit 1
 }
-rm -rf $LOGFILE || {
-    echo >&2 "Failed to remove stale $LOGFILE"
-    exit 1
-}
+
+if test -e $LOGFILE; then
+    mv -f $LOGFILE "${LOGFILE}-LAST" || {
+        echo >&2 "Failed to move old $LOGFILE to ${LOGFILE}-LAST"
+        exit 1
+    }
+fi
 
 MODE="$1"
 shift
@@ -172,13 +175,17 @@ fullgc|gc)
     gct=
     test "$MODE" == fullgc && gct=--aggressive
     for rd in ${params[@]}; do
-        intro "$rd: performing $MODE"
-        set -o pipefail
-        (   cd "$rd" || exit 1
-            test "$rd" != "${rd/.git}" && git gc $gct
-        ) 2>&1 | tee -a "$LOGFILE"
-        final "$rd"
-        set +o pipefail
+        if test "$rd" == "${rd/git}"; then
+            log "[$rd: $MODE does not apply]"
+        else
+            intro "$rd: performing $MODE"
+            set -o pipefail
+            (   cd "$rd" || exit 1
+                git gc $gct
+            ) 2>&1 | tee -a "$LOGFILE"
+            final "$rd"
+            set +o pipefail
+        fi
     done
     ;;
 *)
