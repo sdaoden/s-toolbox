@@ -182,7 +182,7 @@ fullgc|gc)
             (   cd "$rd" || exit 1
                 git gc $gct
             ) 2>&1 | tee -a "$LOGFILE"
-            final "$rd"
+            final $? "$rd"
             set +o pipefail
         fi
     done
