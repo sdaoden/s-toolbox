@@ -1768,15 +1768,14 @@ _EOT
     # Enc::vars,funs (public) # {{{
     my ($VolNorm, $AACTag, $OGGTag);
 
-    sub calculate_volume_normalize {
+    sub calculate_volume_normalize { # {{{
+        $VolNorm = undef;
         my $nope = shift;
         if ($nope) {
             print "\nVolume normalization has been turned off\n";
-            $VolNorm = '';
             return;
         }
         print "\nCalculating average volume normalization over all tracks:\n  ";
-        $VolNorm = undef;
         foreach my $t (@Title::List) {
             next unless $t->{IS_SELECTED};
             my $f = $t->{RAW_FILE};
@@ -1794,9 +1793,14 @@ _EOT
             $VolNorm = $avg unless defined $VolNorm;
             $VolNorm = $avg if $avg < $VolNorm;
         }
-        print "\n  Volume amplitude will be changed by: $VolNorm\n";
-        $VolNorm = "-v $VolNorm"; # Argument for sox(1)
-    }
+        if (!defined $VolNorm || ($VolNorm >= 0.98 && $VolNorm <= 1.05)) {
+            print "\n  Volume normalization fuzzy/redundant, turned off\n";
+            $VolNorm = undef;
+        } else {
+            print "\n  Volume amplitude will be changed by: $VolNorm\n";
+            $VolNorm = "-v $VolNorm"; # (For sox(1))
+        }
+    } # }}}
 
     sub encode_selected {
         print "\nEncoding selected tracks:\n";
@@ -1990,10 +1994,15 @@ _EOT
         my $title = shift;
         my $tpath = $title->{TARGET_PLAIN};
 
-        open(SOX, "sox $VolNorm -t raw -r44100 -c2 -w -s " .
-                   $title->{RAW_FILE} . ' -t raw - |')
-            or die "Can't open SOX pipe: $!";
-        binmode SOX or die "binmode SOX failed: $!";
+        if (defined $VolNorm) {
+            open(RAW, "sox $VolNorm -t raw -r44100 -c2 -w -s " .
+                       $title->{RAW_FILE} . ' -t raw - |')
+                or die "Can't open RAW input sox(1) pipe: $!";
+        } else {
+            open RAW, '<', $title->{RAW_FILE} or
+                die "Can't open RAW input file: $!";
+        }
+        binmode RAW or die "binmode RAW input failed: $!";
 
         if ($MP3HI) {
             ::v('Creating MP3 lame(1) high-quality encoder');
@@ -2037,8 +2046,8 @@ _EOT
         }
 
         for (my $data;;) {
-            my $bytes = sysread SOX, $data, 1024 * 1000;
-            die "Error reading SOX: $!" unless defined $bytes;
+            my $bytes = sysread RAW, $data, 1024 * 1000;
+            die "Error reading RAW input: $!" unless defined $bytes;
             last if $bytes == 0;
             print MP3HI $data or die "Error writing MP3 (high): $!" if $MP3HI;
             print MP3LO $data or die "Error writing MP3LO: $!" if $MP3LO;
@@ -2048,7 +2057,7 @@ _EOT
             print OGGLO $data or die "Error write OGGLO: $!" if $OGGLO;
         }
 
-        close SOX or die "Can't close SOX pipe: $!";
+        close RAW or die "Can't close RAW input: $!";
         close MP3HI or die "Can't close MP3 (high) pipe: $!" if $MP3HI;
         close MP3LO or die "Can't close MP3LO: $!" if $MP3LO;
         close AACHI or die "Can't close AAC (high): $!" if $AACHI;
