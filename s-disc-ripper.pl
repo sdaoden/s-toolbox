@@ -1764,9 +1764,9 @@ _EOT
 } # }}}
 } # }}}
 
-{package Enc; # {{{
-    # Enc::vars,funs (public) # {{{
-    my ($VolNorm, $AACTag, $OGGTag);
+{package Enc;
+    # vars,funs # {{{
+    my $VolNorm;
 
     sub calculate_volume_normalize { # {{{
         $VolNorm = undef;
@@ -1810,18 +1810,103 @@ _EOT
                 next;
             }
             print "  Track $t->{NUMBER} -> $t->{TARGET_PLAIN}.*\n";
-            _mp3tag_file($t) if ($MP3HI || $MP3LO);
-            _faac_comment($t) if ($AACHI || $AACLO);
-            _oggenc_comment($t) if ($OGGHI || $OGGLO);
             _encode_file($t);
         }
     }
+
+    sub _encode_file {
+        my $title = shift;
+        my $tpath = $title->{TARGET_PLAIN};
+        my @Coders;
+
+        if (defined $VolNorm) {
+            open(RAW, "sox $VolNorm -t raw -r44100 -c2 -w -s " .
+                       $title->{RAW_FILE} . ' -t raw - |')
+                or die "Can't open RAW input sox(1) pipe: $!";
+        } else {
+            open RAW, '<', $title->{RAW_FILE} or
+                die "Can't open RAW input file: $!";
+        }
+        binmode RAW or die "binmode RAW input failed: $!";
+
+        push @Coders, Enc::Coder::MP3->new($title) if ($MP3HI || $MP3LO);
+        push @Coders, Enc::Coder::AAC->new($title) if ($AACHI || $AACLO);
+        push @Coders, Enc::Coder::OGG->new($title) if ($OGGHI || $OGGLO);
+
+        for (my $data;;) {
+            my $bytes = sysread RAW, $data, 1024 * 1000;
+            die "Error reading RAW input: $!" unless defined $bytes;
+            last if $bytes == 0;
+            $_->write($data) foreach @Coders;
+        }
+
+        close RAW or die "Can't close RAW input: $!";
+        $_->del() foreach @Coders;
+    }
     # }}}
+
+{package Enc::Coder;
+    # Super funs # {{{
+    sub new {
+        my ($self, $title, $hiname, $loname, $ext) = @_;
+        my $p = $title->{TARGET_PLAIN};
+        $self = {
+            hiname => $hiname, hif => undef, hipath => $p . '.' . $ext,
+            loname => $loname, lof => undef, lopath => $p . '.lo.' . $ext
+        };
+        return bless $self;
+    }
+
+    sub write {
+        my ($self, $data) = @_;
+        print {$self->{hif}} $data or die "Write error $self->{hiname}: $!"
+            if $self->{hif};
+        print {$self->{lof}} $data or die "Write error $self->{loname}: $!"
+            if $self->{lof};
+        return $self;
+    }
+
+    sub del {
+        my ($self) = @_;
+        close $self->{hif} or die "Close error $self->{hiname}: $!"
+            if $self->{hif};
+        close $self->{lof} or die "Close error $self->{loname}: $!"
+            if $self->{lof};
+        return $self;
+    }
+    # }}}
+
+{package Enc::Coder::MP3; # {{{
+    our @ISA;
+    BEGIN { @ISA = 'Enc::Coder'; }
+
+    sub new {
+        my ($self, $title) = @_;
+        $self = Enc::Coder::new($self, $title, 'MP3', 'MP3LO', 'mp3');
+        $self = bless $self;
+        $self->_mp3tag_file($title);
+        $self->_open($title, 1) if $MP3HI;
+        $self->_open($title, 0) if $MP3LO;
+        return $self;
+    }
+
+    sub _open {
+        my ($self, $title, $ishi) = @_;
+        my ($s, $t, $b, $f) = ($ishi
+                               ? ('high', ' (high)', '-V 0', $self->{hipath})
+                               : ('low', 'LO', '-V 7', $self->{lopath}));
+        ::v("Creating MP3 lame(1) $s-quality encoder");
+        open(my $fd, '| lame --quiet -r -x -s 44.1 --bitwidth 16 --vbr-new ' .
+                     "$b -q 0 - - >> $f")
+            or die "Can't open AAC$t: $!";
+        binmode $fd or die "binmode error MP3$t: $!";
+        $self->{$ishi ? 'hif' : 'lof'} = $fd;
+    }
 
     # MP3 tag stuff {{{
     sub _mp3tag_file {
         # Stuff in (parens) refers ID3 tag version 2.3.0, www.id3.org.
-        my $title = shift;
+        my ($self, $title) = @_;
         my $ti = $title->{TAG_INFO};
         ::v("Creating MP3 tag file headers");
 
@@ -1866,13 +1951,13 @@ _EOT
         }
 
         for (my $i = 0; $i < 2; ++$i) {
-            my $f = $title->{TARGET_PLAIN};
+            my $f;
             if ($i == 0) {
-                $f .= '.mp3';
                 next if $MP3HI == 0;
+                $f = $self->{hipath};
             } else {
-                $f .= '.lo.mp3';
                 next if $MP3LO == 0;
+                $f = $self->{lopath};
             }
             open F, '>', $f or die "Can't open $f: $!";
             binmode F or die "binmode $f failed: $!";
@@ -1931,50 +2016,104 @@ _EOT
         }
     }
     # }}}
+} # }}}
 
-    # MP4, OGG tag stuff {{{
-    sub _faac_comment {
-        my $title = shift;
+{package Enc::Coder::AAC; # {{{
+    our @ISA;
+    BEGIN { @ISA = 'Enc::Coder'; }
+
+    sub new {
+        my ($self, $title) = @_;
+        $self = Enc::Coder::new($self, $title, 'AAC', 'AACLO', 'mp4');
+        $self = bless $self;
+        $self->_faac_comment($title);
+        $self->_open($title, 1) if $AACHI;
+        $self->_open($title, 0) if $AACLO;
+        return $self;
+    }
+
+    sub _open {
+        my ($self, $title, $ishi) = @_;
+        my ($s, $t, $b, $f) = ($ishi
+                               ? ('high', ' (high)', '-q 300', $self->{hipath})
+                               : ('low', 'LO', '-q 80', $self->{lopath}));
+        ::v("Creating AAC faac(1) $s-quality encoder");
+        open(my $fd, "| faac -XP --mpeg-vers 4 -ws --tns $b $self->{aactag} " .
+                     "-o $f - >/dev/null 2>&1")
+            or die "Can't open AAC$t: $!";
+        binmode $fd or die "binmode error AAC$t: $!";
+        $self->{$ishi ? 'hif' : 'lof'} = $fd;
+    }
+
+     sub _faac_comment {
+        my ($self, $title) = @_;
         my $ti = $title->{TAG_INFO};
         my $i;
-        $AACTag = '';
+        $self->{aactag} = '';
         $i = $ti->{ARTIST};
             $i =~ s/"/\\"/g;
-            $AACTag .= "--artist \"$i\" ";
+            $self->{aactag} .= "--artist \"$i\" ";
         $i = $ti->{ALBUM};
             $i =~ s/"/\\"/g;
-            $AACTag .= "--album \"$i\" ";
+            $self->{aactag} .= "--album \"$i\" ";
         $i = $ti->{TITLE};
             $i =~ s/"/\\"/g;
-            $AACTag .= "--title \"$i\" ";
-        $AACTag .= "--track \"$ti->{TRCK}\" "
+            $self->{aactag} .= "--title \"$i\" ";
+        $self->{aactag} .= "--track \"$ti->{TRCK}\" "
             . (defined $ti->{TPOS} ? "--disc \"$ti->{TPOS}\" " :'')
             . "--genre '$ti->{GENRE}' "
             . (defined $ti->{YEAR} ? "--year \"$ti->{YEAR}\"" :'');
         $i = $ti->{COMM};
         if (defined $i) {
             $i =~ s/"/\\"/g;
-            $AACTag .=" --comment \"S-MUSICBOX:COMM=$i\"";
+            $self->{aactag} .=" --comment \"S-MUSICBOX:COMM=$i\"";
         }
-        Encode::_utf8_off($AACTag);
-        ::v("AACTag: $AACTag");
+        Encode::_utf8_off($self->{aactag});
+        ::v("AACTag: $self->{aactag}");
+    }
+} # }}}
+
+{package Enc::Coder::OGG; # {{{
+    our @ISA;
+    BEGIN { @ISA = 'Enc::Coder'; }
+
+    sub new {
+        my ($self, $title) = @_;
+        $self = Enc::Coder::new($self, $title, 'OGG', 'OGGLO', 'ogg');
+        $self = bless $self;
+        $self->_oggenc_comment($title);
+        $self->_open($title, 1) if $OGGHI;
+        $self->_open($title, 0) if $OGGLO;
+        return $self;
+    }
+
+    sub _open {
+        my ($self, $title, $ishi) = @_;
+        my ($s, $t, $b, $f) = ($ishi
+                               ? ('high', ' (high)', '-q 8.5', $self->{hipath})
+                               : ('low', 'LO', '-q 3.8', $self->{lopath}));
+        ::v("Creating OGG Vorbis oggenc(1) $s-quality encoder");
+        open(my $fd, "| oggenc -Q -r $b $self->{oggtag} -o $f -")
+            or die "Can't open AAC$t: $!";
+        binmode $fd or die "binmode error AAC$t: $!";
+        $self->{$ishi ? 'hif' : 'lof'} = $fd;
     }
 
     sub _oggenc_comment {
-        my $title = shift;
+        my ($self, $title) = @_;
         my $ti = $title->{TAG_INFO};
         my $i;
-        $OGGTag = '';
+        $self->{oggtag} = '';
         $i = $ti->{ARTIST};
             $i =~ s/"/\\"/g;
-            $OGGTag .= "--artist \"$i\" ";
+            $self->{oggtag} .= "--artist \"$i\" ";
         $i = $ti->{ALBUM};
             $i =~ s/"/\\"/g;
-            $OGGTag .= "--album \"$i\" ";
+            $self->{oggtag} .= "--album \"$i\" ";
         $i = $ti->{TITLE};
             $i =~ s/"/\\"/g;
-            $OGGTag .= "--title \"$i\" ";
-        $OGGTag .= "--tracknum \"$ti->{TRACKNUM}\" "
+            $self->{oggtag} .= "--title \"$i\" ";
+        $self->{oggtag} .= "--tracknum \"$ti->{TRACKNUM}\" "
             . (defined $ti->{TPOS}
                 ? "--comment=\"TPOS=$ti->{TPOS}\" " : '')
             . "--comment=\"TRCK=$ti->{TRCK}\" "
@@ -1983,88 +2122,12 @@ _EOT
         $i = $ti->{COMM};
         if (defined $i) {
             $i =~ s/"/\\"/g;
-            $OGGTag .=" --comment \"S-MUSICBOX:COMM=$i\"";
+            $self->{oggtag} .=" --comment \"S-MUSICBOX:COMM=$i\"";
         }
-        Encode::_utf8_off($OGGTag);
-        ::v("OGGTag: $OGGTag");
+        Encode::_utf8_off($self->{oggtag});
+        ::v("OGGTag: $self->{oggtag}");
     }
-    # }}}
-
-    sub _encode_file { # {{{
-        my $title = shift;
-        my $tpath = $title->{TARGET_PLAIN};
-
-        if (defined $VolNorm) {
-            open(RAW, "sox $VolNorm -t raw -r44100 -c2 -w -s " .
-                       $title->{RAW_FILE} . ' -t raw - |')
-                or die "Can't open RAW input sox(1) pipe: $!";
-        } else {
-            open RAW, '<', $title->{RAW_FILE} or
-                die "Can't open RAW input file: $!";
-        }
-        binmode RAW or die "binmode RAW input failed: $!";
-
-        if ($MP3HI) {
-            ::v('Creating MP3 lame(1) high-quality encoder');
-            open(MP3HI, '| lame --quiet -r -x -s 44.1 --bitwidth 16 ' .
-                        "--vbr-new -V 0 -q 0 - - >> $tpath.mp3")
-                or die "Can't open MP3 (high): $!";
-            binmode MP3HI or die "binmode MP3 (high) failed: $!";
-        }
-        if ($MP3LO) {
-            ::v('Creating MP3 lame(1) low-quality encoder');
-            open(MP3LO, '| lame --quiet -r -x -s 44.1 --bitwidth 16 ' .
-                        "--vbr-new -V 7 -q 0 - - >> $tpath.lo.mp3")
-                or die "Can't open MP3LO: $!";
-            binmode MP3LO or die "binmode MP3LO failed: $!";
-        }
-        if ($AACHI) {
-            ::v('Creating AAC faac(1) high-quality encoder');
-            open(AACHI, '| faac -XP --mpeg-vers 4 -ws --tns -q 300 ' .
-                        "$AACTag -o $tpath.mp4 - >/dev/null 2>&1")
-                or die "Can't open AAC (high): $!";
-            binmode AACHI or die "binmode AAC (high) failed: $!";
-        }
-        if ($AACLO) {
-            ::v('Creating AAC faac(1) low-quality encoder');
-            open(AACLO, '| faac -XP --mpeg-vers 4 -ws --tns -q 80 ' .
-                        "$AACTag -o $tpath.lo.mp4 - >/dev/null 2>&1")
-                or die "Can't open AACLO: $!";
-            binmode AACLO or die "binmode AACLO failed: $!";
-        }
-        if ($OGGHI) {
-            ::v('Creating Vorbis oggenc(1) high-quality encoder');
-            open(OGGHI, "| oggenc -Q -r -q 8.5 $OGGTag -o $tpath.ogg -")
-                or die "Can't open OGG (high): $!";
-            binmode OGGHI or die "binmode OGG (high) failed: $!";
-        }
-        if ($OGGLO) {
-            ::v('Creating Vorbis oggenc(1) low-quality encoder');
-            open(OGGLO, "| oggenc -Q -r -q 3.8 $OGGTag -o $tpath.lo.ogg -")
-                or die "Can't open OGGLO: $!";
-            binmode OGGLO or die "binmode OGGLO failed: $!";
-        }
-
-        for (my $data;;) {
-            my $bytes = sysread RAW, $data, 1024 * 1000;
-            die "Error reading RAW input: $!" unless defined $bytes;
-            last if $bytes == 0;
-            print MP3HI $data or die "Error writing MP3 (high): $!" if $MP3HI;
-            print MP3LO $data or die "Error writing MP3LO: $!" if $MP3LO;
-            print AACHI $data or die "Error writing AAC (high): $!" if $AACHI;
-            print AACLO $data or die "Error writing AACLO: $!" if $AACLO;
-            print OGGHI $data or die "Error write OGG (high): $!" if $OGGHI;
-            print OGGLO $data or die "Error write OGGLO: $!" if $OGGLO;
-        }
-
-        close RAW or die "Can't close RAW input: $!";
-        close MP3HI or die "Can't close MP3 (high) pipe: $!" if $MP3HI;
-        close MP3LO or die "Can't close MP3LO: $!" if $MP3LO;
-        close AACHI or die "Can't close AAC (high): $!" if $AACHI;
-        close AACLO or die "Can't close AACLO $!" if $AACLO;
-        close OGGHI or die "Can't close OGG (high): $!" if $OGGHI;
-        close OGGLO or die "Can't close OGGLO: $!" if $OGGLO;
-    } # }}}
 } # }}}
-
+} # Enc::Coder
+} # Enc
 # vim:set fenc=utf-8 filetype=perl syntax=perl ts=4 sts=4 sw=4 et tw=79:
