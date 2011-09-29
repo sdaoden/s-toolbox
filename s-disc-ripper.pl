@@ -978,7 +978,8 @@ jOUTER: while (1) {
 {package MBDB; # {{{
     # MBDB::vars,funs # {{{
     our ($CDDB, $AlbumSet, $Album, $Cast, $Group,   # [GROUP] objects
-        $Error, @Data                               # I/O & content
+        $Error, @Data,                              # I/O & content
+        @SongAddons, $SortAddons                    # First-Round addons
     );
 
     sub init_paths {
@@ -997,6 +998,7 @@ jOUTER: while (1) {
     sub create_data {
         my $ed = defined $ENV{EDITOR} ? $ENV{EDITOR} : '/usr/bin/vi';
         print "\nCreating S-MusicBox per-disc database\n";
+        _create_addons();
 
         my @old_data;
 jREDO:  @old_data = @MBDB::Data;
@@ -1016,6 +1018,7 @@ jREDO:  @old_data = @MBDB::Data;
             print "! Errors detected - edit once again!\n";
             goto jREDO;
         }
+        @SongAddons = (); $SortAddons = '';
 
         print "  Once again - please verify the content:\n";
         print "    $_\n" foreach (@MBDB::Data);
@@ -1025,26 +1028,68 @@ jREDO:  @old_data = @MBDB::Data;
         _write_final();
     }
 
+    sub _create_addons {
+        my $cddbt = $CDDB{TITLES};
+        foreach my $title (@Title::List) {
+            my $i = $title->{INDEX};
+            my $t = $cddbt->[$i];
+            if ($t =~ /^\s*(.+)\/\s*(.+)\s*$/) {
+                my ($a, $t) = ($1, $2);
+                $a =~ s/\s*$//;
+                # First the plain versions
+                $SortAddons .= "\n #" . _create_sort($a);
+                $SongAddons[$i] = "\n #TITLE = $t\n #ARTIST = $a";
+                # But try to take advantage of things like "feat." etc..
+                my @as = _try_split_artist($a);
+                foreach $a (@as) {
+                    $SortAddons .= "\n  #" . _create_sort($a);
+                    $SongAddons[$i] .= "\n  #ARTIST = $a";
+                }
+            }
+        }
+    }
+
+    sub _create_sort {
+        my $sort = shift;
+        if ($sort =~ /^The/i && $sort !~ /^the the$/i) { # The The, The
+            $sort =~ /^the\s+(.+)\s*$/i;
+            $sort = "SORT = $1, The (The $1)";
+        } elsif ($sort =~ /^\s*(\S+)\s+(.+)\s*$/) {
+            $sort = "SORT = $2, $1 ($1 $2)";
+        } else {
+            $sort = "SORT = $sort ($sort)";
+        }
+        return $sort;
+    }
+
+    sub _try_split_artist {
+        my ($art, $any, @r) = (shift, 0);
+        while ($art =~ /(.+?)(?:feat(?:uring|\.)?|and|&)(.+)/i) {
+            $any = 1;
+            $art = $2;
+            my $e = $1;
+            $e =~ s/^\s*//;
+            $e =~ s/\s*$//;
+            push @r, $e;
+        }
+        if ($any) {
+            $art =~ s/^\s*//;
+            push @r, $art;
+        }
+        return @r;
+    }
+
     sub _write_editable {
-        my $df = $MBDB::EditFile;
         my $dataref = shift;
+        my $df = $MBDB::EditFile;
         ::v("Writing editable MusicBox data file as $df");
         open DF, '>', $df or die "Can't open $df: $!";
         if (@$dataref > 0) {
             print DF "\n# CONTENT OF LAST USER EDIT AT END OF FILE!\n\n"
                 or die "Error writing $df: $!";
         }
-
         my $cddbt = $CDDB{TITLES};
-        my $sort = $CDDB{ARTIST};
-        if ($sort =~ /^The/i && $sort !~ /^the the$/i) { # The The, The
-            $sort =~ /^the\s+(.+)$/i;
-            $sort = "SORT = $1, The (The $1)";
-        } elsif ($sort =~ /^([-\w]+)\s+(.+)$/) {
-            $sort = "SORT = $2, $1 ($1 $2)";
-        } else {
-            $sort = "#SORT = $sort ($sort)";
-        }
+        my $sort = _create_sort($CDDB{ARTIST});
 
         print DF _help_text(), "\n",
                 MBDB::ALBUMSET::help_text(),
@@ -1062,7 +1107,7 @@ jREDO:  @old_data = @MBDB::Data;
                 "[CAST]\n",
                 "ARTIST = $CDDB{ARTIST}\n",
                 "# Please CHECK the SORT entry!\n",
-                "$sort\n\n",
+                "$sort$SortAddons\n\n",
                 MBDB::GROUP::help_text(),
                 "#[GROUP]\n#LABEL = \n#GAPLESS = 0\n",
                 "\n",
@@ -1072,7 +1117,8 @@ jREDO:  @old_data = @MBDB::Data;
         foreach my $title (@Title::List) {
             my $n = $title->{NUMBER};
             my $i = $title->{INDEX};
-            print DF "[TRACK]\nNUMBER = $n\nTITLE = $cddbt->[$i]\n\n"
+            my $a = (@SongAddons && defined $SongAddons[$i])?$SongAddons[$i]:'';
+            print DF "[TRACK]\nNUMBER = $n\nTITLE = $cddbt->[$i]$a\n\n"
                 or die "Error writing $df: $!";
         }
 
