@@ -236,10 +236,12 @@ sub command_line { # {{{
         goto jdocu;
     }
 
+    $MUSICDB = glob $MUSICDB if defined $MUSICDB;
     unless (defined $MUSICDB && -d $MUSICDB && -w _) {
         $emsg = "S-MusicBox DB directory unaccessible";
         goto jdocu;
     }
+    $TMPDIR = glob $TMPDIR if defined $TMPDIR;
     unless (defined $TMPDIR && -d $TMPDIR && -w _) {
         $emsg = "The given TMPDIR is somehow not accessible";
         goto jdocu;
@@ -263,7 +265,7 @@ jdocu:
 ${INTRO}S-Disc-Ripper is the disc ripper of the S-MusicBox set of tools.
 It will rip discs, query CDDB servers and finally encode the raw data to MP3,
 and/or (MP4/)AAC and/or (Ogg )Vorbis (as desired).
-Setting the EDITOR environment gives more comfort ($ENV{EDITOR}).
+Setting the EDITOR environment gives more comfort ("$ENV{EDITOR}").
 
 USAGE:
 s-disc-ripper.pl -h|--help
@@ -279,10 +281,10 @@ s-disc-ripper.pl [-v|--verbose] [--musicdb=PATH] [--tmpdir=PATH]
                   neither delete temporary files nor directory!
  --musicdb=PATH   specifies the path to the S-MusicBox database directory.
                   Default setting is the S_MUSICDB environment variable.
-                  Currently $MUSICDB
+                  Currently "$MUSICDB"
  --tmpdir=PATH    the (top) temporary directory to use - defaults to the TMPDIR
                   environment variable.
-                  Currently $TMPDIR
+                  Currently "$TMPDIR"
  --cdrom=SPEC,--cdromdev=DEVSPEC
                   set CDROM drive/device to be used.  SPEC is system-dependend
                   and may be something like </dev/cdrom> or </dev/acd1c>.
@@ -307,7 +309,7 @@ s-disc-ripper.pl [-v|--verbose] [--musicdb=PATH] [--tmpdir=PATH]
                   be produced: MP3, MP4/AAC and OGG in high/low quality.
                   Current settings: $MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO
 _EOT
-    print STDERR "\n!  $emsg\n" if defined $emsg;
+    print STDERR "\n! $emsg\n" if defined $emsg;
     exit defined $emsg ? 1 : 0;
 } # }}}
 
