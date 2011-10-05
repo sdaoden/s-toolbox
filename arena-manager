@@ -1,4 +1,45 @@
-#!/bin/bash
+#!/bin/sh
+#@ arena-manager for dummies (should work with sh(1), bash(1), ksh(1) - yeah).
+#@ Modes:
+#@ reduce,expand; update (followed by autogc if indicated); gc|fullgc.
+#@ Known tags:
+#@ .git, .svn-git, .cvs-git: git(1) (git svn, git cvsimport)
+#@ .svn: svn(1)
+#@ .cvs: cvs(1)
+#@ -no_reduce: skip for "reduce" operation (git(1), hg(1) only)
+#@ -no_full_gc: even with "fullgc", never use --aggressive (git(1) only)
+#@
+#@ I.e.: gnulib.git-no_full_gc, git.git-no_reduce
+#@ For "reduce" git(1) repos need a "NULL" branch which contains a single file
+#@ "NULL" which contains nothing but a single line stating the branch name of
+#@ the "master" branch, i.e. the branch which should be checked out by default.
+#
+# Copyright (c) 2011 Steffen Daode Nurpmeso <sdaoden@gmail.com>.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+# 3. Neither the name of the author nor the names of its contributors
+#    may be used to endorse or promote products derived from this software
+#    without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+# PURPOSE ARE DISCLAIMED.
+# IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
+# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+# THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # Top dir where everything happens
 ARENA="$HOME/arena/code.extern.repos"
@@ -6,14 +47,18 @@ ARENA="$HOME/arena/code.extern.repos"
 GIT=git
 HG=hg
 SVN=svn
-CVS='cvs -fz 9 update -ACRPd'
+CVS='cvs -fz 9'
 
 ##
 
-ESTAT=0
-LOGFILE=.ARENA-LOG
 CVSROOT=/nonexistent
 CURR=/nonexistent
+# These must be in $ARENA!
+LOGFILE=.ARENA-LOG
+AUTOGCFILE=.ARENA-AUTOGC
+#
+ESTAT=0
+GITDID=0
 
 log() {
     echo "$*"
@@ -39,15 +84,10 @@ final() {
         logerr "$2"
     fi
     log $SEP
-    log ''
 }
 
 ##
 
-if test "$BASH" = x""; then
-    echo >&2 "This script needs the GNU bash shell interpreter"
-    exit 1
-fi
 cd $ARENA || {
     echo >&2 "Failed to chdir to $ARENA"
     exit 1
@@ -65,19 +105,38 @@ shift
 PARAMS="$@"
 set -u
 test $# -ne 0 || PARAMS=$(echo *.*)
+typeset -a params
 
 # Perform basename cleanup and move over to $params[]
+# However, autogc mode takes precedence and is mapped to one of fullgc/gc,
+# replacing the PARAMS with the content of $AUTOGCFILE
 log "$0: script startup, mode $MODE"
-declare -a params
-for rd in $PARAMS; do
-    rd=$(echo "$rd" | sed -Ee 's/(.+)\/+$/\1/' -e 's/.*\/([^/]+)$/\1/')
-    params[${#params[*]}]="$rd"
-done
+if test "$MODE" == autogc; then
+    if test ! -s "$AUTOGCFILE"; then
+        logerr 'Necessary information for autogc is missing'
+        exit 1
+    fi
+    for r in $(< "$AUTOGCFILE"); do
+        params[${#params[*]}]="$r"
+    done
+    m=$(date +%m)
+    if test $(( ${m#0} % 3 )) -eq 0; then
+        MODE=fullgc
+        log 'Turned over to mode fullgc (not gc since MONTH%3==0)'
+    else
+        MODE=gc
+        log 'Turned over to mode gc'
+    fi
+else
+    for rd in $PARAMS; do
+        rd=$(echo "$rd" | sed -Ee 's/(.+)\/+$/\1/' -e 's/.*\/([^/]+)$/\1/')
+        params[${#params[*]}]="$rd"
+    done
+fi
 
-GITDID=
 case "$MODE" in
 reduce|expand)
-    if test "$MODE" == 'reduce'; then
+    if test "$MODE" == reduce; then
         git_branch='NULL'
         hg_branch='null'
     else
@@ -86,15 +145,17 @@ reduce|expand)
     fi
 
     for rd in ${params[@]}; do
-        if test "$rd" == "${rd/null/}"; then
+        if [[ "$rd" != ${rd/no_reduce/} || ! ( "$rd" != ${rd/git} ||
+              "$rd" != ${rd/hg} ) ]]; then
+            log ''
             log "[$rd: $MODE does not apply]"
             continue
         fi
 
         intro "$rd: performing $MODE"
         set -o pipefail
-        (   cd "$rd" || exit 1
-            if test "$rd" != "${rd/git-null}"; then
+        (   cd "$rd" || exit 10
+            if test "$rd" != ${rd/git}; then
                 # On branch NULL file NULL contains master branch's name
                 if test -z "$git_branch"; then
                     if test -f NULL; then
@@ -105,7 +166,7 @@ reduce|expand)
                     fi
                 fi
                 $GIT checkout -q $git_branch
-            else
+            else #elif test "$rd" != ${rd/hg}; then
                 $HG up $hg_branch
             fi
             exit $?
@@ -115,16 +176,23 @@ reduce|expand)
     done
     ;;
 update)
+    rm -rf $AUTOGCFILE || {
+        echo >&2 "Failed to remove stale $AUTOGCFILE"
+        exit 1
+    }
+
     for rd in ${params[@]}; do
         intro "$rd: performing $MODE"
         set -o pipefail
         (   cd "$rd" || exit 10
-            if test "$rd" != "${rd/.git}"; then
+            if test "$rd" != ${rd/.git}; then
                 #$GIT pull -v --ff-only --stat --prune
                 $GIT fetch --verbose --prune
-            elif test "$rd" != "${rd/.svn-git}"; then
+                es=$?
+            elif test "$rd" != ${rd/.svn-git}; then
                 $GIT svn rebase
-            elif test "$rd" != "${rd/.cvs-git}"; then
+                es=$?
+            elif test "$rd" != ${rd/.cvs-git}; then
                 ldir='.git/.cvsps'
                 tar xjf "$ldir.tbz" || {
                     echo >&2 "$rd: bail: tar xjf $ldir.tbz"
@@ -151,49 +219,76 @@ update)
                     exit 13
                 }
                 rm -rf $ldir
-                exit $es
-            elif test "$rd" != "${rd/.hg}"; then
+            elif test "$rd" != ${rd/.hg}; then
                 $HG -v pull #-u
-            elif test "$rd" != "${rd/.svn}"; then
+                es=$?
+            elif test "$rd" != ${rd/.svn}; then
                 $SVN update
-            elif test "$rd" != "${rd/.cvs}"; then
-                $CVS
+                es=$?
+            elif test "$rd" != ${rd/.cvs}; then
+                $CVS update -ARPd #C
+                es=$?
             else
                 echo "Unknown revision-control-system: $rd"
-                exit 1
+                es=1
             fi
-            exit $?
+
+            if test "$rd" != ${rd/git}; then
+                r1=$(git show-ref --hash HEAD)
+                r2=$(git show-ref --hash origin/HEAD)
+                if test $r1 != $r2; then
+                    echo '... {git seems to have updated, marking for autogc}'
+                    echo "$rd" >> "$ARENA/$AUTOGCFILE"
+                fi
+            fi
+            exit $es
         ) 2>&1 | tee -a "$LOGFILE"
         es=$?
         set +o pipefail
         final $es "$rd"
-        test $es -eq 0 && test "$rd" != "${rd/git}" && GITDID=1
     done
+
+    test -s "$AUTOGCFILE" && GITDID=1
     ;;
 fullgc|gc)
-    gct=
-    test "$MODE" == fullgc && gct=--aggressive
+    GCT=
+    test "$MODE" == fullgc && GCT=--aggressive
     for rd in ${params[@]}; do
-        if test "$rd" == "${rd/git}"; then
+        if test "$rd" == ${rd/git}; then
+            log ''
             log "[$rd: $MODE does not apply]"
-        else
-            intro "$rd: performing $MODE"
-            set -o pipefail
-            (   cd "$rd" || exit 1
-                git gc $gct
-            ) 2>&1 | tee -a "$LOGFILE"
-            final $? "$rd"
-            set +o pipefail
+            continue
         fi
+        m=$MODE
+        i=$GCT
+        if test "$rd" != ${rd/no_full_gc}; then
+            m='gc (fullgc forcefully downgraded)'
+            i=
+        fi
+        intro "$rd: performing $m"
+        set -o pipefail
+        (   cd "$rd" || exit 1
+            time git gc $i
+        ) 2>&1 | tee -a "$LOGFILE"
+        final $? "$rd"
+        set +o pipefail
     done
     ;;
 *)
-    echo 'USAGE: manager reduce|expand|update|gc|fullgc LIST-OF-DIRECTORIES'
+    echo 'USAGE: manager reduce|expand|update|autogc|gc|fullgc LIST-OF-DIRS'
     exit 1
     ;;
 esac
-test x"$GITDID" != x && log 'git(1) fetched data - do arena-manager [full]gc ..'
 
-test $ESTAT -ne 0 && log 'Errors occurred!'
+log ''
+log '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++'
+if test $GITDID -ne 0; then
+    log 'Some git(1) repos seem to have new packs, run arena-manager autogc'
+fi
+if test $ESTAT -ne 0; then
+    log 'Errors occurred!  Ooooh, my gooooooood!  :)'
+else
+    log 'All seems fine around here, ciao'
+fi
 exit $ESTAT
 # vim:set fenc=utf-8 filetype=sh syntax=sh ts=4 sts=4 sw=4 et tw=79:
