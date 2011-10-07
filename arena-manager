@@ -13,6 +13,10 @@
 #@ For "reduce" git(1) repos need a "NULL" branch which contains a single file
 #@ "NULL" which contains nothing but a single line stating the branch name of
 #@ the "master" branch, i.e. the branch which should be checked out by default.
+#@
+#@ git(1): this script assumes refs start with 'refs/', followed by 'remotes'
+#@ for remotes or 'heads' for locals ('tags' are ignored).  It only compares
+#@ against remotes which then are followed by 'origin'.  See below for more.
 #
 # Copyright (c) 2011 Steffen Daode Nurpmeso <sdaoden@gmail.com>.
 # All rights reserved.
@@ -234,12 +238,34 @@ update)
             fi
 
             if test "$rd" != ${rd/git}; then
-                r1=$(git show-ref --hash HEAD)
-                r2=$(git show-ref --hash origin/HEAD)
-                if test $r1 != $r2; then
-                    echo '... {git seems to have updated, marking for autogc}'
-                    echo "$rd" >> "$ARENA/$AUTOGCFILE"
-                fi
+                git show-ref |
+                perl -e "\$rd = \"$rd\"; \$agcf = \"$ARENA/$AUTOGCFILE\";" -e '
+                    my (%remotes, %heads);
+                    while (<STDIN>) {
+                        chomp;
+                        my ($sha, $ref) = split;
+                        #print STDERR "sha<$sha> ref<$ref>\n";
+                        $ref =~ s/^refs\///;
+                        if ($ref =~ s/^remotes\///) {
+                            $remotes{$ref} = $sha;
+                        } elsif ($ref =~ s/^heads\///) {
+                            $heads{$ref} = $sha;
+                        } elsif ($ref !~ /^tags/) {
+                            print STDERR "Skipping unrecognized ref $ref\n";
+                        }
+                    }
+
+                    open AGCF, ">> $agcf" ||
+                        die "Cannot open append-write $autogcfile: $!";
+                    foreach (keys %remotes) {
+                        (my $lr = $_) =~ s/^origin\///;
+                        next unless exists $heads{$lr};
+                        next if $heads{$lr} eq $remotes{$_};
+                        print "... {at least \"$lr\" and \"$_\" differ, ",
+                              "marking for autogc}\n";
+                        print AGCF $rd, "\n";
+                    }
+                '
             fi
             exit $es
         ) 2>&1 | tee -a "$LOGFILE"
