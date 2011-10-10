@@ -196,6 +196,12 @@ update)
             elif test "$rd" != ${rd/.svn-git}; then
                 $GIT svn rebase
                 es=$?
+            elif test "$rd" != ${rd/.cvs-dumbgit}; then
+                $GIT co remotes/origin/master
+                $CVS update -ARPd #C
+                es=$?
+                $GIT add --all && $GIT ci -m 'arena-manager .cvs-dumbgit update'
+                $GIT co master
             elif test "$rd" != ${rd/.cvs-git}; then
                 ldir='.git/.cvsps'
                 tar xjf "$ldir.tbz" || {
