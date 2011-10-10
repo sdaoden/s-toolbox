@@ -255,10 +255,13 @@ update)
                         chomp;
                         my ($sha, $ref) = split;
                         #print STDERR "sha<$sha> ref<$ref>\n";
-                        $ref =~ s/^refs\///;
-                        if ($ref =~ s/^remotes\///) {
+                        $ref =~ s/^refs\/(.+)/$1/;
+                        # For .cvs-bombgit case, it is "heads/remotes/" ... !
+                        if ($ref =~ /remotes\/(.+)/) {
+                            $ref = $1;
                             $remotes{$ref} = $sha;
-                        } elsif ($ref =~ s/^heads\///) {
+                        } elsif ($ref =~ /^heads\/(.+)/) {
+                            $ref = $1;
                             $heads{$ref} = $sha;
                         } elsif ($ref !~ /^tags/) {
                             print STDERR "Skipping unrecognized ref $ref\n";
@@ -266,15 +269,16 @@ update)
                     }
 
                     open AGCF, ">> $agcf" ||
-                        die "Cannot open append-write $autogcfile: $!";
+                        die "Cannot open append-write $agcf: $!";
                     foreach (keys %remotes) {
                         (my $lr = $_) =~ s/^origin\///;
                         next unless exists $heads{$lr};
                         next if $heads{$lr} eq $remotes{$_};
                         print "... {at least \"$lr\" and \"$_\" differ, ",
                               "marking for autogc}\n";
-                        print AGCF $rd, "\n";
-                    }
+                        print AGCF $rd, "\n" || die "Cannot write $agcf: $!";
+                    } 
+                    close AGCF || die "Cannot close $agcf: $!";
                 '
             fi
             exit $es
