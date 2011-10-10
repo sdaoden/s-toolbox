@@ -141,7 +141,7 @@ fi
 case "$MODE" in
 reduce|expand)
     if test "$MODE" == reduce; then
-        git_branch='NULL'
+        git_branch='arena-manager-null'
         hg_branch='null'
     else
         git_branch=
@@ -160,7 +160,8 @@ reduce|expand)
         set -o pipefail
         (   cd "$rd" || exit 10
             if test "$rd" != ${rd/git}; then
-                # On branch NULL file NULL contains master branch's name
+                # File NULL on branch arena-manager-null contains of a single
+                # line stating the master branch's name
                 if test -z "$git_branch"; then
                     if test -f NULL; then
                         git_branch=$(<NULL)
@@ -197,7 +198,7 @@ update)
                 $GIT svn rebase
                 es=$?
             elif test "$rd" != ${rd/.cvs-bombgit}; then
-                $GIT checkout remotes/origin/master
+                $GIT checkout remotes/origin/master # Pseudo "remotes"!!
                 $CVS update -ARPd #C
                 es=$?
                 $GIT add --all &&
