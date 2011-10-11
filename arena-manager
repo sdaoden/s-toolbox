@@ -1,5 +1,7 @@
 #!/bin/sh
 #@ arena-manager for dummies (should work with sh(1), bash(1), ksh(1) - yeah).
+# Top dir where everything happens
+ARENA="$HOME/arena/code.extern.repos"
 #@ Modes:
 #@ reduce,expand; update (followed by autogc if indicated); gc|fullgc.
 #@ Known tags:
@@ -44,9 +46,6 @@
 # ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-# Top dir where everything happens
-ARENA="$HOME/arena/code.extern.repos"
 
 GIT=git
 HG=hg
@@ -198,12 +197,21 @@ update)
                 $GIT svn rebase
                 es=$?
             elif test "$rd" != ${rd/.cvs-bombgit}; then
-                $GIT checkout remotes/origin/master # Pseudo "remotes"!!
+                $GIT checkout arena-manager-pseudo-remote || {
+                    echo >&2 "$rd: can\'t change branch.  Local changes?  Bail!"
+                    exit 11
+                }
                 $CVS update -ARPd #C
                 es=$?
-                $GIT add --all &&
-                $GIT commit -m 'arena-manager .cvs-bombgit update'
-                $GIT checkout master
+                test 0 != $($GIT status --porcelain | wc -l | \
+                            sed -Ee 's/^[[:space:]]+(.*)$/\1/') &&
+                    echo "... cvs(1) updated some, initiating git(1) commit" &&
+                    $GIT add --all &&
+                    $GIT commit -m 'arena-manager .cvs-bombgit update' &&
+                    $GIT update-ref refs/remotes/origin/master \
+                                    arena-manager-pseudo-remote
+                $GIT checkout master ||
+                    echo >&2 "$rd: failed to checkout back to master"
             elif test "$rd" != ${rd/.cvs-git}; then
                 cvsps_dir="$HOME/.cvsps"
                 test -d "$cvsps_dir" || mkdir "$cvsps_dir" || {
@@ -211,7 +219,10 @@ update)
                     exit 10
                 }
 
-                $GIT checkout -f arena-manager-config || exit 11
+                $GIT checkout arena-manager-config || {
+                    echo >&2 "$rd: can\'t change branch.  Local changes?  Bail!"
+                    exit 11
+                }
                 master=$(<git_master)           # The name of the master branch
                 cvs_root=$(<cvs_root)           # CVSROOT repo URL (CVS/Root)
                 cvs_module=$(<cvs_module)       # CVS module (CVS/Repository)
@@ -243,7 +254,7 @@ update)
                 $CVS update -ARPd #C
                 es=$?
             else
-                echo "Unknown revision-control-system: $rd"
+                echo >&2 "Unknown revision-control-system: $rd"
                 es=1
             fi
 
@@ -256,12 +267,9 @@ update)
                         my ($sha, $ref) = split;
                         #print STDERR "sha<$sha> ref<$ref>\n";
                         $ref =~ s/^refs\/(.+)/$1/;
-                        # For .cvs-bombgit case, it is "heads/remotes/" ... !
-                        if ($ref =~ /remotes\/(.+)/) {
-                            $ref = $1;
+                        if ($ref =~ s/^remotes\///) {
                             $remotes{$ref} = $sha;
-                        } elsif ($ref =~ /^heads\/(.+)/) {
-                            $ref = $1;
+                        } elsif ($ref =~ s/^heads\///) {
                             $heads{$ref} = $sha;
                         } elsif ($ref !~ /^tags/) {
                             print STDERR "Skipping unrecognized ref $ref\n";
@@ -276,7 +284,7 @@ update)
                         next if $heads{$lr} eq $remotes{$_};
                         print "... {at least \"$lr\" and \"$_\" differ, ",
                               "marking for autogc}\n";
-                        print AGCF $rd, "\n" || die "Cannot write $agcf: $!";
+                        print AGCF $rd, "\n" || die "Cannot write $agcf: $!";
                     } 
                     close AGCF || die "Cannot close $agcf: $!";
                 '
