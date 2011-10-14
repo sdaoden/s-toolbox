@@ -1,7 +1,7 @@
 #!/bin/sh
 #@ arena-manager for dummies (should work with sh(1), bash(1), ksh(1) - yeah).
 # Top dir where everything happens
-#ARENA="$HOME/arena/code.extern.repos"
+#ARENA="$HOME/arena/code.extern"
 ARENA="$TMPDIR/x"
 #@ Modes:
 #@ reduce,expand; update (followed by autogc if indicated); gc|fullgc.
@@ -90,12 +90,20 @@ final() {
     log $SEP
 }
 
-## git(1)
+## git(1) stuff: all called from within subshell with -o pipefail
 
-git_check_clean() {
-    test 0 != $($GIT clean --dry-run | wc -l | \
+#git_check_clean() {
+#    test 0 != $($GIT clean --dry-run | wc -l | \
+#                sed -Ee 's/^[[:space:]]+(.*)$/\1/') && {
+#        echo >&2 "Untracked files present, bailing out!" &&
+#        exit 10
+#    }
+#}
+
+git_check_status() {
+    test 0 != $($GIT status --short | wc -l | \
                 sed -Ee 's/^[[:space:]]+(.*)$/\1/') && {
-        echo >&2 "Untracked files present, bailing out!" &&
+        echo >&2 "Modified or untracked files present, bailing out!" &&
         exit 10
     }
 }
@@ -108,7 +116,47 @@ git_checkout() {
     }
 }
 
+_rcguc=0
+git_ref_check_gc_update() {
+    # Return 41 if no new data, 42 if new data, otherwise error
+    test $_rcguc -ne 0 && return $_rcguc
 
+    local branch="$1" autogcfile="$2"
+    $GIT show-ref |
+    perl -e "\$rd = \"$branch\"; \$agcf = \"$autogcfile\";" -e '
+        my (%remotes, %heads);
+        while (<STDIN>) {
+            chomp;
+            my ($sha, $ref) = split;
+            #print STDERR "sha<$sha> ref<$ref>\n";
+            $ref =~ s/^refs\/(.+)/$1/;
+            if ($ref =~ s/^remotes\///) {
+                $remotes{$ref} = $sha;
+            } elsif ($ref =~ s/^heads\///) {
+                $heads{$ref} = $sha;
+            } elsif ($ref !~ /^tags/) {
+                print STDERR "Skipping unrecognized ref $ref\n";
+            }
+        }
+
+        my $es = 41;
+        open AGCF, ">> $agcf" ||
+            die "Cannot open append-write $agcf: $!";
+        foreach (keys %remotes) {
+            (my $lr = $_) =~ s/^origin\///;
+            next unless exists $heads{$lr};
+            next if $heads{$lr} eq $remotes{$_};
+            $es = 42;
+            print "... {at least \"$lr\" and \"$_\" differ, ",
+                  "marking for autogc}\n";
+            print AGCF $rd, "\n" || die "Cannot write $agcf: $!";
+        } 
+        close AGCF || die "Cannot close $agcf: $!";
+        exit $es;
+    '
+    _rcguc=$?
+    return $_rcguc
+}
 
 ##
 
@@ -184,7 +232,7 @@ reduce|expand)
                 # line stating the master branch's name
                 if test -z "$git_branch"; then
                     if test -f NULL; then
-                        git_branch=$(<NULL)
+                        git_branch=$(< NULL)
                     else
                         echo >&2 "No file NULL in $rd"
                         git_branch=master
@@ -209,25 +257,32 @@ update)
     for rd in ${params[@]}; do
         if test "$rd" != ${rd/.tar-bomb-git}; then
             log ''
-            log "[$rd: (automatic) $MODE does not apply (impossible)]"
+            log "[$rd: (automatic) $MODE does not apply]"
+            continue
         fi
 
         intro "$rd: performing $MODE"
         set -o pipefail
-        (   cd "$rd" || exit 10
-            if test "$rd" != ${rd/.hg}; then
-                $HG -v pull #-u
-                exit $?
-            elif test "$rd" != ${rd/.svn}; then
-                $SVN update
-                exit $?
-            elif test "$rd" != ${rd/.cvs}; then
-                $CVS update -ARPd #C
-                exit $?
+        (   cd "$rd" || exit 9
+            if test "$rd" == ${rd/git}; then
+                if test "$rd" != ${rd/.hg}; then
+                    $HG -v pull #-u
+                    es=$?
+                elif test "$rd" != ${rd/.svn}; then
+                    $SVN update
+                    es=$?
+                elif test "$rd" != ${rd/.cvs}; then
+                    $CVS update -ARPd #C
+                    es=$?
+                else
+                    echo >&2 "Unknown revision-control-system: $rd"
+                    es=1
+                fi
+                exit $es
             fi
 
             # git(1) and related
-            git_check_clean
+            git_check_status
 
             if test "$rd" != ${rd/.git}; then
                 #$GIT pull -v --ff-only --stat --prune
@@ -237,7 +292,7 @@ update)
                 $GIT svn rebase
                 es=$?
             elif test "$rd" != ${rd/.cvs-bomb-git}; then
-                git_checkout arena-manager-pseudo-remote
+                git_checkout arena-manager-download
 
                 $CVS update -ARPd #C
                 es=$?
@@ -250,27 +305,33 @@ update)
                     $GIT add --all
                     $GIT commit -m 'arena-manager .cvs-bomb-git update'
                     $GIT update-ref refs/remotes/origin/master \
-                                    arena-manager-pseudo-remote
+                                    arena-manager-download
+                    echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 20
+                else
+                    echo "... cvs(1) did not seem to have new data"
                 fi
 
-                git_checkout master
+                git_checkout_force master
             elif test "$rd" != ${rd/.cvs-git}; then
+                # Go to the branch which stores our configuration stuff
                 git_checkout arena-manager-config
 
+                master=$(< git_master)          # The name of the master branch
+                cvs_root=$(< cvs_root)          # CVSROOT repo URL (CVS/Root)
+                cvs_module=$(< cvs_module)      # CVS module (CVS/Repository)
+                cvsps_file=$(< cvsps_file)      # cvsps(1) cache file name
+                test -f cvs-revisions && Rflag=-R || Rflag= # git cvsimport dat
+
+                # Prepare cvsps(1) (and git(1) cvsimport) cache
                 cvsps_dir="$HOME/.cvsps"
                 test -d "$cvsps_dir" || mkdir "$cvsps_dir" || {
                     echo >&2 "$rd: failed to create $cvsps_dir directory"
                     exit 20
                 }
-
-                master=$(<git_master)           # The name of the master branch
-                cvs_root=$(<cvs_root)           # CVSROOT repo URL (CVS/Root)
-                cvs_module=$(<cvs_module)       # CVS module (CVS/Repository)
-                cvsps_file=$(<cvsps_file)       # cvsps(1) cache file name
-                test -f cvs-revisions && Rflag=-R || Rflag= # git cvsimport dat
-
                 test x"$Rflag" != x && cp -f cvs-revisions .git/
                 cp -f cvsps_cache "$cvsps_dir/$cvsps_file"
+
+                # NOTE: we *require* these -r -d etc...
                 $GIT cvsimport -ai $Rflag -p '-u,--cvs-direct' \
                      -r origin -d "$cvs_root" "$cvs_module"
                 es=$?
@@ -279,45 +340,26 @@ update)
                     git_checkout "$master"
                     exit $es
                 }
-                test x"$Rflag" != x && mv -f .git/cvs-revisions .
-                mv -f "$cvsps_dir/$cvsps_file" cvsps_cache
 
-                $GIT commit -am 'arena-manager .cvs-git update' || exit 21
+                git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
+                if test $? -eq 42; then
+                    echo '... committing updated configuration'
+                    test x"$Rflag" != x && mv -f .git/cvs-revisions .
+                    mv -f "$cvsps_dir/$cvsps_file" cvsps_cache
+                    $GIT commit -am 'arena-manager .cvs-git update' || exit 21
+                else
+                    echo '... cvsimport had nothing, not updating config'
+                    test x"$Rflag" != x && rm -f .git/cvs-revisions
+                    rm -f "$cvsps_dir/$cvsps_file"
+                fi
+
                 git_checkout "$master"
             else
                 echo >&2 "Unknown revision-control-system: $rd"
                 exit 1
             fi
 
-            git show-ref |
-            perl -e "\$rd = \"$rd\"; \$agcf = \"$ARENA/$AUTOGCFILE\";" -e '
-                my (%remotes, %heads);
-                while (<STDIN>) {
-                    chomp;
-                    my ($sha, $ref) = split;
-                    #print STDERR "sha<$sha> ref<$ref>\n";
-                    $ref =~ s/^refs\/(.+)/$1/;
-                    if ($ref =~ s/^remotes\///) {
-                        $remotes{$ref} = $sha;
-                    } elsif ($ref =~ s/^heads\///) {
-                        $heads{$ref} = $sha;
-                    } elsif ($ref !~ /^tags/) {
-                        print STDERR "Skipping unrecognized ref $ref\n";
-                    }
-                }
-
-                open AGCF, ">> $agcf" ||
-                    die "Cannot open append-write $agcf: $!";
-                foreach (keys %remotes) {
-                    (my $lr = $_) =~ s/^origin\///;
-                    next unless exists $heads{$lr};
-                    next if $heads{$lr} eq $remotes{$_};
-                    print "... {at least \"$lr\" and \"$_\" differ, ",
-                          "marking for autogc}\n";
-                    print AGCF $rd, "\n" || die "Cannot write $agcf: $!";
-                } 
-                close AGCF || die "Cannot close $agcf: $!";
-            '
+            git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
             exit $es
         ) 2>&1 | tee -a "$LOGFILE"
         es=$?
