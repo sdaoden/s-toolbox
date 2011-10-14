@@ -1,7 +1,8 @@
 #!/bin/sh
 #@ arena-manager for dummies (should work with sh(1), bash(1), ksh(1) - yeah).
 # Top dir where everything happens
-ARENA="$HOME/arena/code.extern.repos"
+#ARENA="$HOME/arena/code.extern.repos"
+ARENA="$TMPDIR/x"
 #@ Modes:
 #@ reduce,expand; update (followed by autogc if indicated); gc|fullgc.
 #@ Known tags:
@@ -88,6 +89,26 @@ final() {
     fi
     log $SEP
 }
+
+## git(1)
+
+git_check_clean() {
+    test 0 != $($GIT clean --dry-run | wc -l | \
+                sed -Ee 's/^[[:space:]]+(.*)$/\1/') && {
+        echo >&2 "Untracked files present, bailing out!" &&
+        exit 10
+    }
+}
+
+git_checkout() {
+    local br="$1"
+    $GIT checkout -f $br -- || {
+        echo >&2 "Can\'t checkout branch $br, bailing out!" &&
+        exit 11
+    }
+}
+
+
 
 ##
 
@@ -186,9 +207,28 @@ update)
     }
 
     for rd in ${params[@]}; do
+        if test "$rd" != ${rd/.tar-bomb-git}; then
+            log ''
+            log "[$rd: (automatic) $MODE does not apply (impossible)]"
+        fi
+
         intro "$rd: performing $MODE"
         set -o pipefail
         (   cd "$rd" || exit 10
+            if test "$rd" != ${rd/.hg}; then
+                $HG -v pull #-u
+                exit $?
+            elif test "$rd" != ${rd/.svn}; then
+                $SVN update
+                exit $?
+            elif test "$rd" != ${rd/.cvs}; then
+                $CVS update -ARPd #C
+                exit $?
+            fi
+
+            # git(1) and related
+            git_check_clean
+
             if test "$rd" != ${rd/.git}; then
                 #$GIT pull -v --ff-only --stat --prune
                 $GIT fetch --verbose --prune
@@ -196,33 +236,33 @@ update)
             elif test "$rd" != ${rd/.svn-git}; then
                 $GIT svn rebase
                 es=$?
-            elif test "$rd" != ${rd/.cvs-bombgit}; then
-                $GIT checkout arena-manager-pseudo-remote || {
-                    echo >&2 "$rd: can\'t change branch.  Local changes?  Bail!"
-                    exit 11
-                }
+            elif test "$rd" != ${rd/.cvs-bomb-git}; then
+                git_checkout arena-manager-pseudo-remote
+
                 $CVS update -ARPd #C
                 es=$?
-                test 0 != $($GIT status --porcelain | wc -l | \
-                            sed -Ee 's/^[[:space:]]+(.*)$/\1/') &&
-                    echo "... cvs(1) updated some, initiating git(1) commit" &&
-                    $GIT add --all &&
-                    $GIT commit -m 'arena-manager .cvs-bombgit update' &&
+                # Ignore all updates which occur in CVS/ directories, at least
+                # for the check if repo content changed
+                if test 0 != $($GIT status --porcelain | \
+                               sed -Ee '/CVS\/[^\/]+$/d' | wc -l | \
+                               sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
+                    echo "... cvs(1) updated some, initiating git(1) commit"
+                    $GIT add --all
+                    $GIT commit -m 'arena-manager .cvs-bomb-git update'
                     $GIT update-ref refs/remotes/origin/master \
                                     arena-manager-pseudo-remote
-                $GIT checkout master ||
-                    echo >&2 "$rd: failed to checkout back to master"
+                fi
+
+                git_checkout master
             elif test "$rd" != ${rd/.cvs-git}; then
+                git_checkout arena-manager-config
+
                 cvsps_dir="$HOME/.cvsps"
                 test -d "$cvsps_dir" || mkdir "$cvsps_dir" || {
                     echo >&2 "$rd: failed to create $cvsps_dir directory"
-                    exit 10
+                    exit 20
                 }
 
-                $GIT checkout arena-manager-config || {
-                    echo >&2 "$rd: can\'t change branch.  Local changes?  Bail!"
-                    exit 11
-                }
                 master=$(<git_master)           # The name of the master branch
                 cvs_root=$(<cvs_root)           # CVSROOT repo URL (CVS/Root)
                 cvs_module=$(<cvs_module)       # CVS module (CVS/Repository)
@@ -236,59 +276,48 @@ update)
                 es=$?
                 test $es -ne 0 && {
                     echo >&2 "$rd git(1) cvsimport failed, bailing out"
-                    $GIT checkout -f $master
+                    git_checkout "$master"
                     exit $es
                 }
                 test x"$Rflag" != x && mv -f .git/cvs-revisions .
                 mv -f "$cvsps_dir/$cvsps_file" cvsps_cache
 
-                $GIT commit -am 'arena-manager .cvs-git update' || exit 12
-                $GIT checkout $master || exit 13
-            elif test "$rd" != ${rd/.hg}; then
-                $HG -v pull #-u
-                es=$?
-            elif test "$rd" != ${rd/.svn}; then
-                $SVN update
-                es=$?
-            elif test "$rd" != ${rd/.cvs}; then
-                $CVS update -ARPd #C
-                es=$?
+                $GIT commit -am 'arena-manager .cvs-git update' || exit 21
+                git_checkout "$master"
             else
                 echo >&2 "Unknown revision-control-system: $rd"
-                es=1
+                exit 1
             fi
 
-            if test "$rd" != ${rd/git}; then
-                git show-ref |
-                perl -e "\$rd = \"$rd\"; \$agcf = \"$ARENA/$AUTOGCFILE\";" -e '
-                    my (%remotes, %heads);
-                    while (<STDIN>) {
-                        chomp;
-                        my ($sha, $ref) = split;
-                        #print STDERR "sha<$sha> ref<$ref>\n";
-                        $ref =~ s/^refs\/(.+)/$1/;
-                        if ($ref =~ s/^remotes\///) {
-                            $remotes{$ref} = $sha;
-                        } elsif ($ref =~ s/^heads\///) {
-                            $heads{$ref} = $sha;
-                        } elsif ($ref !~ /^tags/) {
-                            print STDERR "Skipping unrecognized ref $ref\n";
-                        }
+            git show-ref |
+            perl -e "\$rd = \"$rd\"; \$agcf = \"$ARENA/$AUTOGCFILE\";" -e '
+                my (%remotes, %heads);
+                while (<STDIN>) {
+                    chomp;
+                    my ($sha, $ref) = split;
+                    #print STDERR "sha<$sha> ref<$ref>\n";
+                    $ref =~ s/^refs\/(.+)/$1/;
+                    if ($ref =~ s/^remotes\///) {
+                        $remotes{$ref} = $sha;
+                    } elsif ($ref =~ s/^heads\///) {
+                        $heads{$ref} = $sha;
+                    } elsif ($ref !~ /^tags/) {
+                        print STDERR "Skipping unrecognized ref $ref\n";
                     }
+                }
 
-                    open AGCF, ">> $agcf" ||
-                        die "Cannot open append-write $agcf: $!";
-                    foreach (keys %remotes) {
-                        (my $lr = $_) =~ s/^origin\///;
-                        next unless exists $heads{$lr};
-                        next if $heads{$lr} eq $remotes{$_};
-                        print "... {at least \"$lr\" and \"$_\" differ, ",
-                              "marking for autogc}\n";
-                        print AGCF $rd, "\n" || die "Cannot write $agcf: $!";
-                    } 
-                    close AGCF || die "Cannot close $agcf: $!";
-                '
-            fi
+                open AGCF, ">> $agcf" ||
+                    die "Cannot open append-write $agcf: $!";
+                foreach (keys %remotes) {
+                    (my $lr = $_) =~ s/^origin\///;
+                    next unless exists $heads{$lr};
+                    next if $heads{$lr} eq $remotes{$_};
+                    print "... {at least \"$lr\" and \"$_\" differ, ",
+                          "marking for autogc}\n";
+                    print AGCF $rd, "\n" || die "Cannot write $agcf: $!";
+                } 
+                close AGCF || die "Cannot close $agcf: $!";
+            '
             exit $es
         ) 2>&1 | tee -a "$LOGFILE"
         es=$?
