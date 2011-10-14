@@ -1,8 +1,7 @@
 #!/bin/sh
 #@ arena-manager for dummies (should work with sh(1), bash(1), ksh(1) - yeah).
 # Top dir where everything happens
-#ARENA="$HOME/arena/code.extern"
-ARENA="$TMPDIR/x"
+ARENA="$HOME/arena/code.extern"
 #@ Modes:
 #@ reduce,expand; update (followed by autogc if indicated); gc|fullgc.
 #@ Known tags:
@@ -116,10 +115,11 @@ git_checkout() {
     }
 }
 
-_rcguc=0
+_rcguc_ok=0 _rcguc=0
 git_ref_check_gc_update() {
     # Return 41 if no new data, 42 if new data, otherwise error
-    test $_rcguc -ne 0 && return $_rcguc
+    test $_rcguc_ok -ne 0 && return $_rcguc
+    _rcguc_ok=1
 
     local branch="$1" autogcfile="$2"
     $GIT show-ref |
@@ -147,9 +147,10 @@ git_ref_check_gc_update() {
             next unless exists $heads{$lr};
             next if $heads{$lr} eq $remotes{$_};
             $es = 42;
-            print "... {at least \"$lr\" and \"$_\" differ, ",
+            print "... {at least \"$lr\" and \"remotes/$_\" differ, ",
                   "marking for autogc}\n";
             print AGCF $rd, "\n" || die "Cannot write $agcf: $!";
+            last;
         } 
         close AGCF || die "Cannot close $agcf: $!";
         exit $es;
@@ -158,56 +159,9 @@ git_ref_check_gc_update() {
     return $_rcguc
 }
 
-##
+## modes
 
-cd $ARENA || {
-    echo >&2 "Failed to chdir to $ARENA"
-    exit 1
-}
-
-if test -e $LOGFILE; then
-    mv -f $LOGFILE "${LOGFILE}-LAST" || {
-        echo >&2 "Failed to move old $LOGFILE to ${LOGFILE}-LAST"
-        exit 1
-    }
-fi
-
-MODE="$1"
-shift
-PARAMS="$@"
-set -u
-test $# -ne 0 || PARAMS=$(echo *.*)
-typeset -a params
-
-# Perform basename cleanup and move over to $params[]
-# However, autogc mode takes precedence and is mapped to one of fullgc/gc,
-# replacing the PARAMS with the content of $AUTOGCFILE
-log "$0: script startup, mode $MODE"
-if test "$MODE" == autogc; then
-    if test ! -s "$AUTOGCFILE"; then
-        logerr 'Necessary information for autogc is missing'
-        exit 1
-    fi
-    for r in $(< "$AUTOGCFILE"); do
-        params[${#params[*]}]="$r"
-    done
-    m=$(date +%m)
-    if test $(( ${m#0} % 3 )) -eq 0; then
-        MODE=fullgc
-        log 'Turned over to mode fullgc (not gc since MONTH%3==0)'
-    else
-        MODE=gc
-        log 'Turned over to mode gc'
-    fi
-else
-    for rd in $PARAMS; do
-        rd=$(echo "$rd" | sed -Ee 's/(.+)\/+$/\1/' -e 's/.*\/([^/]+)$/\1/')
-        params[${#params[*]}]="$rd"
-    done
-fi
-
-case "$MODE" in
-reduce|expand)
+reduce_expand() {
     if test "$MODE" == reduce; then
         git_branch='arena-manager-null'
         hg_branch='null'
@@ -247,8 +201,34 @@ reduce|expand)
         final $? "$rd"
         set +o pipefail
     done
-    ;;
-update)
+}
+
+xgc() {
+    GCT=
+    test "$MODE" == fullgc && GCT=--aggressive
+    for rd in ${params[@]}; do
+        if test "$rd" == ${rd/git}; then
+            log ''
+            log "[$rd: $MODE does not apply]"
+            continue
+        fi
+        m=$MODE
+        i=$GCT
+        if test "$rd" != ${rd/no_full_gc}; then
+            m='gc (fullgc forcefully downgraded)'
+            i=
+        fi
+        intro "$rd: performing $m"
+        set -o pipefail
+        (   cd "$rd" || exit 1
+            time git gc $i
+        ) 2>&1 | tee -a "$LOGFILE"
+        final $? "$rd"
+        set +o pipefail
+    done
+}
+
+update() {
     rm -rf $AUTOGCFILE || {
         echo >&2 "Failed to remove stale $AUTOGCFILE"
         exit 1
@@ -272,7 +252,7 @@ update)
                     $SVN update
                     es=$?
                 elif test "$rd" != ${rd/.cvs}; then
-                    $CVS update -ARPd #C
+                    $CVS update -APd #C
                     es=$?
                 else
                     echo >&2 "Unknown revision-control-system: $rd"
@@ -294,24 +274,26 @@ update)
             elif test "$rd" != ${rd/.cvs-bomb-git}; then
                 git_checkout arena-manager-download
 
-                $CVS update -ARPd #C
+                $CVS update -APd #C
                 es=$?
                 # Ignore all updates which occur in CVS/ directories, at least
                 # for the check if repo content changed
                 if test 0 != $($GIT status --porcelain | \
-                               sed -Ee '/CVS\/[^\/]+$/d' | wc -l | \
+                               sed -Ee '/CVS\/Entries.*$/d' -Ee '/\.git/d' | \
+                               wc -l | \
                                sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
                     echo "... cvs(1) updated some, initiating git(1) commit"
                     $GIT add --all
                     $GIT commit -m 'arena-manager .cvs-bomb-git update'
                     $GIT update-ref refs/remotes/origin/master \
                                     arena-manager-download
-                    echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 20
+                    echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 20
                 else
+                    $GIT reset --hard HEAD
                     echo "... cvs(1) did not seem to have new data"
                 fi
 
-                git_checkout_force master
+                git_checkout master
             elif test "$rd" != ${rd/.cvs-git}; then
                 # Go to the branch which stores our configuration stuff
                 git_checkout arena-manager-config
@@ -368,33 +350,178 @@ update)
     done
 
     test -s "$AUTOGCFILE" && GITDID=1
-    ;;
-fullgc|gc)
-    GCT=
-    test "$MODE" == fullgc && GCT=--aggressive
-    for rd in ${params[@]}; do
+}
+
+automerge() {
+    if test ! -s "$AUTOGCFILE"; then
+        logerr 'Necessary information for automerge is missing'
+        exit 1
+    fi
+    for rd in $(< "$AUTOGCFILE"); do
         if test "$rd" == ${rd/git}; then
             log ''
             log "[$rd: $MODE does not apply]"
             continue
         fi
-        m=$MODE
-        i=$GCT
-        if test "$rd" != ${rd/no_full_gc}; then
-            m='gc (fullgc forcefully downgraded)'
-            i=
-        fi
-        intro "$rd: performing $m"
+
+        intro "$rd: performing $MODE"
         set -o pipefail
-        (   cd "$rd" || exit 1
-            time git gc $i
+        (   cd "$rd" || exit 9
+            git_check_status
+            master=$($GIT rev-parse --symbolic-full-name HEAD | \
+                     sed -e 's/^refs\/heads\///')
+            test "$rd" != ${rd/.svn-git} && issvn=1 || issvn=0
+            perl -e "\$git = \"$GIT\"; \$is_svn = $issvn;" -e '
+                my (%remotes, %heads, @reflines);
+                open RLPIPE, "$git show-ref |" or die "Cannot read refs";
+                @reflines = <RLPIPE>;
+                close RLPIPE;
+                while (@reflines) {
+                    my $l = pop @reflines;
+                    chomp $l;
+                    my ($sha, $ref) = split /\s+/, $l;
+                    $ref =~ s/^refs\/(.+)/$1/;
+                    if ($ref =~ s/^remotes\///) {
+                        $remotes{$ref} = $sha;
+                    } elsif ($ref =~ s/^heads\///) {
+                        $heads{$ref} = $sha;
+                    } elsif ($ref !~ /^tags/) {
+                        print STDERR "Skipping unrecognized ref $ref\n";
+                    }
+                }
+
+                my $es = 0;
+                foreach (keys %remotes) {
+                    (my $lr = $_) =~ s/^origin\///;
+                    next unless exists $heads{$lr};
+                    next if $heads{$lr} eq $remotes{$_};
+                    if ($is_svn) {
+                        print "\n... git-svn performs automerge, ",
+                              "so update-ref $lr\n";
+                        system("$git update-ref " .
+                               "refs/heads/$lr refs/remotes/$_");
+                        $es |= $?;
+                    } else {
+                        print "\n... Performing automerge from $_ to $lr\n";
+                        system("$git checkout -f $lr; $git merge --ff-only $_");
+                        $es |= $?;
+                    }
+                } 
+                exit $es;
+            '
+            es=$?
+            git_checkout "$master"
         ) 2>&1 | tee -a "$LOGFILE"
-        final $? "$rd"
+        es=$?
         set +o pipefail
+        final $es "$rd"
     done
+}
+
+autogc() {
+    if test ! -s "$AUTOGCFILE"; then
+        logerr 'Necessary information for autogc is missing'
+        exit 1
+    fi
+    unset params
+    typeset -a params
+    for r in $(< "$AUTOGCFILE"); do
+        params[${#params[*]}]="$r"
+    done
+    m=$(date +%m)
+    if test $(( ${m#0} % 3 )) -eq 0; then
+        MODE=fullgc
+        log 'Turned over to mode fullgc (not gc since MONTH%3==0)'
+    else
+        MODE=gc
+        log 'Turned over to mode gc'
+    fi
+    xgc
+}
+
+check_update() {
+    es=0
+    log 'Checking how likely it is an update would succeed'
+    for rd in ${params[@]}; do
+        if test "$rd" != ${rd/git}; then
+            action="$GIT status --short"
+        elif test "$rd" != ${rd/.hg}; then
+            action="$HG status"
+        else
+            log "[$rd: don't know how to check]"
+            continue
+        fi
+        if test 0 != $(cd $rd && $action | wc -l | \
+                       sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
+            log "! $rd: modified or untracked files present!"
+            es=1
+        else
+            log "  $rd: looks good"
+        fi
+    done
+    test $es -ne 0 && {
+        echo >&2 "Some repositories need a hand first"
+        exit $es
+    }
+}
+
+## exec
+
+cd $ARENA || {
+    echo >&2 "Failed to chdir to $ARENA"
+    exit 1
+}
+
+if test -e $LOGFILE; then
+    mv -f $LOGFILE "${LOGFILE}-LAST" || {
+        echo >&2 "Failed to move old $LOGFILE to ${LOGFILE}-LAST"
+        exit 1
+    }
+fi
+
+MODE="$1"
+shift
+PARAMS="$@"
+set -u
+test $# -ne 0 || PARAMS=$(echo *.*)
+typeset -a params
+
+# Perform basename cleanup and move over to $params[]
+# However, autogc mode takes precedence and is mapped to one of fullgc/gc,
+# replacing the PARAMS with the content of $AUTOGCFILE
+log "$0: script startup, mode $MODE"
+if test "$MODE" != autogc; then
+    for rd in $PARAMS; do
+        rd=$(echo "$rd" | sed -Ee 's/(.+)\/+$/\1/' -e 's/.*\/([^/]+)$/\1/')
+        params[${#params[*]}]="$rd"
+    done
+fi
+
+case "$MODE" in
+reduce|expand)      reduce_expand;;
+fullgc|gc)          xgc;;
+update)             update;;
+automerge)          automerge;;
+autogc)             autogc;;
+check_update)       check_update;;
+auto_update)
+    MODE='auto_update: check_update'
+    check_update
+    MODE='auto_update: update'
+    update
+    if test ! -s "$AUTOGCFILE"; then
+        log ''
+        log 'It seems there is no new data at all, skipping merge+gc'
+    else
+        MODE='auto_update: automerge'
+        automerge
+        MODE='auto_update: autogc'
+        autogc
+    fi
     ;;
 *)
-    echo 'USAGE: manager reduce|expand|update|autogc|gc|fullgc LIST-OF-DIRS'
+    echo 'USAGE: arena-manager MODE [LIST-OF-DIRS]'
+    echo 'MODEs: reduce|expand|gc|fullgc|update|automerge|autogc|check_update|auto_update'
     exit 1
     ;;
 esac
