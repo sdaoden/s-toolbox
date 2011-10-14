@@ -23,8 +23,9 @@ my @EXLIST = qw(.DS_Store .localized .Trash);
 
 # List of input directories for normal mode/--complete mode, respectively
 my @NORMAL_INPUT = (
-    "$HOME/arena/code.extern.repos",
-    "$HOME/arena/code.repos",
+    "$HOME/arena/code.extern",
+    "$HOME/arena/code.local",
+    "$HOME/arena/data",
     "$HOME/arena/docs.2wheel",
     "$HOME/arena/docs.4wheel",
     "$HOME/arena/docs.coding",
@@ -34,8 +35,8 @@ my @NORMAL_INPUT = (
     "$HOME/arena/pics.snapshots"
 );
 my @COMPLETE_INPUT = (
-#   "$HOME/arena",
-    "$HOME/arena/code.repos",
+    "$HOME/arena/code.local",
+    "$HOME/arena/data",
     "$HOME/arena/movies.snapshots",
     "$HOME/arena/pics.artwork",
     "$HOME/arena/pics.snapshots"
@@ -52,7 +53,7 @@ my $GIT_OUTPUT_DIR = "$HOME/arena/data/backups";
 # outgoing changes is stored in $HG_OUTPUT_DIR.  In addition shelve and mq
 # patches are also backed up automatically, if existent
 my $HG_SRC_DIR = "$HOME/src";
-my $HG_REPO_DIR = "$HOME/arena/code.repos";
+my $HG_REPO_DIR = "$HOME/arena/code.local";
 # For git(1) this is xy.git (plus xy.git/.git).  Here we simply use the git(1)
 # "bundle" command with all possible flags to create the backup, which thus
 # includes stashes etc.
