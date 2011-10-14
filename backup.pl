@@ -2,24 +2,28 @@
 # Created: 2010-02-25
 # default: (tar -rf) backup.tar files changed since last invocation
 # -r/--reset: do not take care about timestamps, do create xy.dateTtime.tbz
-# -c/--complete: other config ($COMPLETE_), always xy.dateTtime.tbz
+# -c/--complete: other input (@COMPLETE_INPUT), always xy.dateTtime.tbz
 
 # Note: all _absolute_ directories and _not_ globs
 
-my $EMAIL = defined($ENV{'EMAIL'}) ? $ENV{'EMAIL'} : 'postmaster@localhost';
+# Home directory of user
 my $HOME = $ENV{'HOME'};
+# EMail address to send result to
+my $EMAIL = defined($ENV{'EMAIL'}) ? $ENV{'EMAIL'} : 'postmaster@localhost';
 
-# Mercurial work-clone-dir/repo-dir day-by-day bundles+shelve+patch backups
-my $HG_SRC_DIR = "$HOME/src";
-my $HG_REPO_DIR = "$HOME/arena/code.repos";
-my $HG_BUNDLE_DIR = "$HOME/arena/data/backups";
-# Git work-clone-dir/repo-dir day-by-day bundles backups
-my $GIT_SRC_DIR = "$HOME/src";
-my $GIT_BUNDLE_DIR = "$HOME/arena/data/backups";
+# Where to store backup(s) and metadata
+my $OUTPUT_DIR = "$HOME/traffic";
 
+# Our metadata storage
+my $TSTAMP = "$OUTPUT_DIR/.-backup.dat";
+
+# A fileglob (may really be a glob) and a list of directories to always exclude
+my $EXGLOB = '._* *~ *.swp';
+my @EXLIST = qw(.DS_Store .localized .Trash);
+
+# List of input directories for normal mode/--complete mode, respectively
 my @NORMAL_INPUT = (
     "$HOME/arena/code.extern.repos",
-    "$HOME/arena/code.extern.balls",
     "$HOME/arena/code.repos",
     "$HOME/arena/docs.2wheel",
     "$HOME/arena/docs.4wheel",
@@ -37,14 +41,22 @@ my @COMPLETE_INPUT = (
     "$HOME/arena/pics.snapshots"
 );
 
-my $EXGLOB = '._* *~ *.swp';
-my @EXLIST = qw(.DS_Store .localized .Trash);
-
-my $NORMAL_OUTPUT = "$HOME/traffic";
-my $COMPLETE_OUTPUT = "$HOME/traffic";
-
-my $NORMAL_TSTAMP = "$HOME/traffic/.-backup.dat";
-my $COMPLETE_TSTAMP = $NORMAL_TSTAMP; #"$HOME/traffic/.-backup-complete.dat";
+# We are also able to create backup bundles for hg(1) and git(1), which are
+# stored in the directories given here; note that these are *not* automatically
+# backed up, so place them in @XY_INPUT...
+my $HG_OUTPUT_DIR = "$HOME/arena/data/backups";
+my $GIT_OUTPUT_DIR = "$HOME/arena/data/backups";
+# What actuall happens is that the $HG_SRC_DIR and $GIT_SRC_DIR are walked.
+# For hg(1), directories encountered and ending with .hg (and having xy.hg/.hg)
+# are checked against an equally named dir in $HG_REPO_DIR, and a bundle of all
+# outgoing changes is stored in $HG_OUTPUT_DIR.  In addition shelve and mq
+# patches are also backed up automatically, if existent
+my $HG_SRC_DIR = "$HOME/src";
+my $HG_REPO_DIR = "$HOME/arena/code.repos";
+# For git(1) this is xy.git (plus xy.git/.git).  Here we simply use the git(1)
+# "bundle" command with all possible flags to create the backup, which thus
+# includes stashes etc.
+my $GIT_SRC_DIR = "$HOME/src";
 
 ###
 
@@ -58,7 +70,7 @@ use IO::Handle;
 
 my ($COMPLETE, $RESET, $VERBOSE) = (0, 0, 0);
 my $FS_TIME_ANDOFF = 3; # Filesystem precision adjust (must be mask) ...
-my ($INPUT, $TSTAMP, $OUTPUT); # References to above syms
+my ($INPUT);            # References to above syms
 
 # Messages also go into this finally mail(1)ed file
 my ($MFFH,$MFFN) = File::Temp::tempfile(UNLINK => 1);
@@ -71,12 +83,8 @@ jMAIN: {
     if ($COMPLETE) {
         msg(1, 'Using "complete" backup configuration');
         $INPUT = \@COMPLETE_INPUT;
-        $TSTAMP = \$COMPLETE_TSTAMP;
-        $OUTPUT = \$COMPLETE_OUTPUT;
     } else {
         $INPUT = \@NORMAL_INPUT;
-        $TSTAMP = \$NORMAL_TSTAMP;
-        $OUTPUT = \$NORMAL_OUTPUT;
     }
     msg(1, 'Ignoring old timestamps due to "--reset" option') if $RESET;
 
@@ -122,7 +130,7 @@ sub do_exit {
     if ($estat == 0) { msg(0, 'mail(1)ing report and exit success'); }
     else             { err(0, 'mail(1)ing report and exit FAILURE'); }
     $| = 1;
-    system("mail -s 'Backup report (" . Filelist::count() .
+    system("mail -s 'Backup report (" . Filelist::count() . # XXX use sendmail
            " file(s))' $EMAIL < $MFFN >/dev/null 2>&1");
     $| = 0;
     exit $estat;
@@ -135,7 +143,7 @@ sub do_exit {
     $LAST_DATE = '1999-01-11T11:11:08 GMT';
 
     sub create {
-        $CURRENT = time();
+        $CURRENT = time;
         $CURRENT &= ~$FS_TIME_ANDOFF;
         $CURRENT_DATE = _format_epoch($CURRENT);
         ::msg(0, "Current timestamp: $CURRENT ($CURRENT_DATE)");
@@ -143,26 +151,26 @@ sub do_exit {
     }
 
     sub save {
-        ::msg(0, "Writing current timestamp to <$$TSTAMP>");
-        unless (open(TSTAMP, ">$$TSTAMP")) {
+        ::msg(0, "Writing current timestamp to <$TSTAMP>");
+        unless (open TSTAMP, '>', $TSTAMP) {
             ::err(1, "Failed to open for writing: $^E",
                      'Ensure writeability and re-run!');
             ::do_exit(1);
         }
         print TSTAMP "$CURRENT\n(That's $CURRENT_DATE)\n";
-        close(TSTAMP);
+        close TSTAMP;
     }
 
     sub _read {
-        ::msg(0, "Reading old timestamp from <$$TSTAMP>");
-        unless (open(TSTAMP, "<$$TSTAMP")) {
+        ::msg(0, "Reading old timestamp from <$TSTAMP>");
+        unless (open TSTAMP, '<', $TSTAMP) {
             ::err(1, 'Timestamp file cannot be read - setting --reset option');
             $RESET = 1;
         } else {
             my $l = <TSTAMP>;
-            close(TSTAMP);
+            close TSTAMP;
             chomp $l;
-            $l = int($l);
+            $l = int $l;
 
             $l &= ~$FS_TIME_ANDOFF;
             if ($l >= $CURRENT) {
@@ -177,10 +185,10 @@ sub do_exit {
     }
 
     sub _format_epoch {
-        my @e = gmtime($_[0]);
+        my @e = gmtime $_[0];
         return sprintf('%04d-%02d-%02dT%02d:%02d:%02d GMT',
-                ($e[5] + 1900), ($e[4] + 1), $e[3],
-                $e[2], $e[1], $e[0]);
+                       ($e[5] + 1900), ($e[4] + 1), $e[3],
+                       $e[2], $e[1], $e[0]);
     }
 }
 
@@ -194,17 +202,17 @@ sub do_exit {
 
     sub _create_list {
         ::msg(0, 'Collecting repo information');
-        unless (-d $HG_BUNDLE_DIR) {
+        unless (-d $HG_OUTPUT_DIR) {
             ::err(0, 'FAILURE: no HG backup-bundle/-shelve/-patch dir found');
             ::do_exit(1);
         }
 
-        unless (opendir(DIR, $HG_SRC_DIR)) {
+        unless (opendir DIR, $HG_SRC_DIR) {
             ::err(1, "opendir($HG_SRC_DIR) failed: $^E");
             ::do_exit(1);
         }
-        my @dents = readdir(DIR);
-        closedir(DIR);
+        my @dents = readdir DIR;
+        closedir DIR;
 
         foreach my $dent (@dents) {
             next if $dent eq '.' || $dent eq '..';
@@ -212,7 +220,7 @@ sub do_exit {
             next unless -d $abs;
             next unless $abs =~ /\.hg$/;
             next unless -d "$abs/.hg";
-            push(@HG_Dirs, $dent);
+            push @HG_Dirs, $dent;
             ::msg(1, "added <$dent>");
         }
     }
@@ -222,7 +230,7 @@ sub do_exit {
         foreach my $e (@HG_Dirs) {
             ::msg(1, "Processing $e");
             my $src = $HG_SRC_DIR . '/' . $e;
-            unless (chdir($src)) {
+            unless (chdir $src) {
                 ::err(2, "HGBundles: cannot chdir($src): $^E");
                 ::do_exit(1);
             }
@@ -238,7 +246,7 @@ sub do_exit {
         my ($target, $dest, $flag, $omodt);
         ::msg(2, 'Checking for new bundle') if $VERBOSE;
 
-        $target = "$HG_BUNDLE_DIR/$e";
+        $target = "$HG_OUTPUT_DIR/$e";
         $target = $1 if $target =~ /(.+)\..+$/;
         $target .= '.bundle';
         $dest = "$HG_REPO_DIR/$e";
@@ -256,7 +264,7 @@ sub do_exit {
         # modification times to decide wether an error occurred.
         # If not we can also throw away the old bundle..
         $omodt = -1;
-        {   my @x = stat($target);
+        {   my @x = stat $target;
             if (@x) { $omodt = $x[9]; }
         }
         $flag = system("hg bundle $flag $target $dest >> $MFFN 2>&1");
@@ -281,7 +289,7 @@ sub do_exit {
         my ($target, $dest, $flag);
         ::msg(2, "Checking for $what") if $VERBOSE;
 
-        $target = "$HG_BUNDLE_DIR/$e";
+        $target = "$HG_OUTPUT_DIR/$e";
         $target = $1 if $target =~ /(.+)\..+$/;
         $target .= "-$what.tbz";
         ::msg(3, "... target: $target") if $VERBOSE;
@@ -292,13 +300,13 @@ sub do_exit {
         }
 
         # Only if none-empty
-        unless (opendir(DIR, $dest)) {
+        unless (opendir DIR, $dest) {
             ::err(3, "opendir($dest) failed: $^E");
             return;
         }
         $flag = 0;
-        {   my @dents = readdir(DIR);
-            closedir(DIR);
+        {   my @dents = readdir DIR;
+            closedir DIR;
             foreach my $dent (@dents) {
                 next if $dent eq '.' || $dent eq '..';
                 $flag = 1;
@@ -332,17 +340,17 @@ sub do_exit {
 
     sub _create_list {
         ::msg(0, 'Collecting repo information');
-        unless (-d $GIT_BUNDLE_DIR) {
+        unless (-d $GIT_OUTPUT_DIR) {
             ::err(0, 'FAILURE: no Git backup-bundle dir found');
             ::do_exit(1);
         }
 
-        unless (opendir(DIR, $GIT_SRC_DIR)) {
+        unless (opendir DIR, $GIT_SRC_DIR) {
             ::err(1, "opendir($GIT_SRC_DIR) failed: $^E");
             ::do_exit(1);
         }
-        my @dents = readdir(DIR);
-        closedir(DIR);
+        my @dents = readdir DIR;
+        closedir DIR;
 
         foreach my $dent (@dents) {
             next if $dent eq '.' || $dent eq '..';
@@ -350,7 +358,7 @@ sub do_exit {
             next unless -d $abs;
             next unless $abs =~ /\.git$/;
             next unless -d "$abs/.git";
-            push(@Git_Dirs, $dent);
+            push @Git_Dirs, $dent;
             ::msg(1, "added <$dent>");
         }
     }
@@ -360,7 +368,7 @@ sub do_exit {
         foreach my $e (@Git_Dirs) {
             ::msg(1, "Processing $e");
             my $src = $GIT_SRC_DIR . '/' . $e;
-            unless (chdir($src)) {
+            unless (chdir $src) {
                 ::err(2, "GitBundles: cannot chdir($src): $^E");
                 ::do_exit(1);
             }
@@ -374,7 +382,7 @@ sub do_exit {
         my ($target, $flag, $omodt);
         ::msg(2, 'Checking for new bundle') if $VERBOSE;
 
-        $target = "$GIT_BUNDLE_DIR/$e";
+        $target = "$GIT_OUTPUT_DIR/$e";
         $target = $1 if $target =~ /(.+)\..+$/;
         $target .= '.bundle';
         $flag = '--all --not --remotes --tags';
@@ -402,7 +410,7 @@ sub do_exit {
         for (my $i = 0; $i < @$INPUT;) {
             my $dir = $$INPUT[$i++];
             if (! -d $dir) {
-                splice(@$INPUT, --$i, 1);
+                splice @$INPUT, --$i, 1;
                 ::err(1,  "DROPPED <$dir>");
             } else {
                 ::msg(1, "added <$dir>");
@@ -426,17 +434,17 @@ sub do_exit {
         my ($abspath) = @_;
         # Need to chdir() due to glob(@EXGLOB) ...
         ::msg(1, ".. checking <$abspath>") if $VERBOSE;
-        unless (chdir($abspath)) {
+        unless (chdir $abspath) {
             ::err(1, "Cannot chdir($abspath): $^E");
             return;
         }
-        unless (opendir(DIR, '.')) {
+        unless (opendir DIR, '.') {
             ::err(1, "opendir($abspath) failed: $^E");
             return;
         }
-        my @dents = readdir(DIR);
-        closedir(DIR);
-        my @exglob = glob($EXGLOB);
+        my @dents = readdir DIR;
+        closedir DIR;
+        my @exglob = glob $EXGLOB;
 
         my @subdirs;
 jOUTER:     foreach my $dentry (@dents) {
@@ -463,9 +471,9 @@ jOUTER:     foreach my $dentry (@dents) {
                     ::err(2, "<$path> not readable");
                     next jOUTER;
                 }
-                my $mtime = (stat(_))[9] & ~$FS_TIME_ANDOFF;
+                my $mtime = (stat _)[9] & ~$FS_TIME_ANDOFF;
                 if ($RESET || $mtime >= $Timestamp::LAST) {
-                    push(@List, $path);
+                    push @List, $path;
                     if ($VERBOSE) { ::msg(2, "added <$dentry>"); }
                     else          { ::msg(1, "a <$path>"); }
                 } elsif ($VERBOSE) {
@@ -485,8 +493,8 @@ jOUTER:     foreach my $dentry (@dents) {
         if ($RESET || $COMPLETE) {
             my $ar = $Timestamp::CURRENT_DATE;
             $ar =~ s/:/_/g;
-            $ar=~s/^(.*?)[[:space:]]+[[:alpha:]]+[[:space:]]*$/$1/;
-            $ar = "$$OUTPUT/$backup.${ar}.tbz"; # ALGO below!
+            $ar =~ s/^(.*?)[[:space:]]+[[:alpha:]]+[[:space:]]*$/$1/;
+            $ar = "$OUTPUT_DIR/$backup.${ar}.tbz"; # ALGO below!
             ::msg(0, "Creating archive <$ar>");
 
             my ($lffh,$lffn) = File::Temp::tempfile(UNLINK => 1);
@@ -499,15 +507,14 @@ jOUTER:     foreach my $dentry (@dents) {
                 ::do_exit(1);
             }
         } else {
-            my $ar = "$$OUTPUT/$backup.tar";
+            my $ar = "$OUTPUT_DIR/$backup.tar";
             ::msg(0, "Creating/Updating archive <$ar>");
-            unless (open(XARGS, '| xargs -0 '
-                  . "tar rLf $ar > /dev/null 2>> $MFFN")) {
+            unless (open XARGS, "| xargs -0 tar rLf $ar >/dev/null 2>>$MFFN") {
                 ::err(1, "Failed creating pipe: $^E");
                 ::do_exit(1);
             }
             foreach my $p (@$listref) { print XARGS $p, "\x00"; }
-            close(XARGS);
+            close XARGS;
         }
     }
 }
