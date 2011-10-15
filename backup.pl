@@ -1,10 +1,10 @@
 #!/usr/bin/perl
-# Created: 2010-02-25
-# default: (tar -rf) backup.tar files changed since last invocation
-# -r/--reset: do not take care about timestamps, do create xy.dateTtime.tbz
-# -c/--complete: other input (@COMPLETE_INPUT), always xy.dateTtime.tbz
+#@ default: (tar -rf) backup.tar files changed since (timestamp of) last run
+#@ -r/--reset: do not take care about timestamps, do create xy.dateTtime.tbz
+#@ -c/--complete: other input (@COMPLETE_INPUT), always xy.dateTtime.tbz
+#@ -t/--timestamp: don't backup, but set the timestamp to the current time
 
-# Note: all _absolute_ directories and _not_ globs
+## Note: all _absolute_ directories and _not_ globs ##
 
 # Home directory of user
 my $HOME = $ENV{'HOME'};
@@ -47,7 +47,7 @@ my @COMPLETE_INPUT = (
 # backed up, so place them in @XY_INPUT...
 my $HG_OUTPUT_DIR = "$HOME/arena/data/backups";
 my $GIT_OUTPUT_DIR = "$HOME/arena/data/backups";
-# What actuall happens is that the $HG_SRC_DIR and $GIT_SRC_DIR are walked.
+# What actually happens is that the $HG_SRC_DIR and $GIT_SRC_DIR are walked.
 # For hg(1), directories encountered and ending with .hg (and having xy.hg/.hg)
 # are checked against an equally named dir in $HG_REPO_DIR, and a bundle of all
 # outgoing changes is stored in $HG_OUTPUT_DIR.  In addition shelve and mq
@@ -69,7 +69,7 @@ use File::Temp;
 use Getopt::Long;
 use IO::Handle;
 
-my ($COMPLETE, $RESET, $VERBOSE) = (0, 0, 0);
+my ($COMPLETE, $RESET, $TIMESTAMP, $VERBOSE) = (0, 0, 0, 0);
 my $FS_TIME_ANDOFF = 3; # Filesystem precision adjust (must be mask) ...
 my ($INPUT);            # References to above syms
 
@@ -80,27 +80,32 @@ jMAIN: {
     msg(0, "Parsing command line");
     Getopt::Long::Configure('bundling');
     GetOptions('c|complete' => \$COMPLETE, 'r|reset' => \$RESET,
-               'v|verbose' => \$VERBOSE);
+               't|timestamp' => \$TIMESTAMP, 'v|verbose' => \$VERBOSE);
     if ($COMPLETE) {
         msg(1, 'Using "complete" backup configuration');
         $INPUT = \@COMPLETE_INPUT;
     } else {
         $INPUT = \@NORMAL_INPUT;
     }
-    msg(1, 'Ignoring old timestamps due to "--reset" option') if $RESET;
+    $RESET = 1 if $TIMESTAMP;
+    msg(1, 'Ignoring old timestamps due to "--reset"') if $RESET;
+    msg(1, 'Only updating the timestamp due to "--timestamp"') if $TIMESTAMP;
 
     Timestamp::create();
-    HGBundles::create();
-    GitBundles::create();
+    unless ($TIMESTAMP) {
+        HGBundles::create();
+        GitBundles::create();
 
-    Filelist::create();
-    unless (Filelist::is_any()) {
-        Timestamp::save();
-        do_exit(0);
+        Filelist::create();
+        unless (Filelist::is_any()) {
+            Timestamp::save();
+            do_exit(0);
+        }
+
+        Archive::create();
     }
-
-    Archive::create();
     Timestamp::save();
+    exit 0 if $TIMESTAMP;
     do_exit(0);
 }
 
@@ -489,7 +494,7 @@ jOUTER:     foreach my $dentry (@dents) {
 {package Archive;
     sub create {
         my $listref = Filelist::get_listref();
-        my $backup = $COMPLETE ? 'complete-backup' : 'backup'; 
+        my $backup = $COMPLETE ? 'complete-backup' : 'backup';
 
         if ($RESET || $COMPLETE) {
             my $ar = $Timestamp::CURRENT_DATE;
