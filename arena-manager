@@ -1,24 +1,10 @@
 #!/bin/sh
-#@ arena-manager for dummies (should work with sh(1), bash(1), ksh(1) - yeah).
-# Top dir where everything happens
-ARENA="$HOME/arena/code.extern"
-#@ Modes:
-#@ reduce,expand; update (followed by autogc if indicated); gc|fullgc.
-#@ Known tags:
-#@ .git, .svn-git, .cvs-git: git(1) (git svn, git cvsimport)
-#@ .svn: svn(1)
-#@ .cvs: cvs(1)
-#@ -no_reduce: skip for "reduce" operation (git(1), hg(1) only)
-#@ -no_full_gc: even with "fullgc", never use --aggressive (git(1) only)
-#@
-#@ I.e.: gnulib.git-no_full_gc, git.git-no_reduce
-#@ For "reduce" git(1) repos need a "NULL" branch which contains a single file
-#@ "NULL" which contains nothing but a single line stating the branch name of
-#@ the "master" branch, i.e. the branch which should be checked out by default.
-#@
-#@ git(1): this script assumes refs start with 'refs/', followed by 'remotes'
-#@ for remotes or 'heads' for locals ('tags' are ignored).  It only compares
-#@ against remotes which then are followed by 'origin'.  See below for more.
+#@ arena-manager for dummies (should work with sh(1), bash(1); and ksh(1)).
+#@ Setup your repos once, read this script, and let it do updates in the future
+#@ XXX Think about arena-manager[2].pl, which would require per-repo
+#@ XXX config files; but like that some hackish things could be made clean,
+#@ XXX and it could be even more automatic and it would be explicit what happens
+#@ XXX This would also make it safe against (further) changes in git+ namespaces
 #
 # Copyright (c) 2011 Steffen Daode Nurpmeso <sdaoden@gmail.com>.
 # All rights reserved.
@@ -47,10 +33,56 @@ ARENA="$HOME/arena/code.extern"
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# Top dir where everything happens
+ARENA="$HOME/arena/code.extern"
+
+# And the version control executables
 GIT=git
 HG=hg
 SVN=svn
 CVS='cvs -fz 9'
+
+# So what can this script do for you?
+# It offers the following modes in an $ARENA of revision control repositories:
+#    reduce|expand|gc|fullgc|update|automerge|autogc|check_update|auto_update
+# Please read all comments of this script before you use it, it was not written
+# with public use in mind and thus is a bit complicated to setup.
+# This script chooses what to do according to tags that it derives from the
+# extension of the repositories top directory:
+#
+# .git         : git(1)
+#           this script assumes local heads under 'refs/heads', and remote
+#           heads under 'refs/remotes'...
+# .svn-git     : git(1)-svn
+#           requires a "pseudo local" reference (update-ref) with the same name
+#           as the remote name that git-svn has produced, i.e., if that was
+#           '[refs/]remotes/trunk' then do that once:
+#           $ git update-ref refs/heads/trunk remotes/trunk
+# .cvs-git     : git(1)-cvsimport
+#           requires a very special setup!  Please read the update mode!!
+# .cvs-bomb-git: plain git(1) repo inside plain checked out cvs(1) workdir
+#           do this once:
+#           $ git update-ref refs/heads/arena-manager-download master
+# .tar-bomb-git: plain git(1) repo which is updated by exploding tarballs
+# .hg          : hg(1) (Mercurial)
+# .svn         : svn(1)
+# .cvs         : cvs(1)
+#
+# All those extensions can be extended with additional tags:
+#
+# -no_reduce   : skip "reduce" and "expand" modes (git(1), hg(1) only)
+#           if this is *not* part of the extension the git(1) managed
+#           repositories need a branch 'arena-manager-null', which should
+#           contain only a single file named 'NULL', which must only consist
+#           of a single line with the name of the "master" branch to check out
+#           when "expand" is called.  If this file is missing 'master' is used.
+#           Mercurial does have a builtin "null" branch and thus simply needs
+#           an "update" operation to switch back to the branch which was
+#           checked out before "reduce" happened.
+# -no_full_gc  : even with "fullgc", never use --aggressive (git(1) only)
+#           "fullgc", and "autogc" every three months, use the --aggressive
+#           argument to git-gc.  Some repositories however require hours to
+#           finish a fullgc (i.e. the Linux kernel).
 
 ##
 
@@ -182,7 +214,7 @@ reduce_expand() {
         set -o pipefail
         (   cd "$rd" || exit 10
             if test "$rd" != ${rd/git}; then
-                # File NULL on branch arena-manager-null contains of a single
+                # File NULL on branch arena-manager-null contains a single
                 # line stating the master branch's name
                 if test -z "$git_branch"; then
                     if test -f NULL; then
@@ -246,6 +278,8 @@ update() {
         (   cd "$rd" || exit 9
             if test "$rd" == ${rd/git}; then
                 if test "$rd" != ${rd/.hg}; then
+                    # TODO use incoming, and produce an AUTOGC entry if there
+                    # TODO are any revisions; then pull that and rm it!!
                     $HG -v pull #-u
                     es=$?
                 elif test "$rd" != ${rd/.svn}; then
@@ -269,15 +303,23 @@ update() {
                 $GIT fetch --verbose --prune
                 es=$?
             elif test "$rd" != ${rd/.svn-git}; then
+                # This auto-merges into "master", so that there can be found no
+                # indication of wether there were updates or not; thus the
+                # local "pseudo" branch we use for that (better solution is
+                # clear, maybe in arena-manager.pl which is single instance and
+                # can store all refs before in memory and compare against refs
+                # after)
                 $GIT svn rebase
                 es=$?
             elif test "$rd" != ${rd/.cvs-bomb-git}; then
+                # (Like for .svn-git we need to compare local master and remote
+                # to detect wether there were updates; arena-manager.pl ...)
                 git_checkout arena-manager-download
 
                 $CVS update -APd #C
                 es=$?
                 # Ignore all updates which occur in CVS/ directories, at least
-                # for the check if repo content changed
+                # for checking wether any repo content has been updated
                 if test 0 != $($GIT status --porcelain | \
                                sed -Ee '/CVS\/Entries.*$/d' -Ee '/\.git/d' | \
                                wc -l | \
@@ -295,13 +337,18 @@ update() {
 
                 git_checkout master
             elif test "$rd" != ${rd/.cvs-git}; then
-                # Go to the branch which stores our configuration stuff
+                # This is more complicated; you need to setup a branch
+                # arena-manager-config; check that out
                 git_checkout arena-manager-config
 
+                # It contains several files which are used to store the config
                 master=$(< git_master)          # The name of the master branch
                 cvs_root=$(< cvs_root)          # CVSROOT repo URL (CVS/Root)
                 cvs_module=$(< cvs_module)      # CVS module (CVS/Repository)
-                cvsps_file=$(< cvsps_file)      # cvsps(1) cache file name
+                # The name of the cvsps(1) cache file is stored in here;
+                # that file itself is always stored as 'cvsps_cache' instead
+                cvsps_file=$(< cvsps_file)
+                # Up to you wether you want -R or not
                 test -f cvs-revisions && Rflag=-R || Rflag= # git cvsimport dat
 
                 # Prepare cvsps(1) (and git(1) cvsimport) cache
@@ -313,7 +360,8 @@ update() {
                 test x"$Rflag" != x && cp -f cvs-revisions .git/
                 cp -f cvsps_cache "$cvsps_dir/$cvsps_file"
 
-                # NOTE: we *require* these -r -d etc...
+                # NOTE: we *require* these -r -d etc... TODO maybe it would be
+                # TODO better to offer a "cvsimport-setup"?  arena-manager.pl..
                 $GIT cvsimport -ai $Rflag -p '-u,--cvs-direct' \
                      -r origin -d "$cvs_root" "$cvs_module"
                 es=$?
@@ -323,6 +371,8 @@ update() {
                     exit $es
                 }
 
+                # Again, don't create commits unless any repository content has
+                # been updated; cvsps(1) always recreates it's cache file...
                 git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
                 if test $? -eq 42; then
                     echo '... committing updated configuration'
@@ -368,6 +418,9 @@ automerge() {
         set -o pipefail
         (   cd "$rd" || exit 9
             git_check_status
+            # This works with our hackish approach, but is rather unnecessary;
+            # if we would have configuration files, it would be so clear!
+            # arena-manager.pl could do a much better job!
             master=$($GIT rev-parse --symbolic-full-name HEAD | \
                      sed -e 's/^refs\/heads\///')
             test "$rd" != ${rd/.svn-git} && issvn=1 || issvn=0
@@ -428,6 +481,7 @@ autogc() {
     for r in $(< "$AUTOGCFILE"); do
         params[${#params[*]}]="$r"
     done
+    # Do a full --aggressive gc every three months
     m=$(date +%m)
     if test $(( ${m#0} % 3 )) -eq 0; then
         MODE=fullgc
