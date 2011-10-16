@@ -1,0 +1,21 @@
+Some tools which i use personally but which may be of interest for others, too
+==============================================================================
+
+arena-manager:
+   Offers some automatized operations on revision control repositories,
+   like updating, (fast-forward) merging, garbage-collecting.
+
+git-pre-commit.sh:
+   git(1)'s diff --check does unfortunately not offer a mode which detects
+   NBSP (non-breaking space, U+00A0) characters.
+   This is a real problem for keyboards (layouts) which produce combined
+   sequences, i.e., the german keyboard produces NBSP for ALT+SPC, but it
+   also requires ALT to get any of []|{} (ALT+[5-9]).  So NBSP's happen.
+   This script can be used as (a template for a custom) pre-commit hook.
+
+backup.pl:
+   My private backup script.  Simple (uses tar(1)), but does some stuff
+   which i need for my work flow (backups data which is in local repo
+   clones but not yet pushed to their "real" counterparts).
+
+.. vim:set fenc=utf-8 filetype=rst syntax=rst ts=3 sts=3 sw=3 et tw=75:
