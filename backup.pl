@@ -91,7 +91,7 @@ jMAIN: {
     msg(1, 'Ignoring old timestamps due to "--reset"') if $RESET;
     msg(1, 'Only updating the timestamp due to "--timestamp"') if $TIMESTAMP;
 
-    Timestamp::create();
+    Timestamp::query();
     unless ($TIMESTAMP) {
         HGBundles::create();
         GitBundles::create();
@@ -148,7 +148,7 @@ sub do_exit {
     $LAST = 916053068;
     $LAST_DATE = '1999-01-11T11:11:08 GMT';
 
-    sub create {
+    sub query {
         $CURRENT = time;
         $CURRENT &= ~$FS_TIME_ANDOFF;
         $CURRENT_DATE = _format_epoch($CURRENT);
