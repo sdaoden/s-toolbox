@@ -72,7 +72,7 @@ CVS_UPDATE_FLAGS='-APC'
 #
 # All those extensions can be extended with additional tags:
 #
-# -no_reduce   : skip "reduce" and "expand" modes (git(1), hg(1) only)
+# -no_reduce     : skip "reduce" and "expand" modes (git(1), hg(1) only)
 #           if this is *not* part of the extension the git(1) managed
 #           repositories need a branch 'arena-manager-null', which should
 #           contain only a single file named 'NULL', which must only consist
@@ -81,7 +81,9 @@ CVS_UPDATE_FLAGS='-APC'
 #           Mercurial does have a builtin "null" branch and thus simply needs
 #           an "update" operation to switch back to the branch which was
 #           checked out before "reduce" happened.
-# -no_full_gc  : even with "fullgc", never use --aggressive (git(1) only)
+# -no_auto_update: never perform "update" for this unless the name of the repo
+#           was explicitely named on command line.
+# -no_full_gc    : even with "fullgc", never use --aggressive (git(1) only)
 #           "fullgc", and "autogc" every three months, use the --aggressive
 #           argument to git-gc.  Some repositories however require hours to
 #           finish a fullgc (i.e. the Linux kernel).
@@ -96,6 +98,7 @@ AUTOGCFILE=.ARENA-AUTOGC
 #
 ESTAT=0
 GITDID=0
+AUTO_UPDATE=0
 
 log() {
     echo "$*"
@@ -264,6 +267,11 @@ update() {
     }
 
     for rd in ${params[@]}; do
+        if [[ $AUTO_UPDATE -ne 0 && "$rd" != ${rd/no_auto_update/} ]]; then
+            log ''
+            log "[$rd: $MODE does not apply]"
+            continue
+        fi
         if test "$rd" != ${rd/.tar-bomb-git}; then
             log ''
             log "[$rd: (automatic) $MODE does not apply]"
@@ -534,7 +542,10 @@ MODE="$1"
 shift
 PARAMS="$@"
 set -u
-test $# -ne 0 || PARAMS=$(echo *.*)
+test $# -ne 0 || {
+    AUTO_UPDATE=1
+    PARAMS=$(echo *.*)
+}
 typeset -a params
 
 # Perform basename cleanup and move over to $params[]
