@@ -176,6 +176,11 @@ sub do_exit {
             my $l = <TSTAMP>;
             close TSTAMP;
             chomp $l;
+            if ($l !~ /^\d+$/) {
+                ::err(1, 'Timestamp corrupted - setting --reset option');
+                $RESET = 1;
+                return;
+            }
             $l = int $l;
 
             $l &= ~$FS_TIME_ANDOFF;
