@@ -147,12 +147,8 @@ git_checkout() {
     }
 }
 
-_rcguc_ok=0 _rcguc=0
 git_ref_check_gc_update() {
     # Return 41 if no new data, 42 if new data, otherwise error
-    test $_rcguc_ok -ne 0 && return $_rcguc
-    _rcguc_ok=1
-
     local branch="$1" autogcfile="$2"
     $GIT show-ref |
     perl -e "\$rd = \"$branch\"; \$agcf = \"$autogcfile\";" -e '
@@ -187,8 +183,7 @@ git_ref_check_gc_update() {
         close AGCF || die "Cannot close $agcf: $!";
         exit $es;
     '
-    _rcguc=$?
-    return $_rcguc
+    return $?
 }
 
 ## modes
@@ -302,6 +297,7 @@ update() {
                 #$GIT pull -v --ff-only --stat --prune
                 $GIT fetch --verbose --prune
                 es=$?
+                git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
             elif test "$rd" != ${rd/.svn-git}; then
                 # This auto-merges into "master", so that there can be found no
                 # indication of wether there were updates or not; thus the
@@ -388,10 +384,8 @@ update() {
                 git_checkout "$master"
             else
                 echo >&2 "Unknown revision-control-system: $rd"
-                exit 1
+                es=1
             fi
-
-            git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
             exit $es
         ) 2>&1 | tee -a "$LOGFILE"
         es=$?
