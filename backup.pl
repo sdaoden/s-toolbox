@@ -1,8 +1,10 @@
 #!/usr/bin/perl
+#@ Simple updater, places backup and metadata files in $OUTPUT_DIR.
 #@ default: (tar -rf) backup.tar files changed since (timestamp of) last run
 #@ -r/--reset: do not take care about timestamps, do create xy.dateTtime.tbz
 #@ -c/--complete: other input (@COMPLETE_INPUT), always xy.dateTtime.tbz
 #@ -t/--timestamp: don't backup, but set the timestamp to the current time
+#@ With either of -r and -c $ADDONS, if existent is removed.
 
 ## Note: all _absolute_ directories and _not_ globs ##
 
@@ -16,14 +18,16 @@ my $OUTPUT_DIR = "$HOME/traffic";
 
 # Our metadata storage
 my $TSTAMP = "$OUTPUT_DIR/.-backup.dat";
+# Where user may place additional directories to backup, one per line
+my $ADDONS = "$OUTPUT_DIR/.backup-addons.txt";
 
 # A fileglob (may really be a glob) and a list of directories to always exclude
 my $EXGLOB = '._* *~ *.swp';
 my @EXLIST = qw(.DS_Store .localized .Trash);
 
-# List of input directories for normal mode/--complete mode, respectively
+# List of input directories for normal mode/--complete mode, respectively.
+# @NORMAL_INPUT is regulary extended by all directories found in $ADDONS, iff
 my @NORMAL_INPUT = (
-    "$HOME/arena/code.extern",
     "$HOME/arena/code.local",
     "$HOME/arena/data",
     "$HOME/arena/docs.2wheel",
@@ -55,8 +59,8 @@ my $GIT_OUTPUT_DIR = "$HOME/arena/data/backups";
 my $HG_SRC_DIR = "$HOME/src";
 my $HG_REPO_DIR = "$HOME/arena/code.local";
 # For git(1) this is xy.git (plus xy.git/.git).  Here we simply use the git(1)
-# "bundle" command with all possible flags to create the backup, which thus
-# includes stashes etc.
+# "bundle" command with all possible flags to create the backup for everything
+# that is not found in --remotes, which thus automatically includes stashes etc.
 my $GIT_SRC_DIR = "$HOME/src";
 
 ###
@@ -93,6 +97,8 @@ jMAIN: {
 
     Timestamp::query();
     unless ($TIMESTAMP) {
+        Addons::manage($COMPLETE || $RESET);
+
         HGBundles::create();
         GitBundles::create();
 
@@ -200,6 +206,42 @@ sub do_exit {
         return sprintf('%04d-%02d-%02dT%02d:%02d:%02d GMT',
                        ($e[5] + 1900), ($e[4] + 1), $e[3],
                        $e[2], $e[1], $e[0]);
+    }
+}
+
+{package Addons;
+    sub manage {
+        unless (-f $ADDONS) {
+            ::msg(0, "Addons: \"$ADDONS\" does not exist, skip");
+            return;
+        }
+        (shift != 0) ? _drop() : _load();
+    }
+
+    sub _load {
+        ::msg(0, "Addons: reading \"$ADDONS\"");
+        unless (open AO, '<', $ADDONS) {
+            ::err(1, 'Addons file cannot be read');
+            ::do_exit(1);
+        }
+        foreach my $l (<AO>) {
+            chomp $l;
+            unless (-d $l) {
+                ::err(1, "Addon \"$l\" is not accessible");
+                ::do_exit(1);
+            }
+            ::msg(1, "Adding-on \"$l\"");
+            unshift @$INPUT, $l;
+        }
+        close AO;
+    }
+
+    sub _drop {
+        ::msg(0, "Addons: removing \"$ADDONS\"");
+        unless (unlink $ADDONS) {
+            ::err(1, "Addons file cannot be deleted: $^E");
+            ::do_exit(1);
+        }
     }
 }
 
