@@ -55,17 +55,17 @@ CVS_UPDATE_FLAGS='-APC'
 # .git         : git(1)
 #           this script assumes local heads under 'refs/heads', and remote
 #           heads under 'refs/remotes'...
-# .svn-git     : git(1)-svn
+# .svn_git     : git(1)-svn
 #           requires a "pseudo local" reference (update-ref) with the same name
 #           as the remote name that git-svn has produced, i.e., if that was
 #           '[refs/]remotes/trunk' then do that once:
 #           $ git update-ref refs/heads/trunk remotes/trunk
-# .cvs-git     : git(1)-cvsimport
+# .cvs_git     : git(1)-cvsimport
 #           requires a very special setup!  Please read the update mode!!
-# .cvs-bomb-git: plain git(1) repo inside plain checked out cvs(1) workdir
+# .cvs_bomb_git: plain git(1) repo inside plain checked out cvs(1) workdir
 #           do this once:
 #           $ git update-ref refs/heads/arena-manager-download master
-# .tar-bomb-git: plain git(1) repo which is updated by exploding tarballs
+# .tar_bomb_git: plain git(1) repo which is updated by exploding tarballs
 # .hg          : hg(1) (Mercurial)
 # .svn         : svn(1)
 # .cvs         : cvs(1)
@@ -272,7 +272,7 @@ update() {
             log "[$rd: $MODE does not apply]"
             continue
         fi
-        if test "$rd" != ${rd/.tar-bomb-git}; then
+        if test "$rd" != ${rd/.tar_bomb_git}; then
             log ''
             log "[$rd: (automatic) $MODE does not apply]"
             continue
@@ -308,7 +308,7 @@ update() {
                 $GIT fetch --verbose --prune
                 es=$?
                 git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
-            elif test "$rd" != ${rd/.svn-git}; then
+            elif test "$rd" != ${rd/.svn_git}; then
                 # This auto-merges into "master", so that there can be found no
                 # indication of wether there were updates or not; thus the
                 # local "pseudo" branch we use for that (better solution is
@@ -318,9 +318,9 @@ update() {
                 $GIT svn rebase
                 es=$?
                 git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
-            elif test "$rd" != ${rd/.cvs-bomb-git}; then
-                # (Like for .svn-git we need to compare local master and remote
-                # to detect wether there were updates; arena-manager.pl ...)
+            elif test "$rd" != ${rd/.cvs_bomb_git}; then
+                # (Like for .svn_git we need to compare local master and remote
+                # to detect wether there were updates; arena-manager2/.pl ...)
                 git_checkout arena-manager-download
 
                 $CVS update $CVS_UPDATE_FLAGS
@@ -333,7 +333,7 @@ update() {
                                sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
                     echo "... cvs(1) updated some, initiating git(1) commit"
                     $GIT add --all
-                    $GIT commit -m 'arena-manager .cvs-bomb-git update'
+                    $GIT commit -m 'arena-manager .cvs_bomb_git update'
                     $GIT update-ref refs/remotes/origin/master \
                                     arena-manager-download
                     echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 20
@@ -343,7 +343,7 @@ update() {
                 fi
 
                 git_checkout master
-            elif test "$rd" != ${rd/.cvs-git}; then
+            elif test "$rd" != ${rd/.cvs_git}; then
                 # This is more complicated; you need to setup a branch
                 # arena-manager-config; check that out
                 git_checkout arena-manager-config
@@ -385,7 +385,7 @@ update() {
                     echo '... committing updated configuration'
                     test x"$Rflag" != x && mv -f .git/cvs-revisions .
                     mv -f "$cvsps_dir/$cvsps_file" cvsps_cache
-                    $GIT commit -am 'arena-manager .cvs-git update' || exit 21
+                    $GIT commit -am 'arena-manager .cvs_git update' || exit 21
                 else
                     echo '... cvsimport had nothing, not updating config'
                     test x"$Rflag" != x && rm -f .git/cvs-revisions
@@ -428,7 +428,7 @@ automerge() {
             # arena-manager.pl could do a much better job!
             master=$($GIT rev-parse --symbolic-full-name HEAD | \
                      sed -e 's/^refs\/heads\///')
-            test "$rd" != ${rd/.svn-git} && issvn=1 || issvn=0
+            test "$rd" != ${rd/.svn_git} && issvn=1 || issvn=0
             perl -e "\$git = \"$GIT\"; \$is_svn = $issvn;" -e '
                 my (%remotes, %heads, @reflines);
                 open RLPIPE, "$git show-ref |" or die "Cannot read refs";
