@@ -41,6 +41,8 @@ GIT=git
 HG=hg
 SVN=svn
 CVS='cvs -fz 9'
+# Note: does *not* include -d XXX implement additional .*cvs* -cvsd tag ext.?
+CVS_UPDATE_FLAGS='-APC'
 
 # So what can this script do for you?
 # It offers the following modes in an $ARENA of revision control repositories:
@@ -281,7 +283,7 @@ update() {
                     $SVN update
                     es=$?
                 elif test "$rd" != ${rd/.cvs}; then
-                    $CVS update -APd #C
+                    $CVS update $CVS_UPDATE_FLAGS
                     es=$?
                 else
                     echo >&2 "Unknown revision-control-system: $rd"
@@ -307,12 +309,13 @@ update() {
                 # after)
                 $GIT svn rebase
                 es=$?
+                git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
             elif test "$rd" != ${rd/.cvs-bomb-git}; then
                 # (Like for .svn-git we need to compare local master and remote
                 # to detect wether there were updates; arena-manager.pl ...)
                 git_checkout arena-manager-download
 
-                $CVS update -APd #C
+                $CVS update $CVS_UPDATE_FLAGS
                 es=$?
                 # Ignore all updates which occur in CVS/ directories, at least
                 # for checking wether any repo content has been updated
