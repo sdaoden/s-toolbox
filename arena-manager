@@ -41,8 +41,7 @@ GIT=git
 HG=hg
 SVN=svn
 CVS='cvs -fz 9'
-# Note: does *not* include -d XXX implement additional .*cvs* -cvsd tag ext.?
-CVS_UPDATE_FLAGS='-APC'
+CVS_UPDATE_FLAGS='-APd' # C
 
 # So what can this script do for you?
 # It offers the following modes in an $ARENA of revision control repositories:
@@ -146,7 +145,7 @@ git_check_status() {
 
 git_checkout() {
     local br="$1"
-    $GIT checkout -f $br -- || {
+    $GIT checkout -q -f $br -- || {
         echo >&2 "Can\'t checkout branch $br, bailing out!" &&
         exit 11
     }
@@ -224,7 +223,7 @@ reduce_expand() {
                         git_branch=master
                     fi
                 fi
-                $GIT checkout -q $git_branch
+                git_checkout "$git_branch"
             else #elif test "$rd" != ${rd/hg}; then
                 $HG up $hg_branch
             fi
@@ -328,7 +327,7 @@ update() {
                 # Ignore all updates which occur in CVS/ directories, at least
                 # for checking wether any repo content has been updated
                 if test 0 != $($GIT status --porcelain | \
-                               sed -Ee '/CVS\/Entries.*$/d' -Ee '/\.git/d' | \
+                               sed -Ee '/CVS\/.*$/d' -Ee '/\.git/d' | \
                                wc -l | \
                                sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
                     echo "... cvs(1) updated some, initiating git(1) commit"
@@ -338,9 +337,10 @@ update() {
                                     arena-manager-download
                     echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 20
                 else
-                    $GIT reset --hard HEAD
+                    $GIT reset -q --hard HEAD
                     echo "... cvs(1) did not seem to have new data"
                 fi
+                exit 0
 
                 git_checkout master
             elif test "$rd" != ${rd/.cvs_git}; then
@@ -461,7 +461,7 @@ automerge() {
                         $es |= $?;
                     } else {
                         print "\n... Performing automerge from $_ to $lr\n";
-                        system("$git checkout -f $lr; $git merge --ff-only $_");
+                        system("$git checkout -qf $lr; $git merge --ff-only $_");
                         $es |= $?;
                     }
                 } 
@@ -502,12 +502,16 @@ check_update() {
     es=0
     log 'Checking how likely it is an update would succeed'
     for rd in ${params[@]}; do
+        if [[ $AUTO_UPDATE -ne 0 && "$rd" != ${rd/no_auto_update/} ]]; then
+            log "  [$rd: -no_auto_update tag, skip]"
+            continue
+        fi
         if test "$rd" != ${rd/git}; then
             action="$GIT status --short"
         elif test "$rd" != ${rd/.hg}; then
             action="$HG status"
         else
-            log "[$rd: don't know how to check]"
+            log "  [$rd: $MODE does not apply]"
             continue
         fi
         if test 0 != $(cd $rd && $action | wc -l | \
