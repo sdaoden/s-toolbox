@@ -18,4 +18,7 @@ backup.pl:
    which i need for my work flow (backups data which is in local repo
    clones but not yet pushed to their "real" counterparts).
 
+openbsd-changelog-plus.pl:
+   Simple script to ease maintaining of OpenBSD plus.html entries.
+
 .. vim:set fenc=utf-8 filetype=rst syntax=rst ts=3 sts=3 sw=3 et tw=75:
