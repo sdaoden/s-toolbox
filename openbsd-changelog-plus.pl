@@ -11,18 +11,43 @@
 #@   and their style is identical to OpenBSD man page content (i.e. archive is
 #@   lowercase)
 
+# For which version of OpenBSD this is ment?  Current or X.Y
+my $VERSION = 'OpenBSD Current';
 my $WEB = 'http://www.openbsd.org/cgi-bin/man.cgi';
+
 my $manre = '[][+.:\w-]+';
 
-my @days;
+sub urlesc {
+    my $urlc = shift;
+    $urlc =~ s/([^\w()'*~!.-])/sprintf '%%%02X', ord $1/eg;
+    return $urlc;
+}
 
+my $_version = urlesc($VERSION);
+
+sub buildurl {
+    my %a = @_;
+    my $u = ('<a href="' . $WEB . '?query=' . urlesc($a{query}) .
+             '&manpath=' . $_version . '&sektion=' . urlesc($a{section}));
+    my $o;
+    if (defined $a{arch}) {
+        $o = lc $a{arch};
+        $u .= '&arch=' . urlesc($o);
+        $o = '/' . $o;
+    }
+    $u .= '&format=html">' . $a{query} . '(' . $a{section} . $o . ')</a>';
+    return $u;
+}
+
+my @days;
 while (<STDIN>) {
     chomp;
-    s/^\s*(.*?)\s*$/$1/g;   # Remove leading + trailing WS
-    next if /^\s*$/;        # Ign empty
+    s/^\s*(.*?)\s*$/$1/og;  # Remove leading + trailing WS
+    s/\s+/ /og;             # Normalize WS to single spaces
+    next if /^\s*$/o;       # Ignore empty
 
     # Start a new day?
-    if ($_ =~ /^<!--\s+\d{4}\/\d{2}\/\d{2}\s+-->/o) {
+    if ($_ =~ /^<!-- \d{4}\/\d{2}\/\d{2} -->/o) {
         my @new_entries;
         push @new_entries, $_;
         push @days, \@new_entries;
@@ -32,31 +57,12 @@ while (<STDIN>) {
     die "First non-blank line must EQ <!-- YYYY/MM/DD -->" unless @days;
     my ($l, $w) = '<li>' . $_;
 
-    # abc(4)
-    $w = '';
-    while ($l =~ /(.*?)($manre)\((\d)\)(.*)/o) {
-        $l = $4;
-        $w .= $1 if defined $1;
-        my ($q, $s, $ql) = ($2, $3);
-        ($ql = $q) =~ s/([^\w()'*~!.-])/sprintf '%%%02X', ord $1/eg;
-        $w .= "<a href=\"$WEB?query=$ql&sektion=$s&format=html\">$q($s)</a>";
-    }
-    $l = "$w$l" if length $w;
-
-    # abc(4/amd64)
-    $w = '';
-    while ($l =~ /(.*?)($manre)\((\d)\/(\w+)\)(.*)/o) {
-        $l = $5;
-        $w .= $1 if defined $1;
-        my ($q, $s, $a, $ql) = ($2, $3, $4);
-        ($ql = $q) =~ s/([^\w()'*~!.-])/sprintf '%%%02X', ord $1/eg;
-        $a = lc $a;
-        $w .= "<a href=\"$WEB?query=$ql&sektion=$s&arch=$a&format=html\">$q($s/$a)</a>";
-    }
-    $l = "$w$l" if length $w;
+    # abc(4) and abc(4/amd64) are expanded (not abc(3p))
+    $l =~ s/($manre)\((\d)(?:\/(\w+))?\)
+           /&buildurl(query => $1, section => $2, arch => $3)/xeg;
 
     # abc(!4) is not expanded to link but to plain abc(4)
-    $l =~ s/($manre)\(!(\d(?:\/\w+)?)\)/$1(\L$2\E)/og;
+    $l =~ s/($manre)\(!(\d(?:\/\w+)?)\)/$1(\L$2\E)/g;
     push @{$days[@days - 1]}, $l;
 }
 
