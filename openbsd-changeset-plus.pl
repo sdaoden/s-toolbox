@@ -1,20 +1,21 @@
 #!/usr/bin/perl
 #@ Simple thing to maintain entries of OpenBSD plus.html.
 #@ This one creates some kind of "Changeset", either from the command line with
-#@ a date and a list of files, as in
+#@ a (OpenBSD i.e. Canada/Mountain) date and a list of files, as in
 #@  $ openbsd-changeset-plus.pl "OpenBSD-Time" [:FILES:]
-#@ or from within mutt(1) or any other thing, pipe to STDIN of it a mail as is
-#@ send to the OpenBSD source-changes mailing list
-#@ In both cases log and diff are sent to $PAGER, in the latter of which that
-#@ is exec'd; so ensure the pager doesn't go away for one-screen data..
+#@ or from within mutt(1) or any other thing; pipe to STDIN of it a mail as is
+#@ send to the OpenBSD source-changes mailing list.
+#@ In both cases log and diff are sent to $PAGER, which might be exec'd,
+#@ so one better ensures it doesn't go away for one-screenful's of data..
 
-# "chroot" - top of CVS checkout (src and xenocara)
+# "chroot" - top of CVS checkout (at least src and xenocara i would say)
 my $SRCDIR = "$ENV{HOME}/src/obsd";
 
-# Output target command line mode
+# The pager to use
 my $PAGER = '/usr/bin/less --ignore-case --no-init';
 
-# In pipe mode this script exec's off to $PAGER, so store the data somewhere
+# In pipe mode this script exec's off to $PAGER, so store the data somewhere to
+# not mess up a pipeline which we may be part of
 my $TMPFILE = "$ENV{HOME}/tmp/openbsd-changeset-plus.dat";
 
 # Time fuzzyness in seconds; is /2 before and /2 after real time XXX silly
