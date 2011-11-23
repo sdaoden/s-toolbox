@@ -8,8 +8,13 @@
 #@ In both cases log and diff are sent to $PAGER, which might be exec'd,
 #@ so one better ensures it doesn't go away for one-screenful's of data..
 
-# "chroot" - top of CVS checkout (at least src and xenocara i would say)
-my $SRCDIR = "$ENV{HOME}/src/obsd";
+# Two possibilities:
+# $USE_WCDIR != 0: $WCDIR must be set, cvs(1) log and diff are used
+# $USE_WCDIR == 0: $REPODIR must be set, cvs(1) rlog and rdiff are used
+# The latter doesn't need a checkout
+my $USE_WCDIR = 0;
+my $WCDIR = "$ENV{HOME}/src/obsd";
+my $REPODIR = "$ENV{HOME}/arena/code.openbsd";
 
 # The pager to use
 my $PAGER = '/usr/bin/less --ignore-case --no-init';
@@ -35,7 +40,7 @@ my @ZONE = (
 
 use Date::Parse;
 
-chdir $SRCDIR || die "Can't chdir $SRCDIR: $^E";
+if ($USE_WCDIR) { chdir $WCDIR || die "Can't chdir $WCDIR: $^E"; }
 
 $ENV{TZ} = 'Canada/Mountain'; # (Only for CVS log output and such)
 my ($Obsd, $Gmt, $Files);
@@ -143,7 +148,7 @@ sub calctimes {
 jOK:
     $Gmt = strtime($date, $e->[2]);
 
-    print "Time: $Obsd->[1] OpenBSD, that's $Gmt->[1] UTC\n";
+    print "Time: $Obsd->[1] OpenBSD, that's $Gmt->[1] UTC ($Gmt->[0])\n";
     sync();
 
     $Obsd->[0] = $Gmt->[0] - $FUZZY/2;
@@ -165,8 +170,9 @@ sub strtime {
 }
 
 sub cvslog {
-    open L, '/bin/sh -c \'cvs -f log -NS ' .
-            "-d \"\@$Obsd->[0] < \@$Gmt->[0]\" @$Files' |" ||
+    my $comm = $USE_WCDIR ? 'log -NS' : "-d $REPODIR rlog -NS";
+    open L,
+        "/bin/sh -c 'cvs -f $comm -d \"\@$Obsd->[0]<\@$Gmt->[0]\" @$Files' |" ||
         die $^E;
     while (<L>) { last if /^-+$/; }
     while (<L>) { last if /^=+$/; print $_; }
@@ -176,8 +182,9 @@ sub cvslog {
 }
 
 sub cvsdiff {
-    open D, '/bin/sh -c \'cvs -f diff -Napu ' .
-            "-D \@$Obsd->[0] -D \@$Gmt->[0] @$Files' |" ||
+    my $comm = $USE_WCDIR ? 'diff -Napu ' : "-d $REPODIR rdiff -u ";
+    open D,
+        "/bin/sh -c 'cvs -f $comm -D \@$Obsd->[0] -D \@$Gmt->[0] @$Files' |" ||
         die $^E;
     while (<D>) { print $_; }
     close D;
