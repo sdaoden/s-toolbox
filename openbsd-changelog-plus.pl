@@ -33,8 +33,8 @@ my $manre = '[][+.:\w-]+';
 
 ##
 
-use warnings;
 use strict;
+use warnings;
 
 sub urlesc {
     my $urlc = shift;
