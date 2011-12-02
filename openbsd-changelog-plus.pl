@@ -112,3 +112,4 @@ while (@days) {
 }
 
 exit 0;
+# vim:set fenc=utf-8 filetype=perl syntax=perl ts=4 sts=4 sw=4 et tw=79:
