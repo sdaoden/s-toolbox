@@ -9,15 +9,23 @@
 #@ so one better ensures it doesn't go away for one-screenful's of data..
 
 # Two possibilities:
-# $USE_WCDIR != 0: $WCDIR must be set, cvs(1) log and diff are used
-# $USE_WCDIR == 0: $REPODIR must be set, cvs(1) rlog and rdiff are used
-# The latter doesn't need a checkout
-my $USE_WCDIR = 0;
-my $WCDIR = "$ENV{HOME}/src/obsd";
+# $USE_CHECKOUT != 0: $REPODIR must be a cvs(1) checkout; cvs(1) log and diff
+# $USE_CHECKOUT == 0: $REPODIR must be a cvsync(1) clone; cvs(1) rlog and rdiff
+my $USE_CHECKOUT = 0;
 my $REPODIR = "$ENV{HOME}/arena/code.openbsd";
 
-# The pager to use
+# The pager/ed/ to use
 my $PAGER = '/usr/bin/less --ignore-case --no-init';
+# (In mail mode this would do, too)
+#my $PAGER = 'sh -c "(echo ========; cat)" >>~/tmp/LOG < ';
+# (And in command line mode this)
+#my $PAGER = '(echo ========; cat) >>~/tmp/LOG';
+
+# Do print *only* the log message?
+my $LOGONLY = 0;
+
+# Include cvs(1) diff?
+my $CVSDIFF = 1     && !$LOGONLY;
 
 # In pipe mode this script exec's off to $PAGER, so store the data somewhere to
 # not mess up a pipeline which we may be part of
@@ -38,17 +46,20 @@ my @ZONE = (
 
 ##
 
+use strict;
+use warnings;
+
 use Date::Parse;
 
-if ($USE_WCDIR) { chdir $WCDIR || die "Can't chdir $WCDIR: $^E"; }
+if ($USE_CHECKOUT) { chdir $REPODIR || die "Can't chdir $REPODIR: $^E"; }
 
 $ENV{TZ} = 'Canada/Mountain'; # (Only for CVS log output and such)
 my ($Obsd, $Gmt, $Files);
 
 if (-t STDIN) {
-    command_line();
+    &command_line();
 } else {
-    mailparse();
+    &mailparse();
 }
 exit 1;
 
@@ -96,7 +107,7 @@ jMOD:
     $| = 1; $| = 0;
     select TMPFILE;
 
-    print "Committer: $1\n";
+    print "Committer: $1\n" unless $LOGONLY;
     calctimes($date);
 
     $Files = \@files_store;
@@ -108,7 +119,7 @@ jMOD:
         # Order is (each optional): Modified,Added,Removed, then 'Log message:'
         # Simply copy over removed file section and log message
         if (/^(?:Removed files|Log message):/) {
-            print $_, "\n";
+            print $_, "\n" unless $LOGONLY;
             print $_ while (<STDIN>);
             last;
         }
@@ -148,7 +159,8 @@ sub calctimes {
 jOK:
     $Gmt = strtime($date, $e->[2]);
 
-    print "Time: $Obsd->[1] OpenBSD, that's $Gmt->[1] UTC ($Gmt->[0])\n";
+    print "Time: $Obsd->[1] OpenBSD, that's $Gmt->[1] UTC ($Gmt->[0])\n"
+          unless $LOGONLY;
     sync();
 
     $Obsd->[0] = $Gmt->[0] - $FUZZY/2;
@@ -170,7 +182,7 @@ sub strtime {
 }
 
 sub cvslog {
-    my $comm = $USE_WCDIR ? 'log -NS' : "-d $REPODIR rlog -NS";
+    my $comm = $USE_CHECKOUT ? 'log -NS' : "-d $REPODIR rlog -NS";
     open L,
         "/bin/sh -c 'cvs -f $comm -d \"\@$Obsd->[0]<\@$Gmt->[0]\" @$Files' |" ||
         die $^E;
@@ -182,7 +194,9 @@ sub cvslog {
 }
 
 sub cvsdiff {
-    my $comm = $USE_WCDIR ? 'diff -Napu ' : "-d $REPODIR rdiff -u ";
+    return unless $CVSDIFF;
+
+    my $comm = $USE_CHECKOUT ? 'diff -Napu ' : "-d $REPODIR rdiff -u ";
     open D,
         "/bin/sh -c 'cvs -f $comm -D \@$Obsd->[0] -D \@$Gmt->[0] @$Files' |" ||
         die $^E;
