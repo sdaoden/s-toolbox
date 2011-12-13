@@ -21,11 +21,11 @@ my $WEB = 'http://www.openbsd.org/cgi-bin/man.cgi';
 
 # Expansions; value may be undef -> remove this outer tag (keep content)
 my %EXPMAP = (
-    a => 'i',       # Arguments, Environ
+    a => 'b',       # Arguments, Environ
     c => 'code',    # Code, Constants
     e => 'tt',      # Examples (command lines)
     f => 'code',    # Function protos
-    p => 'i'        # Paths, Files
+    p => undef      # Paths, Files
 );
 
 # What is considered to be valid content of a manual page (-name)?
@@ -65,15 +65,15 @@ sub buildentry {
     @entry = ();
 
     # Expansions
-    $l =~ s#<([$_exptags])>(.*?)<\/>#
-            defined $EXPMAP{$1} ? "<$EXPMAP{$1}>$2</$EXPMAP{$1}>" : $2#xeg;
+    $l =~ s#<([$_exptags])>(.*?)<\/>
+           #defined $EXPMAP{$1} ? "<$EXPMAP{$1}>$2</$EXPMAP{$1}>" : $2#xeg;
     # abc(4) and abc(4/amd64) are expanded (not abc(3p))
     $l =~ s/($manre)\((\d)(?:\/(\w+))?\)
            /&buildurl(query => $1, section => $2, arch => $3)/xeg;
     # abc(!4) is not expanded to link but to plain abc(4)
     $l =~ s/($manre)\(!(\d(?:\/\w+)?)\)/$1(\L$2\E)/g;
 
-    push @{$days[@days - 1]}, $l . '</li>';
+    push @{$days[@days - 1]}, $l;# . '</li>';
 }
 
 while (<STDIN>) {
