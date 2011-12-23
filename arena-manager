@@ -83,7 +83,7 @@ CVS_UPDATE_FLAGS='-AP'
 # -no_auto_update: never perform "update" for this unless the name of the repo
 #           was explicitely named on command line.
 # -no_full_gc    : even with "fullgc", never use --aggressive (git(1) only)
-#           "fullgc", and "autogc" every three months, use the --aggressive
+#           "fullgc", and "autogc" every six months, use the --aggressive
 #           argument to git-gc.  Some repositories however require hours to
 #           finish a fullgc (i.e. the Linux kernel).
 
@@ -488,9 +488,9 @@ autogc() {
     done
     # Do a full --aggressive gc every three months
     m=$(date +%m)
-    if test $(( ${m#0} % 3 )) -eq 0; then
+    if test $(( ${m#0} % 6 )) -eq 0; then
         MODE=fullgc
-        log 'Turned over to mode fullgc (not gc since MONTH%3==0)'
+        log 'Turned over to mode fullgc (full because MONTH % 6 == 0)'
     else
         MODE=gc
         log 'Turned over to mode gc'
