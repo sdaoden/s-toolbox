@@ -23,7 +23,7 @@ my $WEB = 'http://www.openbsd.org/cgi-bin/man.cgi';
 my %EXPMAP = (
     a => 'b',       # Arguments, Environ
     c => 'code',    # Code, Constants
-    e => 'tt',      # Examples (command lines)
+    e => 'kbd',     # Examples (command lines)
     f => 'code',    # Function protos
     p => undef      # Paths, Files
 );
