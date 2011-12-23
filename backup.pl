@@ -52,12 +52,10 @@ my @COMPLETE_INPUT = (
 my $HG_OUTPUT_DIR = "$HOME/arena/data/backups";
 my $GIT_OUTPUT_DIR = "$HOME/arena/data/backups";
 # What actually happens is that the $HG_SRC_DIR and $GIT_SRC_DIR are walked.
-# For hg(1), directories encountered and ending with .hg (and having xy.hg/.hg)
-# are checked against an equally named dir in $HG_REPO_DIR, and a bundle of all
-# outgoing changes is stored in $HG_OUTPUT_DIR.  In addition shelve and mq
-# patches are also backed up automatically, if existent
+# For hg(1), directories encountered and ending with .hg (and having xy.hg/.hg),
+# are backed up via 'hg bundle' (thus using default push location).
+# In addition shelve and mq patches are also backed up, if existent.
 my $HG_SRC_DIR = "$HOME/src";
-my $HG_REPO_DIR = "$HOME/arena/code.local";
 # For git(1) this is xy.git (plus xy.git/.git).  Here we simply use the git(1)
 # "bundle" command with all possible flags to create the backup for everything
 # that is not found in --remotes, which thus automatically includes stashes etc.
@@ -296,22 +294,14 @@ sub do_exit {
 
     sub _do_bundle {
         my $e = shift;
-        my ($target, $dest, $flag, $omodt);
+        my ($target, $flag, $omodt);
         ::msg(2, 'Checking for new bundle') if $VERBOSE;
 
         $target = "$HG_OUTPUT_DIR/$e";
         $target = $1 if $target =~ /(.+)\..+$/;
         $target .= '.bundle';
-        $dest = "$HG_REPO_DIR/$e";
         $flag = $VERBOSE ? '-v' : '';
         ::msg(3, "... target: $target") if $VERBOSE;
-        if (-d $dest) {
-            ::msg(3, "... dest-repo: $dest") if $VERBOSE;
-        } else {
-            ::msg(3, "... using --all: no dest-repo: $dest") if $VERBOSE;
-            $dest = '';
-            $flag .= ' --all';
-        }
 
         # hg bundle (also) returns 1 if no changes have been found, so use
         # modification times to decide wether an error occurred.
@@ -320,7 +310,7 @@ sub do_exit {
         {   my @x = stat $target;
             if (@x) { $omodt = $x[9]; }
         }
-        $flag = system("hg bundle $flag $target $dest >> $MFFN 2>&1");
+        $flag = system("hg bundle $flag $target >> $MFFN 2>&1");
         if (($flag >> 8) != 0) {
             my ($nmodt, @x) = (-1, stat($target));
             if (@x) { $nmodt = $x[9]; }
