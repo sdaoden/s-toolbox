@@ -41,7 +41,7 @@ GIT=git
 HG=hg
 SVN=svn
 CVS='cvs -fz 9'
-CVS_UPDATE_FLAGS='-APd' # C
+CVS_UPDATE_FLAGS='-AP'
 
 # So what can this script do for you?
 # It offers the following modes in an $ARENA of revision control repositories:
