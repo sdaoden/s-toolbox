@@ -252,7 +252,7 @@ sub do_exit {
     }
 
     sub _create_list {
-        ::msg(0, 'Collecting repo information');
+        ::msg(0, 'Collecting hg(1) repo information');
         unless (-d $HG_OUTPUT_DIR) {
             ::err(0, 'FAILURE: no HG backup-bundle/-shelve/-patch dir found');
             ::do_exit(1);
@@ -382,7 +382,7 @@ sub do_exit {
     }
 
     sub _create_list {
-        ::msg(0, 'Collecting repo information');
+        ::msg(0, 'Collecting git(1) repo information');
         unless (-d $GIT_OUTPUT_DIR) {
             ::err(0, 'FAILURE: no Git backup-bundle dir found');
             ::do_exit(1);
