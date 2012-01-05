@@ -61,8 +61,10 @@ CVS_UPDATE_FLAGS='-AP'
 #           $ git update-ref refs/heads/trunk remotes/trunk
 # .cvs_git     : git(1)-cvsimport
 #           requires a very special setup!  Please read the update mode!!
-# .cvs_bomb_git: plain git(1) repo inside plain checked out cvs(1) workdir
-#           do this once:
+# .cvs_bomb_git, .svn_bomb_git:
+#           plain git(1) repo inside plain checked out cvs(1)/svn(1) workdir
+#           do this once after the initial checkout:
+#           $ git init; git add --all; git ci -m created
 #           $ git update-ref refs/heads/arena-manager-download master
 # .tar_bomb_git: plain git(1) repo which is updated by exploding tarballs
 # .hg          : hg(1) (Mercurial)
@@ -190,6 +192,38 @@ git_ref_check_gc_update() {
     return $?
 }
 
+## misc
+
+xy_bomb_git_update() {
+    local comm="$1" commname="$2" es
+
+    # (We need to compare local master and remote to detect wether there were
+    # updates; arena-manager2/.pl ...)
+    git_checkout arena-manager-download
+
+    $comm
+    es=$?
+    # Ignore all updates which occur in .svn/CVS directories, at least
+    # for checking wether any repo content has been updated
+    if test 0 != $($GIT status --porcelain | \
+                   sed -Ee '/(\.svn|CVS)\/.*$/d' -Ee '/\.git/d' | \
+                   wc -l | \
+                   sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
+        echo "... $commname updated some, initiating git(1) commit"
+        $GIT add --all
+        $GIT commit -m 'arena-manager .XY_bomb_git update'
+        $GIT update-ref refs/remotes/origin/master \
+                        arena-manager-download
+        echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 20
+    else
+        $GIT reset -q --hard HEAD
+        echo "... $commname did not seem to have new data"
+    fi
+
+    git_checkout master
+    return $es
+}
+
 ## modes
 
 reduce_expand() {
@@ -307,6 +341,9 @@ update() {
                 $GIT fetch --verbose --prune
                 es=$?
                 git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
+            elif test "$rd" != ${rd/.svn_bomb_git}; then
+                xy_bomb_git_update "$SVN update" 'svn(1)'
+                es=$?
             elif test "$rd" != ${rd/.svn_git}; then
                 # This auto-merges into "master", so that there can be found no
                 # indication of wether there were updates or not; thus the
@@ -318,31 +355,8 @@ update() {
                 es=$?
                 git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
             elif test "$rd" != ${rd/.cvs_bomb_git}; then
-                # (Like for .svn_git we need to compare local master and remote
-                # to detect wether there were updates; arena-manager2/.pl ...)
-                git_checkout arena-manager-download
-
-                $CVS update $CVS_UPDATE_FLAGS
+                xy_bomb_git_update "$CVS update $CVS_UPDATE_FLAGS" 'cvs(1)'
                 es=$?
-                # Ignore all updates which occur in CVS/ directories, at least
-                # for checking wether any repo content has been updated
-                if test 0 != $($GIT status --porcelain | \
-                               sed -Ee '/CVS\/.*$/d' -Ee '/\.git/d' | \
-                               wc -l | \
-                               sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
-                    echo "... cvs(1) updated some, initiating git(1) commit"
-                    $GIT add --all
-                    $GIT commit -m 'arena-manager .cvs_bomb_git update'
-                    $GIT update-ref refs/remotes/origin/master \
-                                    arena-manager-download
-                    echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 20
-                else
-                    $GIT reset -q --hard HEAD
-                    echo "... cvs(1) did not seem to have new data"
-                fi
-                exit 0
-
-                git_checkout master
             elif test "$rd" != ${rd/.cvs_git}; then
                 # This is more complicated; you need to setup a branch
                 # arena-manager-config; check that out
