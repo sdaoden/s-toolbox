@@ -318,7 +318,7 @@ update() {
                 if test "$rd" != ${rd/.hg}; then
                     # TODO use incoming, and produce an AUTOGC entry if there
                     # TODO are any revisions; then pull that and rm it!!
-                    $HG -v pull #-u
+                    $HG pull -u
                     es=$?
                 elif test "$rd" != ${rd/.svn}; then
                     $SVN update
