@@ -399,7 +399,8 @@ update() {
                     echo '... committing updated configuration'
                     test x"$Rflag" != x && mv -f .git/cvs-revisions .
                     mv -f "$cvsps_dir/$cvsps_file" cvsps_cache
-                    $GIT commit -am 'arena-manager .cvs_git update' || exit 21
+                    $GIT add --all || exit 21
+                    $GIT commit -m 'arena-manager .cvs_git update' || exit 22
                 else
                     echo '... cvsimport had nothing, not updating config'
                     test x"$Rflag" != x && rm -f .git/cvs-revisions
