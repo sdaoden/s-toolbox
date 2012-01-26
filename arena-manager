@@ -61,11 +61,17 @@ CVS_UPDATE_FLAGS='-AP'
 #           $ git update-ref refs/heads/trunk remotes/trunk
 # .cvs_git     : git(1)-cvsimport
 #           requires a very special setup!  Please read the update mode!!
-# .cvs_bomb_git, .svn_bomb_git:
+# .cvs_bomb_git, .svn_bomb_git, .update_bomb_git:
 #           plain git(1) repo inside plain checked out cvs(1)/svn(1) workdir
 #           do this once after the initial checkout:
 #           $ git init; git add --all; git ci -m created
 #           $ git update-ref refs/heads/arena-manager-download master
+#           And, for .cvs_bomb_git:
+#           $ echo '.#*' >> .git/info/exclude
+#           And, for .update_bomb_git:
+#           $ echo 'svn export http://auau/trunk' > update.sh
+#           Or whatever must be in update.sh to update the repo.
+#           The repo should possibly be in a further subdirectory.
 # .tar_bomb_git: plain git(1) repo which is updated by exploding tarballs
 # .hg          : hg(1) (Mercurial)
 # .svn         : svn(1)
@@ -341,6 +347,9 @@ update() {
                 $GIT fetch --verbose --prune
                 es=$?
                 git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
+            elif test "$rd" != ${rd/.update_bomb_git}; then
+                xy_bomb_git_update "sh -c update.sh" 'update.sh'
+                es=$?
             elif test "$rd" != ${rd/.svn_bomb_git}; then
                 xy_bomb_git_update "$SVN update" 'svn(1)'
                 es=$?
