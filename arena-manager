@@ -210,13 +210,13 @@ xy_bomb_git_update() {
                    wc -l | \
                    sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
         echo "... $commname updated some, initiating git(1) commit"
-        $GIT add --all
-        $GIT commit -m 'arena-manager .XY_bomb_git update'
+        $GIT add --all || exit 20
+        $GIT commit -m 'arena-manager .XY_bomb_git update' || exit 21
         $GIT update-ref refs/remotes/origin/master \
-                        arena-manager-download
-        echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 20
+                        arena-manager-download || exit 22
+        echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 23
     else
-        $GIT reset -q --hard HEAD
+        $GIT reset -q --hard HEAD || exit 24
         echo "... $commname did not seem to have new data"
     fi
 
@@ -476,7 +476,8 @@ automerge() {
                         $es |= $?;
                     } else {
                         print "\n... Performing automerge from $_ to $lr\n";
-                        system("$git checkout -qf $lr; $git merge --ff-only $_");
+                        system("$git checkout -qf $lr; " .
+                               "$git merge --ff-only $_");
                         $es |= $?;
                     }
                 } 
