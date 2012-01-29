@@ -161,11 +161,10 @@ static ssize_t
 mode_keycode(unsigned char *buf, ssize_t len)
 {
     unsigned char *cursor = buf;
-    const char *group, *meta;
-    unsigned int kc, rc;
+    const char *group;
+    unsigned int kc, rc, isdown;
 
     while (--len >= 0) {
-        group = "plain";
         kc = rc = *cursor++;
         if ((rc & 0xF0) == 0xE0 || (rc & 0xF8) == 0xF0) {
             if (--len < 0) {
@@ -176,30 +175,30 @@ mode_keycode(unsigned char *buf, ssize_t len)
             kc <<= 8;
             kc |= *cursor++;
             rc = kc;
-            /* Special symbol in private area? */
-            if ((kc & 0xF000) == 0xE000) {
-                kc &= 0x0FFF;
-                group = "keycode";
-            } else {
-                kc &= 0x00FF;
-                switch (rc & 0xFF00) {
-                case KS_GROUP_Mod:      /* ?? */
-                    group = "modifier";
-                    break;
-                case KS_GROUP_Keypad:   /* ?? */
-                    group = "keypad";
-                    break;
-                default:
-                    group = "special";
-                    break;
-                }
-            }
+            kc &= ((kc & 0xF000) == 0xE000) ? 0x0FFF : 0x00FF;
         }
 
-        meta = (kc & 0x80) ? "release" : "press";
+        switch (KS_GROUP(rc)) {
+#define G(g) case g: group = #g; break;
+        G(KS_GROUP_Mod)
+        G(KS_GROUP_Keypad)
+        G(KS_GROUP_Function)
+        G(KS_GROUP_Command)
+        G(KS_GROUP_Internal)
+        /* Not encoded?? */
+        G(KS_GROUP_Dead)
+        G(KS_GROUP_Keycode)
+        default:
+        G(KS_GROUP_Ascii)
+#undef G
+        }
+        isdown = 0 == (kc & 0x80);
+
         kc &= ~0x0080;
-        printf( "keycode %3u (0x%04X: %8s, 0x%04X, %7s)\n",
-                kc, rc, group, kc, meta);
+        printf( "keycode %3u %-7s "
+                "(0x%04X: %17s | %c | 0x%04X\n",
+                kc, (isdown ? "press" : "release"),
+                rc, group, (isdown ? 'v' : '^'), kc);
     }
 
     return len;
