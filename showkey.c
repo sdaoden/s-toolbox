@@ -1,7 +1,7 @@
-/*@ showkey.c: show keyboard scancodes for OpenBSD wscons(4), version 0.1.
+/*@ showkey.c  : show keyboard scancodes for OpenBSD wscons(4), version 0.2.
  *@ Compile    : $ gcc -W -Wall -pedantic -ansi -o showkey showkey.c
  *@ Run        : $ ./showkey [ktv]  (keycode, termios-only, termios-only values)
- *@ Exit status: 0=timeout, 1=signal, 2=read error
+ *@ Exit status: 0=timeout, 1=signal (crash), 2=read error, 3=use/setup failure
  *
  * Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@googlemail.com>.
  * All rights reserved.
@@ -90,10 +90,10 @@ main(int argc, char **argv)
             break;
         }
     if (! mode)
-        errx(1, "Usage: showkey [ktv]  (keycode, termios, value)");
+        errx(3, "Usage: showkey [ktv]  (keycode, termios, value)");
 
     if (!isatty(STDIN_FILENO))
-        err(1, "STDIN is not a terminal");
+        err(3, "STDIN is not a terminal");
     raw_init();
 
     sa.sa_handler = &onsig;
@@ -101,7 +101,7 @@ main(int argc, char **argv)
     (void)sigfillset(&sa.sa_mask);
     for (i = 0; i < NSIG; ++i)
         if (sigaction((int)i + 1, &sa, NULL) < 0 && i == SIGALRM)
-            err(2, "Can't install SIGALRM signal handler");
+            err(3, "Can't install SIGALRM signal handler");
 
     printf( "You may now use the keyboard;\n"
             "After five seconds of inactivity the program terminates\n");
@@ -140,7 +140,7 @@ safe_read(unsigned char *buf, size_t buf_sizeof, ssize_t skip)
     it.it_value.tv_usec = 0;
     it.it_interval.tv_sec = it.it_interval.tv_usec = 0;
     if (setitimer(ITIMER_REAL, &it, NULL) < 0)
-        err(2, "Can't install wakeup timer");
+        err(3, "Can't install wakeup timer");
 
     raw_on();
     br = read(STDIN_FILENO, buf, buf_sizeof);
@@ -254,8 +254,10 @@ raw_on(void)
         int x = errno;
         (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
         errno = x;
-        err(3,  "Can't put keyboard in raw mode ("
-                "needs the WSDISPLAY_COMPAT_RAWKBD kernel option)");
+        err(3, ((x == ENOTTY)
+                ? "This program mode won't work on pseudo terminals"
+                : "Can't put keyboard in raw mode ("
+                  "the WSDISPLAY_COMPAT_RAWKBD kernel option is mandatory)"));
     }
     return;
 }
