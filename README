@@ -1,9 +1,9 @@
 Some tools which i use personally but which may be of interest for others, too
 ==============================================================================
 
-arena-manager:
-   Offers some automatized operations on revision control repositories,
-   like updating, (fast-forward) merging, garbage-collecting.
+showkey.c:
+   Show keyboard scancodes for +BSD wscons(4).
+   Will possibly be extended to work on other operating systems, too.
 
 git-pre-commit.sh:
    git(1)'s diff --check does unfortunately not offer a mode which detects
@@ -13,13 +13,17 @@ git-pre-commit.sh:
    also requires ALT to get any of []|{} (ALT+[5-9]).  So NBSP's happen.
    This script can be used as (a template for a custom) pre-commit hook.
 
+openbsd-changelog-plus.pl,
+openbsd-changeset-plus.pl:
+   Simple scripts to ease maintaining of OpenBSD plus.html entries.
+
+arena-manager:
+   Offers some automatized operations on revision control repositories,
+   like updating, (fast-forward) merging, garbage-collecting.
+
 backup.pl:
    My private backup script.  Simple (uses tar(1)), but does some stuff
    which i need for my work flow (backups data which is in local repo
    clones but not yet pushed to their "real" counterparts).
-
-openbsd-changelog-plus.pl,
-openbsd-changeset-plus.pl:
-   Simple scripts to ease maintaining of OpenBSD plus.html entries.
 
 .. vim:set fenc=utf-8 filetype=rst syntax=rst ts=3 sts=3 sw=3 et tw=75:
