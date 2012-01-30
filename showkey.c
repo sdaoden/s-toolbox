@@ -1,4 +1,4 @@
-/*@ showkey.c  : show keyboard scancodes for OpenBSD wscons(4), version 0.2.
+/*@ showkey.c  : show keyboard scancodes for +BSD wscons(4), version 0.3.
  *@ Compile    : $ gcc -W -Wall -pedantic -ansi -o showkey showkey.c
  *@ Run        : $ ./showkey [ktv]  (keycode, termios-only, termios-only values)
  *@ Exit status: 0=timeout, 1=signal (crash), 2=read error, 3=use/setup failure
@@ -136,8 +136,7 @@ safe_read(unsigned char *buf, size_t buf_sizeof, ssize_t skip)
         buf_sizeof -= skip;
     }
 
-    it.it_value.tv_sec = 5;
-    it.it_value.tv_usec = 0;
+    it.it_value.tv_sec = 5; it.it_value.tv_usec = 0;
     it.it_interval.tv_sec = it.it_interval.tv_usec = 0;
     if (setitimer(ITIMER_REAL, &it, NULL) < 0)
         err(3, "Can't install wakeup timer");
@@ -148,7 +147,8 @@ safe_read(unsigned char *buf, size_t buf_sizeof, ssize_t skip)
         br += skip;
     raw_off();
 
-    (void)setitimer(ITIMER_REAL, NULL, NULL);
+    it.it_value.tv_sec = it.it_value.tv_usec = 0;
+    (void)setitimer(ITIMER_REAL, &it, NULL);
 
     return br;
 }
@@ -189,7 +189,11 @@ mode_keycode(unsigned char *buf, ssize_t len)
         G(KS_GROUP_Dead)
         G(KS_GROUP_Keycode)
         default:
-        G(KS_GROUP_Ascii)
+# ifdef KS_GROUP_Plain
+        G(KS_GROUP_Plain)
+# else
+        case KS_GROUP_Ascii: group = "KS_GROUP_Plain"; break;
+# endif
 #undef G
         }
         isdown = 0 == (kc & 0x80);
@@ -250,10 +254,10 @@ raw_on(void)
         err(3, "Can't set terminal attributes");
 
     if (! tios_only && ioctl(STDIN_FILENO, WSKBDIO_SETMODE, &arg) < 0) {
-        int x = errno;
+        arg = errno;
         (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
-        errno = x;
-        err(3, ((x == ENOTTY)
+        errno = arg;
+        err(3, ((arg == ENOTTY)
                 ? "This program mode won't work on pseudo terminals"
                 : "Can't put keyboard in raw mode ("
                   "the WSDISPLAY_COMPAT_RAWKBD kernel option is mandatory)"));
@@ -272,4 +276,4 @@ raw_off(void)
     return;
 }
 
-/* vim:set fenc=ascii filetype=c syntax=c ts=4 sts=4 sw=4 et tw=79: */
+/* vim:set fenc=utf-8 filetype=c syntax=c ts=4 sts=4 sw=4 et tw=79: */
