@@ -46,7 +46,7 @@
 #include <dev/wscons/wsconsio.h>
 #include <dev/wscons/wsksymdef.h>
 
-static int              tios_only;
+static int              tios_only, is_rawmode;
 static struct termios   tios_orig, tios_raw;
 
 /* Signal handler, exit 0 if SIGALRM, 1 otherwise */
@@ -89,10 +89,10 @@ main(int argc, char **argv)
             mode = NULL;
             break;
         }
-    if (! mode)
+    if (mode == NULL)
         errx(3, "Usage: showkey [ktv]  (keycode, termios, value)");
 
-    if (!isatty(STDIN_FILENO))
+    if (! isatty(STDIN_FILENO))
         err(3, "STDIN is not a terminal");
     raw_init();
 
@@ -118,7 +118,8 @@ main(int argc, char **argv)
 static void
 onsig(int sig)
 {
-    raw_off();
+    if (is_rawmode)
+        raw_off();
     exit(sig != SIGALRM);
 }
 
@@ -192,7 +193,7 @@ mode_keycode(unsigned char *buf, ssize_t len)
 # ifdef KS_GROUP_Plain
         G(KS_GROUP_Plain)
 # else
-        case KS_GROUP_Ascii: group = "KS_GROUP_Plain"; break;
+        G(KS_GROUP_Ascii)
 # endif
 #undef G
         }
@@ -262,6 +263,8 @@ raw_on(void)
                 : "Can't put keyboard in raw mode ("
                   "the WSDISPLAY_COMPAT_RAWKBD kernel option is mandatory)"));
     }
+
+    is_rawmode = 1;
     return;
 }
 
@@ -273,6 +276,8 @@ raw_off(void)
     if (! tios_only)
         (void)ioctl(STDIN_FILENO, WSKBDIO_SETMODE, &arg);
     (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
+
+    is_rawmode = 0;
     return;
 }
 
