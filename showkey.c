@@ -1,7 +1,7 @@
 /*@ showkey.c  : show keyboard scancodes for +BSD wscons(4), version 0.3.
  *@ Compile    : $ gcc -W -Wall -pedantic -ansi -o showkey showkey.c
  *@ Run        : $ ./showkey [ktv]  (keycode, termios-only, termios-only values)
- *@ Exit status: 0=timeout, 1=signal (crash), 2=read error, 3=use/setup failure
+ *@ Exit status: 0=timeout, 1=signal/read error, 3=use/setup failure
  *
  * Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@googlemail.com>.
  * All rights reserved.
@@ -46,15 +46,11 @@
 #include <dev/wscons/wsconsio.h>
 #include <dev/wscons/wsksymdef.h>
 
-static int              tios_only, is_rawmode;
+static int              tios_only, caught_sig;
 static struct termios   tios_orig, tios_raw;
 
 /* Signal handler, exit 0 if SIGALRM, 1 otherwise */
 static void     onsig(int sig);
-
-/* If skip > 0, leave that many bytes at front of buf unused.
- * Return amount of bytes read;  raises SIGALRM after 5 seconds */
-static ssize_t  safe_read(unsigned char *buf, size_t buf_sizeof, ssize_t skip);
 
 /* Terminal handling */
 static void     raw_init(void), raw_on(void), raw_off(void);
@@ -68,8 +64,9 @@ int
 main(int argc, char **argv)
 {
     ssize_t (*mode)(unsigned char*, ssize_t) = &mode_keycode;
-    ssize_t i;
+    ssize_t i, skip;
     auto struct sigaction sa;
+    auto struct itimerval it;
     auto unsigned char buf[64];
 
     if (argc > 1)
@@ -99,59 +96,41 @@ main(int argc, char **argv)
     sa.sa_handler = &onsig;
     sa.sa_flags = 0;
     (void)sigfillset(&sa.sa_mask);
-    for (i = 0; i < NSIG; ++i)
-        if (sigaction((int)i + 1, &sa, NULL) < 0 && i == SIGALRM)
+    for (i = 0; i++ < NSIG;)
+        if (sigaction((int)i, &sa, NULL) < 0 && i == SIGALRM)
             err(3, "Can't install SIGALRM signal handler");
 
-    printf( "You may now use the keyboard;\n"
-            "After five seconds of inactivity the program terminates\n");
-    for (i = 0;;) {
-        i = safe_read(buf, sizeof(buf), i);
+    it.it_value.tv_sec = 15;
+    it.it_value.tv_usec = 0;
+    it.it_interval.tv_sec = it.it_interval.tv_usec = 0;
+
+    raw_on();
+    printf( "You may now use the keyboard;\r\n"
+            "After %d seconds of inactivity the program terminates\r\n",
+            (int)it.it_value.tv_sec);
+    for (i = skip = 0;;) {
+        if (setitimer(ITIMER_REAL, &it, NULL) < 0) {
+            raw_off();
+            err(3, "Can't install wakeup timer");
+        }
+
+        i = read(STDIN_FILENO, buf + skip, sizeof(buf) - skip);
         if (i <= 0)
             break;
-        i = (*mode)(buf, i);
+        i += skip;
+
+        skip = (*mode)(buf, i);
     }
-    /* Read error */
-    return 2;
+    raw_off();
+
+    return (caught_sig < 2);
 }
 
 static void
 onsig(int sig)
 {
-    if (is_rawmode)
-        raw_off();
-    exit(sig != SIGALRM);
-}
-
-static ssize_t
-safe_read(unsigned char *buf, size_t buf_sizeof, ssize_t skip)
-{
-    ssize_t br;
-    auto struct itimerval it;
-
-    --buf_sizeof;
-    if (skip < 0)
-        skip = 0;
-    else {
-        buf += skip;
-        buf_sizeof -= skip;
-    }
-
-    it.it_value.tv_sec = 5; it.it_value.tv_usec = 0;
-    it.it_interval.tv_sec = it.it_interval.tv_usec = 0;
-    if (setitimer(ITIMER_REAL, &it, NULL) < 0)
-        err(3, "Can't install wakeup timer");
-
-    raw_on();
-    br = read(STDIN_FILENO, buf, buf_sizeof);
-    if (br >= 0)
-        br += skip;
-    raw_off();
-
-    it.it_value.tv_sec = it.it_value.tv_usec = 0;
-    (void)setitimer(ITIMER_REAL, &it, NULL);
-
-    return br;
+    caught_sig = 1 + (sig == SIGALRM);
+    return;
 }
 
 /*
@@ -201,12 +180,12 @@ mode_keycode(unsigned char *buf, ssize_t len)
 
         kc &= ~0x0080;
         printf( "keycode %3u %-7s "
-                "(0x%04X: %17s | %c | 0x%04X\n",
+                "(0x%04X: %17s | %c | 0x%04X\r\n",
                 kc, (isdown ? "press" : "release"),
                 rc, group, (isdown ? 'v' : '^'), kc);
     }
 
-    return len;
+    return (len <= 0) ? 0 : len;
 }
 
 static ssize_t
@@ -216,12 +195,12 @@ mode_term(unsigned char *buf, ssize_t len)
         while (--len >= 0) {
             printf("0x%02X ", (unsigned int)*buf++);
             if (len > 0 && *buf == 0x1B) /* XXX May be incomplete seq.?? */
-                printf("\n");
+                printf("\r\n");
         }
     else
         while (--len >= 0)
             printf("0x%02X ", (unsigned int)*buf++);
-    printf("\n");
+    printf("\r\n");
     return 0;
 }
 
@@ -232,7 +211,7 @@ mode_value(unsigned char *buf, ssize_t len)
         unsigned int v = (unsigned int)*buf++;
         printf("%4d 0%03o 0x%02X  ", v, v, v);
     }
-    printf("\n");
+    printf("\r\n");
     return 0;
 }
 
@@ -257,14 +236,11 @@ raw_on(void)
     if (! tios_only && ioctl(STDIN_FILENO, WSKBDIO_SETMODE, &arg) < 0) {
         arg = errno;
         (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
-        errno = arg;
-        err(3, ((arg == ENOTTY)
+        errx(3, ((arg == ENOTTY)
                 ? "This program mode won't work on pseudo terminals"
                 : "Can't put keyboard in raw mode ("
                   "the WSDISPLAY_COMPAT_RAWKBD kernel option is mandatory)"));
     }
-
-    is_rawmode = 1;
     return;
 }
 
@@ -276,8 +252,6 @@ raw_off(void)
     if (! tios_only)
         (void)ioctl(STDIN_FILENO, WSKBDIO_SETMODE, &arg);
     (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
-
-    is_rawmode = 0;
     return;
 }
 
