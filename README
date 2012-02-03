@@ -2,8 +2,15 @@ Some tools which i use personally but which may be of interest for others, too
 ==============================================================================
 
 showkey.c:
-   Show keyboard scancodes for +BSD wscons(4).
+   Show keyboard scancodes for +BSD wscons(4), primitively.
    Will possibly be extended to work on other operating systems, too.
+
+git-topic-creator.pl:
+   To ease maintaining of topic branches i use a linear history, so that
+   i can use 'git rebase -i' for fixups and squashes, without having to
+   worry about recreation of topic branches.
+   Instead i tag commit messages, and use this script to create the topics
+   once i'm finished.
 
 git-pre-commit.sh:
    git(1)'s diff --check does unfortunately not offer a mode which detects
@@ -12,6 +19,8 @@ git-pre-commit.sh:
    sequences, i.e., the german keyboard produces NBSP for ALT+SPC, but it
    also requires ALT to get any of []|{} (ALT+[5-9]).  So NBSP's happen.
    This script can be used as (a template for a custom) pre-commit hook.
+
+Even less of widespread usability:
 
 openbsd-changelog-plus.pl,
 openbsd-changeset-plus.pl:
