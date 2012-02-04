@@ -7,10 +7,12 @@ require 5.008;
 #@  - if MP4/AAC is used: faac(1) (www.audiocoding.com)
 #@  - if Ogg/Vorbis is used: oggenc(1) (www.xiph.org)
 #@  - OPTIONAL: CDDB.pm (www.CPAN.org)
+my $SELF = 's-disc-ripper.pl';
 my $VERSION = 'v0.5.0rc0';
 my $COPYRIGHT =<<_EOT;
-Copyright (c) 2010 - 2011 Steffen Daode Nurpmeso <sdaoden\@gmail.com>.
+Copyright (c) 2010-2012 Steffen Daode Nurpmeso <sdaoden\@users.sourceforge.net>
 All rights reserved.
+This software is published under the terms of the "New BSD license".
 _EOT
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -111,8 +113,12 @@ my @Genres = (
     [ 28, 'Vocal' ]
 ); # }}}
 
+my $INTRO =<<_EOT;
+$SELF ($VERSION)
+$COPYRIGHT
+_EOT
+
 my ($RIP_ONLY, $ENC_ONLY, $NO_VOL_NORM, $VERBOSE) = (0, 0, 0, 0);
-my $INTRO = "s-disc-ripper.pl $VERSION\n$COPYRIGHT";
 my ($CLEANUP_OK, $WORK_DIR, $TARGET_DIR, %CDDB) = (0);
 
 jMAIN: { # {{{
@@ -259,18 +265,18 @@ sub command_line { # {{{
 
 jdocu:
     print STDERR <<_EOT;
-${INTRO}S-Disc-Ripper is the disc ripper of the S-MusicBox set of tools.
+${INTRO}Is the disc ripper of the S-MusicBox set of tools.
 It will rip discs, query CDDB servers and finally encode the raw data to MP3,
 and/or (MP4/)AAC and/or (Ogg )Vorbis (as desired).
 Setting the EDITOR environment gives more comfort ("$ENV{EDITOR}").
 
-USAGE:
-s-disc-ripper.pl -h|--help
-s-disc-ripper.pl -g|--genre-list
-s-disc-ripper.pl [-v|--verbose] [--musicdb=PATH] [--tmpdir=PATH]
-                 [--cdrom=SPEC] [--cdromdev=DEVSPEC]
-                 [-r|--rip-only] [-e|--encode-only=CD(DB)ID]
-                 [--mp3] [--mp3lo] [--aac] [--aaclo] [--ogg] [--ogglo]
+Synopsis:
+ $SELF -h|--help
+ $SELF -g|--genre-list
+ $SELF [-v|--verbose] [--musicdb=PATH] [--tmpdir=PATH]
+                  [--cdrom=SPEC] [--cdromdev=DEVSPEC]
+                  [-r|--rip-only] [-e|--encode-only=CD(DB)ID]
+                  [--mp3] [--mp3lo] [--aac] [--aaclo] [--ogg] [--ogglo]
 
  -h,--help        prints this help text and exits
  -g,--genre-list  dumps out a list of all GENREs and exits
@@ -802,7 +808,7 @@ jOUTER: while (1) {
         my $f = $CDInfo::DatFile;
         ::v("CDInfo::write_data($f)");
         open DAT, '>', $f or die "Can't open $f: $!";
-        print DAT "# S-Disc-Ripper CDDB info for project $CDInfo::Id\n",
+        print DAT "# $SELF CDDB info for project $CDInfo::Id\n",
                   "# Don't modify!  Or project needs to be re-ripped!!\n",
                   "CDID = $CDInfo::Id\n",
                   'TRACK_OFFSETS = ', join(' ', @CDInfo::TrackOffsets), "\n",
