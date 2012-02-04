@@ -2,14 +2,9 @@
 require 5.008;
 #@ Create topic branches from a single line of history with "tagged" commit
 #@ messages, removing those tags along the way (in the topic branches).
-#@ The topic branches can then be merged into a master.
-#@  [VALID-TOPIC-BRANCH-NAME] Rest of commit message
-#@  [VALID-TOPIC-BRANCH-NAME2]Rest of commit message
-#@  Results in a branch 'topic/VALID-TOPIC-BRANCH-NAME'; you get the idea.
 #@ See --help for more.
 my $SELF = 'git-topic-creator.pl';
 my $VERSION = 'v0.1.0';
-my $BUGMAIL = 'Please send reports to <sdaoden@users.sourceforge.net>';
 my $COPYRIGHT =<<_EOT;
 Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden\@users.sourceforge.net>
 All rights reserved.
@@ -39,22 +34,16 @@ _EOT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+my $GIT = 'git';        # -g/--git
+my $TOPICDIR = 'topic'; # Level under which all topic branches are created
+
+##
+
 use diagnostics -verbose;
 use strict;
 use warnings;
 
 use Getopt::Long;
-
-my $GIT = 'git';    # -g/--git
-my $TOPICDIR = 'topic';
-
-##
-
-my ($DEBUG, $VERBOSE) = (0, 0);
-my $INTRO =<<_EOT;
-$SELF ($VERSION)
-$COPYRIGHT
-_EOT
 
 my $TOPICPATH = 'refs/heads/' . $TOPICDIR;
 # I.e., '[BRANCH] normal message'
@@ -73,6 +62,12 @@ $ENV{GIT_EDITOR} = ("perl".
                     " -e 'open(F, \">\", \$ARGV[0]) || die \$!;'".
                     " -e 'print F \@lines;'".
                     " -e 'close F;'");
+
+my ($DEBUG, $VERBOSE) = (0, 0);
+my $INTRO =<<_EOT;
+$SELF ($VERSION)
+$COPYRIGHT
+_EOT
 
 my ($ONTO, $REV_SPEC, $NODELETE, $TOPIC_MERGE, $TOPIC_DELETE);
 my (@REFS, @TOPICS);
@@ -105,12 +100,12 @@ sub command_line { # {{{
 
                 'h|help|?'      => sub { goto jdocu; },
                 'd|debug'       => \$DEBUG,
-                'v|verbose+'    => \$VERBOSE)) {
+                'v|verbose'     => \$VERBOSE)) {
         $emsg = 'Invocation failure';
         goto jdocu;
     }
 
-    $VERBOSE += 2 if $DEBUG;
+    ++$VERBOSE if $DEBUG;
     $REDIR = '' if $VERBOSE != 0;
 
     if ($TOPIC_DELETE) {
@@ -159,12 +154,6 @@ _EOT
     exit defined $emsg ? 1 : 0;
 } # }}}
 
-sub verb2 {
-    return unless $VERBOSE > 1;
-    print STDOUT '=VV ', shift, "\n";
-    while (@_ != 0) { print STDOUT '=VV ++  ', shift, "\n" };
-    return 1;
-}
 sub verb1 {
     return unless $VERBOSE > 0;
     print STDOUT '-V  ', shift, "\n";
@@ -200,7 +189,7 @@ sub check_git {
         if length $git;
 }
 
-sub expand_rev_spec {
+sub expand_rev_spec { # {{{
     my ($git);
     $git = `$GIT rev-parse --verify --symbolic $ONTO`;
     panic(1, "Rev-spec '$ONTO' seems to be invalid: $!") if $? != 0;
@@ -226,7 +215,7 @@ sub expand_rev_spec {
 
     $REV_SPEC = join ' ', @REFS;
     verb1("REV_SPEC expanded: $REV_SPEC");
-}
+} # }}}
 
 sub read_check_commits {
     open GIT, "$GIT rev-list --reverse --oneline " . join(' ', @REFS) . " |" ||
@@ -250,7 +239,7 @@ sub read_check_commits {
     panic(1, 'Some commits are not classifieable') if $errs;
 }
 
-sub explode_topics {
+sub explode_topics { # {{{
     my ($i, $shas, $onto) = ('');
 
     # Commits are in correct order for an array, but in wrong order for
@@ -274,7 +263,7 @@ sub explode_topics {
         system("$GIT checkout -b $TOPICDIR/$i->[0]$onto $REDIR") == 0 ||
             panic(1, "Can't create $TOPICDIR/$i->[0]; run --delete-topics");
         system("$GIT cherry-pick --edit @{$i->[1]} $REDIR") == 0 ||
-            panic(1, "Can't cherry pick in $i->[0]");
+            panic(1, "Can't cherry pick in $i->[0]; run --delete-topics");
 
         $onto = '';
     }
@@ -293,7 +282,7 @@ sub explode_topics {
                "$TOPICDIR/$_ $REDIR") == 0 ||
             panic(1, "Can't merge $_ into $ONTO; run --delete-topics");
     }
-}
+} # }}}
 
 sub read_topics {
     my ($git);
