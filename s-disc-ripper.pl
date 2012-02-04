@@ -1002,6 +1002,7 @@ jOUTER: while (1) {
     sub create_data {
         my $ed = defined $ENV{EDITOR} ? $ENV{EDITOR} : '/usr/bin/vi';
         print "\nCreating S-MusicBox per-disc database\n";
+        @SongAddons = (); $SortAddons = '';
         _create_addons();
 
         my @old_data;
