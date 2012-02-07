@@ -600,6 +600,10 @@ checkup)        checkup;;
 autoup)
     MODE='autoup: checkup'
     checkup
+    if test -x ./autoup-prehook; then
+        MODE='autoup: running autoup-prehook'
+        ./autoup-prehook
+    fi
     MODE='autoup: update'
     update
     if test ! -s "$AUTOGCFILE"; then
@@ -608,8 +612,13 @@ autoup)
     else
         MODE='autoup: automerge'
         automerge
+        if test -x ./autoup-posthook; then
+            MODE='autoup: running autoup-posthook'
+            ./autoup-posthook
+        fi
         MODE='autoup: autogc'
         autogc
+        GITDID=0
     fi
     ;;
 *)
