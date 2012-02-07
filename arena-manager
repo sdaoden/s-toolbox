@@ -346,7 +346,8 @@ update() {
                 #$GIT pull -v --ff-only --stat --prune
                 $GIT fetch --verbose --prune
                 es=$?
-                git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
+                test $es -eq 0 &&
+                    git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
             elif test "$rd" != ${rd/.update_bomb_git}; then
                 xy_bomb_git_update "sh -c update.sh" 'update.sh'
                 es=$?
@@ -362,7 +363,8 @@ update() {
                 # after)
                 $GIT svn rebase
                 es=$?
-                git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
+                test $es -eq 0 &&
+                    git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
             elif test "$rd" != ${rd/.cvs_bomb_git}; then
                 xy_bomb_git_update "$CVS update $CVS_UPDATE_FLAGS" 'cvs(1)'
                 es=$?
