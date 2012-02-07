@@ -6,7 +6,7 @@
 #@ XXX and it could be even more automatic and it would be explicit what happens
 #@ XXX This would also make it safe against (further) changes in git+ namespaces
 #
-# Copyright (c) 2011 Steffen Daode Nurpmeso <sdaoden@gmail.com>.
+# Copyright (c) 2011-2012 Steffen Daode Nurpmeso <sdaoden@users.sourceforge.net>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -45,7 +45,7 @@ CVS_UPDATE_FLAGS='-AP'
 
 # So what can this script do for you?
 # It offers the following modes in an $ARENA of revision control repositories:
-#    reduce|expand|gc|fullgc|update|automerge|autogc|check_update|auto_update
+#    reduce|expand|gc|fullgc|update|automerge|autogc|checkup|autoup
 # Please read all comments of this script before you use it, it was not written
 # with public use in mind and thus is a bit complicated to setup.
 # This script chooses what to do according to tags that it derives from the
@@ -79,7 +79,7 @@ CVS_UPDATE_FLAGS='-AP'
 #
 # All those extensions can be extended with additional tags:
 #
-# -no_reduce     : skip "reduce" and "expand" modes (git(1), hg(1) only)
+# -no_reduce: skip "reduce" and "expand" modes (git(1), hg(1) only)
 #           if this is *not* part of the extension the git(1) managed
 #           repositories need a branch 'arena-manager-null', which should
 #           contain only a single file named 'NULL', which must only consist
@@ -88,9 +88,9 @@ CVS_UPDATE_FLAGS='-AP'
 #           Mercurial does have a builtin "null" branch and thus simply needs
 #           an "update" operation to switch back to the branch which was
 #           checked out before "reduce" happened.
-# -no_auto_update: never perform "update" for this unless the name of the repo
+# -no_autoup: never perform "update" for this unless the name of the repo
 #           was explicitely named on command line.
-# -no_full_gc    : even with "fullgc", never use --aggressive (git(1) only)
+# -no_fullgc: even with "fullgc", never use --aggressive (git(1) only)
 #           "fullgc", and "autogc" every six months, use the --aggressive
 #           argument to git-gc.  Some repositories however require hours to
 #           finish a fullgc (i.e. the Linux kernel).
@@ -105,7 +105,7 @@ AUTOGCFILE=.ARENA-AUTOGC
 #
 ESTAT=0
 GITDID=0
-AUTO_UPDATE=0
+AUTOUP=0
 
 log() {
     echo "$*"
@@ -285,7 +285,7 @@ xgc() {
         fi
         m=$MODE
         i=$GCT
-        if test "$rd" != ${rd/no_full_gc}; then
+        if test "$rd" != ${rd/no_fullgc}; then
             m='gc (fullgc forcefully downgraded)'
             i=
         fi
@@ -306,7 +306,7 @@ update() {
     }
 
     for rd in ${params[@]}; do
-        if [[ $AUTO_UPDATE -ne 0 && "$rd" != ${rd/no_auto_update/} ]]; then
+        if [[ $AUTOUP -ne 0 && "$rd" != ${rd/no_autoup/} ]]; then
             log ''
             log "[$rd: $MODE does not apply]"
             continue
@@ -523,12 +523,12 @@ autogc() {
     xgc
 }
 
-check_update() {
+checkup() {
     es=0
     log 'Checking how likely it is an update would succeed'
     for rd in ${params[@]}; do
-        if [[ $AUTO_UPDATE -ne 0 && "$rd" != ${rd/no_auto_update/} ]]; then
-            log "  [$rd: -no_auto_update tag, skip]"
+        if [[ $AUTOUP -ne 0 && "$rd" != ${rd/no_autoup/} ]]; then
+            log "  [$rd: -no_autoup tag, skip]"
             continue
         fi
         if test "$rd" != ${rd/git}; then
@@ -572,7 +572,7 @@ shift
 PARAMS="$@"
 set -u
 test $# -ne 0 || {
-    AUTO_UPDATE=1
+    AUTOUP=1
     PARAMS=$(echo *.*)
 }
 typeset -a params
@@ -589,30 +589,30 @@ if test "$MODE" != autogc; then
 fi
 
 case "$MODE" in
-reduce|expand)      reduce_expand;;
-fullgc|gc)          xgc;;
-update)             update;;
-automerge)          automerge;;
-autogc)             autogc;;
-check_update)       check_update;;
-auto_update)
-    MODE='auto_update: check_update'
-    check_update
-    MODE='auto_update: update'
+reduce|expand)  reduce_expand;;
+fullgc|gc)      xgc;;
+update)         update;;
+automerge)      automerge;;
+autogc)         autogc;;
+checkup)        checkup;;
+autoup)
+    MODE='autoup: checkup'
+    checkup
+    MODE='autoup: update'
     update
     if test ! -s "$AUTOGCFILE"; then
         log ''
         log 'It seems there is no new data at all, skipping merge+gc'
     else
-        MODE='auto_update: automerge'
+        MODE='autoup: automerge'
         automerge
-        MODE='auto_update: autogc'
+        MODE='autoup: autogc'
         autogc
     fi
     ;;
 *)
     echo 'USAGE: arena-manager MODE [LIST-OF-DIRS]'
-    echo 'MODEs: reduce|expand|gc|fullgc|update|automerge|autogc|check_update|auto_update'
+    echo 'MODEs: reduce|expand|gc|fullgc|update|automerge|autogc|checkup|autoup'
     exit 1
     ;;
 esac
