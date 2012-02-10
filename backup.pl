@@ -248,7 +248,7 @@ sub do_exit {
 
     sub create {
         _create_list();
-        _create_backups();
+        _create_backups() if @HG_Dirs;
     }
 
     sub _create_list {
@@ -378,7 +378,7 @@ sub do_exit {
 
     sub create {
         _create_list();
-        _create_backups();
+        _create_backups() if @Git_Dirs;
     }
 
     sub _create_list {
