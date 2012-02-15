@@ -217,12 +217,12 @@ xy_bomb_git_update() {
                    sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
         echo "... $commname updated some, initiating git(1) commit"
         $GIT add --all || exit 20
-        $GIT commit -m 'arena-manager .XY_bomb_git update' || exit 21
+        $GIT commit -m "arena-manager: $commname bomb_git update" || exit 21
         $GIT update-ref refs/remotes/origin/master \
-                        arena-manager-download || exit 22
+                        arena-manager-download || exit 22
         echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 23
     else
-        $GIT reset -q --hard HEAD || exit 24
+        $GIT reset -q --hard HEAD || exit 24
         echo "... $commname did not seem to have new data"
     fi
 
@@ -410,7 +410,7 @@ update() {
                     echo '... committing updated configuration'
                     test x"$Rflag" != x && mv -f .git/cvs-revisions .
                     mv -f "$cvsps_dir/$cvsps_file" cvsps_cache
-                    $GIT add --all || exit 21
+                    $GIT add --all || exit 21
                     $GIT commit -m 'arena-manager .cvs_git update' || exit 22
                 else
                     echo '... cvsimport had nothing, not updating config'
