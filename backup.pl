@@ -1,10 +1,10 @@
 #!/usr/bin/perl
-#@ Simple updater, places backup and metadata files in $OUTPUT_DIR.
+#@ Simple updater, places backup and metadata files in $(REPO_)?OUTPUT_DIR.
 #@ default: (tar -rf) backup.tar files changed since (timestamp of) last run
 #@ -r/--reset: do not take care about timestamps, do create xy.dateTtime.tbz
 #@ -c/--complete: other input (@COMPLETE_INPUT), always xy.dateTtime.tbz
 #@ -t/--timestamp: don't backup, but set the timestamp to the current time
-#@ With either of -r and -c $ADDONS, if existent is removed.
+#@ With either of -r and -c $ADDONS, if existent, is removed.
 
 ## Note: all _absolute_ directories and _not_ globs ##
 
@@ -16,9 +16,29 @@ my $EMAIL = defined($ENV{'EMAIL'}) ? $ENV{'EMAIL'} : 'postmaster@localhost';
 # Where to store backup(s) and metadata
 my $OUTPUT_DIR = "$HOME/traffic";
 
-# Our metadata storage
+# We are also able to create backup bundles for hg(1) and git(1), which are
+# stored in the directory given here; note that these are *not* automatically
+# backed up, so place them in @XY_INPUT so that they end up in the actual
+# backup archive ...  Simply comment this variable out if you don't want this.
+my $REPO_OUTPUT_DIR = "$HOME/arena/data/backups";
+
+# What actually happens is that $REPO_SRC_DIR is walked.
+# For hg(1), directories encountered and ending with .hg (and having xy.hg/.hg),
+# are backed up via 'hg bundle' (thus using default push location).
+# In addition shelve and mq patches are also backed up, if existent.
+# For git(1) this is xy.git (plus xy.git/.git).  Here we simply use the git(1)
+# "bundle" command with all possible flags to create the backup for everything
+# that is not found in --remotes, which thus automatically includes stashes
+# etc. (for the latter .git/logs/refs/stash is also backed up)
+my $REPO_SRC_DIR = "$HOME/src";
+
+# Our metadata storage file
 my $TSTAMP = "$OUTPUT_DIR/.-backup.dat";
-# Where user may place additional directories to backup, one per line
+
+# Sometimes there is temporarily a directory which also should be backed up,
+# but adjusting the backup script is too blown for this.
+# If this file here exists, each line is treated as the specification of such
+# a directory (again: absolute paths, please).
 my $ADDONS = "$OUTPUT_DIR/.backup-addons.txt";
 
 # A fileglob (may really be a glob) and a list of directories to always exclude
@@ -46,22 +66,7 @@ my @COMPLETE_INPUT = (
     "$HOME/arena/pics.snapshots"
 );
 
-# We are also able to create backup bundles for hg(1) and git(1), which are
-# stored in the directories given here; note that these are *not* automatically
-# backed up, so place them in @XY_INPUT...
-my $HG_OUTPUT_DIR = "$HOME/arena/data/backups";
-my $GIT_OUTPUT_DIR = "$HOME/arena/data/backups";
-# What actually happens is that the $HG_SRC_DIR and $GIT_SRC_DIR are walked.
-# For hg(1), directories encountered and ending with .hg (and having xy.hg/.hg),
-# are backed up via 'hg bundle' (thus using default push location).
-# In addition shelve and mq patches are also backed up, if existent.
-my $HG_SRC_DIR = "$HOME/src";
-# For git(1) this is xy.git (plus xy.git/.git).  Here we simply use the git(1)
-# "bundle" command with all possible flags to create the backup for everything
-# that is not found in --remotes, which thus automatically includes stashes etc.
-my $GIT_SRC_DIR = "$HOME/src";
-
-###
+###  >8  ###
 
 use diagnostics -verbose;
 use warnings;
@@ -247,19 +252,20 @@ sub do_exit {
     my @HG_Dirs;
 
     sub create {
+        return unless defined $REPO_OUTPUT_DIR;
         _create_list();
         _create_backups() if @HG_Dirs;
     }
 
     sub _create_list {
         ::msg(0, 'Collecting hg(1) repo information');
-        unless (-d $HG_OUTPUT_DIR) {
+        unless (-d $REPO_OUTPUT_DIR) {
             ::err(0, 'FAILURE: no HG backup-bundle/-shelve/-patch dir found');
             ::do_exit(1);
         }
 
-        unless (opendir DIR, $HG_SRC_DIR) {
-            ::err(1, "opendir($HG_SRC_DIR) failed: $^E");
+        unless (opendir DIR, $REPO_SRC_DIR) {
+            ::err(1, "opendir($REPO_SRC_DIR) failed: $^E");
             ::do_exit(1);
         }
         my @dents = readdir DIR;
@@ -267,7 +273,7 @@ sub do_exit {
 
         foreach my $dent (@dents) {
             next if $dent eq '.' || $dent eq '..';
-            my $abs = $HG_SRC_DIR . '/' . $dent;
+            my $abs = $REPO_SRC_DIR . '/' . $dent;
             next unless -d $abs;
             next unless $abs =~ /\.hg$/;
             next unless -d "$abs/.hg";
@@ -280,7 +286,7 @@ sub do_exit {
         ::msg(0, "Creating HG bundle/shelve/patch backups");
         foreach my $e (@HG_Dirs) {
             ::msg(1, "Processing $e");
-            my $src = $HG_SRC_DIR . '/' . $e;
+            my $src = $REPO_SRC_DIR . '/' . $e;
             unless (chdir $src) {
                 ::err(2, "HGBundles: cannot chdir($src): $^E");
                 ::do_exit(1);
@@ -297,7 +303,7 @@ sub do_exit {
         my ($target, $flag, $omodt);
         ::msg(2, 'Checking for new bundle') if $VERBOSE;
 
-        $target = "$HG_OUTPUT_DIR/$e";
+        $target = "$REPO_OUTPUT_DIR/$e";
         $target = $1 if $target =~ /(.+)\..+$/;
         $target .= '.bundle';
         $flag = $VERBOSE ? '-v' : '';
@@ -332,7 +338,7 @@ sub do_exit {
         my ($target, $dest, $flag);
         ::msg(2, "Checking for $what") if $VERBOSE;
 
-        $target = "$HG_OUTPUT_DIR/$e";
+        $target = "$REPO_OUTPUT_DIR/$e";
         $target = $1 if $target =~ /(.+)\..+$/;
         $target .= "-$what.tbz";
         ::msg(3, "... target: $target") if $VERBOSE;
@@ -377,19 +383,20 @@ sub do_exit {
     my @Git_Dirs;
 
     sub create {
+        return unless defined $REPO_OUTPUT_DIR;
         _create_list();
         _create_backups() if @Git_Dirs;
     }
 
     sub _create_list {
         ::msg(0, 'Collecting git(1) repo information');
-        unless (-d $GIT_OUTPUT_DIR) {
+        unless (-d $REPO_OUTPUT_DIR) {
             ::err(0, 'FAILURE: no Git backup-bundle dir found');
             ::do_exit(1);
         }
 
-        unless (opendir DIR, $GIT_SRC_DIR) {
-            ::err(1, "opendir($GIT_SRC_DIR) failed: $^E");
+        unless (opendir DIR, $REPO_SRC_DIR) {
+            ::err(1, "opendir($REPO_SRC_DIR) failed: $^E");
             ::do_exit(1);
         }
         my @dents = readdir DIR;
@@ -397,7 +404,7 @@ sub do_exit {
 
         foreach my $dent (@dents) {
             next if $dent eq '.' || $dent eq '..';
-            my $abs = $GIT_SRC_DIR . '/' . $dent;
+            my $abs = $REPO_SRC_DIR . '/' . $dent;
             next unless -d $abs;
             next unless $abs =~ /\.git$/;
             next unless -d "$abs/.git";
@@ -410,7 +417,7 @@ sub do_exit {
         ::msg(0, "Creating Git bundle backups");
         foreach my $e (@Git_Dirs) {
             ::msg(1, "Processing $e");
-            my $src = $GIT_SRC_DIR . '/' . $e;
+            my $src = $REPO_SRC_DIR . '/' . $e;
             unless (chdir $src) {
                 ::err(2, "GitBundles: cannot chdir($src): $^E");
                 ::do_exit(1);
@@ -425,7 +432,7 @@ sub do_exit {
         my ($target, $flag, $omodt);
         ::msg(2, 'Checking for new bundle') if $VERBOSE;
 
-        $target = "$GIT_OUTPUT_DIR/$e";
+        $target = "$REPO_OUTPUT_DIR/$e";
         $target = $1 if $target =~ /(.+)\..+$/;
         $target .= '.bundle';
         $flag = '--all --not --remotes --tags';
