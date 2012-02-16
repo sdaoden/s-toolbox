@@ -438,9 +438,31 @@ sub do_exit {
                 if $VERBOSE;
             ::err(3, "Failed to unlink outdated bundle $target: $^E")
                 if (-f $target && unlink($target) != 1);
+            ::err(3, "Failed to unlink outdated $target.stashlog: $^E")
+                if (-f "$target.stashlog" && unlink("$target.stashlog") != 1);
         } elsif (($flag >> 8) != 0) {
             ::err(3, "git(1) bundle failed for $target");
             ::do_exit(1);
+        }
+        # Unfortunately stashes in bundles are rather useless without the
+        # additional log file (AFAIK)!
+        elsif (-f ".git/logs/refs/stash") {
+            ::msg(3, ".git/logs/refs/stash exists, creating $target.stashlog")
+                if $VERBOSE;
+            unless (open SI, '<', '.git/logs/refs/stash') {
+                ::err(4, 'Failed to read .git/logs/refs/stash');
+                ::do_exit(1);
+            }
+            unless (open SO, '>', "$target.stashlog") {
+                ::err(4, "Failed to write $target.stashlog");
+                ::do_exit(1);
+            }
+            print SO "# Place this in .git/logs/refs/stash\n" ||
+                ::do_exit("Failed to write $target.stashlog");
+            print SO $_ || ::do_exit("Failed to write $target.stashlog")
+                foreach (<SI>);
+            close SO;
+            close SI;
         }
     }
 }
