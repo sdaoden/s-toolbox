@@ -218,7 +218,8 @@ xy_bomb_git_update() {
                    sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
         echo "... $commname updated some, initiating git(1) commit"
         $GIT add --all || exit 20
-        $GIT commit -m "arena-manager: $commname bomb_git update" || exit 21
+        $GIT commit -m "arena-manager: $commname update, $(date +'%FT%T%z')" \
+            || exit 21
         $GIT update-ref refs/remotes/origin/master \
                         arena-manager-download || exit 22
         echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 23
