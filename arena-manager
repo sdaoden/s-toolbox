@@ -212,7 +212,8 @@ xy_bomb_git_update() {
     # Ignore all updates which occur in .svn/CVS directories, at least
     # for checking wether any repo content has been updated
     if test 0 != $($GIT status --porcelain | \
-                   sed -Ee '/(\.svn|CVS)\/.*$/d' -Ee '/\.git/d' | \
+                   sed -Ee '/(\.svn|CVS)\/.*$/d' -Ee '/\.git/d' \
+                       -Ee '/\/?\.#/d' | \
                    wc -l | \
                    sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
         echo "... $commname updated some, initiating git(1) commit"
