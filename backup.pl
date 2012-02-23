@@ -471,6 +471,10 @@ sub do_exit {
             close SO;
             close SI;
         }
+        # And then, there may be a bundle but no (more) stash
+        elsif (-f "$target.stashlog" && unlink("$target.stashlog") != 1) {
+            ::err(3, "Failed to unlink outdated $target.stashlog: $^E")
+        }
     }
 }
 
