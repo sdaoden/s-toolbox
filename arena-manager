@@ -489,7 +489,7 @@ automerge() {
                         $es |= $?;
                     } else {
                         print "\n... Performing automerge from $_ to $lr\n";
-                        system("$git checkout -qf $lr; " .
+                        system("$git checkout -q -f $lr; " .
                                "$git merge --ff-only $_");
                         $es |= $?;
                     }
