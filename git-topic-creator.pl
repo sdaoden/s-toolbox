@@ -278,7 +278,7 @@ sub explode_topics { # {{{
         panic(1, "Can't re-checkout $ONTO; run --delete-topics");
 
     foreach (@TOPICS) {
-        system("$GIT merge --no-ff --commit --stat --log --verbose " .
+        system("$GIT merge --no-ff --commit --stat --log=1000 --verbose " .
                "$TOPICDIR/$_ $REDIR") == 0 ||
             panic(1, "Can't merge $_ into $ONTO; run --delete-topics");
     }
