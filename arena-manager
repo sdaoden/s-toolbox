@@ -65,7 +65,8 @@ CVS_UPDATE_FLAGS='-AP'
 #           plain git(1) repo inside plain checked out cvs(1)/svn(1) workdir
 #           do this once after the initial checkout:
 #           $ git init; git add --all; git ci -m created
-#           $ git update-ref refs/heads/arena-manager-download master
+#           $ git checkout -f -B arena-manager-download master
+#           (In fact the latter is what arena-manager does to manage stuff..)
 #           And, for .cvs_bomb_git:
 #           $ echo '.#*' >> .git/info/exclude
 #           And, for .update_bomb_git:
@@ -205,7 +206,10 @@ xy_bomb_git_update() {
 
     # (We need to compare local master and remote to detect wether there were
     # updates; arena-manager2/.pl ...)
-    git_checkout arena-manager-download
+    $GIT checkout -q -f -B arena-manager-download master -- || {
+        echo >&2 "Can\'t reset branch arena-manager-download, bailing out!" &&
+        exit 20
+    }
 
     $comm
     es=$?
@@ -217,14 +221,14 @@ xy_bomb_git_update() {
                    wc -l | \
                    sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
         echo "... $commname updated some, initiating git(1) commit"
-        $GIT add --all || exit 20
+        $GIT add --all || exit 21
         $GIT commit -m "arena-manager: $commname update, $(date +'%FT%T%z')" \
-            || exit 21
+            || exit 22
         $GIT update-ref refs/remotes/origin/master \
-                        arena-manager-download || exit 22
-        echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 23
+                        arena-manager-download || exit 23
+        echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 24
     else
-        $GIT reset -q --hard HEAD || exit 24
+        $GIT reset -q --hard HEAD || exit 25
         echo "... $commname did not seem to have new data"
     fi
 
