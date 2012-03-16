@@ -1,9 +1,9 @@
-/*@ showkey.c  : show keyboard scancodes for +BSD wscons(4), version 0.3.
+/*@ showkey.c  : show keyboard scancodes for +BSD wscons(4), version 0.4.
  *@ Compile    : $ gcc -W -Wall -pedantic -ansi -o showkey showkey.c
  *@ Run        : $ ./showkey [ktv]  (keycode, termios-only, termios-only values)
  *@ Exit status: 0=timeout, 1=signal/read error, 3=use/setup failure
  *
- * Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@googlemail.com>.
+ * Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sourceforge.net>.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -149,7 +149,7 @@ mode_keycode(unsigned char *buf, ssize_t len)
 {
     unsigned char *cursor = buf;
     const char *group;
-    unsigned int kc, rc, isdown;
+    unsigned int kc, rc, isplain, isdown;
 
     while (--len >= 0) {
         kc = rc = *cursor++;
@@ -165,6 +165,7 @@ mode_keycode(unsigned char *buf, ssize_t len)
             kc &= ((kc & 0xF000) == 0xE000) ? 0x0FFF : 0x00FF;
         }
 
+        isplain = 0;
         switch (KS_GROUP(rc)) {
 #define G(g) case g: group = #g; break;
         G(KS_GROUP_Mod)
@@ -175,21 +176,25 @@ mode_keycode(unsigned char *buf, ssize_t len)
         /* Not encoded?? */
         G(KS_GROUP_Dead)
         G(KS_GROUP_Keycode)
-        default:
-# ifdef KS_GROUP_Plain
-        G(KS_GROUP_Plain)
-# else
-        G(KS_GROUP_Ascii)
-# endif
 #undef G
+        default:
+#ifdef KS_GROUP_Ascii
+# define KS_GROUP_Plain KS_GROUP_Ascii
+#endif
+        case KS_GROUP_Plain:
+            isplain = 1;
+            group = "Plain";
+            break;
         }
-        isdown = 0 == (kc & 0x80);
 
+        isdown = 0 == (kc & 0x80);
         kc &= ~0x0080;
-        printf( "keycode %3u %-7s "
-                "(0x%04X: %17s | %c | 0x%04X\r\n",
-                kc, (isdown ? "press" : "release"),
-                rc, group, (isdown ? 'v' : '^'), kc);
+        if (! isplain)
+            kc |= 0x80;
+
+        printf("keycode %3u %-7s (0x%04X: %c | %s\r\n",
+            kc, (isdown ? "press" : "release"), rc,
+            (isdown ? 'v' : '^'), group);
     }
 
     return (len <= 0) ? 0 : len;
@@ -243,10 +248,11 @@ raw_on(void)
     if (! tios_only && ioctl(STDIN_FILENO, WSKBDIO_SETMODE, &arg) < 0) {
         arg = errno;
         (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
-        errx(3, ((arg == ENOTTY)
-                ? "This program mode won't work on pseudo terminals"
-                : "Can't put keyboard in raw mode ("
-                  "the WSDISPLAY_COMPAT_RAWKBD kernel option is mandatory)"));
+        errx(3,
+            ((arg == ENOTTY)
+            ? "This program mode won't work on pseudo terminals"
+            : ("Can't put keyboard in raw mode ("
+               "the WSDISPLAY_COMPAT_RAWKBD kernel option is mandatory)")));
     }
     return;
 }
