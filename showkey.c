@@ -31,6 +31,11 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/* How many seconds of inactivity before program terminates? */
+#define ALARM_DELAY     5
+
+/**  >8  **  8<  **/
+
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -100,14 +105,15 @@ main(int argc, char **argv)
         if (sigaction((int)i, &sa, NULL) < 0 && i == SIGALRM)
             err(3, "Can't install SIGALRM signal handler");
 
-    it.it_value.tv_sec = 15;
+    it.it_value.tv_sec = ALARM_DELAY;
     it.it_value.tv_usec = 0;
     it.it_interval.tv_sec = it.it_interval.tv_usec = 0;
 
     raw_on();
-    printf( "You may now use the keyboard;\r\n"
-            "After %d seconds of inactivity the program terminates\r\n",
-            (int)it.it_value.tv_sec);
+    printf("You may now use the keyboard;\r\n"
+        "After %d seconds of inactivity the program terminates\r\n",
+        ALARM_DELAY);
+
     for (i = skip = 0;;) {
         if (setitimer(ITIMER_REAL, &it, NULL) < 0) {
             raw_off();
@@ -121,6 +127,7 @@ main(int argc, char **argv)
 
         skip = (*mode)(buf, i);
     }
+
     raw_off();
 
     return (caught_sig < 2);
