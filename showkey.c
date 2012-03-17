@@ -192,8 +192,8 @@ mode_keycode(unsigned char *buf, ssize_t len)
         if (! isplain)
             kc |= 0x80;
 
-        printf("keycode %3u %-7s (0x%04X: %c | %s\r\n",
-            kc, (isdown ? "press" : "release"), rc,
+        printf("keycode %3u %-7s (0x%04X: 0x%04X | %c | %s\r\n",
+            kc, (isdown ? "press" : "release"), rc, (kc & ~0x80),
             (isdown ? 'v' : '^'), group);
     }
 
