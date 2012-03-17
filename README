@@ -2,8 +2,7 @@ Some tools which i use personally but which may be of interest for others, too
 ==============================================================================
 
 showkey.c:
-   Show keyboard scancodes for +BSD wscons(4), primitively.
-   Will possibly be extended to work on other operating systems, too.
+   Show keyboard scancodes for (Free|Open|Net)BSD consoles, primitively.
 
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so that

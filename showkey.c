@@ -1,7 +1,7 @@
-/*@ showkey.c  : show keyboard scancodes for +BSD wscons(4), version 0.4.
- *@ Compile    : $ gcc -W -Wall -pedantic -ansi -o showkey showkey.c
- *@ Run        : $ ./showkey [ktv]  (keycode, termios-only, termios-only values)
- *@ Exit status: 0=timeout, 1=signal/read error, 3=use/setup failure
+/*@ showkey.c v5: show keyboard scancodes for FreeBSD, OpenBSD, NetBSD.
+ *@ Compile     : $ gcc -W -Wall -pedantic -ansi -o showkey showkey.c
+ *@ Run         : $ ./showkey [ktv]  (keycode, termios seq., termios vals)
+ *@ Exit status : 0=timeout, 1=signal/read error, 3=use/setup failure
  *
  * Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sourceforge.net>.
  * All rights reserved.
@@ -48,8 +48,16 @@
 #include <sys/ioctl.h>
 #include <sys/time.h>
 
-#include <dev/wscons/wsconsio.h>
-#include <dev/wscons/wsksymdef.h>
+#ifdef __FreeBSD__
+# define USE_SYSCONS
+# include <sys/kbio.h>
+#elif defined __OpenBSD__ || defined __NetBSD__ /* TODO NetBSD not tested! */
+# define USE_WSCONS
+# include <dev/wscons/wsconsio.h>
+# include <dev/wscons/wsksymdef.h>
+#else
+# error Operating system not supported
+#endif
 
 static int              tios_only, caught_sig;
 static struct termios   tios_orig, tios_raw;
@@ -57,13 +65,13 @@ static struct termios   tios_orig, tios_raw;
 /* Signal handler, exit 0 if SIGALRM, 1 otherwise */
 static void     onsig(int sig);
 
+/* Modes which handle input */
+static ssize_t  mode_term(unsigned char *buf, ssize_t len),
+                mode_value(unsigned char *buf, ssize_t len),
+                mode_keycode(unsigned char *buf, ssize_t len);
+
 /* Terminal handling */
 static void     raw_init(void), raw_on(void), raw_off(void);
-
-/* Modes which handle input */
-static ssize_t  mode_keycode(unsigned char *buf, ssize_t len),
-                mode_term(unsigned char *buf, ssize_t len),
-                mode_value(unsigned char *buf, ssize_t len);
 
 int
 main(int argc, char **argv)
@@ -140,66 +148,6 @@ onsig(int sig)
     return;
 }
 
-/*
- * See src/sys/dev/wscons/wsksymdef.h
- */
-
-static ssize_t
-mode_keycode(unsigned char *buf, ssize_t len)
-{
-    unsigned char *cursor = buf;
-    const char *group;
-    unsigned int kc, rc, isplain, isdown;
-
-    while (--len >= 0) {
-        kc = rc = *cursor++;
-        if ((rc & 0xF0) == 0xE0 || (rc & 0xF8) == 0xF0) {
-            if (--len < 0) {
-                *buf = (unsigned char)rc;
-                len = 1;
-                break;
-            }
-            kc <<= 8;
-            kc |= *cursor++;
-            rc = kc;
-            kc &= ((kc & 0xF000) == 0xE000) ? 0x0FFF : 0x00FF;
-        }
-
-        isplain = 0;
-        switch (KS_GROUP(rc)) {
-#define G(g) case g: group = #g; break;
-        G(KS_GROUP_Mod)
-        G(KS_GROUP_Keypad)
-        G(KS_GROUP_Function)
-        G(KS_GROUP_Command)
-        G(KS_GROUP_Internal)
-        /* Not encoded?? */
-        G(KS_GROUP_Dead)
-        G(KS_GROUP_Keycode)
-#undef G
-        default:
-#ifdef KS_GROUP_Ascii
-# define KS_GROUP_Plain KS_GROUP_Ascii
-#endif
-        case KS_GROUP_Plain:
-            isplain = 1;
-            group = "Plain";
-            break;
-        }
-
-        isdown = 0 == (kc & 0x80);
-        kc &= ~0x0080;
-        if (! isplain)
-            kc |= 0x80;
-
-        printf("keycode %3u %-7s (0x%04X: 0x%04X | %c | %s\r\n",
-            kc, (isdown ? "press" : "release"), rc, (kc & ~0x80),
-            (isdown ? 'v' : '^'), group);
-    }
-
-    return (len <= 0) ? 0 : len;
-}
-
 static ssize_t
 mode_term(unsigned char *buf, ssize_t len)
 {
@@ -213,7 +161,8 @@ mode_term(unsigned char *buf, ssize_t len)
         while (--len >= 0)
             printf("0x%02X ", (unsigned int)*buf++);
     printf("\r\n");
-    return 0;
+
+    return (0);
 }
 
 static ssize_t
@@ -224,9 +173,85 @@ mode_value(unsigned char *buf, ssize_t len)
         printf("%4d 0%03o 0x%02X  ", v, v, v);
     }
     printf("\r\n");
-    return 0;
+
+    return (0);
 }
 
+#if defined USE_SYSCONS || defined USE_WSCONS
+static ssize_t
+mode_keycode(unsigned char *buf, ssize_t len)
+{
+    unsigned char *cursor = buf;
+
+    while (--len >= 0) {
+        unsigned int isplain = 1, kc = *cursor++, rc = kc, isdown;
+
+        if ((rc & 0xF0) == 0xE0 || (rc & 0xF8) == 0xF0) {
+            isplain = 0;
+            if (--len < 0) {
+                *buf = (unsigned char)rc;
+                len = 1;
+                break;
+            }
+
+            kc <<= 8;
+            kc |= *cursor++;
+            rc = kc;
+            kc &= ((kc & 0xF000) == 0xE000) ? 0x0FFF : 0x00FF;
+        }
+
+        isdown = (0 == (kc & 0x80));
+        kc &= ~0x0080;
+        if (! isplain)
+            kc |= 0x80;
+
+        printf("keycode %3u %-7s (0x%04X: 0x%04X | %c)\r\n",
+            kc, (isdown ? "press" : "release"),
+            rc, (kc & ~0x80), (isdown ? 'v' : '^'));
+    }
+
+    return ((len <= 0) ? 0 : len);
+}
+#endif /* defined USE_SYSCONS || defined USE_WSCONS */
+
+#ifdef USE_SYSCONS
+static void
+raw_init(void)
+{
+    if (tcgetattr(STDIN_FILENO, &tios_orig) < 0)
+        err(3, "Can't query terminal attributes");
+    tios_raw = tios_orig;
+    (void)cfmakeraw(&tios_raw);
+    return;
+}
+
+static void
+raw_on(void)
+{
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &tios_raw) < 0)
+        err(3, "Can't set terminal attributes");
+
+    if (! tios_only && ioctl(STDIN_FILENO, KDSKBMODE, (int)K_RAW) < 0) {
+        int sverr = errno;
+        (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
+        errx(3, ((sverr == ENOTTY)
+            ? "This program mode won't work on pseudo terminals"
+            : "Can't put keyboard in raw mode (shouldn't happen ;()"));
+    }
+    return;
+}
+
+static void
+raw_off(void)
+{
+    if (! tios_only)
+        (void)ioctl(STDIN_FILENO,  KDSKBMODE, (int)K_XLATE);
+    (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
+    return;
+}
+#endif /* USE_SYSCONS */
+
+#ifdef USE_WSCONS
 static void
 raw_init(void)
 {
@@ -248,11 +273,10 @@ raw_on(void)
     if (! tios_only && ioctl(STDIN_FILENO, WSKBDIO_SETMODE, &arg) < 0) {
         arg = errno;
         (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
-        errx(3,
-            ((arg == ENOTTY)
+        errx(3, ((arg == ENOTTY)
             ? "This program mode won't work on pseudo terminals"
-            : ("Can't put keyboard in raw mode ("
-               "the WSDISPLAY_COMPAT_RAWKBD kernel option is mandatory)")));
+            : ("Can't put keyboard in raw mode "
+               "(WSDISPLAY_COMPAT_RAWKBD kernel option present?)")));
     }
     return;
 }
@@ -267,5 +291,6 @@ raw_off(void)
     (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
     return;
 }
+#endif /* USE_WSCONS */
 
 /* vim:set fenc=utf-8 filetype=c syntax=c ts=4 sts=4 sw=4 et tw=79: */
