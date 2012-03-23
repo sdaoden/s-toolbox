@@ -1,4 +1,4 @@
-/*@ showkey.c v5: show keyboard scancodes for FreeBSD, OpenBSD, NetBSD.
+/*@ showkey.c v6: show keyboard scancodes for FreeBSD, OpenBSD, NetBSD, Linux.
  *@ Compile     : $ gcc -W -Wall -pedantic -ansi -o showkey showkey.c
  *@ Run         : $ ./showkey [ktv]  (keycode, termios seq., termios vals)
  *@ Exit status : 0=timeout, 1=signal/read error, 3=use/setup failure
@@ -55,6 +55,9 @@
 # define USE_WSCONS
 # include <dev/wscons/wsconsio.h>
 # include <dev/wscons/wsksymdef.h>
+#elif defined __linux__
+# define USE_LINUX
+# include <linux/kd.h>
 #else
 # error Operating system not supported
 #endif
@@ -177,13 +180,12 @@ mode_value(unsigned char *buf, ssize_t len)
     return (0);
 }
 
-#if defined USE_SYSCONS || defined USE_WSCONS
 static ssize_t
 mode_keycode(unsigned char *buf, ssize_t len)
 {
-    unsigned char *cursor = buf;
+    unsigned char *cursor;
 
-    while (--len >= 0) {
+    for (cursor = buf; --len >= 0;) {
         unsigned int isplain = 1, kc = *cursor++, rc = kc, isdown;
 
         if ((rc & 0xF0) == 0xE0 || (rc & 0xF8) == 0xF0) {
@@ -207,14 +209,14 @@ mode_keycode(unsigned char *buf, ssize_t len)
 
         printf("keycode %3u %-7s (0x%04X: 0x%04X | %c)\r\n",
             kc, (isdown ? "press" : "release"),
-            rc, (kc & ~0x80), (isdown ? 'v' : '^'));
+            rc, kc, (isdown ? 'v' : '^'));
     }
 
     return ((len <= 0) ? 0 : len);
 }
-#endif /* defined USE_SYSCONS || defined USE_WSCONS */
 
-#ifdef USE_SYSCONS
+#if defined USE_SYSCONS || defined USE_LINUX
+
 static void
 raw_init(void)
 {
@@ -228,10 +230,10 @@ raw_init(void)
 static void
 raw_on(void)
 {
-    if (tcsetattr(STDIN_FILENO, TCSANOW, &tios_raw) < 0)
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios_raw) < 0)
         err(3, "Can't set terminal attributes");
 
-    if (! tios_only && ioctl(STDIN_FILENO, KDSKBMODE, (int)K_RAW) < 0) {
+    if (! tios_only && ioctl(STDIN_FILENO, KDSKBMODE, (long)K_RAW) < 0) {
         int sverr = errno;
         (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
         errx(3, ((sverr == ENOTTY)
@@ -245,13 +247,14 @@ static void
 raw_off(void)
 {
     if (! tios_only)
-        (void)ioctl(STDIN_FILENO,  KDSKBMODE, (int)K_XLATE);
-    (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
+        (void)ioctl(STDIN_FILENO,  KDSKBMODE, (long)K_XLATE);
+    (void)tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios_orig);
     return;
 }
-#endif /* USE_SYSCONS */
 
+#endif /* USE_SYSCONS || USE_LINUX */
 #ifdef USE_WSCONS
+
 static void
 raw_init(void)
 {
@@ -291,6 +294,7 @@ raw_off(void)
     (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
     return;
 }
+
 #endif /* USE_WSCONS */
 
 /* vim:set fenc=utf-8 filetype=c syntax=c ts=4 sts=4 sw=4 et tw=79: */
