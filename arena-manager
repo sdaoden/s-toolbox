@@ -210,6 +210,10 @@ xy_bomb_git_update() {
         echo >&2 "Can\'t reset branch arena-manager-download, bailing out!" &&
         exit 20
     }
+    $GIT update-ref refs/remotes/origin/master arena-manager-download || {
+        echo >&2 "Can\'t reset branch origin/master, bailing out!" &&
+        exit 21
+    }
 
     $comm
     es=$?
@@ -221,14 +225,14 @@ xy_bomb_git_update() {
                    wc -l | \
                    sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
         echo "... $commname updated some, initiating git(1) commit"
-        $GIT add --all || exit 21
+        $GIT add --all || exit 22
         $GIT commit -m "arena-manager: $commname update, $(date +'%FT%T%z')" \
-            || exit 22
-        $GIT update-ref refs/remotes/origin/master \
-                        arena-manager-download || exit 23
-        echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 24
+            || exit 23
+        $GIT update-ref refs/remotes/origin/master arena-manager-download \
+            || exit 24
+        echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 25
     else
-        $GIT reset -q --hard HEAD || exit 25
+        $GIT reset -q --hard HEAD || exit 26
         echo "... $commname did not seem to have new data"
     fi
 
