@@ -608,7 +608,7 @@ autoup)
     checkup
     if test -x ./autoup-prehook; then
         MODE='autoup: running autoup-prehook'
-        ./autoup-prehook
+        ./autoup-prehook || exit 100
     fi
     MODE='autoup: update'
     update
@@ -620,7 +620,7 @@ autoup)
         automerge
         if test -x ./autoup-posthook; then
             MODE='autoup: running autoup-posthook'
-            ./autoup-posthook
+            ./autoup-posthook || exit 101
         fi
         MODE='autoup: autogc'
         autogc
