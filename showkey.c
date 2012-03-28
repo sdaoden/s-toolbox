@@ -1,5 +1,5 @@
 /*@ showkey.c v6: show keyboard scancodes for FreeBSD, OpenBSD, NetBSD, Linux.
- *@ Compile     : $ gcc -W -Wall -pedantic -ansi -o showkey showkey.c
+ *@ Compile     : $ gcc -W -Wall -pedantic -o showkey showkey.c
  *@ Run         : $ ./showkey [ktv]  (keycode, termios seq., termios vals)
  *@ Exit status : 0=timeout, 1=signal/read error, 3=use/setup failure
  *
