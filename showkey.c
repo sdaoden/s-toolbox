@@ -1,4 +1,4 @@
-/*@ showkey.c v6: show keyboard scancodes for FreeBSD, OpenBSD, NetBSD, Linux.
+/*@ showkey.c v7: show keyboard scancodes for FreeBSD, OpenBSD, NetBSD, Linux.
  *@ Compile     : $ gcc -W -Wall -pedantic -o showkey showkey.c
  *@ Run         : $ ./showkey [ktv]  (keycode, termios seq., termios vals)
  *@ Exit status : 0=timeout, 1=signal/read error, 3=use/setup failure
@@ -236,9 +236,10 @@ raw_on(void)
     if (! tios_only && ioctl(STDIN_FILENO, KDSKBMODE, (long)K_RAW) < 0) {
         int sverr = errno;
         (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
-        errx(3, ((sverr == ENOTTY)
-            ? "This program mode won't work on pseudo terminals"
-            : "Can't put keyboard in raw mode (shouldn't happen ;()"));
+        /* Used to test for ENOTTY, but Linux seems not to use it.
+         * So re-set errno and simplify error message */
+        errno = sverr;
+        err(3, "Can't initialize keyboard (pseudo terminal?)");
     }
     return;
 }
@@ -276,10 +277,10 @@ raw_on(void)
     if (! tios_only && ioctl(STDIN_FILENO, WSKBDIO_SETMODE, &arg) < 0) {
         arg = errno;
         (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
-        errx(3, ((arg == ENOTTY)
-            ? "This program mode won't work on pseudo terminals"
-            : ("Can't put keyboard in raw mode "
-               "(WSDISPLAY_COMPAT_RAWKBD kernel option present?)")));
+        /* Mode won't work on pseudo terminals and needs
+         * WSDISPLAY_COMPAT_RAWKBD kernel option */
+        errno = arg;
+        err(3, "Can't initialize keyboard (pseudo terminal?)");
     }
     return;
 }
