@@ -62,11 +62,11 @@ CVS_UPDATE_FLAGS='-AP'
 #           plain git(1) repo inside plain checked out cvs(1)/svn(1) workdir
 #           do this once after the initial checkout:
 #           $ git init; git add --all; git ci -m created
-#           $ git checkout -f -B arena-manager-download master
-#           (In fact the latter is what arena-manager does to manage stuff..)
-#           And, for .cvs_bomb_git:
+#           Note that arena-manager will create origin/master and some
+#           arena-manager branches as necessary!
+#           Better do, for .cvs_bomb_git:
 #           $ echo '.#*' >> .git/info/exclude
-#           And, for .update_bomb_git:
+#           And, absolutely necessary, for .update_bomb_git:
 #           $ echo 'svn export http://auau/trunk' > update.sh
 #           Or whatever must be in update.sh to update the repo.
 #           The repo should possibly be in a further subdirectory.
