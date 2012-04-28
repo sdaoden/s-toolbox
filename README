@@ -4,6 +4,13 @@ Some tools which i use personally but which may be of interest for others, too
 showkey.c:
    Show keyboard scancodes for FreeBSD, OpenBSD, NetBSD and Linux.
 
+real-periodic.sh:
+   A *real* periodic for FreeBSD and OpenBSD that ensures that the
+   daily/weekly/monthly maintenance stuff is executed, even if your laptop
+   is running only one hour a day.
+   Invoke this once per hour in the roots crontab and disable the usual
+   periodic stuff of your system instead.
+
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so that
    i can use 'git rebase -i' for fixups and squashes, without having to
@@ -21,10 +28,6 @@ git-pre-commit.sh:
 
 Even less of widespread usability:
 
-openbsd-changelog-plus.pl,
-openbsd-changeset-plus.pl:
-   Simple scripts to ease maintaining of OpenBSD plus.html entries.
-
 arena-manager:
    Offers some automatized operations on revision control repositories,
    like updating, (fast-forward) merging, garbage-collecting.
@@ -33,5 +36,18 @@ backup.pl:
    My private backup script.  Simple (uses tar(1)), but does some stuff
    which i need for my work flow (backups data which is in local repo
    clones but not yet pushed to their "real" counterparts).
+
+super-shutdown.c:
+   Single setuid root program to invoke /sbin/shutdown(8).
+   You've been warned.
+
+cdoc-freebsd.S:
+   FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.
+   May work on newer ones, but haven't tried it in a while.
+   It was 416 object file bytes (no .EH frames then).
+
+openbsd-changelog-plus.pl,
+openbsd-changeset-plus.pl:
+   Simple scripts to ease maintaining of OpenBSD plus.html entries.
 
 .. vim:set fenc=utf-8 filetype=rst syntax=rst ts=3 sts=3 sw=3 et tw=75:
