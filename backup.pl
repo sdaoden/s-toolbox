@@ -5,6 +5,8 @@
 #@ -c/--complete: other input (@COMPLETE_INPUT), always xy.dateTtime.tbz
 #@ -t/--timestamp: don't backup, but set the timestamp to the current time
 #@ With either of -r and -c $ADDONS, if existent, is removed.
+#
+# Public Domain.
 
 ## Note: all _absolute_ directories and _not_ globs ##
 

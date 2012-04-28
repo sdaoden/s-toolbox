@@ -7,6 +7,8 @@
 #@ send to the OpenBSD source-changes mailing list.
 #@ In both cases log and diff are sent to $PAGER, which might be exec'd,
 #@ so one better ensures it doesn't go away for one-screenful's of data..
+#
+# Public Domain.
 
 # Two possibilities:
 # $USE_CHECKOUT != 0: $REPODIR must be a cvs(1) checkout; cvs(1) log and diff

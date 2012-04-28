@@ -11,7 +11,8 @@
 #	#1	3 * * *	root	periodic daily
 #	#15	4 * * 6	root	periodic weekly
 #	#30	5 1 * *	root	periodic monthly
-
+#
+# Public Domain.
 
 # Set to a path where you want the timestamp info to be stored
 # Leave empty to choose a OS-dependent default location

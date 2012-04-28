@@ -14,6 +14,8 @@
 #@   lowercase).
 #@ - At the end of processing the order of all entries is reversed and the
 #@   entry content is printed to STDOUT inside <li></li> markup.
+#
+# Public Domain.
 
 # For which version of OpenBSD this is ment?  Current or X.Y
 my $VERSION = 'OpenBSD Current';
