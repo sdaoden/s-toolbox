@@ -221,9 +221,8 @@ raw_on(void)
         int sverr = errno;
         (void)tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios_orig);
         /* Used to test for ENOTTY, but Linux seems not to use it.
-         * So re-set errno and simplify error message */
-        errno = sverr;
-        err(3, "Can't set keyboard mode (on a pty?)");
+         * So simplify error message */
+        errc(3, sverr, "Can't set keyboard mode (on a pty?)");
     }
 
     return;
@@ -255,8 +254,7 @@ raw_on(void)
         (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
         /* Mode won't work on pseudo terminals and needs
          * WSDISPLAY_COMPAT_RAWKBD kernel option */
-        errno = arg;
-        err(3, "Can't set keyboard mode (on a pty?)");
+        errc(3, arg, "Can't set keyboard mode (on a pty?)");
     }
 
     return;
