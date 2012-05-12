@@ -374,7 +374,8 @@ sub do_exit {
                 unless rmdir($dest) == 1;
         } else {
             ::msg(3, "Creating new $what backup") if $VERBOSE;
-            $flag = system("tar cjLf $target $dest > /dev/null 2>> $MFFN");
+            $flag = system("tar -c -j -L -f $target $dest " .
+                        "> /dev/null 2>> $MFFN");
             ::err(3, "tar(1) execution failed for $target")
                 if ($flag >> 8) != 0;
         }
@@ -579,7 +580,7 @@ jOUTER:     foreach my $dentry (@dents) {
             foreach my $p (@$listref) { print $lffh $p, "\n"; }
             select $lffh; $| = 1;
 
-            $ar = system("tar cjLf $ar -T $lffn > /dev/null 2>> $MFFN");
+            $ar = system("tar -c -j -L -f $ar -T $lffn > /dev/null 2>> $MFFN");
             if (($ar >> 8) != 0) {
                 ::err(1, "tar(1) execution had errors");
                 ::do_exit(1);
@@ -587,7 +588,8 @@ jOUTER:     foreach my $dentry (@dents) {
         } else {
             my $ar = "$OUTPUT_DIR/$backup.tar";
             ::msg(0, "Creating/Updating archive <$ar>");
-            unless (open XARGS, "| xargs -0 tar rLf $ar >/dev/null 2>>$MFFN") {
+            unless (open XARGS, "| xargs -0 tar -r -L -f $ar " .
+                        ">/dev/null 2>>$MFFN") {
                 ::err(1, "Failed creating pipe: $^E");
                 ::do_exit(1);
             }
