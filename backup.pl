@@ -567,34 +567,36 @@ jOUTER:     foreach my $dentry (@dents) {
 {package Archive;
     sub create {
         my $listref = Filelist::get_listref();
-        my $backup = $COMPLETE ? 'complete-backup' : 'backup';
+        my $backup = 'backup'; #$COMPLETE ? 'complete-backup' : 'backup';
 
+        my $ar;
         if ($RESET || $COMPLETE) {
-            my $ar = $Timestamp::CURRENT_DATE;
+            $ar = $Timestamp::CURRENT_DATE;
             $ar =~ s/:/_/g;
             $ar =~ s/^(.*?)[[:space:]]+[[:alpha:]]+[[:space:]]*$/$1/;
-            $ar = "$OUTPUT_DIR/$backup.${ar}.tbz"; # ALGO below!
-            ::msg(0, "Creating archive <$ar>");
-
-            my ($lffh,$lffn) = File::Temp::tempfile(UNLINK => 1);
-            foreach my $p (@$listref) { print $lffh $p, "\n"; }
-            select $lffh; $| = 1;
-
-            $ar = system("tar -c -j -L -f $ar -T $lffn > /dev/null 2>> $MFFN");
-            if (($ar >> 8) != 0) {
-                ::err(1, "tar(1) execution had errors");
-                ::do_exit(1);
-            }
+            $ar = "$OUTPUT_DIR/$backup.$ar.tar";
+            ::msg(0, "Creating complete archive <$ar.bz2>");
+            ::err(3, "Archive <$ar> already exists: $^E")
+                if (-e $ar || -e "$ar.bz");
         } else {
-            my $ar = "$OUTPUT_DIR/$backup.tar";
+            $ar = "$OUTPUT_DIR/$backup.tar";
             ::msg(0, "Creating/Updating archive <$ar>");
-            unless (open XARGS, "| xargs -0 tar -r -L -f $ar " .
-                        ">/dev/null 2>>$MFFN") {
-                ::err(1, "Failed creating pipe: $^E");
+        }
+
+        unless (open XARGS, "| xargs -0 tar -r -h -f $ar >/dev/null 2>>$MFFN") {
+            ::err(1, "Failed to create pipe: $^E");
+            ::do_exit(1);
+        }
+
+        foreach my $p (@$listref) { print XARGS $p, "\x00"; }
+        close XARGS;
+
+        if ($RESET || $COMPLETE) {
+            my $sr = system("bzip2 $ar >/dev/null 2>>$MFFN");
+            if (($sr >> 8) != 0) {
+                ::err(1, "Couldn't compress $ar");
                 ::do_exit(1);
             }
-            foreach my $p (@$listref) { print XARGS $p, "\x00"; }
-            close XARGS;
         }
     }
 }
