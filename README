@@ -32,6 +32,12 @@ arena-manager:
    Offers some automatized operations on revision control repositories,
    like updating, (fast-forward) merging, garbage-collecting.
 
+web/:
+   A brute simple set of tools to generate static and PHP enabled websites.
+   The PHP stuff has not been used in about five years and thus needs
+   a refresh before it is included here.  Use static webcontent, huh?!
+   Please read the file web/README first.
+
 backup.pl:
    My private backup script.  Simple (uses tar(1)), but does some stuff
    which i need for my work flow (backups data which is in local repo

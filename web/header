@@ -1,0 +1,66 @@
+# Public Domain.
+# Keep this in sync with header.php!
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title><?ev TITLE?></title>
+
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="Author" content="<?ev AUTHOR_AND_EMAIL_RAW?>" />
+<meta name="generator" content="vim and a build.sh|expand-html.pl" />
+<?ifdef DESC?>
+<meta name="Description" content="<?ev DESC?>" />
+<?fi?>
+<?ifdef KEYWORDS?>
+<meta name="Keywords" content="<?ev KEYWORDS?>" />
+<?fi?>
+<meta name="Date" content="<?ev LAST_MODIFIED?>" />
+
+<link rel="stylesheet" type="text/css" href="style.css" />
+
+<script type="text/javascript" src="script.js"></script>
+<?ev HEAD_INJECT?></head>
+<body>
+<div id="_top">
+
+<?ifdef CHAPTER?>
+<div id="_toptitle"><?ev CHAPTER?></div>
+<?else?>
+<div id="_toptitle"><?ev TITLE?></div>
+<?fi?>
+
+<div id="_topmenu"><ul>
+<?ifdef FIRST?>
+<li><a class="_first" href="<?ev FIRST?>" title="First page"><?ev NAVI_FIRST?></a>&nbsp;&nbsp;</li>
+<?fi?>
+<?ifdef PREV?>
+<li><a class="_prev" href="<?ev PREV?>" title="Previous page"><?ev NAVI_PREV?></a>&nbsp;&nbsp;</li>
+<?fi?>
+<?ifdef UP?>
+<li><a class="_up" href="<?ev UP?>" title="Up to higher level"><?ev NAVI_UP?></a>&nbsp;&nbsp;</li>
+<?fi?>
+<?ifdef NEXT?>
+<li><a class="_next" href="<?ev NEXT?>" title="Next page"><?ev NAVI_NEXT?></a>&nbsp;&nbsp;</li>
+<?fi?>
+<?ifdef LAST?>
+<li><a class="_last" href="<?ev LAST?>" title="Last page"><?ev NAVI_LAST?></a>&nbsp;&nbsp;</li>
+<?fi?>
+<?ifndef HOMEPAGE?>
+<li><a class="_home" href="index.html" title="Homepage">Home</a>&nbsp;&nbsp;</li>
+<?fi?>
+<?ifdef TOPMENU?>
+<?ev TOPMENU?>
+<?fi?>
+</ul>
+</div>
+
+</div><div id="_body">
+
+<div id="_title"><h<?ev PACK_LEVEL?>>
+<?ifdef HEADLINE?>
+<?ev HEADLINE?>
+<?else?>
+<?ev TITLE?>
+<?fi?>
+</h<?ev PACK_LEVEL?>></div>

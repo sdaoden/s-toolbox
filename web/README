@@ -1,0 +1,31 @@
+Howto use this:
+
+1. Be warned - it's brute simple.
+   It is not ment for sophisticated web programming with a deeply nested
+   tagsoup, and thus has never been tested with that.
+   It works pretty fine for my *private* usage case(s), though.
+
+2. A subdirectory base/ should be present for images, styles and scripts
+   and other things which should be copied unmodified.
+
+3. A subdirectory html/ should consist of files which should be expanded.
+   I.e., copy the template.* therein under whatever names, edit them and
+   then..
+
+4. Run build.sh to expand the stuff and copy it into $TMPDIR/public-html.
+   There is some dumb logic in there which will copy to ~/public-html or
+   ~/Sites (Mac OS X); for this to be used, change the line
+
+      TARGETDIR="$TMPDIR/public-web"
+
+   to
+
+      #TARGETDIR="$TMPDIR/public-web"
+
+5. For more commands and such, edit expand-html.pl and extend it for your
+   purpose.
+
+X. Yes i know i should update the 3 .php files to be in-sync with the
+   current templates and post 'em here.
+
+.. vim:set fenc=utf-8 filetype=rst syntax=rst ts=3 sts=3 sw=3 et tw=75:

@@ -1,0 +1,55 @@
+# Public Domain.
+CVS = $Id$
+# Pack is about heading level (is this file a sub+section?); this value is
+# trimmed and used *directly*, as in '<h<?ev PACK_LEVEL?>>'!
+PACK_LEVEL = 2
+CHAPTER = Make editors slightly moist!
+TITLE = Qual - Some More
+HEADLINE = Qual
+DESC = A Poem
+KEYWORDS = Qual, Poems
+COPY_DATE_SPEC = 1997 - 2012
+
+# If set, will be used as target files for navigation (header,footer)
+FIRST = .html
+PREV = .html
+UP = .html
+NEXT = .html
+LAST = .html
+
+TOPMENU
+ <?lreft "xy.html;Xy"?>
+ <?lreft "disccopy.html;Imprint and Disclaimer"?>
+TOPMENU
+HEAD_INJECT = <style type="text/css"><!-- --></style>
+
+# Define your own stuff - use via <?ev ECHO-VAR-NAME?>
+C = <?ac C?>
+CPP = <?ac C++?>
+OPENBSD = <?hreft "http://www.openbsd.org;OpenBSD"?>
+<?begin?>
+
+<p>
+ <?ev OPENBSD?>.
+</p><pre>
+<?raw ON?>
+ Everything left unexpanded
+ in here
+<?raw OFF?>
+</pre><p>
+ Navigation bars can be found at the top and the bottom of each page,
+ which provide a subset of the following symbols:
+ <?ev NAVI_UP?> loads the parent chapter,
+ <?ev NAVI_FIRST?> and <?ev NAVI_LAST?> load the first and last page of
+ a section, respectively,
+ <?ev NAVI_PREV?> and <?ev NAVI_NEXT?> load the previous/the next page;
+ likewise &uarr; and &darr; can be used to scroll to the top and the
+ bottom of the currently loaded page.
+ Hyperlinks which refer to other sites on the internet are
+ <em>explicitly</em> marked (preceeded) with <?ev WWW?>.
+ As you can see UNICODE characters are used instead of images -
+ try an UTF-8 aware locale/console/browser if you have display problems.
+</p>
+
+<?end?>
+<!-- vim:set fenc=utf-8 syntax=xml ts=1 sts=1 sw=1 et tw=79: -->

@@ -1,0 +1,34 @@
+# Public Domain.
+# Keep this in sync with footer.php!
+</div><div id="_bottom">
+
+<div id="_bottommenu"><ul>
+<li><?ev NAVI_PTOP?>&nbsp;&nbsp;</li>
+<?ifdef FIRST?>
+<li><a class="_first" href="<?ev FIRST?>" title="First page"><?ev NAVI_FIRST?></a>&nbsp;&nbsp;</li>
+<?fi?>
+<?ifdef PREV?>
+<li><a class="_prev" href="<?ev PREV?>" title="Previous page"><?ev NAVI_PREV?></a>&nbsp;&nbsp;</li>
+<?fi?>
+<?ifdef UP?>
+<li><a class="_up" href="<?ev UP?>" title="Up to higher level"><?ev NAVI_UP?></a>&nbsp;&nbsp;</li>
+<?fi?>
+<?ifdef NEXT?>
+<li><a class="_next" href="<?ev NEXT?>" title="Next page"><?ev NAVI_NEXT?></a>&nbsp;&nbsp;</li>
+<?fi?>
+<?ifdef LAST?>
+<li><a class="_last" href="<?ev LAST?>" title="Last page"><?ev NAVI_LAST?></a>&nbsp;&nbsp;</li>
+<?fi?>
+<?ifndef HOMEPAGE?>
+<li><a class="_home" href="index.html" title="Homepage">Home</a>&nbsp;&nbsp;</li>
+<?fi?>
+</ul></div>
+
+<div id="_copycontact"><p>
+Copyright (c) <?ev COPY_DATE_SPEC?>,
+&nbsp;<a href="mailto:<?ev MAIL?>" title="E-Mail to <?ev MAIL?>"><?ev AUTHOR_AND_EMAIL?></a><?cvsid?>
+</p></div>
+
+</div>
+</body>
+</html>
