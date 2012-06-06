@@ -42,6 +42,8 @@ my %HASH = (
     KEYWORDS        => undef,
     TOPMENU         => undef,
     LAST_MODIFIED   => undef,
+    STYLE_INJECT    => undef,
+    SCRIPT_INJECT   => undef,
     HEAD_INJECT     => ''
 );
 

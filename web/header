@@ -1,4 +1,3 @@
-# Public Domain.
 # Keep this in sync with header.php!
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
@@ -18,8 +17,15 @@
 <meta name="Date" content="<?ev LAST_MODIFIED?>" />
 
 <link rel="stylesheet" type="text/css" href="style.css" />
+<?ifdef STYLE_INJECT?>
+<style rel="stylesheet" type="text/css">/* <![CDATA[ */<?ev STYLE_INJECT?>/* ]]> */</style>
+<?fi?>
 
 <script type="text/javascript" src="script.js"></script>
+<?ifdef SCRIPT_INJECT?>
+<script type="text/javascript">/* <![CDATA[ */<?ev SCRIPT_INJECT?>/* ]]> */</script>
+<?fi?>
+
 <?ev HEAD_INJECT?></head>
 <body>
 <div id="_top">
