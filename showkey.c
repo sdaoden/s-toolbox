@@ -55,6 +55,7 @@
 #include <sys/time.h>
 
 #ifdef __FreeBSD__
+# define USE_ERRC
 # define USE_SYSCONS
 # include <sys/kbio.h>
 #elif defined __OpenBSD__ || defined __NetBSD__ /* TODO NetBSD not tested! */
@@ -66,6 +67,16 @@
 # include <linux/kd.h>
 #else
 # error Operating system not supported
+#endif
+
+#ifdef USE_ERRC
+# define ERRC               errc
+# define ERRC_ERRNO(VAL)
+# define ERRC_ARG(VAL)      VAL,
+#else
+# define ERRC               err
+# define ERRC_ERRNO(VAL)    errno = VAL
+# define ERRC_ARG(VAL)
 #endif
 
 enum operation {
@@ -125,7 +136,13 @@ main(int argc, char **argv)
             break;
         }
     if (mode == NULL)
-        errx(3, "Usage: showkey [ksv]  (keycode, scancode, value)");
+        errx(3, "Usage: showkey "
+#ifdef mode_keycode
+            "[sv]  ("
+#else
+            "[ksv]  (keycode, "
+#endif
+            "scancode, value)");
 
     if (! isatty(STDIN_FILENO))
         err(3, "STDIN is not a terminal");
@@ -222,7 +239,8 @@ raw_on(void)
         (void)tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios_orig);
         /* Used to test for ENOTTY, but Linux seems not to use it.
          * So simplify error message */
-        errc(3, sverr, "Can't set keyboard mode (on a pty?)");
+        ERRC_ERRNO(sverr);
+        ERRC(3, ERRC_ARG(sverr) "Can't set keyboard mode (on a pty?)");
     }
 
     return;
@@ -254,7 +272,8 @@ raw_on(void)
         (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
         /* Mode won't work on pseudo terminals and needs
          * WSDISPLAY_COMPAT_RAWKBD kernel option */
-        errc(3, arg, "Can't set keyboard mode (on a pty?)");
+        ERRC_ERRNO(arg);
+        ERRC(3, ERRC_ARG(arg) "Can't set keyboard mode (on a pty?)");
     }
 
     return;
