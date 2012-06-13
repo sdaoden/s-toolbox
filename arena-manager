@@ -217,7 +217,10 @@ xy_bomb_git_update() {
 
     # Ignore all updates which occur in .svn/CVS directories, at least
     # for checking wether any repo content has been updated
-    modlns=$($GIT status --porcelain |
+    # To avoid problems with DOS/Unix newline changes in working directories,
+    # don't use status but this hint (note this new approach would allow for
+    # changing some sed(1) REs, but .. just wait a bit xxx)
+    modlns=$($GIT add --all --dry-run 2>/dev/null |
             sed -Ee '/(\.svn|CVS)\/.*$/d' -Ee '/\.git/d' -Ee '/\/?\.#/d' |
             wc -l |
             sed -Ee 's/^[[:space:]]+(.*)$/\1/')
