@@ -199,7 +199,7 @@ git_ref_check_gc_update() {
 ## misc
 
 xy_bomb_git_update() {
-    local comm="$1" commname="$2" es
+    local comm="$1" commname="$2" es modlns
 
     # (We need to compare local master and remote to detect wether there were
     # updates; arena-manager2/.pl ...)
@@ -214,13 +214,14 @@ xy_bomb_git_update() {
 
     $comm
     es=$?
+
     # Ignore all updates which occur in .svn/CVS directories, at least
     # for checking wether any repo content has been updated
-    if test 0 != $($GIT status --porcelain | \
-                   sed -Ee '/(\.svn|CVS)\/.*$/d' -Ee '/\.git/d' \
-                       -Ee '/\/?\.#/d' | \
-                   wc -l | \
-                   sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
+    modlns=$($GIT status --porcelain |
+            sed -Ee '/(\.svn|CVS)\/.*$/d' -Ee '/\.git/d' -Ee '/\/?\.#/d' |
+            wc -l |
+            sed -Ee 's/^[[:space:]]+(.*)$/\1/')
+    if test x0 != x$modlns; then
         echo "... $commname updated some, initiating git(1) commit"
         $GIT add --all || exit 22
         $GIT commit -m "arena-manager: $commname update, $(date +'%FT%T%z')" \
