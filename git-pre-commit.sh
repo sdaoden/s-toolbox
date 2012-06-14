@@ -11,7 +11,7 @@
 #fi
 
 # Oh no, unfortunately not: exec git diff-index --check --cached $against --
-git diff --cached $against | perl -e '
+git diff --cached $against | perl -CI -e '
     # XXX May not be able to swallow all possible diff output yet
     my ($estat, $l, $fname) = (0, undef, undef);
 
