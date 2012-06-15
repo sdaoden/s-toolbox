@@ -432,7 +432,7 @@ sub do_exit {
 
     sub _do_bundle {
         my $e = shift;
-        my ($target, $flag, $omodt);
+        my ($target, $flag, $pop_stash, $omodt);
         ::msg(2, 'Checking for new bundle') if $VERBOSE;
 
         $target = "$REPO_OUTPUT_DIR/$e";
@@ -441,16 +441,32 @@ sub do_exit {
         $flag = '--all --not --remotes --tags';
         ::msg(3, "... target: $target") if $VERBOSE;
 
+        $pop_stash = system('git diff-index --quiet --cached HEAD ' .
+                        '--ignore-submodules -- && ' .
+                    'git diff-files --quiet --ignore-submodules && ' .
+                    'test -z "$(git  ls-files -o -z)"');
+        $pop_stash = ($pop_stash >> 8 != 0);
+        if ($pop_stash) {
+            ::msg(3, 'Locale modifications exist, stashing them away')
+                if $VERBOSE;
+            my $ok = system('git stash --all >/dev/null 2>&1');
+            if ($ok >> 8 != 0) {
+                ::err(3, '"git(1) stash --all" away local modifications ' .
+                    "failed in $target");
+                ::do_exit(1);
+            }
+        }
+
         $flag = system("git bundle create $target $flag >> $MFFN 2>&1");
         # Does not create an empty bundle: 128
-        if (($flag >> 8) == 128) {
+        if ($flag >> 8 == 128) {
             ::msg(3, 'No updates available, dropping outdated bundles, if any')
                 if $VERBOSE;
             ::err(3, "Failed to unlink outdated bundle $target: $^E")
                 if (-f $target && unlink($target) != 1);
             ::err(3, "Failed to unlink outdated $target.stashlog: $^E")
                 if (-f "$target.stashlog" && unlink("$target.stashlog") != 1);
-        } elsif (($flag >> 8) != 0) {
+        } elsif ($flag >> 8 != 0) {
             ::err(3, "git(1) bundle failed for $target");
             ::do_exit(1);
         }
@@ -477,6 +493,14 @@ sub do_exit {
         # And then, there may be a bundle but no (more) stash
         elsif (-f "$target.stashlog" && unlink("$target.stashlog") != 1) {
             ::err(3, "Failed to unlink outdated $target.stashlog: $^E")
+        }
+
+        if ($pop_stash) {
+            ::msg(3, 'Locale modifications existed, popping the stash')
+                if $VERBOSE;
+            $flag = system('git stash pop >/dev/null 2>&1');
+            ::err(3, '"git(1) stash pop" the local modifications ' .
+                    "failed in $target") if ($flag >> 8 != 0);
         }
     }
 }
