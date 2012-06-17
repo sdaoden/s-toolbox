@@ -35,16 +35,16 @@ echo "Checking base files: <$SRCDIR/base>"
 cd base
 for i in *.*; do
     echo "  - Action on <$i> ... \c"
-    if [ ! -r $i ]; then
+    if [ ! -r "$i" ]; then
         echo "READ-ERROR: SKIP"
         continue
     fi
     target="$TARGETDIR/$i"
 
-    if [ ! -f $target ] || [ $target -ot $i ]; then
+    if [ ! -f "$target" ] || [ "$target" -ot "$i" ]; then
         echo 'refresh'
-        cp -X -f $i $target
-        chmod o+r $target
+        cp -X -f "$i" "$target"
+        chmod o+r "$target"
         REFRESHED=$(( $REFRESHED + 1 ))
     else
         echo 'keep'
@@ -62,16 +62,16 @@ echo "Processing HTML"
 cd html
 for i in *.html; do
     echo "  - Action on <$i> ... \c"
-    if [ ! -r $i ]; then
+    if [ ! -r "$i" ]; then
         echo "READ-ERROR: SKIP"
         continue
     fi
     target="$TARGETDIR/$i"
 
-    if [ ! -f $target ] || [ $target -ot $i ]; then
+    if [ ! -f "$target" ] || [ "$target" -ot "$i" ]; then
         echo 'refresh'
-        perl -- "../expand-html.pl" < "$i" > $target
-        chmod o+r $target
+        perl -- "../expand-html.pl" < "$i" > "$target"
+        chmod o+r "$target"
         REFRESHED=$(( $REFRESHED + 1 ))
     else
         echo 'keep'
