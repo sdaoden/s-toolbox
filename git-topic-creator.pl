@@ -218,7 +218,7 @@ sub expand_rev_spec { # {{{
 } # }}}
 
 sub read_check_commits {
-    open GIT, "$GIT rev-list --reverse --oneline " . join(' ', @REFS) . " |" ||
+    open(GIT, "$GIT rev-list --reverse --oneline " .join(' ', @REFS). " |") ||
         panic(1, "Can't execute '$GIT rev-list' on '$REV_SPEC': $!");
     @REFS = ();
     while (<GIT>) {

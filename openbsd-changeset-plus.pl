@@ -69,7 +69,7 @@ sub command_line() {
     @ARGV > 1 ||
         die 'USAGE: openbsd-changeset-plus.pl "OpenBSD-Time" [:FILES:]';
 
-    open PAGER, "| $PAGER" || die "Can't open $PAGER: $^E";
+    open(PAGER, "| $PAGER") || die "Can't open $PAGER: $^E";
     $| = 1; $| = 0;
     select PAGER;
     print "\n"; $| = 1;
@@ -105,7 +105,7 @@ jMOD:
         unless $date =~ /^Changes by:\s+([^\s]+)\s+(.+)/;
     $date = $2;
 
-    open TMPFILE, '>', $TMPFILE || die "Can't open $TMPFILE: $^E";
+    open(TMPFILE, '>', $TMPFILE) || die "Can't open $TMPFILE: $^E";
     $| = 1; $| = 0;
     select TMPFILE;
 
@@ -185,8 +185,8 @@ sub strtime {
 
 sub cvslog {
     my $comm = $USE_CHECKOUT ? 'log -NS' : "-d $REPODIR rlog -NS";
-    open L,
-        "/bin/sh -c 'cvs -f $comm -d \"\@$Obsd->[0]<\@$Gmt->[0]\" @$Files' |" ||
+    open(L, '/bin/sh -c ' .
+            "'cvs -f $comm -d \"\@$Obsd->[0]<\@$Gmt->[0]\" @$Files' |") ||
         die $^E;
     while (<L>) { last if /^-+$/; }
     while (<L>) { last if /^=+$/; print $_; }
@@ -199,8 +199,8 @@ sub cvsdiff {
     return unless $CVSDIFF;
 
     my $comm = $USE_CHECKOUT ? 'diff -Napu ' : "-d $REPODIR rdiff -u ";
-    open D,
-        "/bin/sh -c 'cvs -f $comm -D \@$Obsd->[0] -D \@$Gmt->[0] @$Files' |" ||
+    open(D, '/bin/sh -c ' .
+            "'cvs -f $comm -D \@$Obsd->[0] -D \@$Gmt->[0] @$Files' |") ||
         die $^E;
     while (<D>) { print $_; }
     close D;
