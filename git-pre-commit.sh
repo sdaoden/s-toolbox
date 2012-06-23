@@ -2,6 +2,12 @@
 #
 # Public Domain.
 
+# If $GIT_NO_PRECOMMIT is nonempty, simply exit success at once.
+# This is to avoid problems in rebases when some commit contains files that
+# have been accepted already, i.e., Makefiles need to have tabulator indents
+# due to the standard..
+test x != x"$GIT_NO_PRECOMMIT" && exit 0
+
 #if git rev-parse --verify HEAD >/dev/null 2>&1
 #then
     against=HEAD
