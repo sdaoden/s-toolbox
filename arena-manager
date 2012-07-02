@@ -70,10 +70,12 @@ CVS_UPDATE_FLAGS='-AP'
 #           $ echo 'svn export http://auau/trunk' > update.sh
 #           Or whatever must be in update.sh to update the repo.
 #           The repo should possibly be in a further subdirectory.
+# .sccs_bomb_git: SCCS(1) tree under .git control
 # .tar_bomb_git: plain git(1) repo which is updated by exploding tarballs
 # .hg          : hg(1) (Mercurial)
 # .svn         : svn(1)
 # .cvs         : cvs(1)
+# .sccs        : sccs(1) (left alone)
 #
 # All those extensions can be extended with additional tags:
 #
@@ -151,15 +153,15 @@ git_check_status() {
 
 git_checkout() {
     local br="$1"
-    $GIT checkout -q -f $br -- || {
-        echo >&2 "Can\'t checkout branch $br, bailing out!" &&
+    $GIT checkout -q -f "$br" -- || {
+        echo >&2 "Can't checkout branch $br, bailing out!" &&
         exit 11
     }
 }
 
 git_ref_check_gc_update() {
     # Return 41 if no new data, 42 if new data, otherwise error
-    local branch="$1" autogcfile="$2"
+    local branch=$1 autogcfile=$2
     $GIT show-ref |
     perl -e "\$rd = \"$branch\"; \$agcf = \"$autogcfile\";" -e '
         my (%remotes, %heads);
@@ -199,16 +201,16 @@ git_ref_check_gc_update() {
 ## misc
 
 xy_bomb_git_update() {
-    local comm="$1" commname="$2" es modlns
+    local comm=$1 commname=$2 es modlns
 
     # (We need to compare local master and remote to detect wether there were
     # updates; arena-manager2/.pl ...)
     $GIT checkout -q -f -B arena-manager-download master -- || {
-        echo >&2 "Can\'t reset branch arena-manager-download, bailing out!" &&
+        echo >&2 "Can't reset branch arena-manager-download, bailing out!" &&
         exit 20
     }
     $GIT update-ref refs/remotes/origin/master arena-manager-download || {
-        echo >&2 "Can\'t reset branch origin/master, bailing out!" &&
+        echo >&2 "Can't reset branch origin/master, bailing out!" &&
         exit 21
     }
 
@@ -221,7 +223,7 @@ xy_bomb_git_update() {
     # don't use status but this hint (note this new approach would allow for
     # changing some sed(1) REs, but .. just wait a bit xxx)
     modlns=$($GIT add --all --dry-run 2>/dev/null |
-            sed -Ee '/(\.svn|CVS)\/.*$/d' -Ee '/\.git/d' -Ee '/\/?\.#/d' |
+            sed -Ee '/(\.svn|CVS|SCCS)\/.*$/d' -Ee '/\.git/d' -Ee '/\/?\.#/d' |
             wc -l |
             sed -Ee 's/^[[:space:]]+(.*)$/\1/')
     if test x0 != x$modlns; then
@@ -253,8 +255,8 @@ reduce_expand() {
     fi
 
     for rd in ${params[@]}; do
-        if [[ "$rd" != ${rd/no_reduce/} || ! ( "$rd" != ${rd/git} ||
-              "$rd" != ${rd/hg} ) ]]; then
+        if [[ "$rd" != "${rd/no_reduce/}" || ! ( "$rd" != "${rd/git}" ||
+              "$rd" != "${rd/hg}" ) ]]; then
             log ''
             log "[$rd: $MODE does not apply]"
             continue
@@ -263,7 +265,7 @@ reduce_expand() {
         intro "$rd: performing $MODE"
         set -o pipefail
         (   cd "$rd" || exit 10
-            if test "$rd" != ${rd/git}; then
+            if test "$rd" != "${rd/git}"; then
                 # File NULL on branch arena-manager-null contains a single
                 # line stating the master branch's name
                 if test -z "$git_branch"; then
@@ -275,7 +277,7 @@ reduce_expand() {
                     fi
                 fi
                 git_checkout "$git_branch"
-            else #elif test "$rd" != ${rd/hg}; then
+            else #elif test "$rd" != "${rd/hg}"; then
                 $HG up $hg_branch
             fi
             exit $?
@@ -289,14 +291,14 @@ xgc() {
     GCT=
     test "$MODE" == fullgc && GCT=--aggressive
     for rd in ${params[@]}; do
-        if test "$rd" == ${rd/git}; then
+        if test "$rd" == "${rd/git}"; then
             log ''
             log "[$rd: $MODE does not apply]"
             continue
         fi
         m=$MODE
         i=$GCT
-        if test "$rd" != ${rd/no_fullgc}; then
+        if test "$rd" != "${rd/no_fullgc}"; then
             m='gc (fullgc forcefully downgraded)'
             i=
         fi
@@ -317,12 +319,13 @@ update() {
     }
 
     for rd in ${params[@]}; do
-        if [[ $AUTOUP -ne 0 && "$rd" != ${rd/no_autoup/} ]]; then
+        if test $AUTOUP -ne 0 && test "$rd" != "${rd/no_autoup/}"; then
             log ''
             log "[$rd: $MODE does not apply]"
             continue
         fi
-        if test "$rd" != ${rd/.tar_bomb_git}; then
+        if test "$rd" != "${rd/.tar_bomb_git}" ||
+                test "$rd" != "${rd/.sccs_bomb_git}"; then
             log ''
             log "[$rd: (automatic) $MODE does not apply]"
             continue
@@ -332,17 +335,20 @@ update() {
         set -o pipefail
         (   cd "$rd" || exit 9
             if test "$rd" == ${rd/git}; then
-                if test "$rd" != ${rd/.hg}; then
+                if test "$rd" != "${rd/.hg}"; then
                     # TODO use incoming, and produce an AUTOGC entry if there
                     # TODO are any revisions; then pull that and rm it!!
                     $HG pull -u
                     es=$?
-                elif test "$rd" != ${rd/.svn}; then
+                elif test "$rd" != "${rd/.svn}"; then
                     $SVN update
                     es=$?
-                elif test "$rd" != ${rd/.cvs}; then
+                elif test "$rd" != "${rd/.cvs}"; then
                     $CVS update $CVS_UPDATE_FLAGS
                     es=$?
+                elif test "$rd" != "${rd/.sccs}"; then
+                    echo "SCCS(1) managed tree, skip: $rd"
+                    es=0
                 else
                     echo >&2 "Unknown revision-control-system: $rd"
                     es=1
@@ -353,19 +359,19 @@ update() {
             # git(1) and related
             git_check_status
 
-            if test "$rd" != ${rd/.git}; then
+            if test "$rd" != "${rd/.git}"; then
                 #$GIT pull -v --ff-only --stat --prune
                 $GIT fetch --verbose --prune
                 es=$?
                 test $es -eq 0 &&
                     git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
-            elif test "$rd" != ${rd/.update_bomb_git}; then
+            elif test "$rd" != "${rd/.update_bomb_git}"; then
                 xy_bomb_git_update "sh -c update.sh" 'update.sh'
                 es=$?
-            elif test "$rd" != ${rd/.svn_bomb_git}; then
+            elif test "$rd" != "${rd/.svn_bomb_git}"; then
                 xy_bomb_git_update "$SVN update" 'svn(1)'
                 es=$?
-            elif test "$rd" != ${rd/.svn_git}; then
+            elif test "$rd" != "${rd/.svn_git}"; then
                 # This auto-merges into "master", so that there can be found no
                 # indication of wether there were updates or not; thus the
                 # local "pseudo" branch we use for that (better solution is
@@ -376,10 +382,10 @@ update() {
                 es=$?
                 test $es -eq 0 &&
                     git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
-            elif test "$rd" != ${rd/.cvs_bomb_git}; then
+            elif test "$rd" != "${rd/.cvs_bomb_git}"; then
                 xy_bomb_git_update "$CVS update $CVS_UPDATE_FLAGS" 'cvs(1)'
                 es=$?
-            elif test "$rd" != ${rd/.cvs_git}; then
+            elif test "$rd" != "${rd/.cvs_git}"; then
                 # This is more complicated; you need to setup a branch
                 # arena-manager-config; check that out
                 git_checkout arena-manager-config
@@ -450,7 +456,7 @@ automerge() {
         exit 1
     fi
     for rd in $(< "$AUTOGCFILE"); do
-        if test "$rd" == ${rd/git}; then
+        if test "$rd" == "${rd/git}"; then
             log ''
             log "[$rd: $MODE does not apply]"
             continue
@@ -540,19 +546,19 @@ checkup() {
     es=0
     log 'Checking how likely it is an update would succeed'
     for rd in ${params[@]}; do
-        if [[ $AUTOUP -ne 0 && "$rd" != ${rd/no_autoup/} ]]; then
+        if test $AUTOUP -ne 0 && test "$rd" != "${rd/no_autoup/}"; then
             log "  [$rd: -no_autoup tag, skip]"
             continue
         fi
-        if test "$rd" != ${rd/git}; then
+        if test "$rd" != "${rd/git}"; then
             action="$GIT status --short"
-        elif test "$rd" != ${rd/.hg}; then
+        elif test "$rd" != "${rd/.hg}"; then
             action="$HG status"
         else
             log "  [$rd: $MODE does not apply]"
             continue
         fi
-        if test 0 != $(cd $rd && $action | wc -l | \
+        if test 0 != $(cd "$rd" && $action | wc -l | \
                        sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
             log "! $rd: modified or untracked files present!"
             es=1
