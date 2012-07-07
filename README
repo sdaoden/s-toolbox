@@ -4,6 +4,10 @@ Some tools which i use personally but which may be of interest for others, too
 showkey.c:
    Show keyboard scancodes for FreeBSD, OpenBSD, NetBSD and Linux.
 
+uushar:
+   Like shar(1), but with an uuencode(1)/uudecode(1) binary safe layer
+   added.
+
 real-periodic.sh:
    A *real* periodic for FreeBSD and OpenBSD that ensures that the
    daily/weekly/monthly maintenance stuff is executed, even if your laptop
