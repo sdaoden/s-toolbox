@@ -6,7 +6,7 @@ require 5.008;
 my $SELF = 'git-topic-creator.pl';
 my $VERSION = 'v0.1.0';
 my $COPYRIGHT =<<_EOT;
-Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden\@users.sourceforge.net>
+Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden\@users.sf.net>.
 All rights reserved.
 This software is published under the terms of the "New BSD license".
 _EOT

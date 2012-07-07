@@ -6,7 +6,7 @@
 #@ XXX and it could be even more automatic and it would be explicit what happens
 #@ XXX This would also make it safe against (further) changes in git+ namespaces
 #
-# Copyright (c) 2011-2012 Steffen Daode Nurpmeso <sdaoden@users.sourceforge.net>
+# Copyright (c) 2011 - 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without

@@ -9,7 +9,7 @@
  *@ Run         : $ ./showkey [ksv]  (keycodes, scancodes, values)
  *@ Exit status : 0=timeout, 1=signal/read error, 3=use/setup failure
  *
- * Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sourceforge.net>.
+ * Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
