@@ -8,6 +8,13 @@ uushar:
    Like shar(1), but with an uuencode(1)/uudecode(1) binary safe layer
    added.
 
+gen-uushar-wrapper:
+   Creates a shar(1)-like shell archive (but with uuencode(1)d content) of
+   a given set of executable files, that is itself executable.
+   Execute it (the generated shell archive script) to invoke any of the
+   programs contained therein.  On the first run, the wrapper will create
+   a hidden directory in your $TMPDIR to unpack the archive therein.
+
 real-periodic.sh:
    A *real* periodic for FreeBSD and OpenBSD that ensures that the
    daily/weekly/monthly maintenance stuff is executed, even if your laptop
