@@ -150,10 +150,11 @@ IFS=@
 set -- $PROGS
 IFS=$oifs
 for i; do
-   echo "echo x - $i" >> "$CREATOR_PROG"
-   echo "uudecode <<END-of-$i" >> "$CREATOR_PROG"
-   uuencode -m $i $i >> "$CREATOR_PROG"
-   echo "END-of-$i" >> "$CREATOR_PROG"
+   basei=$(basename $i)
+   printf "echo 'x - (%s as) %s'\nuudecode << \!\n" \
+      "$i" "$basei" >> "$CREATOR_PROG"
+   uuencode -m $i $basei >> "$CREATOR_PROG"
+   printf "!\n# END of '$ uuencode -m $i $basei'\n" >> "$CREATOR_PROG"
 done
 
 echo post_explode >> "$CREATOR_PROG"
