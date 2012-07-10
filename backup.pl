@@ -441,10 +441,11 @@ sub do_exit {
         $flag = '--all --not --remotes --tags';
         ::msg(3, "... target: $target") if $VERBOSE;
 
-        $pop_stash = system('git diff-index --quiet --cached HEAD ' .
+        $pop_stash = system('git update-index -q --refresh; ' .
+                    'git diff-index --quiet --cached HEAD ' .
                         '--ignore-submodules -- && ' .
                     'git diff-files --quiet --ignore-submodules && ' .
-                    'test -z "$(git  ls-files -o -z)"');
+                    'test -z "$(git ls-files -o -z)"');
         $pop_stash >>= 8;
         if ($pop_stash != 0) {
             ::msg(3, 'Locale modifications exist, stashing them away')
