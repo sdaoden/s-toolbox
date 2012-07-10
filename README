@@ -14,6 +14,7 @@ gen-uushar-wrapper:
    Execute it (the generated shell archive script) to invoke any of the
    programs contained therein.  On the first run, the wrapper will create
    a hidden directory in your $TMPDIR to unpack the archive therein.
+   (Execute the wrapper without any arguments to list its contents.)
 
 real-periodic.sh:
    A *real* periodic for FreeBSD and OpenBSD that ensures that the
