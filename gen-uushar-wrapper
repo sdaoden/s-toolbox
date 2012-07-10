@@ -3,8 +3,9 @@
 #@ uuencode(1)d content) of given files (read from STDIN and/or ARGV), that is
 #@ itself executable.
 #@ Execute it (the generated archive) to invoke any of the programs contained
-#@ therein.  On the first run, the wrapper will create a hidden directory in
-#@ your $TMPDIR to unpack the archive therein.
+#@ therein.  On the first run with arguments, the wrapper will create a hidden
+#@ directory in your $TMPDIR to unpack the archive therein; without arguments
+#@ it'll always print creation time and members shipped.
 #
 # Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
 #
@@ -29,47 +30,47 @@ printf "%s\n%s\n%s\n%s\n\n%s " \
 	'Please answer the upcoming questions for this to work.' \
 	'You can at any time interrupt with CTRL-C.' \
    'What should be the name of the wrapper:'
-read CREATOR_PROG
-if [ -f "$CREATOR_PROG.sh" ]; then
-   echo >&2 "$CREATOR_PROG.sh already exists, bailing out."
+read ARCH
+[ -f "$ARCH.sh" ] && {
+   echo >&2 "$ARCH.sh already exists, bailing out."
    exit 1
-elif [ x"$CREATOR_PROG" == x ]; then
+}
+[ -z "$ARCH" ] && {
    echo >&2 "Cannot use the empty string for that, bailing out."
    exit 1
-fi
-CREATOR_PROG="$CREATOR_PROG.sh"
+}
+ARCH="$ARCH.sh"
 
-printf "Yay, it'll be $CREATOR_PROG.\n\n%s\n%s [] " \
+printf "Yay, it'll be $ARCH.\n\n%s\n%s [] " \
    "Is there any subcommand which should be called for '+'?" \
-   "(As in: <$CREATOR_PROG + -arg1 -arg2> -> <XXX -arg1 -arg2>)?"
-read CREATOR_DEFEXEC
+   "(As in: '\$ $ARCH + -arg1 -arg2' -> '\$ XXX -arg1 -arg2')?"
+read ARCH_DEFEXEC
 
 printf "\n%s\n%s\n%s\n\t- " \
-   "So, we'll then enter a loop to read the programs to include." \
-   "Please note that the command may not contain an AT sign (@)." \
+   "So, we'll then enter a loop to read the member programs to include." \
    "Please terminate your input by giving an empty line."
-PROGS=
+MEMBERS=
 [ ${#ARGS} -ne 0 ] && set -- $ARGS
 while :; do
-   [ ${#ARGS} -ne 0 ] && \
-      { i=$1; shift || break; :; } || \
-      { read i; [ x"$i" == x ] && break; :; }
+   [ ${#ARGS} -ne 0 ] &&
+      { i=$1; shift || break; :; } ||
+      { read i; [ x"$i" == x ] && break; }
    if [ ! -x "$i" ]; then
       echo >&2 "$i does not exist or is not executable, bailing out."
       exit 1
    fi
    printf "$i: ok\n\t- "
-   [ x"$PROGS" == x ] && PROGS=$i || PROGS="$PROGS@$i"
+   [ -z "$MEMBERS" ] && MEMBERS="$i" || MEMBERS="$MEMBERS, $i"
 done
 
 # Everything get.set.go, so write the actual shell archive
 set -C
 printf ".. end of list\nFine, so i'm doing my work now\n"
 CREATION_DATE=$(date -u)
-trap "rm -rf '$CREATOR_PROG'" 0
+trap "rm -rf '$ARCH'" 0
 
 # Header
-cat <<\! > "$CREATOR_PROG"
+cat <<\! > "$ARCH"
 #!/bin/sh
 #@ This file was automatically created by gen-uushar-wrapper, which is
 # Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
@@ -77,32 +78,22 @@ cat <<\! > "$CREATOR_PROG"
 
 !
 
-printf "# Created: $CREATION_DATE\n# Programs contained (basename(1)d):\n" \
-   >> "$CREATOR_PROG"
-oifs=$IFS
-IFS=@
-set -- $PROGS
-IFS=$oifs
-PROGLIST=
-for i; do
-   [ -z "$PROGLIST" ] && PROGLIST="$i" || PROGLIST="$PROGLIST, $i"
-   printf "# - $i\n" >> "$CREATOR_PROG"
-done
-
 # A shell archive is not a transparent thing either!
-printf "\nPROG='%s'\nCREATION_DATE='%s'\nPROGLIST='%s'\nDEFEXEC='%s'\n" \
-      "${CREATOR_PROG%.sh}" "$CREATION_DATE" "$PROGLIST" "$CREATOR_DEFEXEC" \
-   >> "$CREATOR_PROG"
-cat <<\! >> "$CREATOR_PROG"
-MYDIR=".$PROG"
+printf "# Archive:\nARCH='%s'\n# Created:\nCREATION_DATE='%s'\n" \
+      "${ARCH%.sh}" "$CREATION_DATE" \
+   >> "$ARCH"
+printf "# Executable members:\nMEMBERS='%s'\n# + expansion:\nDEFEXEC='%s'\n" \
+      "$MEMBERS" "$ARCH_DEFEXEC" \
+   >> "$ARCH"
+cat <<\! >> "$ARCH"
 
 [ $# -eq 0 ] && {
-   printf "Archive creation: %s\nMembers: %s\n" "$CREATION_DATE" "$PROGLIST"
+   printf "Archive creation: %s\nMembers: %s\n" "$CREATION_DATE" "$MEMBERS"
    exit 0
 }
 
-[ -d "$TMPDIR/$MYDIR" ] && {
-   i="$TMPDIR/$MYDIR"
+i="$TMPDIR/.$ARCH"
+[ -d "$i" ] && {
    export PATH="$i:$PATH"
    [ x"$1" == 'x+' ] && { shift; :; } || { DEFEXEC=$1; shift; }
    i="$i/$DEFEXEC"
@@ -116,38 +107,38 @@ MYDIR=".$PROG"
    exit 71
 }
 
-printf "The directory\n\t$TMPDIR/$MYDIR\n%s\n" \
+printf "The directory\n\t$i\n%s\n" \
    'does not exist, creating it first, and exploding this shell archive.'
-mkdir -p "$TMPDIR/$MYDIR" || {
-   echo >&2 "Cannot create '$TMPDIR/$MYDIR' directory"
+mkdir -p "$i" || {
+   echo >&2 "Cannot create directory '$i'"
    exit 1
 }
-cd "$TMPDIR/$MYDIR" || {
-   echo >&2 "Cannot enter $TMPDIR/$MYDIR to explode shell archive"
+cd "$i" || {
+   echo >&2 "Cannot enter '$i' to explode shell archive"
    exit 1
 }
 
 !
 
-# uuencode(1)d the programs to embed
+# uuencode(1)d the members to embed
 oifs=$IFS
-IFS=@
-set -- $PROGS
+IFS=', '
+set -- $MEMBERS
 IFS=$oifs
 for i; do
    basei=$(basename $i)
    printf "echo 'x - (%s as) %s'\nuudecode << \!\n" \
-      "$i" "$basei" >> "$CREATOR_PROG"
-   uuencode -m $i $basei >> "$CREATOR_PROG"
-   printf "!\n# END of '$ uuencode -m $i $basei'\n" >> "$CREATOR_PROG"
+      "$i" "$basei" >> "$ARCH"
+   uuencode -m $i $basei >> "$ARCH"
+   printf "!\n# END of '$ uuencode -m $i $basei'\n" >> "$ARCH"
 done
 
 printf "\necho '%s'\nexit 0\n" \
       'Shell archive exploded, please rerun the command, now for real..' \
-   >> "$CREATOR_PROG"
+   >> "$ARCH"
 
 # The end
-chmod 0755 "$CREATOR_PROG"
+chmod 0755 "$ARCH"
 trap - 0
 exit 0
 # vim:set fenc=utf-8 filetype=sh syntax=sh ts=3 sts=3 sw=3 et tw=79:
