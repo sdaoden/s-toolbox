@@ -65,6 +65,7 @@ done
 # Everything get.set.go, so write the actual shell archive
 set -C
 printf ".. end of list\nFine, so i'm doing my work now\n"
+CREATION_DATE=$(date -u)
 trap "rm -rf '$CREATOR_PROG'" 0
 
 # Header
@@ -74,33 +75,45 @@ cat <<\! > "$CREATOR_PROG"
 # Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
 #@ by means of the ISC license.
 
-# The following executable files are contained in here (basename(1)d):
 !
 
+printf "# Created: $CREATION_DATE\n# Programs contained (basename(1)d):\n" \
+   >> "$CREATOR_PROG"
 oifs=$IFS
 IFS=@
 set -- $PROGS
 IFS=$oifs
+PROGLIST=
 for i; do
+   [ -z "$PROGLIST" ] && PROGLIST="$i" || PROGLIST="$PROGLIST, $i"
    printf "# - $i\n" >> "$CREATOR_PROG"
 done
 
 # A shell archive is not a transparent thing either!
-printf "\nPROG=\"${CREATOR_PROG%.sh}\"\nDEFEXEC=\"$CREATOR_DEFEXEC\"\n" \
+printf "\nPROG='%s'\nCREATION_DATE='%s'\nPROGLIST='%s'\nDEFEXEC='%s'\n" \
+      "${CREATOR_PROG%.sh}" "$CREATION_DATE" "$PROGLIST" "$CREATOR_DEFEXEC" \
    >> "$CREATOR_PROG"
 cat <<\! >> "$CREATOR_PROG"
 MYDIR=".$PROG"
 
+[ $# -eq 0 ] && {
+   printf "Archive creation: %s\nMembers: %s\n" "$CREATION_DATE" "$PROGLIST"
+   exit 0
+}
+
 [ -d "$TMPDIR/$MYDIR" ] && {
-   PATH="$TMPDIR/$MYDIR:$PATH"
+   i="$TMPDIR/$MYDIR"
+   export PATH="$i:$PATH"
    [ x"$1" == 'x+' ] && { shift; :; } || { DEFEXEC=$1; shift; }
-   if [ ! -x "$DEFEXEC" ]; then
-      echo >&2 "Sorry, this archive has no program '$DEFEXEC', bailing out"
+   i="$i/$DEFEXEC"
+   if [ ! -f "$i" ] || [ ! -x "$i" ]; then
+      echo >&2 "Sorry, this archive no program '$DEFEXEC', bailing out"
       exit 54
    fi
-   exec "$DEFEXEC" "$@"
+   exec "$i" "$@"
    echo >&2 "Failed to execute <$DEFEXEC $@>"
-   exit 1
+   # 71=EX_OSERR
+   exit 71
 }
 
 printf "The directory\n\t$TMPDIR/$MYDIR\n%s\n" \
