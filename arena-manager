@@ -70,6 +70,8 @@ CVS_UPDATE_FLAGS='-AP'
 #           $ echo 'svn export http://auau/trunk' > update.sh
 #           Or whatever must be in update.sh to update the repo.
 #           The repo should possibly be in a further subdirectory.
+#           And, also rather for .update_bomb_git only, it is ok if update.sh
+#           may itself initiates a commit.
 # .sccs_bomb_git: SCCS(1) tree under .git control
 # .tar_bomb_git: plain git(1) repo which is updated by exploding tarballs
 # .hg          : hg(1) (Mercurial)
@@ -161,9 +163,9 @@ git_checkout() {
 
 git_ref_check_gc_update() {
     # Return 41 if no new data, 42 if new data, otherwise error
-    local branch=$1 autogcfile=$2
+    local repodir=$1 autogcfile=$2
     $GIT show-ref |
-    perl -e "\$rd = \"$branch\"; \$agcf = \"$autogcfile\";" -e '
+    perl -e "\$rd = \"$repodir\"; \$agcf = \"$autogcfile\";" -e '
         my (%remotes, %heads);
         while (<STDIN>) {
             chomp;
@@ -201,7 +203,7 @@ git_ref_check_gc_update() {
 ## misc
 
 xy_bomb_git_update() {
-    local comm=$1 commname=$2 es modlns
+    local comm=$1 commname=$2 modlns=0 es
 
     # (We need to compare local master and remote to detect wether there were
     # updates; arena-manager2/.pl ...)
@@ -217,24 +219,37 @@ xy_bomb_git_update() {
     $comm
     es=$?
 
-    # Ignore all updates which occur in .svn/CVS directories, at least
-    # for checking wether any repo content has been updated
-    # To avoid problems with DOS/Unix newline changes in working directories,
-    # don't use status but this hint (note this new approach would allow for
-    # changing some sed(1) REs, but .. just wait a bit xxx)
-    modlns=$($GIT add --all --dry-run 2>/dev/null |
-            sed -Ee '/(\.svn|CVS|SCCS)\/.*$/d' -Ee '/\.git/d' -Ee '/\/?\.#/d' |
-            wc -l |
-            sed -Ee 's/^[[:space:]]+(.*)$/\1/')
-    if test x0 != x$modlns; then
-        echo "... $commname updated some, initiating git(1) commit"
-        $GIT add --all || exit 22
-        $GIT commit -m "arena-manager: $commname update, $(date +'%FT%T%z')" \
-            || exit 23
+    # Commit was performed by update.sh script?
+    if [ "$($GIT show-ref refs/heads/master)" != \
+            "$($GIT show-ref refs/heads/arena-manager-download)" ]; then
+        modlns=1
         $GIT update-ref refs/remotes/origin/master arena-manager-download \
             || exit 24
         echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 25
     else
+        # Ignore all updates which occur in .svn/CVS directories, at least for
+        # checking wether any repo content has been updated.
+        # To avoid problems with DOS/Unix newline changes in working
+        # directories, don't use status but this hint (note this new approach
+        # would allow for changing some sed(1) REs, but .. just wait a bit xxx)
+        modlns=$($GIT add --all --dry-run 2>/dev/null |
+                sed -Ee '/(\.svn|CVS|SCCS)\/.*$/d' \
+                    -Ee '/\.git/d' -Ee '/\/?\.#/d' |
+                wc -l |
+                sed -Ee 's/^[[:space:]]+(.*)$/\1/')
+        if test x0 != x$modlns; then
+            echo "... $commname updated some, initiating git(1) commit"
+            $GIT add --all || exit 22
+            $GIT commit -m \
+                    "arena-manager: $commname update, $(date +'%FT%T%z')" \
+                || exit 23
+            $GIT update-ref refs/remotes/origin/master arena-manager-download \
+                || exit 24
+            echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 25
+        fi
+    fi
+
+    if test x0 == x$modlns; then
         $GIT reset -q --hard HEAD || exit 26
         echo "... $commname did not seem to have new data"
     fi
