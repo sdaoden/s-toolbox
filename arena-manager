@@ -220,8 +220,8 @@ xy_bomb_git_update() {
     es=$?
 
     # Commit was performed by update.sh script?
-    if [ "$($GIT show-ref refs/heads/master)" != \
-            "$($GIT show-ref refs/heads/arena-manager-download)" ]; then
+    if [ "$($GIT show-ref --hash refs/heads/master)" != \
+            "$($GIT show-ref --hash refs/heads/arena-manager-download)" ]; then
         modlns=1
         $GIT update-ref refs/remotes/origin/master arena-manager-download \
             || exit 24
