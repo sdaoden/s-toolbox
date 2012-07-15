@@ -1,6 +1,6 @@
 #!/bin/sh
-# real-periodic.sh: *real* periodic for FreeBSD and OpenBSD that ensures that
-# the daily/weekly/monthly maintenance stuff is executed, even if your laptop
+# real-periodic.sh: *real* periodic for *BSD that ensures that the
+# daily/weekly/monthly maintenance stuff is executed, even if your laptop
 # is running only one hour a day.
 # Invoke this once per hour in the roots crontab and disable the usual periodic
 # stuff of your system instead.
@@ -19,19 +19,24 @@
 DB_FILE=
 
 #  --  >8  --  8<  --  #
+_DB_FILE=/var/cron/real-periodic.stamp
 
 case $(/usr/bin/uname -s) in
-OpenBSD)
-    _DB_FILE=/var/cron/real-periodic.stamp
-    MONTHLY='/bin/sh /etc/monthly'
-    WEEKLY='/bin/sh /etc/weekly'
-    DAILY='/bin/sh /etc/daily'
-    ;;
 FreeBSD)
     _DB_FILE=/var/db/real-periodic.stamp
     MONTHLY='/usr/sbin/periodic monthly'
     WEEKLY='/usr/sbin/periodic weekly'
     DAILY='/usr/sbin/periodic daily'
+    ;;
+NetBSD)
+    MONTHLY='/bin/sh /etc/monthly 2>&1 | tee /var/log/monthly.out | sendmail -t'
+    WEEKLY='/bin/sh /etc/weekly 2>&1 | tee /var/log/weekly.out | sendmail -t'
+    DAILY='/bin/sh /etc/daily 2>&1 | tee /var/log/daily.out | sendmail -t'
+    ;;
+OpenBSD)
+    MONTHLY='/bin/sh /etc/monthly'
+    WEEKLY='/bin/sh /etc/weekly'
+    DAILY='/bin/sh /etc/daily'
     ;;
 Darwin)
     echo 'Yes it probably would be better to use UNIX on Darwin.'

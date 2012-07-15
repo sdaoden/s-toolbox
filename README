@@ -17,7 +17,7 @@ gen-uushar-wrapper:
    (Execute the wrapper without any arguments to list its contents.)
 
 real-periodic.sh:
-   A *real* periodic for FreeBSD and OpenBSD that ensures that the
+   A *real* periodic for FreeBSD, NetBSD and OpenBSD that ensures that the
    daily/weekly/monthly maintenance stuff is executed, even if your laptop
    is running only one hour a day.
    Invoke this once per hour in the roots crontab and disable the usual
