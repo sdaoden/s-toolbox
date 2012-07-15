@@ -56,7 +56,8 @@ backup.pl:
    clones but not yet pushed to their "real" counterparts).
 
 super-shutdown.c:
-   Single setuid root program to invoke /sbin/shutdown(8).
+   Single setuid root BSD program to invoke /sbin/shutdown(8), either
+   to reboot or to halt the system.
    You've been warned.
 
 cdoc-freebsd.S:

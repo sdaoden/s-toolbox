@@ -1,11 +1,12 @@
-/*@ super-shutdown.c: single setuid root program to shutdown/reboot.
+/*@ super-shutdown.c: single setuid root BSD program to shutdown/reboot.
+ *@ Works on FreeBSD/NetBSD/OpenBSD.  You've been warned!
  *@ Compile: $ gcc -W -Wall -pedantic -o super-shutdown super-shutdown.c
+ *@ Prepare: $ chown root:wheel super-shutdown; chmod 4550 super-shutdown
  *@ Run    : $ super-shutdown reboot
  *@ Run    : $ super-shutdown shutdown
  *
- * 2003-01-20.
+ * 2003-01-20.  2012-07-15 (NetBSD, OpenBSD).
  * Public Domain.
- * (You've been warned!)
  */
 
 #include <stdlib.h>
@@ -25,7 +26,7 @@ enum ExStats {
 int
 main(int argc, char **argv)
 {
-    const char *pav[4] = { "shutdown", NULL, "now", NULL };
+    const char *pav[5] = { "shutdown", NULL, "now", NULL, NULL };
     uid_t euid;
     enum ExStats ret = BAD_RUN;
 
@@ -35,9 +36,13 @@ main(int argc, char **argv)
     ++argv;
     if (! strcmp(*argv, "reboot"))
         pav[1] = "-r";
-    else if (! strcmp(*argv, "shutdown"))
+    else if (! strcmp(*argv, "shutdown")) {
         pav[1] = "-p";
-    else
+#if defined __NetBSD__ || defined __OpenBSD__
+        pav[3] = pav[2];
+        pav[2] = "-h";
+#endif
+    } else
         goto jhelp;
 
     ret = PRIV_ERR;
