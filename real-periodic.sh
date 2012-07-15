@@ -63,7 +63,7 @@ yd=${yd#0*}
 
 # Last MonthWeekDay invocations
 mwd='-42 -42 -42'
-[ -s "$DB_FILE" ] && mwd=$(< "$DB_FILE")
+[ -s "$DB_FILE" ] && mwd=$(cat "$DB_FILE")
 lmonth=${mwd%% *}
     mwd=${mwd#* }
 lweek=${mwd%% *}
