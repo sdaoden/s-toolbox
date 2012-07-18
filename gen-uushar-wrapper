@@ -54,7 +54,7 @@ MEMBERS=
 while :; do
    [ ${#ARGS} -ne 0 ] &&
       { i=$1; shift || break; :; } ||
-      { read i; [ x"$i" == x ] && break; }
+      { read i; [ -z "$i" ] && break; }
    if [ ! -x "$i" ]; then
       echo >&2 "$i does not exist or is not executable, bailing out."
       exit 1
@@ -114,7 +114,7 @@ mkdir -p "$i" || {
    exit 1
 }
 cd "$i" || {
-   echo >&2 "Cannot enter '$i' to explode shell archive"
+   echo >&2 "Cannot chdir '$i' to explode shell archive"
    exit 1
 }
 
@@ -126,10 +126,9 @@ IFS=', '
 set -- $MEMBERS
 IFS=$oifs
 for i; do
-   basei=$(basename $i)
-   printf "echo 'x - (%s as) %s'\nuudecode << \!\n" \
-      "$i" "$basei" >> "$ARCH"
-   uuencode -m $i $basei >> "$ARCH"
+   basei=$(basename "$i")
+   printf "echo 'x - (%s as) %s'\nuudecode << \!\n" "$i" "$basei" >> "$ARCH"
+   uuencode -m "$i" "$basei" >> "$ARCH"
    printf "!\n# END of '$ uuencode -m $i $basei'\n" >> "$ARCH"
 done
 
