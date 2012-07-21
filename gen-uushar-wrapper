@@ -6,6 +6,9 @@
 #@ therein.  On the first run with arguments, the wrapper will create a hidden
 #@ directory in your $TMPDIR to unpack the archive therein; without arguments
 #@ it'll always print creation time and members shipped.
+#@ Web: http://sdaoden.users.sourceforge.net/code.html;
+#@      https://sourceforge.net/projects/s-toolbox
+#@ Git: git.code.sf.net/p/s-toolbox/code
 #
 # Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
 #
@@ -25,10 +28,10 @@
 ARGS=$@
 
 printf "%s\n%s\n%s\n%s\n\n%s " \
-	'Howdy howdy, jo-ho hooo!' \
-	'So let us create an uuencoded shell archive of the given utilities.' \
-	'Please answer the upcoming questions for this to work.' \
-	'You can at any time interrupt with CTRL-C.' \
+   'Howdy howdy, jo-ho hooo!' \
+   'So let us create an uuencoded shell archive of the given utilities.' \
+   'Please answer the upcoming questions for this to work.' \
+   'You can at any time interrupt with CTRL-C.' \
    'What should be the name of the wrapper:'
 read ARCH
 [ -f "$ARCH.sh" ] && {
@@ -41,26 +44,48 @@ read ARCH
 }
 ARCH="$ARCH.sh"
 
-printf "Yay, it'll be $ARCH.\n\n%s\n%s [] " \
-   "Is there any subcommand which should be called for '+'?" \
+printf "Yay, it'll be %s.\n\n%s\n%s [] " \
+   "$ARCH" "Is there any subcommand which should be called for '+'?" \
    "(As in: '\$ $ARCH + -arg1 -arg2' -> '\$ XXX -arg1 -arg2')?"
 read ARCH_DEFEXEC
 
-printf "\n%s\n%s\n%s\n\t- " \
-   "So, we'll then enter a loop to read the member programs to include." \
-   "Please terminate your input by giving an empty line."
-MEMBERS=
+printf "\n%s\n%s [] " \
+   'Members can be compressed via compress, gzip, bzip2 and xz.' \
+   'Enter desired compressor or the empty string otherwise.'
+read COMPRESS
+[ ! -z "$COMPRESS" ] && {
+   x_compress='compress -c -f'
+   ux_compress='uncompress -c'
+   x_gzip='gzip -c -f'
+   ux_gzip='gunzip -c -f'
+   x_bzip2='bzip2 --compress --stdout'
+   ux_bzip2='bzip2 --decompress --stdout'
+   x_xz='xz --compress --stdout'
+   ux_xz='xz --decompress --stdout'
+
+   eval cfun='$x_'"$COMPRESS"
+   eval xfun='$ux_'"$COMPRESS"
+   [ -z "$cfun" ] && {
+      echo >&2 "Unsupported compression method: $COMPRESS"
+      exit 1
+   }
+}
+
+MEMBERS=''
+printf "\n%s\n%s\n" \
+   'So, we will then enter a loop to read the member programs to include.' \
+   'An empty value will terminate your input.'
 [ ${#ARGS} -ne 0 ] && set -- $ARGS
 while :; do
    [ ${#ARGS} -ne 0 ] &&
-      { i=$1; shift || break; :; } ||
-      { read i; [ -z "$i" ] && break; }
+      { i=$1; shift || break; printf "\t - "; :; } ||
+      { printf "\t - "; read i; [ -z "$i" ] && break; }
    if [ ! -x "$i" ]; then
       echo >&2 "$i does not exist or is not executable, bailing out."
       exit 1
    fi
-   printf "$i: ok\n\t- "
    [ -z "$MEMBERS" ] && MEMBERS="$i" || MEMBERS="$MEMBERS, $i"
+   printf "$i: ok\n"
 done
 
 # Everything get.set.go, so write the actual shell archive
@@ -71,28 +96,36 @@ trap "rm -rf '$ARCH'" 0
 
 # Header
 cat <<\! > "$ARCH"
-#!/bin/sh
-#@ This file was automatically created by gen-uushar-wrapper, which is
+#!/bin/sh -
+#@ This file has been created by gen-uushar-wrapper, which is
 # Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
 #@ by means of the ISC license.
+#@ It contains a shell-archive-execution-environment. ;}
+#@ Run it, and it will tell you which executable files it contains.
+#@ Run it with the name of such an executable, and it'll create a hidden
+#@ directory in your $TMPDIR to expand the shipped executables.
+#@ From then on, it'll redirect it's invocations to those programs.
+#
+#@ Archives produced using this implementation of gen-uushar-wrapper
+#@ may be easily examined with the command:
+#@    $ egrep -v '^[X#]' shell-archive
 
 !
 
 # A shell archive is not a transparent thing either!
-printf "# Archive:\nARCH='%s'\n# Created:\nCREATION_DATE='%s'\n" \
-      "${ARCH%.sh}" "$CREATION_DATE" \
+printf "ARCHIVE='%s'\nCREATION_DATE='%s'\n" "${ARCH%.sh}" "$CREATION_DATE" \
    >> "$ARCH"
-printf "# Executable members:\nMEMBERS='%s'\n# + expansion:\nDEFEXEC='%s'\n" \
+printf "MEMBERS='%s'\n# Default expansion (if \$1 is +):\nDEFEXEC='%s'\n" \
       "$MEMBERS" "$ARCH_DEFEXEC" \
    >> "$ARCH"
 cat <<\! >> "$ARCH"
-
+#
 [ $# -eq 0 ] && {
    printf "Archive creation: %s\nMembers: %s\n" "$CREATION_DATE" "$MEMBERS"
    exit 0
 }
-
-i="$TMPDIR/.$ARCH"
+#
+i="$TMPDIR/.$ARCHIVE"
 [ -d "$i" ] && {
    export PATH="$i:$PATH"
    [ x"$1" == 'x+' ] && { shift; :; } || { DEFEXEC=$1; shift; }
@@ -103,37 +136,44 @@ i="$TMPDIR/.$ARCH"
    fi
    exec "$i" "$@"
    echo >&2 "Failed to execute <$DEFEXEC $@>"
-   # 71=EX_OSERR
-   exit 71
+   exit 71 # 71=EX_OSERR
 }
-
-printf "The directory\n\t$i\n%s\n" \
-   'does not exist, creating it first, and exploding this shell archive.'
+#
+printf "The directory\n\t%s\n%s\n" \
+   "$i" 'does not exist, creating it first, and expanding this shell archive.'
 mkdir -p "$i" || {
    echo >&2 "Cannot create directory '$i'"
    exit 1
 }
 cd "$i" || {
-   echo >&2 "Cannot chdir '$i' to explode shell archive"
+   echo >&2 "Cannot chdir '$i' to expand shell archive"
    exit 1
 }
-
+#
 !
 
-# uuencode(1)d the members to embed
+# uuencode(1)d and optionally compress the members to embed
 oifs=$IFS
 IFS=', '
 set -- $MEMBERS
 IFS=$oifs
 for i; do
    basei=$(basename "$i")
-   printf "echo 'x - (%s as) %s'\nuudecode << \!\n" "$i" "$basei" >> "$ARCH"
-   uuencode -m "$i" "$basei" >> "$ARCH"
-   printf "!\n# END of '$ uuencode -m $i $basei'\n" >> "$ARCH"
+   printf "echo 'x - (%s as) %s'\n" "$i" "$basei" >> "$ARCH"
+   if [ -z "$cfun" ]; then
+      printf "sed 's/^X//' << \! | uudecode > %s; chmod 0755 %s\n" \
+         "$basei" "$basei" >> "$ARCH"
+      < "$i" uuencode -m /dev/stdout | sed 's/^/X/' >> "$ARCH"
+   else
+      printf "sed 's/^X//' << \! | uudecode | %s > %s; chmod 0755 %s\n" \
+         "$xfun" "$basei" "$basei" >> "$ARCH"
+      < "$i" $cfun | uuencode -m /dev/stdout | sed 's/^/X/' >> "$ARCH"
+   fi
+   printf "!\n# END of %s\n" "$basei" >> "$ARCH"
 done
 
-printf "\necho '%s'\nexit 0\n" \
-      'Shell archive exploded, please rerun the command, now for real..' \
+printf "echo '%s'\nexit 0\n" \
+      'Shell archive expanded, please rerun the command that took you here' \
    >> "$ARCH"
 
 # The end

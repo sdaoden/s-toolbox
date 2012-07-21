@@ -21,12 +21,13 @@ uushar:
       $ egrep -v '^[X#]' shar.file
 
 gen-uushar-wrapper:
-   Creates a shar(1)-like shell archive (but with uuencode(1)d content) of
-   a given set of executable files, that is itself executable.
-   Execute it (the generated shell archive script) to invoke any of the
-   programs contained therein.  On the first run, the wrapper will create
-   a hidden directory in your $TMPDIR to unpack the archive therein.
-   (Execute the wrapper without any arguments to list its contents.)
+   Creates a shell archive rather similar to uushar as above, but different
+   to that the generated archive (1) consists only of executable file
+   members, and (2) will be itself executable.  Run it (the generated shell
+   archive script) to invoke any of the programs contained therein.  On the
+   first run, the wrapper will create a hidden directory in your $TMPDIR to
+   unpack the archive therein.  (Run without arguments to show the contents
+   and creation date.)
 
 real-periodic.sh:
    A *real* periodic for FreeBSD, NetBSD and OpenBSD that ensures that the
