@@ -5,8 +5,20 @@ showkey.c:
    Show keyboard scancodes for FreeBSD, OpenBSD, NetBSD and Linux.
 
 uushar:
-   Like shar(1), but with an uuencode(1)/uudecode(1) binary safe layer
-   added.
+   Writes a sh(1) shell script to the standard output which will recreate
+   the file hierarchy specified by the command line operands.  Directories
+   will be recreated and must be specified before the files they contain
+   Compared to the well-known shar(1) program, uushar adds optional
+   compression and an uuencode(1)/uudecode(1) binary safe layer: ::
+
+      $ uushar [--(compress|gzip|bzip2|xz)] file ...
+
+   It is easy to insert trojan horses into uushar files.  It is strongly
+   recommended that all shell archive files be examined before running them
+   through sh(1).  Archives produced using this implementation of uushar
+   may be easily examined with the command: ::
+
+      $ egrep -v '^[X#]' shar.file
 
 gen-uushar-wrapper:
    Creates a shar(1)-like shell archive (but with uuencode(1)d content) of

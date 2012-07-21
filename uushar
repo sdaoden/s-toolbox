@@ -1,9 +1,12 @@
 #!/bin/sh -
 #@ Like shar(1), but with an uuencode(1)/uudecode(1) binary safe layer added.
+#@ Member compression via optional --(compress|gzip|bzip2|xz) argument.
+#@ Web: http://sdaoden.users.sourceforge.net/code.html;
+#@      https://sourceforge.net/projects/s-toolbox
+#@ Git: git.code.sf.net/p/s-toolbox/code
 #
-# Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>
+# Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
 # All rights reserved.
-# Only rules 1., 2., and 4. of the BSD copyright below apply to me.
 #
 #	$NetBSD: shar.sh,v 1.2 1994/12/21 08:42:04 jtc Exp $
 #
@@ -42,18 +45,45 @@
 #
 
 if [ $# -eq 0 ]; then
-	echo 'usage: uushar file ...'
+	echo 'usage: uushar [--(compress|gzip|bzip2|xz)] file ...'
 	exit 1
 fi
+
+x_compress='compress -c -f'
+ux_compress='uncompress -c'
+x_gzip='gzip -c -f'
+ux_gzip='gunzip -c -f'
+x_bzip2='bzip2 --compress --stdout'
+ux_bzip2='bzip2 --decompress --stdout'
+x_xz='xz --compress --stdout'
+ux_xz='xz --decompress --stdout'
+
+case $1 in
+--*)
+	eval cfun='$x_'${1#--}
+	eval xfun='$ux_'${1#--}
+	if [ -z "$cfun" ]; then
+		echo >&2 "Unsupported compression method: $1"
+		exit 1
+	fi
+	shift
+	;;
+*)
+	cfun= xfun= 
+	;;
+esac
 
 cat << \!
 # This is a shell archive.  Save it in a file, remove anything before
 # this line, and then unpack it by entering "sh file".  Note, it may
-# create directories; files and directories will be owned by you; since
-# uudecode(1) is used, unpacked files may become executable.
+# create directories; files and directories will be owned by you and
+# have default permissions.
+#
+# Archives produced using this implementation of shar may be easily
+# examined with the command:
+#	$ egrep -v '^[X#]' shell-archive
 #
 # This archive contains:
-#
 !
 
 for i
@@ -67,14 +97,19 @@ do
 	if [ -d $i ]; then
 		echo "echo c - $i"
 		echo "mkdir -p $i > /dev/null 2>&1"
-	else
+	elif [ -z "$cfun" ]; then
 		echo "echo x - $i"
-		echo 'uudecode << \!'
-		uuencode -m $i $i
+		echo "sed 's/^X//' << \! | uudecode > $i"
+		< $i uuencode -m /dev/stdout | sed 's/^/X/'
+		echo '!'
+	else
+		echo "echo xx - $i"
+		echo "sed 's/^X//' << \! | uudecode | $xfun > $i"
+		< $i $cfun | uuencode -m /dev/stdout | sed 's/^/X/'
 		echo '!'
 	fi
 done
 echo exit
-echo ''
+echo
 
-exit 0
+exit
