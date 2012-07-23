@@ -80,10 +80,10 @@ while :; do
    [ ${#ARGS} -ne 0 ] &&
       { i=$1; shift || break; printf "\t - "; :; } ||
       { printf "\t - "; read i; [ -z "$i" ] && break; }
-   if [ ! -x "$i" ]; then
+   [ -x "$i" ] || {
       echo >&2 "$i does not exist or is not executable, bailing out."
       exit 1
-   fi
+   }
    [ -z "$MEMBERS" ] && MEMBERS="$i" || MEMBERS="$MEMBERS, $i"
    printf "$i: ok\n"
 done
@@ -92,7 +92,6 @@ done
 set -C
 printf ".. end of list\nFine, so i'm doing my work now\n"
 CREATION_DATE=$(date -u)
-trap "rm -rf '$ARCH'" 0
 
 # Header
 cat <<\! > "$ARCH"
@@ -111,6 +110,9 @@ cat <<\! > "$ARCH"
 #@    $ egrep -v '^[X#]' shell-archive
 
 !
+
+# It's indeed our $ARCH
+trap "rm -rf '$ARCH'" 0
 
 # A shell archive is not a transparent thing either!
 printf "ARCHIVE='%s'\nCREATION_DATE='%s'\n" "${ARCH%.sh}" "$CREATION_DATE" \
