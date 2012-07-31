@@ -130,7 +130,7 @@ cat <<\! >> "$ARCH"
 i="$TMPDIR/.$ARCHIVE"
 [ -d "$i" ] && {
    export PATH="$i:$PATH"
-   [ x"$1" == 'x+' ] && { shift; :; } || { DEFEXEC=$1; shift; }
+   [ x"$1" = 'x+' ] && { shift; :; } || { DEFEXEC=$1; shift; }
    i="$i/$DEFEXEC"
    if [ ! -f "$i" ] || [ ! -x "$i" ]; then
       echo >&2 "Sorry, this archive no program '$DEFEXEC', bailing out"
