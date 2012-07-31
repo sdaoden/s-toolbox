@@ -249,7 +249,7 @@ xy_bomb_git_update() {
         fi
     fi
 
-    if test x0 == x$modlns; then
+    if test x0 = x$modlns; then
         $GIT reset -q --hard HEAD || exit 26
         echo "... $commname did not seem to have new data"
     fi
@@ -261,7 +261,7 @@ xy_bomb_git_update() {
 ## modes
 
 reduce_expand() {
-    if test "$MODE" == reduce; then
+    if test "$MODE" = reduce; then
         git_branch='arena-manager-null'
         hg_branch='null'
     else
@@ -304,9 +304,9 @@ reduce_expand() {
 
 xgc() {
     GCT=
-    test "$MODE" == fullgc && GCT=--aggressive
+    test "$MODE" = fullgc && GCT=--aggressive
     for rd in ${params[@]}; do
-        if test "$rd" == "${rd/git}"; then
+        if test "$rd" = "${rd/git}"; then
             log ''
             log "[$rd: $MODE does not apply]"
             continue
@@ -349,7 +349,7 @@ update() {
         intro "$rd: performing $MODE"
         set -o pipefail
         (   cd "$rd" || exit 9
-            if test "$rd" == ${rd/git}; then
+            if test "$rd" = ${rd/git}; then
                 if test "$rd" != "${rd/.hg}"; then
                     # TODO use incoming, and produce an AUTOGC entry if there
                     # TODO are any revisions; then pull that and rm it!!
@@ -471,7 +471,7 @@ automerge() {
         exit 1
     fi
     for rd in $(< "$AUTOGCFILE"); do
-        if test "$rd" == "${rd/git}"; then
+        if test "$rd" = "${rd/git}"; then
             log ''
             log "[$rd: $MODE does not apply]"
             continue
