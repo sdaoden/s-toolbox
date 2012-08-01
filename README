@@ -1,9 +1,6 @@
 Some tools which i use personally but which may be of interest for others, too
 ==============================================================================
 
-showkey.c:
-   Show keyboard scancodes for FreeBSD, OpenBSD, NetBSD and Linux.
-
 uushar:
    Writes a sh(1) shell script to the standard output which will recreate
    the file hierarchy specified by the command line operands.  Directories
@@ -35,6 +32,12 @@ real-periodic.sh:
    is running only one hour a day.
    Invoke this once per hour in the roots crontab and disable the usual
    periodic stuff of your system instead.
+
+showkey.c:
+   Show keyboard scancodes for FreeBSD, OpenBSD, NetBSD and Linux.
+   This is not yet finished but for Linux.  But it should help to get
+   you going.  (Unfortunately the BSDs are not so documented and i
+   need to dig into the kernel sources to implement the missing pieces.)
 
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so that
