@@ -57,12 +57,6 @@ arena-manager:
    Offers some automatized operations on revision control repositories,
    like updating, (fast-forward) merging, garbage-collecting.
 
-web/:
-   A brute simple set of tools to generate static and PHP enabled websites.
-   The PHP stuff has not been used in about five years and thus needs
-   a refresh before it is included here.  Use static webcontent, huh?!
-   Please read the file web/README first.
-
 backup.pl:
    My private backup script.  Simple (uses tar(1)), but does some stuff
    which i need for my work flow (backups data which is in local repo
@@ -81,5 +75,9 @@ cdoc-freebsd.S:
 openbsd-changelog-plus.pl,
 openbsd-changeset-plus.pl:
    Simple scripts to ease maintaining of OpenBSD plus.html entries.
+
+P.S.: If you do miss web/: that has been replaced by the grazy boosted
+      and oh so real S-Web42 project that stands by itself
+      (see http://sdaoden.users.sourceforge.net/code.html).
 
 .. vim:set fenc=utf-8 filetype=rst syntax=rst ts=3 sts=3 sw=3 et tw=75:
