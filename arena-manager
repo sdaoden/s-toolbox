@@ -9,29 +9,17 @@
 # Copyright (c) 2011 - 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
 # All rights reserved.
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
 #
-# 1. Redistributions of source code must retain the above copyright notice,
-#    this list of conditions and the following disclaimer.
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-#    this list of conditions and the following disclaimer in the documentation
-#    and/or other materials provided with the distribution.
-# 3. Neither the name of the author nor the names of its contributors
-#    may be used to endorse or promote products derived from this software
-#    without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-# PURPOSE ARE DISCLAIMED.
-# IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
-# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-# THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 # And the version control executables
 GIT=git
@@ -100,7 +88,6 @@ CVS_UPDATE_FLAGS='-AP'
 ##
 
 CVSROOT=/nonexistent
-CURR=/nonexistent
 # These must be in $ARENA!
 LOGFILE=.ARENA-LOG
 AUTOGCFILE=.ARENA-AUTOGC
@@ -109,13 +96,18 @@ ESTAT=0
 GITDID=0
 AUTOUP=0
 
+MODE="$1"
+shift
+PARAMS="$@"
+CURRD=
+
 log() {
     echo "$*"
-    echo "$*" >> $LOGFILE
+    echo "$*" >> "$LOGFILE"
 }
 logerr() {
     echo >&2 "ERROR: $*"
-    echo "ERROR: $*" >> $LOGFILE
+    echo "ERROR: $*" >> "$LOGFILE"
     ESTAT=1
 }
 
@@ -126,7 +118,7 @@ intro() {
     log $1
 }
 final() {
-    if test $1 -eq 0; then
+    if [ $1 -eq 0 ]; then
         log "... ok: $2"
     else
         ESTAT=$1
@@ -135,20 +127,47 @@ final() {
     log $SEP
 }
 
+# basename(1) plus cleanup
+bname() {
+    CURRD=$(echo "$CURRD" | sed -e 's/\/\/*$//' -e 's/\(^.*\/\/*\)//')
+}
+
+# Does $1 contain any substring that matches $2[-$X]?
+matches() {
+    local var=$1 i
+    shift
+
+    if [ -z "$__matchsubst" ]; then
+        i=zauberberg
+        eval "test \${i/ber/} = zauberg" >/dev/null 2>&1 &&
+            __matchsubst=1 || __matchsubst=0
+    fi
+    if [ $__matchsubst -ne 0 ]; then
+        for i; do
+            [ "$var" != "${var/$i/}" ] && return 0
+        done
+    else
+        for i; do
+            echo $var | grep "$i" >/dev/null 2>&1 && return 0
+        done
+    fi
+    return 1
+}
+
 ## git(1) stuff: all called from within subshell with -o pipefail
 
 #git_check_clean() {
-#    test 0 != $($GIT clean --dry-run | wc -l | \
-#                sed -Ee 's/^[[:space:]]+(.*)$/\1/') && {
-#        echo >&2 "Untracked files present, bailing out!" &&
+#    [ 0 != $($GIT clean --dry-run | wc -l | \
+#            sed -Ee 's/^[[:space:]]+(.*)$/\1/') ] && {
+#        echo >&2 "Untracked files present, bailing out!"
 #        exit 10
 #    }
 #}
 
 git_check_status() {
-    test 0 != $($GIT status --short | wc -l | \
-                sed -Ee 's/^[[:space:]]+(.*)$/\1/') && {
-        echo >&2 "Modified or untracked files present, bailing out!" &&
+    [ 0 != $($GIT status --short | wc -l | \
+            sed -Ee 's/^[[:space:]]+(.*)$/\1/') ] && {
+        echo >&2 "Modified or untracked files present, bailing out!"
         exit 10
     }
 }
@@ -156,7 +175,7 @@ git_check_status() {
 git_checkout() {
     local br="$1"
     $GIT checkout -q -f "$br" -- || {
-        echo >&2 "Can't checkout branch $br, bailing out!" &&
+        echo >&2 "Can't checkout branch $br, bailing out!"
         exit 11
     }
 }
@@ -182,8 +201,7 @@ git_ref_check_gc_update() {
         }
 
         my $es = 41;
-        open AGCF, ">> $agcf" ||
-            die "Cannot open append-write $agcf: $!";
+        open(AGCF, '>>', $agcf) || die "Cannot open append-write $agcf: $!";
         foreach (keys %remotes) {
             (my $lr = $_) =~ s/^origin\///;
             next unless exists $heads{$lr};
@@ -191,10 +209,10 @@ git_ref_check_gc_update() {
             $es = 42;
             print "... {at least \"$lr\" and \"remotes/$_\" differ, ",
                   "marking for autogc}\n";
-            print AGCF $rd, "\n" || die "Cannot write $agcf: $!";
+            die "Cannot write $agcf: $!" unless print AGCF $rd, "\n";
             last;
         } 
-        close AGCF || die "Cannot close $agcf: $!";
+        close(AGCF) || die "Cannot close $agcf: $!";
         exit $es;
     '
     return $?
@@ -208,11 +226,11 @@ xy_bomb_git_update() {
     # (We need to compare local master and remote to detect wether there were
     # updates; arena-manager2/.pl ...)
     $GIT checkout -q -f -B arena-manager-download master -- || {
-        echo >&2 "Can't reset branch arena-manager-download, bailing out!" &&
+        echo >&2 "Can't reset branch arena-manager-download, bailing out!"
         exit 20
     }
     $GIT update-ref refs/remotes/origin/master arena-manager-download || {
-        echo >&2 "Can't reset branch origin/master, bailing out!" &&
+        echo >&2 "Can't reset branch origin/master, bailing out!"
         exit 21
     }
 
@@ -225,7 +243,7 @@ xy_bomb_git_update() {
         modlns=1
         $GIT update-ref refs/remotes/origin/master arena-manager-download \
             || exit 24
-        echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 25
+        echo "$CURRD" >> "$ARENA/$AUTOGCFILE" || exit 25
     else
         # Ignore all updates which occur in .svn/CVS directories, at least for
         # checking wether any repo content has been updated.
@@ -237,7 +255,7 @@ xy_bomb_git_update() {
                     -Ee '/\.git/d' -Ee '/\/?\.#/d' |
                 wc -l |
                 sed -Ee 's/^[[:space:]]+(.*)$/\1/')
-        if test x0 != x$modlns; then
+        if [ 0 != "$modlns" ]; then
             echo "... $commname updated some, initiating git(1) commit"
             $GIT add --all || exit 22
             $GIT commit -m \
@@ -245,14 +263,14 @@ xy_bomb_git_update() {
                 || exit 23
             $GIT update-ref refs/remotes/origin/master arena-manager-download \
                 || exit 24
-            echo "$rd" >> "$ARENA/$AUTOGCFILE" || exit 25
+            echo "$CURRD" >> "$ARENA/$AUTOGCFILE" || exit 25
         fi
     fi
 
-    if test x0 = x$modlns; then
+    [ 0 = "$modlns" ] && {
         $GIT reset -q --hard HEAD || exit 26
         echo "... $commname did not seem to have new data"
-    fi
+    }
 
     git_checkout master
     return $es
@@ -261,7 +279,7 @@ xy_bomb_git_update() {
 ## modes
 
 reduce_expand() {
-    if test "$MODE" = reduce; then
+    if [ "$MODE" = reduce ]; then
         git_branch='arena-manager-null'
         hg_branch='null'
     else
@@ -269,124 +287,125 @@ reduce_expand() {
         hg_branch=''
     fi
 
-    for rd in ${params[@]}; do
-        if [[ "$rd" != "${rd/no_reduce/}" || ! ( "$rd" != "${rd/git}" ||
-              "$rd" != "${rd/hg}" ) ]]; then
+    for CURRD in $PARAMS; do
+        bname
+        if matches "$CURRD" no_reduce || ! matches "$CURRD" git hg; then
             log ''
-            log "[$rd: $MODE does not apply]"
+            log "[$CURRD: $MODE does not apply]"
             continue
         fi
 
-        intro "$rd: performing $MODE"
+        intro "$CURRD: performing $MODE"
         set -o pipefail
-        (   cd "$rd" || exit 10
-            if test "$rd" != "${rd/git}"; then
+        (   cd "$CURRD" || exit 10
+            if matches "$CURRD" git; then
                 # File NULL on branch arena-manager-null contains a single
                 # line stating the master branch's name
-                if test -z "$git_branch"; then
-                    if test -f NULL; then
-                        git_branch=$(< NULL)
+                if [ -z "$git_branch" ]; then
+                    if [ -f NULL ]; then
+                        git_branch=$(cat NULL)
                     else
-                        echo >&2 "No file NULL in $rd"
+                        echo >&2 "No file NULL in $CURRD"
                         git_branch=master
                     fi
                 fi
                 git_checkout "$git_branch"
-            else #elif test "$rd" != "${rd/hg}"; then
+            else #elif matches "$CURRD" hg; then
                 $HG up $hg_branch
             fi
             exit $?
         ) 2>&1 | tee -a "$LOGFILE"
-        final $? "$rd"
+        final $? "$CURRD"
         set +o pipefail
     done
 }
 
 xgc() {
-    GCT=
-    test "$MODE" = fullgc && GCT=--aggressive
-    for rd in ${params[@]}; do
-        if test "$rd" = "${rd/git}"; then
+    local GCT=
+    [ "$MODE" = fullgc ] && GCT=--aggressive
+    for CURRD in $PARAMS; do
+        bname
+        if ! matches "$CURRD" git; then
             log ''
-            log "[$rd: $MODE does not apply]"
+            log "[$CURRD: $MODE does not apply]"
             continue
         fi
         m=$MODE
         i=$GCT
-        if test "$rd" != "${rd/no_fullgc}"; then
+        if matches "$CURRD" no_fullgc; then
             m='gc (fullgc forcefully downgraded)'
             i=
         fi
-        intro "$rd: performing $m"
+        intro "$CURRD: performing $m"
         set -o pipefail
-        (   cd "$rd" || exit 1
+        (   cd "$CURRD" || exit 1
             time git gc $i
         ) 2>&1 | tee -a "$LOGFILE"
-        final $? "$rd"
+        final $? "$CURRD"
         set +o pipefail
     done
 }
 
 update() {
-    rm -rf $AUTOGCFILE || {
+    rm -rf "$AUTOGCFILE" || {
         echo >&2 "Failed to remove stale $AUTOGCFILE"
         exit 1
     }
 
-    for rd in ${params[@]}; do
-        if test $AUTOUP -ne 0 && test "$rd" != "${rd/no_autoup/}"; then
+    for CURRD in $PARAMS; do
+        bname
+        if [ $AUTOUP -ne 0 ] && matches "$CURRD" no_autoup; then
             log ''
-            log "[$rd: $MODE does not apply]"
+            log "[$CURRD: $MODE does not apply]"
             continue
         fi
-        if test "$rd" != "${rd/.tar_bomb_git}" ||
-                test "$rd" != "${rd/.sccs_bomb_git}"; then
+        if matches "$CURRD" .tar_bomb_git .sccs_bomb_git; then
             log ''
-            log "[$rd: (automatic) $MODE does not apply]"
+            log "[$CURRD: (automatic) $MODE does not apply]"
             continue
         fi
 
-        intro "$rd: performing $MODE"
+        intro "$CURRD: performing $MODE"
         set -o pipefail
-        (   cd "$rd" || exit 9
-            if test "$rd" = ${rd/git}; then
-                if test "$rd" != "${rd/.hg}"; then
+        (   cd "$CURRD" || exit 9
+            if ! matches "$CURRD" git; then
+                case "$CURRD" in
+                *.hg*)
                     # TODO use incoming, and produce an AUTOGC entry if there
                     # TODO are any revisions; then pull that and rm it!!
-                    $HG pull -u
-                    es=$?
-                elif test "$rd" != "${rd/.svn}"; then
-                    $SVN update
-                    es=$?
-                elif test "$rd" != "${rd/.cvs}"; then
-                    $CVS update $CVS_UPDATE_FLAGS
-                    es=$?
-                elif test "$rd" != "${rd/.sccs}"; then
-                    echo "SCCS(1) managed tree, skip: $rd"
-                    es=0
-                else
-                    echo >&2 "Unknown revision-control-system: $rd"
-                    es=1
-                fi
+                    $HG pull -u; es=$?;;
+                *.svn*)
+                    $SVN update; es=$?;;
+                *.cvs*)
+                    $CVS update $CVS_UPDATE_FLAGS; es=$?;;
+                *.sccs*)
+                    echo "SCCS(1) managed tree, skip: $CURRD"; es=0;;
+                *)
+                    echo >&2 "Unknown revision-control-system: $CURRD"; es=1;;
+                esac
                 exit $es
             fi
 
             # git(1) and related
             git_check_status
 
-            if test "$rd" != "${rd/.git}"; then
+            case "$CURRD" in
+            *.git*)
                 #$GIT pull -v --ff-only --stat --prune
                 $GIT fetch --verbose --prune
                 es=$?
-                test $es -eq 0 &&
-                    git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
-            elif test "$rd" != "${rd/.update_bomb_git}"; then
+                [ $es -eq 0 ] &&
+                    git_ref_check_gc_update "$CURRD" "$ARENA/$AUTOGCFILE"
+                ;;
+            *.update_bomb_git*)
                 xy_bomb_git_update "sh -c update.sh" 'update.sh'
                 es=$?
-            elif test "$rd" != "${rd/.svn_bomb_git}"; then
+                ;;
+            *.svn_bomb_git*)
                 xy_bomb_git_update "$SVN update" 'svn(1)'
                 es=$?
-            elif test "$rd" != "${rd/.svn_git}"; then
+                ;;
+            *.svn_git*)
                 # This auto-merges into "master", so that there can be found no
                 # indication of wether there were updates or not; thus the
                 # local "pseudo" branch we use for that (better solution is
@@ -395,33 +414,35 @@ update() {
                 # after)
                 $GIT svn rebase
                 es=$?
-                test $es -eq 0 &&
-                    git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
-            elif test "$rd" != "${rd/.cvs_bomb_git}"; then
+                [ $es -eq 0 ] &&
+                    git_ref_check_gc_update "$CURRD" "$ARENA/$AUTOGCFILE"
+                ;;
+            *.cvs_bomb_git*)
                 xy_bomb_git_update "$CVS update $CVS_UPDATE_FLAGS" 'cvs(1)'
                 es=$?
-            elif test "$rd" != "${rd/.cvs_git}"; then
+                ;;
+            *.cvs_git*)
                 # This is more complicated; you need to setup a branch
                 # arena-manager-config; check that out
                 git_checkout arena-manager-config
 
                 # It contains several files which are used to store the config
-                master=$(< git_master)          # The name of the master branch
-                cvs_root=$(< cvs_root)          # CVSROOT repo URL (CVS/Root)
-                cvs_module=$(< cvs_module)      # CVS module (CVS/Repository)
+                master=$(cat git_master)        # The name of the master branch
+                cvs_root=$(cat cvs_root)        # CVSROOT repo URL (CVS/Root)
+                cvs_module=$(cat cvs_module)    # CVS module (CVS/Repository)
                 # The name of the cvsps(1) cache file is stored in here;
                 # that file itself is always stored as 'cvsps_cache' instead
-                cvsps_file=$(< cvsps_file)
+                cvsps_file=$(cat cvsps_file)
                 # Up to you wether you want -R or not
-                test -f cvs-revisions && Rflag=-R || Rflag= # git cvsimport dat
+                [ -f cvs-revisions ] && Rflag=-R || Rflag= # git cvsimport dat
 
                 # Prepare cvsps(1) (and git(1) cvsimport) cache
                 cvsps_dir="$HOME/.cvsps"
-                test -d "$cvsps_dir" || mkdir "$cvsps_dir" || {
-                    echo >&2 "$rd: failed to create $cvsps_dir directory"
+                [ -d "$cvsps_dir" ] || mkdir "$cvsps_dir" || {
+                    echo >&2 "$CURRD: failed to create $cvsps_dir directory"
                     exit 20
                 }
-                test x"$Rflag" != x && cp -f cvs-revisions .git/
+                [ -n "$Rflag" ] && cp -f cvs-revisions .git/
                 cp -f cvsps_cache "$cvsps_dir/$cvsps_file"
 
                 # NOTE: we *require* these -r -d etc... TODO maybe it would be
@@ -429,64 +450,66 @@ update() {
                 $GIT cvsimport -ai $Rflag -p '-u,--cvs-direct' \
                      -r origin -d "$cvs_root" "$cvs_module"
                 es=$?
-                test $es -ne 0 && {
-                    echo >&2 "$rd git(1) cvsimport failed, bailing out"
+                [ $es -ne 0 ] && {
+                    echo >&2 "$CURRD git(1) cvsimport failed, bailing out"
                     git_checkout "$master"
                     exit $es
                 }
 
                 # Again, don't create commits unless any repository content has
                 # been updated; cvsps(1) always recreates it's cache file...
-                git_ref_check_gc_update "$rd" "$ARENA/$AUTOGCFILE"
-                if test $? -eq 42; then
+                git_ref_check_gc_update "$CURRD" "$ARENA/$AUTOGCFILE"
+                if [ $? -eq 42 ]; then
                     echo '... committing updated configuration'
-                    test x"$Rflag" != x && mv -f .git/cvs-revisions .
+                    [ -n "$Rflag" ] && mv -f .git/cvs-revisions .
                     mv -f "$cvsps_dir/$cvsps_file" cvsps_cache
                     $GIT add --all || exit 21
                     $GIT commit -m 'arena-manager .cvs_git update' || exit 22
                 else
                     echo '... cvsimport had nothing, not updating config'
-                    test x"$Rflag" != x && rm -f .git/cvs-revisions
+                    [ -n "$Rflag" ] && rm -f .git/cvs-revisions
                     rm -f "$cvsps_dir/$cvsps_file"
                 fi
 
                 git_checkout "$master"
-            else
-                echo >&2 "Unknown revision-control-system: $rd"
+                ;;
+            *)
+                echo >&2 "Unknown revision-control-system: $CURRD"
                 es=1
-            fi
+                ;;
+            esac
             exit $es
         ) 2>&1 | tee -a "$LOGFILE"
         es=$?
         set +o pipefail
-        final $es "$rd"
+        final $es "$CURRD"
     done
 
-    test -s "$AUTOGCFILE" && GITDID=1
+    [ -s "$AUTOGCFILE" ] && GITDID=1
 }
 
 automerge() {
-    if test ! -s "$AUTOGCFILE"; then
+    if [ ! -s "$AUTOGCFILE" ]; then
         logerr 'Necessary information for automerge is missing'
         exit 1
     fi
-    for rd in $(< "$AUTOGCFILE"); do
-        if test "$rd" = "${rd/git}"; then
+    for CURRD in $(cat "$AUTOGCFILE"); do
+        if ! matches "$CURRD" git; then
             log ''
-            log "[$rd: $MODE does not apply]"
+            log "[$CURRD: $MODE does not apply]"
             continue
         fi
 
-        intro "$rd: performing $MODE"
+        intro "$CURRD: performing $MODE"
         set -o pipefail
-        (   cd "$rd" || exit 9
+        (   cd "$CURRD" || exit 9
             git_check_status
             # This works with our hackish approach, but is rather unnecessary;
             # if we would have configuration files, it would be so clear!
             # arena-manager.pl could do a much better job!
             master=$($GIT rev-parse --symbolic-full-name HEAD | \
                      sed -e 's/^refs\/heads\///')
-            test "$rd" != ${rd/.svn_git} && issvn=1 || issvn=0
+            matches "$CURRD" .svn_git && issvn=1 || issvn=0
             perl -e "\$git = \"$GIT\"; \$is_svn = $issvn;" -e '
                 my (%remotes, %heads, @reflines);
                 open RLPIPE, "$git show-ref |" or die "Cannot read refs";
@@ -531,23 +554,20 @@ automerge() {
         ) 2>&1 | tee -a "$LOGFILE"
         es=$?
         set +o pipefail
-        final $es "$rd"
+        final $es "$CURRD"
     done
 }
 
 autogc() {
-    if test ! -s "$AUTOGCFILE"; then
+    if [ ! -s "$AUTOGCFILE" ]; then
         logerr 'Necessary information for autogc is missing'
         exit 1
     fi
-    unset params
-    typeset -a params
-    for r in $(< "$AUTOGCFILE"); do
-        params[${#params[*]}]="$r"
-    done
+    set -- $(cat "$AUTOGCFILE")
+    PARAMS="$@"
     # Do a full --aggressive gc every three months
     m=$(date +%m)
-    if test $(( ${m#0} % 6 )) -eq 0; then
+    if [ $(( ${m#0} % 6 )) -eq 0 ]; then
         MODE=fullgc
         log 'Turned over to mode fullgc (full because MONTH % 6 == 0)'
     else
@@ -558,30 +578,31 @@ autogc() {
 }
 
 checkup() {
-    es=0
+    local es=0
     log 'Checking how likely it is an update would succeed'
-    for rd in ${params[@]}; do
-        if test $AUTOUP -ne 0 && test "$rd" != "${rd/no_autoup/}"; then
-            log "  [$rd: -no_autoup tag, skip]"
+    for CURRD in $PARAMS; do
+        bname
+        if [ $AUTOUP -ne 0 ] && matches "$CURRD" no_autoup; then
+            log "  [$CURRD: -no_autoup tag, skip]"
             continue
         fi
-        if test "$rd" != "${rd/git}"; then
+        if matches "$CURRD" git; then
             action="$GIT status --short"
-        elif test "$rd" != "${rd/.hg}"; then
+        elif matches "$CURRD" .hg; then
             action="$HG status"
         else
-            log "  [$rd: $MODE does not apply]"
+            log "  [$CURRD: $MODE does not apply]"
             continue
         fi
-        if test 0 != $(cd "$rd" && $action | wc -l | \
-                       sed -Ee 's/^[[:space:]]+(.*)$/\1/'); then
-            log "! $rd: modified or untracked files present!"
+        if [ 0 != $(cd "$CURRD" && $action | wc -l | \
+                    sed -Ee 's/^[[:space:]]+(.*)$/\1/') ]; then
+            log "! $CURRD: modified or untracked files present!"
             es=1
         else
-            log "  $rd: looks good"
+            log "  $CURRD: looks good"
         fi
     done
-    test $es -ne 0 && {
+    [ $es -ne 0 ] && {
         echo >&2 "Some repositories need a hand first"
         exit $es
     }
@@ -590,42 +611,25 @@ checkup() {
 ## exec
 
 # Top dir where everything happens
-if test x"$ARENA" = x; then
+[ -z "$ARENA" ] && {
     echo >&2 "(Environment) variable ARENA is not set"
     exit 1
-fi
-cd $ARENA || {
+}
+cd "$ARENA" || {
     echo >&2 "Failed to chdir to ARENA=$ARENA"
     exit 1
 }
 
-if test -e $LOGFILE; then
-    mv -f $LOGFILE "${LOGFILE}-LAST" || {
-        echo >&2 "Failed to move old $LOGFILE to ${LOGFILE}-LAST"
+if [ -e "$LOGFILE" ]; then
+    mv -f "$LOGFILE" "$LOGFILE-LAST" || {
+        echo >&2 "Failed to move old $LOGFILE to $LOGFILE-LAST"
         exit 1
     }
 fi
 
-MODE="$1"
-shift
-PARAMS="$@"
-set -u
-test $# -ne 0 || {
-    AUTOUP=1
-    PARAMS=$(echo *.*)
-}
-typeset -a params
-
-# Perform basename cleanup and move over to $params[]
-# However, autogc mode takes precedence and is mapped to one of fullgc/gc,
-# replacing the PARAMS with the content of $AUTOGCFILE
+[ -z "$MODE" ] && MODE=autoup
 log "$0: script startup, mode $MODE"
-if test "$MODE" != autogc; then
-    for rd in $PARAMS; do
-        rd=$(echo "$rd" | sed -Ee 's/(.+)\/+$/\1/' -e 's/.*\/([^/]+)$/\1/')
-        params[${#params[*]}]="$rd"
-    done
-fi
+[ $# -eq 0 ] && PARAMS=$(echo *.*)
 
 case "$MODE" in
 reduce|expand)  reduce_expand;;
@@ -637,19 +641,19 @@ checkup)        checkup;;
 autoup)
     MODE='autoup: checkup'
     checkup
-    if test -x ./autoup-prehook; then
+    if [ -x ./autoup-prehook ]; then
         MODE='autoup: running autoup-prehook'
         ./autoup-prehook || exit 100
     fi
     MODE='autoup: update'
     update
-    if test ! -s "$AUTOGCFILE"; then
+    if [ ! -s "$AUTOGCFILE" ]; then
         log ''
         log 'It seems there is no new data at all, skipping merge+gc'
     else
         MODE='autoup: automerge'
         automerge
-        if test -x ./autoup-posthook; then
+        if [ -x ./autoup-posthook ]; then
             MODE='autoup: running autoup-posthook'
             ./autoup-posthook || exit 101
         fi
@@ -667,13 +671,13 @@ esac
 
 log ''
 log '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++'
-if test $GITDID -ne 0; then
+if [ $GITDID -ne 0 ]; then
     log 'Some git(1) repos seem to have new packs, run arena-manager autogc'
 fi
-if test $ESTAT -ne 0; then
+if [ $ESTAT -ne 0 ]; then
     log 'Errors occurred!  Ooooh, my gooooooood!  :)'
 else
     log 'All seems fine around here, ciao'
 fi
 exit $ESTAT
-# vim:set fenc=utf-8 filetype=sh syntax=sh ts=4 sts=4 sw=4 et tw=79:
+# vim:set fenc=utf-8 filetype=sh syntax=sh ts=8 sts=4 sw=4 et tw=79:
