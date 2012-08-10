@@ -143,11 +143,13 @@ matches() {
             __matchsubst=1 || __matchsubst=0
     fi
     if [ $__matchsubst -ne 0 ]; then
-        for i; do
+        for i
+        do
             [ "$var" != "${var/$i/}" ] && return 0
         done
     else
-        for i; do
+        for i
+        do
             echo $var | grep "$i" >/dev/null 2>&1 && return 0
         done
     fi
@@ -287,7 +289,8 @@ reduce_expand() {
         hg_branch=''
     fi
 
-    for CURRD in $PARAMS; do
+    for CURRD in $PARAMS
+    do
         bname
         if matches "$CURRD" no_reduce || ! matches "$CURRD" git hg; then
             log ''
@@ -323,7 +326,8 @@ reduce_expand() {
 xgc() {
     local GCT=
     [ "$MODE" = fullgc ] && GCT=--aggressive
-    for CURRD in $PARAMS; do
+    for CURRD in $PARAMS
+    do
         bname
         if ! matches "$CURRD" git; then
             log ''
@@ -352,7 +356,8 @@ update() {
         exit 1
     }
 
-    for CURRD in $PARAMS; do
+    for CURRD in $PARAMS
+    do
         bname
         if [ $AUTOUP -ne 0 ] && matches "$CURRD" no_autoup; then
             log ''
@@ -493,7 +498,8 @@ automerge() {
         logerr 'Necessary information for automerge is missing'
         exit 1
     fi
-    for CURRD in $(cat "$AUTOGCFILE"); do
+    for CURRD in $(cat "$AUTOGCFILE")
+    do
         if ! matches "$CURRD" git; then
             log ''
             log "[$CURRD: $MODE does not apply]"
@@ -580,7 +586,8 @@ autogc() {
 checkup() {
     local es=0
     log 'Checking how likely it is an update would succeed'
-    for CURRD in $PARAMS; do
+    for CURRD in $PARAMS
+    do
         bname
         if [ $AUTOUP -ne 0 ] && matches "$CURRD" no_autoup; then
             log "  [$CURRD: -no_autoup tag, skip]"
