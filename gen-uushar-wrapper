@@ -84,7 +84,10 @@ while :; do
       echo >&2 "$i does not exist or is not executable, bailing out."
       exit 1
    }
-   [ -z "$MEMBERS" ] && MEMBERS="$i" || MEMBERS="$MEMBERS, $i"
+   j=$(basename "$i")
+   [ -z "$MEMBERS" ] &&
+      { MEMBERS="$i" MEMBER_BASENAMES="$j"; } ||
+      { MEMBERS="$MEMBERS, $i" MEMBER_BASENAMES="$MEMBER_BASENAMES, $j"; }
    printf "$i: ok\n"
 done
 
@@ -118,7 +121,7 @@ trap "rm -rf '$ARCH'" 0
 printf "ARCHIVE='%s'\nCREATION_DATE='%s'\n" "${ARCH%.sh}" "$CREATION_DATE" \
    >> "$ARCH"
 printf "MEMBERS='%s'\n# Default expansion (if \$1 is +):\nDEFEXEC='%s'\n" \
-      "$MEMBERS" "$ARCH_DEFEXEC" \
+      "$MEMBER_BASENAMES" "$ARCH_DEFEXEC" \
    >> "$ARCH"
 cat <<\! >> "$ARCH"
 #
