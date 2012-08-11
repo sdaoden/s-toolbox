@@ -5,7 +5,7 @@
 #@      https://sourceforge.net/projects/s-toolbox
 #@ Git: git.code.sf.net/p/s-toolbox/code
 #
-# Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
+# Copyright (c) 2012 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
 # All rights reserved.
 #
 #	$NetBSD: shar.sh,v 1.2 1994/12/21 08:42:04 jtc Exp $
@@ -94,18 +94,18 @@ echo '#'
 
 for i
 do
-	if [ -d $i ]; then
+	if [ -d "$i" ]; then
 		echo "echo c - $i"
-		echo "mkdir -p $i > /dev/null 2>&1"
+		echo "mkdir -p \"$i\" > /dev/null 2>&1"
 	elif [ -z "$cfun" ]; then
 		echo "echo x - $i"
-		echo "sed 's/^X//' << \! | uudecode > $i"
-		< $i uuencode -m /dev/stdout | sed 's/^/X/'
+		echo "sed 's/^X//' << \! | uudecode > \"$i\""
+		< "$i" uuencode -m /dev/stdout | sed 's/^/X/'
 		echo '!'
 	else
 		echo "echo xx - $i"
-		echo "sed 's/^X//' << \! | uudecode | $xfun > $i"
-		< $i $cfun | uuencode -m /dev/stdout | sed 's/^/X/'
+		echo "sed 's/^X//' << \! | uudecode | $xfun > \"$i\""
+		< "$i" $cfun | uuencode -m /dev/stdout | sed 's/^/X/'
 		echo '!'
 	fi
 done
