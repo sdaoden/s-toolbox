@@ -164,11 +164,12 @@ do
    basei=$(basename "$i")
    printf "echo 'x - (%s as) %s'\n" "$i" "$basei" >> "$ARCH"
    if [ -z "$cfun" ]; then
-      printf "sed 's/^X//' << \! | uudecode > %s; chmod 0755 %s\n" \
+      printf "sed 's/^X//' << \! | uudecode > \"%s\"; chmod 0755 \"%s\"\n" \
          "$basei" "$basei" >> "$ARCH"
       < "$i" uuencode -m /dev/stdout | sed 's/^/X/' >> "$ARCH"
    else
-      printf "sed 's/^X//' << \! | uudecode | %s > %s; chmod 0755 %s\n" \
+      printf \
+         "sed 's/^X//' << \! | uudecode | %s > \"%s\"; chmod 0755 \"%s\"\n" \
          "$xfun" "$basei" "$basei" >> "$ARCH"
       < "$i" $cfun | uuencode -m /dev/stdout | sed 's/^/X/' >> "$ARCH"
    fi
