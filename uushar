@@ -60,8 +60,9 @@ ux_xz='xz --decompress --stdout'
 
 case $1 in
 --*)
-	eval cfun='$x_'${1#--}
-	eval xfun='$ux_'${1#--}
+	i=`echo $1 | sed 's/^--//'`
+	eval cfun='$x_'${i}
+	eval xfun='$ux_'${i}
 	if [ -z "$cfun" ]; then
 		echo >&2 "Unsupported compression method: $1"
 		exit 1
@@ -81,7 +82,7 @@ cat << \!
 #
 # Archives produced using this implementation of shar may be easily
 # examined with the command:
-#	$ egrep -v '^[X#]' shell-archive
+#	$ grep '^[^X#]' shell-archive
 #
 # This archive contains:
 !
