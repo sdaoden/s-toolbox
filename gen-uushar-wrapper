@@ -159,7 +159,8 @@ oifs=$IFS
 IFS=', '
 set -- $MEMBERS
 IFS=$oifs
-for i; do
+for i
+do
    basei=$(basename "$i")
    printf "echo 'x - (%s as) %s'\n" "$i" "$basei" >> "$ARCH"
    if [ -z "$cfun" ]; then
