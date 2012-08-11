@@ -27,31 +27,31 @@
 ##  --  >8  --  8<  --  ##
 ARGS=$@
 
-printf "%s\n%s\n%s\n%s\n\n%s " \
-   'Howdy howdy, jo-ho hooo!' \
-   'So let us create an uuencoded shell archive of the given utilities.' \
-   'Please answer the upcoming questions for this to work.' \
-   'You can at any time interrupt with CTRL-C.' \
-   'What should be the name of the wrapper:'
-read ARCH
-[ -f "$ARCH.sh" ] && {
-   echo >&2 "$ARCH.sh already exists, bailing out."
+echo 'Howdy howdy, jo-ho hooo!'
+echo 'So let us create an uuencoded shell archive of the given utilities.'
+echo 'Please answer the upcoming questions for this to work.'
+echo 'You can at any time interrupt with CTRL-C.'
+
+printf '\nWhat should be the name of the wrapper: [] '
+read SHAR
+[ -f "$SHAR.sh" ] && {
+   echo >&2 "$SHAR.sh already exists, bailing out."
    exit 1
 }
-[ -z "$ARCH" ] && {
+[ -z "$SHAR.sh" ] && {
    echo >&2 "Cannot use the empty string for that, bailing out."
    exit 1
 }
-ARCH="$ARCH.sh"
+SHAR="$SHAR.sh"
 
-printf "Yay, it'll be %s.\n\n%s\n%s [] " \
-   "$ARCH" "Is there any subcommand which should be called for '+'?" \
-   "(As in: '\$ $ARCH + -arg1 -arg2' -> '\$ XXX -arg1 -arg2')?"
-read ARCH_DEFEXEC
+printf "Yay, it'll be $SHAR.\n\n%s\n%s" \
+   'Is there any subcommand which should be called for "+"?' \
+   "(As in: '\$ $SHAR + -arg1 -arg2' -> '\$ XXX -arg1 -arg2')? [] "
+read SHAR_DEFEXEC
 
-printf "\n%s\n%s [] " \
+printf '\n%s\n%s' \
    'Members can be compressed via compress, gzip, bzip2 and xz.' \
-   'Enter desired compressor or the empty string otherwise.'
+   'Enter desired compressor or the empty string otherwise. [] '
 read COMPRESS
 [ ! -z "$COMPRESS" ] && {
    x_compress='compress -c -f'
@@ -71,33 +71,34 @@ read COMPRESS
    }
 }
 
-MEMBERS=''
-printf "\n%s\n%s\n" \
-   'So, we will then enter a loop to read the member programs to include.' \
-   'An empty value will terminate your input.'
-[ ${#ARGS} -ne 0 ] && set -- $ARGS
+echo
+echo 'So, we will then enter a loop to read the member programs to include.'
+echo 'An empty value will terminate your input.'
+MEMBERS= MEMBER_BASENAMES=
+[ -n "$ARGS" ] && set -- $ARGS
 while :; do
-   [ ${#ARGS} -ne 0 ] &&
-      { i=$1; shift || break; printf "\t - "; :; } ||
-      { printf "\t - "; read i; [ -z "$i" ] && break; }
+   [ -n "$ARGS" ] &&
+      { [ $# -eq 0 ] && break; i=$1; shift; printf '\t- '; :; } ||
+      { printf '\t - [] '; read i; [ -z "$i" ] && break; }
    [ -x "$i" ] || {
       echo >&2 "$i does not exist or is not executable, bailing out."
       exit 1
    }
-   j=$(basename "$i")
+   j=`basename "$i"`
    [ -z "$MEMBERS" ] &&
       { MEMBERS="$i" MEMBER_BASENAMES="$j"; } ||
       { MEMBERS="$MEMBERS, $i" MEMBER_BASENAMES="$MEMBER_BASENAMES, $j"; }
-   printf "$i: ok\n"
+   echo "$i: ok"
 done
 
 # Everything get.set.go, so write the actual shell archive
-set -C
-printf ".. end of list\nFine, so i'm doing my work now\n"
-CREATION_DATE=$(date -u)
+# (Not backward compatible with Bourne [-C], atomicity problem: set -C)
+echo '.. end of list'
+echo 'Fine, so i am doing my work now ...'
+CREATION_DATE=`date -u`
 
 # Header
-cat <<\! > "$ARCH"
+cat <<\! > "$SHAR"
 #!/bin/sh -
 #@ This file has been created by gen-uushar-wrapper, which is
 # Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
@@ -110,29 +111,31 @@ cat <<\! > "$ARCH"
 #
 #@ Archives produced using this implementation of gen-uushar-wrapper
 #@ may be easily examined with the command:
-#@    $ egrep -v '^[X#]' shell-archive
+#@    $ grep '^[^X#]' shell-archive
 
 !
 
-# It's indeed our $ARCH
-trap "rm -rf '$ARCH'" 0
+# It's indeed our $SHAR
+trap "rm -rf '$SHAR'" 0
 
 # A shell archive is not a transparent thing either!
-printf "ARCHIVE='%s'\nCREATION_DATE='%s'\n" "${ARCH%.sh}" "$CREATION_DATE" \
-   >> "$ARCH"
-printf "MEMBERS='%s'\n# Default expansion (if \$1 is +):\nDEFEXEC='%s'\n" \
-      "$MEMBER_BASENAMES" "$ARCH_DEFEXEC" \
-   >> "$ARCH"
-cat <<\! >> "$ARCH"
+echo >> "$SHAR" "SHAR='$SHAR'"
+echo >> "$SHAR" "CREATION_DATE='$CREATION_DATE'"
+echo >> "$SHAR" "MEMBERS='$MEMBER_BASENAMES'"
+echo >> "$SHAR" '# Default expansion (if argument $1 equals +):'
+echo >> "$SHAR" "DEFEXEC='$SHAR_DEFEXEC'"
+cat <<\! >> "$SHAR"
 #
 [ $# -eq 0 ] && {
-   printf "Archive creation: %s\nMembers: %s\n" "$CREATION_DATE" "$MEMBERS"
+   echo "Archive creation: $CREATION_DATE"
+   echo "Members: $MEMBERS"
    exit 0
 }
 #
-i="$TMPDIR/.$ARCHIVE"
+i="$TMPDIR/.$SHAR"
 [ -d "$i" ] && {
-   export PATH="$i:$PATH"
+   PATH="$i:$PATH"
+   export PATH
    [ x"$1" = 'x+' ] && { shift; :; } || { DEFEXEC=$1; shift; }
    i="$i/$DEFEXEC"
    if [ ! -f "$i" ] || [ ! -x "$i" ]; then
@@ -144,8 +147,9 @@ i="$TMPDIR/.$ARCHIVE"
    exit 71 # 71=EX_OSERR
 }
 #
-printf "The directory\n\t%s\n%s\n" \
-   "$i" 'does not exist, creating it first, and expanding this shell archive.'
+echo 'The directory'
+echo "	$i"
+echo 'does not exist, creating it first, and expanding this shell archive..'
 mkdir -p "$i" || {
    echo >&2 "Cannot create directory '$i'"
    exit 1
@@ -164,27 +168,26 @@ set -- $MEMBERS
 IFS=$oifs
 for i
 do
-   basei=$(basename "$i")
-   printf "echo 'x - (%s as) %s'\n" "$i" "$basei" >> "$ARCH"
+   bi=`basename "$i"`
+   echo >> "$SHAR" "echo 'X - $bi'"
    if [ -z "$cfun" ]; then
-      printf "sed 's/^X//' << \! | uudecode > \"%s\"; chmod 0755 \"%s\"\n" \
-         "$basei" "$basei" >> "$ARCH"
-      < "$i" uuencode -m /dev/stdout | sed 's/^/X/' >> "$ARCH"
+      echo >> "$SHAR" \
+         "sed 's/^X//' << \! | uudecode > \"$bi\"; chmod 0755 \"$bi\""
+      < "$i" uuencode -m /dev/stdout | sed 's/^/X/' >> "$SHAR"
    else
-      printf \
-         "sed 's/^X//' << \! | uudecode | %s > \"%s\"; chmod 0755 \"%s\"\n" \
-         "$xfun" "$basei" "$basei" >> "$ARCH"
-      < "$i" $cfun | uuencode -m /dev/stdout | sed 's/^/X/' >> "$ARCH"
+      echo >> "$SHAR" \
+         "sed 's/^X//' << \!| uudecode | $xfun > \"$bi\"; chmod 0755 \"$bi\""
+      < "$i" $cfun | uuencode -m /dev/stdout | sed 's/^/X/' >> "$SHAR"
    fi
-   printf "!\n# END of %s\n" "$basei" >> "$ARCH"
+   echo >> "$SHAR" '!'
+   echo >> "$SHAR" "# END of $bi"
 done
 
-printf "echo '%s'\nexit 0\n" \
-      'Shell archive expanded, please rerun the command that took you here' \
-   >> "$ARCH"
+echo >> "$SHAR" "echo 'SHAR is now expanded, please rerun your command'"
+echo >> "$SHAR" 'exit 0'
 
 # The end
-chmod 0755 "$ARCH"
-trap - 0
+chmod 0755 "$SHAR"
+trap : 0
 exit 0
 # vim:set fenc=utf-8 filetype=sh syntax=sh ts=3 sts=3 sw=3 et tw=79:
