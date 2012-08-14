@@ -15,7 +15,7 @@ uushar:
    through sh(1).  Archives produced using this implementation of uushar
    may be easily examined with the command: ::
 
-      $ egrep -v '^[X#]' shar.file
+      $ grep '^[^X#]' shar.file
 
 gen-uushar-wrapper:
    Creates a shell archive rather similar to uushar as above, but different
@@ -83,4 +83,4 @@ P.S.: If you do miss web/: that has been replaced by the grazy boosted
       and oh so real S-Web42 project that stands by itself
       (see http://sdaoden.users.sourceforge.net/code.html).
 
-.. vim:set fenc=utf-8 filetype=rst syntax=rst ts=3 sts=3 sw=3 et tw=75:
+.. vim:set fenc=utf-8 filetype=rst syntax=rst ts=8 sts=3 sw=3 et tw=75:
