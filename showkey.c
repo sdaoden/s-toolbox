@@ -5,36 +5,24 @@
  *@   TODO I need to take a very deep look to fix the rest of OpenBSD.
  *@ - TODO FreeBSD: K_CODE mode isn't supported at all, FIXME keycodes wrong!?!
  *@ - TODO I've no access to NetBSD, but assume the same approach as OpenBSD.
- *@ Compile     : $ gcc -W -Wall -pedantic -o showkey showkey.c
- *@ Run         : $ ./showkey [ksv]  (keycodes, scancodes, values)
+ *@ Compile     : $ cc -W -Wall -pedantic -o showkey showkey.c
+ *@ Run         : $ ./showkey [{k}sv]  ({keycodes,} scancodes, values)
  *@ Exit status : 0=timeout, 1=signal/read error, 3=use/setup failure
  *
  * Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
  *
- * 1. Redistributions of source code must retain the above copyright notice,
- *    this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- *    this list of conditions and the following disclaimer in the documentation
- *    and/or other materials provided with the distribution.
- * 3. Neither the name of the author nor the names of its contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
- * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 /* How many seconds of inactivity before program terminates? */
@@ -114,7 +102,7 @@ main(int argc, char **argv)
     auto struct sigaction sa;
     auto struct itimerval it;
     auto unsigned char buf[64];
-    ssize_t (*mode)(unsigned char*, ssize_t);
+    ssize_t (*mode)(unsigned char*, ssize_t) = NULL;
     ssize_t i, skip;
 
     if (argc > 1)
@@ -333,7 +321,7 @@ mode_keycode(unsigned char *buf, ssize_t len)
         printf("keycode %3u %s\r\n", rc, ((kc & 0x80) ? "release" : "press"));
     }
 
-    return ((len <= 0) ? 0 : len);
+    return (len < 0 ? 0 : len);
 }
 
 #endif /* USE_LINUX */
@@ -387,7 +375,7 @@ mode_scancode(unsigned char *buf, ssize_t len)
         }
     }
 
-    return ((len <= 0) ? 0 : len);
+    return (len < 0 ? 0 : len);
 }
 
 /* vim:set fenc=utf-8 filetype=c syntax=c ts=4 sts=4 sw=4 et tw=79: */
