@@ -203,7 +203,7 @@ git_ref_check_gc_update() {
         }
 
         my $es = 41;
-        open(AGCF, '>>', $agcf) || die "Cannot open append-write $agcf: $!";
+        die "Cannot open append-write $agcf: $!" unless open AGCF, ">>", $agcf;
         foreach (keys %remotes) {
             (my $lr = $_) =~ s/^origin\///;
             next unless exists $heads{$lr};
@@ -214,7 +214,7 @@ git_ref_check_gc_update() {
             die "Cannot write $agcf: $!" unless print AGCF $rd, "\n";
             last;
         } 
-        close(AGCF) || die "Cannot close $agcf: $!";
+        die "Cannot close $agcf: $!" unless close AGCF;
         exit $es;
     '
     return $?
@@ -518,7 +518,8 @@ automerge() {
             matches "$CURRD" .svn_git && issvn=1 || issvn=0
             perl -e "\$git = \"$GIT\"; \$is_svn = $issvn;" -e '
                 my (%remotes, %heads, @reflines);
-                open RLPIPE, "$git show-ref |" or die "Cannot read refs";
+                die "Cannot read refs: $^E"
+                    unless open RLPIPE, "$git show-ref |";
                 @reflines = <RLPIPE>;
                 close RLPIPE;
                 while (@reflines) {
