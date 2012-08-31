@@ -186,7 +186,7 @@ git_ref_check_gc_update() {
     # Return 41 if no new data, 42 if new data, otherwise error
     local repodir=$1 autogcfile=$2
     $GIT show-ref |
-    perl -e "\$rd = \"$repodir\"; \$agcf = \"$autogcfile\";" -e '
+    perl -C0 -e "\$rd = \"$repodir\"; \$agcf = \"$autogcfile\";" -e '
         my (%remotes, %heads);
         while (<STDIN>) {
             chomp;
@@ -516,7 +516,7 @@ automerge() {
             master=$($GIT rev-parse --symbolic-full-name HEAD | \
                      sed -e 's/^refs\/heads\///')
             matches "$CURRD" .svn_git && issvn=1 || issvn=0
-            perl -e "\$git = \"$GIT\"; \$is_svn = $issvn;" -e '
+            perl -C0 -e "\$git = \"$GIT\"; \$is_svn = $issvn;" -e '
                 my (%remotes, %heads, @reflines);
                 die "Cannot read refs: $^E"
                     unless open RLPIPE, "$git show-ref |";
