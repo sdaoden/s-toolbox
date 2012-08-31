@@ -647,6 +647,7 @@ automerge)      automerge;;
 autogc)         autogc;;
 checkup)        checkup;;
 autoup)
+    AUTOUP=1
     MODE='autoup: checkup'
     checkup
     if [ -x ./autoup-prehook ]; then
