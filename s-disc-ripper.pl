@@ -742,6 +742,11 @@ jREDO:
             close INFH;
             return "can't open for writing: $outf: $err";
         }
+        unless (binmode(INFH) && binmode(OUTFH)) {
+            close OUTFH;
+            close INFH;
+            return "failed to set binary mode for $inf and/or $outf";
+        }
 
 jOUTER: while (1) {
             my $r = sysread INFH, $buf, 2352 * 20;
@@ -782,9 +787,13 @@ jOUTER: while (1) {
             $| = 1; print "    checking $x ... "; $| = 0;
             my $totlen = 0;
             return "failed to check $x" unless open FH, '<', $x;
+            unless (binmode FH) {
+                close FH;
+                return "failed to set binary mode for $x";
+            }
                 my $buf;
                 while (1) {
-                    my $bread = read FH, $buf, 2352 * 20;
+                    my $bread = sysread FH, $buf, 2352 * 20;
                     unless (defined $bread) {
                         close FH;
                         return "failed to read all data of $x";
