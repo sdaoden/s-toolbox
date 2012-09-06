@@ -309,7 +309,7 @@ __EOT__
     exit defined $emsg ? 1 : 0;
 } # }}}
 
-# v, genre, genre_id, finalize, user_confirm {{{
+# v, genre, genre_id, finalize, user_confirm, utf8ify {{{
 sub v {
     return unless $VERBOSE > 0;
     print STDOUT '-V  ', shift, "\n";
@@ -365,6 +365,15 @@ sub user_confirm {
     chomp $u;
     ($u =~ /n/i) ? 0 : 1;
 }
+
+sub utf8ify {
+    # String comes from CDDB, may be latin1 or utf-8
+    my $sr = shift;
+    my ($s, $sc) = ($$sr);
+    eval { $s = Encode::decode_utf8($s, 1); };
+    eval { $s = Encode::encode_utf8($s); } if $@;
+    $$sr = $s;
+}
 # }}}
 
 sub quick_and_dirty_dir_selector { # {{{
@@ -382,7 +391,7 @@ __EOT__
     for ($i = 1; $i <= @dlist; ++$i) {
         my $d = "${TARGET_DIR}$i";
         my $f = "$d/musicbox.dat";
-        unless (open F, '<', $f) {
+        unless (open F, '<:encoding(UTF-8)', $f) {
             print "  [] Skipping due to failed open: $f\n";
             next;
         }
@@ -457,15 +466,12 @@ sub cddb_query { # {{{
 jFAKE:  %CDDB = ();
         $CDDB{GENRE} = genre('Humour');
         $CDDB{ARTIST} = 'Unknown';
-        Encode::_utf8_off($CDDB{ARTIST});
         $CDDB{ALBUM} = 'Unknown';
-        Encode::_utf8_off($CDDB{ALBUM});
         $CDDB{YEAR} = '';
         my @titles;
         $CDDB{TITLES} = \@titles;
         for (my $i = 1; $i <= $CDInfo::TrackCount; ++$i) {
             my $s = 'TITLE ' . $i;
-            Encode::_utf8_off($s);
             push @titles, $s;
         }
         return;
@@ -516,26 +522,17 @@ jREDO:
             $alb = substr $aa, ++$i;
         }
         $art =~ s/^\s*(.*?)\s*$/$1/;
-            $i = $art;
-            eval { Encode::from_to($art, 'iso-8859-1', 'utf-8'); };
-            $art = $i if $@;
-            Encode::_utf8_off($art);
+        ::utf8ify(\$art);
         $CDDB{ARTIST} = $art;
         $alb =~ s/^\s*(.*?)\s*$/$1/;
-            $i = $alb;
-            eval { Encode::from_to($alb, 'iso-8859-1', 'utf-8'); };
-            $alb = $i if $@;
-            Encode::_utf8_off($alb);
+        ::utf8ify(\$alb);
         $CDDB{ALBUM} = $alb;
     }
     $CDDB{YEAR} = defined $dinf->{dyear} ? $dinf->{dyear} : '';
     $CDDB{TITLES} = $dinf->{ttitles};
     foreach (@{$dinf->{ttitles}}) {
         s/^\s*(.*?)\s*$/$1/;
-        my $save = $_;
-        eval { Encode::from_to($_, 'iso-8859-1', 'utf-8'); };
-        $_ = $save if $@;
-        Encode::_utf8_off($_);
+        ::utf8ify(\$_);
     }
 
     print "  CDDB disc info for CD(DB)ID=$CDInfo::Id\n",
@@ -809,7 +806,7 @@ jOUTER: while (1) {
     sub write_data {
         my $f = $CDInfo::DatFile;
         ::v("CDInfo::write_data($f)");
-        die "Can't open $f: $!" unless open DAT, '>', $f;
+        die "Can't open $f: $!" unless open DAT, '>:encoding(UTF-8)', $f;
         print DAT "# $SELF CDDB info for project $CDInfo::Id\n",
                   "# Don't modify!  Or project needs to be re-ripped!!\n",
                   "CDID = $CDInfo::Id\n",
@@ -822,7 +819,7 @@ jOUTER: while (1) {
         my $f = $CDInfo::DatFile;
         ::v("CDInfo::read_data($f)");
         die "Can't open $f: $!.\nCan't continue - remove $WORK_DIR and re-rip!"
-            unless open DAT, '<', $f;
+            unless open DAT, '<:encoding(UTF-8)', $f;
         my @lines = <DAT>;
         die "Can't close $f: $!" unless close DAT;
         parse_data(\@lines);
@@ -1097,7 +1094,7 @@ jREDO:  @old_data = @MBDB::Data;
         my $dataref = shift;
         my $df = $MBDB::EditFile;
         ::v("Writing editable MusicBox data file as $df");
-        die "Can't open $df: $!" unless open DF, '>', $df;
+        die "Can't open $df: $!" unless open DF, '>:encoding(UTF-8)', $df;
         if (@$dataref > 0) {
             die "Error writing $df: $!"
                 unless print DF "\n# CONTENT OF LAST EDIT AT END OF FILE!\n\n"
@@ -1168,7 +1165,7 @@ __EOT__
     sub _write_final {
         my $df = $MBDB::FinalFile;
         ::v("Creating final MusicBox data file as $df");
-        die "Can't open $df: $!" unless open DF, '>', $df;
+        die "Can't open $df: $!" unless open DF, '>:encoding(UTF-8)', $df;
         die "Error writing $df: $!"
             unless print DF "[CDDB]\n",
                  (! $CDInfo::IsFaked ? ''
@@ -1187,7 +1184,7 @@ __EOT__
         my $is_final = ($df eq $MBDB::FinalFile);
         _reset_data();
 
-        die "Can't open $df: $!" unless open DF, '<', $df;
+        die "Can't open $df: $!" unless open DF, '<:encoding(UTF-8)', $df;
         my ($emsg, $entry) = (undef, undef);
         while (<DF>) {
             s/^\s*(.*?)\s*$/$1/;
@@ -2084,7 +2081,6 @@ __EOT__
             $i =~ s/"/\\"/g;
             $self->{aactag} .=" --comment \"S-MUSICBOX:COMM=$i\"";
         }
-        Encode::_utf8_off($self->{aactag});
         ::v("AACTag: $self->{aactag}");
     }
 } # }}}
@@ -2140,7 +2136,6 @@ __EOT__
             $i =~ s/"/\\"/g;
             $self->{oggtag} .=" --comment \"S-MUSICBOX:COMM=$i\"";
         }
-        Encode::_utf8_off($self->{oggtag});
         ::v("OGGTag: $self->{oggtag}");
     }
 } # }}}
