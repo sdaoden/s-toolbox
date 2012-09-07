@@ -139,9 +139,12 @@ WORKing directory: $WORK_DIR
 __EOT__
     die 'Non-existent session cannot be resumed via --encode-only'
         if $ENC_ONLY && ! -d $WORK_DIR;
-    mkdir $WORK_DIR or die "Can't create $WORK_DIR: $!" unless -d $WORK_DIR;
-    mkdir $TARGET_DIR or die "Can't create $TARGET_DIR: $!"
-        unless -d $TARGET_DIR;
+    unless (-d $WORK_DIR) {
+        die "Can't create $WORK_DIR: $!" unless mkdir $WORK_DIR;
+    }
+    unless ($RIP_ONLY || -d $TARGET_DIR) {
+        die "Can't create $TARGET_DIR: $!" unless mkdir $TARGET_DIR;
+    }
 
     CDInfo::init_paths();
     MBDB::init_paths();
@@ -240,13 +243,13 @@ sub command_line { # {{{
         $ENC_ONLY = 1;
     }
 
-    #unless ($RIP_ONLY) {
+    unless ($RIP_ONLY) {
         $MUSICDB = glob $MUSICDB if defined $MUSICDB;
         unless (defined $MUSICDB && -d $MUSICDB && -w _) {
             $emsg = "S-MusicBox DB directory not accessible";
             goto jdocu;
         }
-    #}
+    }
 
     $TMPDIR = glob $TMPDIR if defined $TMPDIR;
     unless (defined $TMPDIR && -d $TMPDIR && -w _) {
