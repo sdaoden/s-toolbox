@@ -2,14 +2,12 @@
 require 5.008;
 #@ S-Disc-Ripper - part of S-MusicBox; this one handles ripping of Audio-CD's.
 #@ Requirements:
-#@  - CDDB.pm (www.CPAN.org)
-#@  - dd(1) (On UNIX; standart UNIX tool)
-#@  - sox(1) (sox.sourceforge.net)
+#@  - unless --no-volume-normalize is used: sox(1) (sox.sourceforge.net)
 #@  - if MP3 is used: lame(1) (www.mp3dev.org)
 #@  - if MP4/AAC is used: faac(1) (www.audiocoding.com)
 #@  - if Ogg/Vorbis is used: oggenc(1) (www.xiph.org)
-#@ TODO: Implement CDDB query ourselfs
-my $VERSION = 'v0.5.0';
+#@  - OPTIONAL: CDDB.pm (www.CPAN.org)
+my $VERSION = 'v0.5.0rc0';
 my $COPYRIGHT =<<_EOT;
 Copyright (c) 2010 - 2011 Steffen Daode Nurpmeso <sdaoden\@gmail.com>.
 All rights reserved.
