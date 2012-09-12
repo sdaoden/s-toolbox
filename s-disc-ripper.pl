@@ -582,20 +582,16 @@ jREDO:
 } # }}}
 
 {package CDInfo; # {{{
-    my ($DevId);
-    BEGIN {
-        # Id field may also be set from command_line()
-        # Mostly set by _calc_id() or parse() only (except Ripper)
-        $CDInfo::IsFaked = 0;
-        $CDInfo::Id =
-        $CDInfo::TotalSeconds =
-        $CDInfo::TrackCount = undef;
-        $CDInfo::FileRipper = $CDInfo::FallbackTrackCount = undef; # Impl subs
-        @CDInfo::TrackOffsets = ();
-    }
+    our $IsFaked = 0;
+    # Id field may also be set from command_line()
+    # Mostly set by _calc_id() or parse() only (except Ripper)
+    our ($Id, $TotalSeconds, $TrackCount, $FileRipper, $FallbackTrackCount,
+        $DatFile);
+    our @TrackOffsets = ();
+    my $DevId;
 
     sub init_paths {
-        $CDInfo::DatFile = "$WORK_DIR/cdinfo.dat";
+        $DatFile = "$WORK_DIR/cdinfo.dat";
     }
 
     sub discover { # {{{
@@ -618,22 +614,21 @@ jREDO:
             exit 1 unless ::user_confirm();
 
             $what = 'Faked';
-            $CDInfo::IsFaked = 1;
+            $IsFaked = 1;
             die "Don't know how to query the track count otherwise - sorry!\n"
-                unless defined $CDInfo::FallbackTrackCount;
-            $i = &$CDInfo::FallbackTrackCount();
+                unless defined $FallbackTrackCount;
+            $i = &$FallbackTrackCount();
             die "CDInfo: $i\n  Track count query failed, bailing out"
                 if defined $i;
 
-            $CDInfo::TrackCount = scalar @CDInfo::TrackOffsets;
-            $CDInfo::Id = sprintf("%02dx%08x",
-                                  $CDInfo::TrackCount, $CDInfo::TotalSeconds);
+            $TrackCount = scalar @TrackOffsets;
+            $Id = sprintf("%02dx%08x", $TrackCount, $TotalSeconds);
         }
 
-        print "  $what disc ID: $CDInfo::Id\n  ",
-              'Track offsets: ' . join(' ', @CDInfo::TrackOffsets),
-              "\n  Total seconds: $CDInfo::TotalSeconds\n",
-              "  Track count: $CDInfo::TrackCount\n";
+        print "  $what disc ID: $Id\n  ",
+              'Track offsets: ' . join(' ', @TrackOffsets),
+              "\n  Total seconds: $TotalSeconds\n",
+              "  Track count: $TrackCount\n";
     } # }}}
 
     sub _os_darwin { # {{{
@@ -641,12 +636,12 @@ jREDO:
         $DevId = defined $CDROMDEV ? $CDROMDEV : $drive;
         print "  Darwin/Mac OS X: drive $drive and /dev/disk$DevId\n";
 
-        $CDInfo::FileRipper = sub {
+        $FileRipper = sub {
             my $title = shift;
             my $sf = '/dev/disk' . $DevId . 's' . $title->{NUMBER};
             return _unix_default_rip($sf, $title->{RAW_FILE});
         };
-        $CDInfo::FallbackTrackCount = sub {
+        $FallbackTrackCount = sub {
             # It's a pity!  Give MacOS X some time to reorder itself..
             sleep 1;
             return _unix_fallback_trackcount('/dev/disk');
@@ -722,17 +717,15 @@ jREDO:
             $sec_first = $sec_begin unless defined $sec_first;
             # Track 999 was chosen for the lead-out information
             if ($no == 999) {
-                $CDInfo::TotalSeconds = $sec_begin;
+                $TotalSeconds = $sec_begin;
                 last;
             }
             map { $sum += $_; } split //, $sec_begin;
-            push @CDInfo::TrackOffsets, $frame_off;
+            push @TrackOffsets, $frame_off;
         }
-        $CDInfo::TrackCount = scalar @CDInfo::TrackOffsets;
-        $CDInfo::Id = sprintf("%02x%04x%02x",
-                              ($sum % 255),
-                              ($CDInfo::TotalSeconds - $sec_first),
-                              scalar(@CDInfo::TrackOffsets));
+        $TrackCount = scalar @TrackOffsets;
+        $Id = sprintf("%02x%04x%02x",
+                  $sum % 255, $TotalSeconds - $sec_first, scalar @TrackOffsets);
     } # }}}
 
     sub _unix_default_rip { # {{{
@@ -805,30 +798,30 @@ jOUTER: while (1) {
                     $totlen += $bread;
                 }
             close FH; # XXX
-            push @CDInfo::TrackOffsets, $totlen;
-            $CDInfo::TotalSeconds += $totlen;
+            push @TrackOffsets, $totlen;
+            $TotalSeconds += $totlen;
             print "had $totlen bytes\n";
         }
         return "no such file: ${p}1.  Sure this is a CDROM?" unless $i != 0;
-        $CDInfo::TrackCount = $i;
+        $TrackCount = $i;
         return undef;
     } # }}}
 
-    # write_data, read_data, parse_data (CDInfo::DatFile handling) {{{
+    # write_data, read_data, parse_data ($DatFile handling) {{{
     sub write_data {
-        my $f = $CDInfo::DatFile;
+        my $f = $DatFile;
         ::v("CDInfo::write_data($f)");
         die "Can't open $f: $!" unless open DAT, '>:encoding(UTF-8)', $f;
-        print DAT "# $SELF CDDB info for project $CDInfo::Id\n",
+        print DAT "# $SELF CDDB info for project $Id\n",
                   "# Don't modify!  Or project needs to be re-ripped!!\n",
-                  "CDID = $CDInfo::Id\n",
-                  'TRACK_OFFSETS = ', join(' ', @CDInfo::TrackOffsets), "\n",
-                  "TOTAL_SECONDS = $CDInfo::TotalSeconds\n";
+                  "CDID = $Id\n",
+                  'TRACK_OFFSETS = ', join(' ', @TrackOffsets), "\n",
+                  "TOTAL_SECONDS = $TotalSeconds\n";
         die "Can't close $f: $!" unless close DAT;
     }
 
     sub read_data {
-        my $f = $CDInfo::DatFile;
+        my $f = $DatFile;
         ::v("CDInfo::read_data($f)");
         die "Can't open $f: $!.\nCan't continue - remove $WORK_DIR and re-rip!"
             unless open DAT, '<:encoding(UTF-8)', $f;
@@ -840,11 +833,11 @@ jOUTER: while (1) {
     sub parse_data {
         # It may happen that this is called even though discover()
         # already queried the disc in the drive - nevertheless: resume!
-        my $old_id = $CDInfo::Id;
+        my $old_id = $Id;
         my $laref = shift;
         ::v("CDInfo::parse_data()");
-        $CDInfo::Id = $CDInfo::TotalSeconds = $CDInfo::TrackCount = undef;
-        @CDInfo::TrackOffsets = ();
+        $Id = $TotalSeconds = $TrackCount = undef;
+        @TrackOffsets = ();
 
         my $emsg = undef;
         foreach (@$laref) {
@@ -860,37 +853,37 @@ jOUTER: while (1) {
                     $emsg .= "Parsed CDID ($v) doesn't match;";
                     next;
                 }
-                $CDInfo::Id = $v;
+                $Id = $v;
             } elsif ($k eq 'TRACK_OFFSETS') {
-                if (@CDInfo::TrackOffsets) {
+                if (@TrackOffsets) {
                     $emsg .= 'TRACK_OFFSETS yet seen;';
                     next;
                 }
-                @CDInfo::TrackOffsets = split(/\s+/, $v);
+                @TrackOffsets = split(/\s+/, $v);
             } elsif ($k eq 'TOTAL_SECONDS') {
                 $emsg .= "illegal TOTAL_SECONDS: $v;" unless $v =~ /^(\d+)$/;
-                $CDInfo::TotalSeconds = $1;
+                $TotalSeconds = $1;
             } else {
                 $emsg .= "Illegal line: $_;";
             }
         }
-        $emsg .= 'corrupted: no CDID seen;' unless defined $CDInfo::Id;
+        $emsg .= 'corrupted: no CDID seen;' unless defined $Id;
         $emsg .= 'corrupted: no TOTAL_SECONDS seen;'
-            unless defined $CDInfo::TotalSeconds;
-        $CDInfo::TrackCount = scalar @CDInfo::TrackOffsets;
+            unless defined $TotalSeconds;
+        $TrackCount = scalar @TrackOffsets;
         $emsg .= 'corrupted: no TRACK_OFFSETS seen;'
-            unless $CDInfo::TrackCount > 0;
+            unless $TrackCount > 0;
         if (@Title::List > 0) {
             $emsg .= 'corrupted: TRACK_OFFSETS illegal;'
-                if $CDInfo::TrackCount != @Title::List;
+                if $TrackCount != @Title::List;
         }
         die "CDInfo: $emsg" if defined $emsg;
 
-        print "\nResumed (parsed) CDInfo: disc: $CDInfo::Id\n  ",
-              'Track offsets: ' . join(' ', @CDInfo::TrackOffsets),
-              "\n  Total seconds: $CDInfo::TotalSeconds\n",
-              "  Track count: $CDInfo::TrackCount\n";
-        Title::create_that_many($CDInfo::TrackCount);
+        print "\nResumed (parsed) CDInfo: disc: $Id\n  ",
+              'Track offsets: ' . join(' ', @TrackOffsets),
+              "\n  Total seconds: $TotalSeconds\n",
+              "  Track count: $TrackCount\n";
+        Title::create_that_many($TrackCount);
     }
     # }}}
 } # }}}
@@ -898,7 +891,7 @@ jOUTER: while (1) {
 # Title represents - a track
 {package Title; # {{{
     # Title::vars,funs {{{
-    my (@List);
+    our @List;
 
     sub create_that_many {
         return if @List != 0;
@@ -910,7 +903,7 @@ jOUTER: while (1) {
 
     sub rip_all_selected {
         print "\nRipping selected tracks:\n";
-        foreach my $t (@Title::List) {
+        foreach my $t (@List) {
             next unless $t->{IS_SELECTED};
             if (-f $t->{RAW_FILE}) {
                 print "  Raw ripped track $t->{NUMBER} exists - re-rip? ";
@@ -943,7 +936,7 @@ jOUTER: while (1) {
             TAG_INFO => Title::TagInfo->new()
         };
         $self = bless $self, $class;
-        $Title::List[$no - 1] = $self;
+        $List[$no - 1] = $self;
         return $self;
     }
     # }}}
@@ -998,14 +991,15 @@ jOUTER: while (1) {
 # All strings come in as UTF-8 and remain unmodified
 {package MBDB; # {{{
     # MBDB::vars,funs # {{{
-    our ($CDDB, $AlbumSet, $Album, $Cast, $Group,   # [GROUP] objects
+    our ($EditFile, $FinalFile,
+        $CDDB, $AlbumSet, $Album, $Cast, $Group,    # [GROUP] objects
         $Error, @Data,                              # I/O & content
         @SongAddons, $SortAddons                    # First-Round addons
     );
 
     sub init_paths {
-        $MBDB::EditFile = "$WORK_DIR/template.dat";
-        $MBDB::FinalFile = "$TARGET_DIR/musicbox.dat";
+        $EditFile = "$WORK_DIR/template.dat";
+        $FinalFile = "$TARGET_DIR/musicbox.dat";
     }
 
     sub _reset_data {
@@ -1014,7 +1008,7 @@ jOUTER: while (1) {
         $Error = 0; @Data = ();
     }
 
-    sub read_data { return _read_data($MBDB::FinalFile); }
+    sub read_data { return _read_data($FinalFile); }
 
     sub create_data {
         my $ed = defined $ENV{EDITOR} ? $ENV{EDITOR} : '/usr/bin/vi';
@@ -1023,20 +1017,20 @@ jOUTER: while (1) {
         _create_addons();
 
         my @old_data;
-jREDO:  @old_data = @MBDB::Data;
+jREDO:  @old_data = @Data;
         _reset_data();
         _write_editable(\@old_data);
-        print "  Template: $MBDB::EditFile\n",
+        print "  Template: $EditFile\n",
               "  Please do verify and edit this file as necessary\n",
               "  Shall i invoke EDITOR $ed? ";
         if (::user_confirm()) {
-            my @args = ($ed, $MBDB::EditFile);
+            my @args = ($ed, $EditFile);
             system(@args);
         } else {
             print "  Ok, waiting: hit <RETURN> to continue ...";
             $ed = <STDIN>;
         }
-        if (! _read_data($MBDB::EditFile)) {
+        if (! _read_data($EditFile)) {
             print "! Errors detected - edit once again!\n";
             goto jREDO;
         }
@@ -1044,7 +1038,7 @@ jREDO:  @old_data = @MBDB::Data;
 
         print "  Once again - please verify the content:\n",
               "  (NOTE: terminal may not be able to display charset):\n";
-        print "    $_\n" foreach (@MBDB::Data);
+        print "    $_\n" foreach (@Data);
         print "  Is this data *really* OK? ";
         goto jREDO unless ::user_confirm();
 
@@ -1104,7 +1098,7 @@ jREDO:  @old_data = @MBDB::Data;
 
     sub _write_editable {
         my $dataref = shift;
-        my $df = $MBDB::EditFile;
+        my $df = $EditFile;
         ::v("Writing editable MusicBox data file as $df");
         die "Can't open $df: $!" unless open DF, '>:encoding(UTF-8)', $df;
         if (@$dataref > 0) {
@@ -1175,7 +1169,7 @@ __EOT__
     }
 
     sub _write_final {
-        my $df = $MBDB::FinalFile;
+        my $df = $FinalFile;
         ::v("Creating final MusicBox data file as $df");
         die "Can't open $df: $!" unless open DF, '>:encoding(UTF-8)', $df;
         die "Error writing $df: $!"
@@ -1185,7 +1179,7 @@ __EOT__
                  "CDID = $CDInfo::Id\n",
                  "TRACK_OFFSETS = ", join(' ', @CDInfo::TrackOffsets),
                  "\nTOTAL_SECONDS = $CDInfo::TotalSeconds\n";
-        foreach (@MBDB::Data) {
+        foreach (@Data) {
             die "Error writing $df: $!" unless print DF $_, "\n";
         }
         die "Can't close $df: $!" unless close DF;
@@ -1193,7 +1187,7 @@ __EOT__
 
     sub _read_data {
         my $df = shift;
-        my $is_final = ($df eq $MBDB::FinalFile);
+        my $is_final = ($df eq $FinalFile);
         _reset_data();
 
         die "Can't open $df: $!" unless open DF, '<:encoding(UTF-8)', $df;
@@ -1209,7 +1203,7 @@ __EOT__
                     $emsg = $entry->finalize();
                     $entry = undef;
                     if (defined $emsg) {
-                        $MBDB::Error = 1;
+                        $Error = 1;
                         print "! ERROR: $emsg\n";
                         $emsg = undef;
                     }
@@ -1239,7 +1233,7 @@ __EOT__
             }
 
             if (defined $emsg) {
-jERROR:         $MBDB::Error = 1;
+jERROR:         $Error = 1;
                 print "! ERROR: $emsg\n";
                 die "Disc database is corrupted!\n" .
                     "Remove $TARGET_DIR (!) and re-rip disc!"
@@ -1248,17 +1242,17 @@ jERROR:         $MBDB::Error = 1;
             }
         }
         if (defined $entry && defined($emsg = $entry->finalize())) {
-            $MBDB::Error = 1;
+            $Error = 1;
             print "! ERROR: $emsg\n";
         }
         die "Can't close $df: $!" unless close DF;
 
         for (my $i = 1; $i <= $CDInfo::TrackCount; ++$i) {
             next if $Title::List[$i - 1]->{TAG_INFO}->{IS_SET};
-            $MBDB::Error = 1;
+            $Error = 1;
             print "! ERROR: no entry for track number $i found\n";
         }
-        $MBDB::Error == 0;
+        $Error == 0;
     }
     # }}}
 
@@ -1902,8 +1896,7 @@ __EOT__
     # }}}
 
 {package Enc::Coder::MP3; # {{{
-    our @ISA;
-    BEGIN { @ISA = 'Enc::Coder'; }
+    our @ISA = 'Enc::Coder';
 
     sub new {
         my ($self, $title) = @_;
@@ -2044,8 +2037,7 @@ __EOT__
 } # }}}
 
 {package Enc::Coder::AAC; # {{{
-    our @ISA;
-    BEGIN { @ISA = 'Enc::Coder'; }
+    our @ISA = 'Enc::Coder';
 
     sub new {
         my ($self, $title) = @_;
@@ -2098,8 +2090,7 @@ __EOT__
 } # }}}
 
 {package Enc::Coder::OGG; # {{{
-    our @ISA;
-    BEGIN { @ISA = 'Enc::Coder'; }
+    our @ISA = 'Enc::Coder';
 
     sub new {
         my ($self, $title) = @_;
