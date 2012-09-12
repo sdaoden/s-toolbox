@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 require 5.008_001;
 my $SELF = 's-disc-ripper.pl'; #@ part of S-MusicBox; handles CD ripping.
 #@ Requirements:
