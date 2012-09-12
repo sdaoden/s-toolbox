@@ -110,7 +110,7 @@ __EOT__
 my ($RIP_ONLY, $ENC_ONLY, $NO_VOL_NORM, $VERBOSE) = (0, 0, 0, 0);
 my ($CLEANUP_OK, $WORK_DIR, $TARGET_DIR, %CDDB) = (0);
 
-jMAIN: { # {{{
+sub main_fun { # {{{
     # Also verifies we have valid (DB,TMP..) paths
     command_line();
 
@@ -2153,4 +2153,7 @@ __EOT__
 } # }}}
 } # Enc::Coder
 } # Enc
-# vim:set fenc=utf-8 filetype=perl syntax=perl ts=4 sts=4 sw=4 et tw=79:
+
+{package main; main_fun();}
+
+# vim:set fenc=utf-8 syntax=perl ts=8 sts=4 sw=4 et tw=79:
