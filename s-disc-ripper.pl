@@ -1222,7 +1222,7 @@ __EOT__
                 no strict 'refs';
                 my $class = "MBDB::${c}";
                 my $sym = "${class}::new";
-                unless (defined %{"${class}::"}) {
+                unless (%{"${class}::"}) {
                     $emsg = "Illegal command: [$c]";
                     goto jERROR;
                 }
