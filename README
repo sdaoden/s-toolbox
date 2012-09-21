@@ -33,18 +33,9 @@ real-periodic.sh:
    Invoke this once per hour in the roots crontab and disable the usual
    periodic stuff of your system instead.
 
-showkey.c:
-   Show keyboard scancodes for FreeBSD, OpenBSD, NetBSD and Linux.
-   This is not yet finished but for Linux.  But it should help to get
-   you going.  (Unfortunately the BSDs are not so documented and i
-   need to dig into the kernel sources to implement the missing pieces.)
-
-git-topic-creator.pl:
-   To ease maintaining of topic branches i use a linear history, so that
-   i can use 'git rebase -i' for fixups and squashes, without having to
-   worry about recreation of topic branches.
-   Instead i tag commit messages, and use this script to create the topics
-   once i'm finished.
+s-ws-check.pl:
+   Check indentation, trailing whitespace and non-breaking spaces (see
+   git-pre-commit.sh below) for all files given on the command line.
 
 git-pre-commit.sh:
    git(1)'s diff --check does unfortunately not offer a mode which detects
@@ -53,6 +44,28 @@ git-pre-commit.sh:
    sequences, i.e., the german keyboard produces NBSP for ALT+SPC, but it
    also requires ALT to get any of []|{} (ALT+[5-9]).  So NBSP's happen.
    This script can be used as (a template for a custom) pre-commit hook.
+
+   It also handles non-space indentations, tabulators and mixed indents,
+   dependent on the environment variables NSPACEINDENT, TABINDENT and
+   MIXINDENT.  E.g., this is one of my pre-commit hooks: ::
+
+      #!/bin/sh -
+      NSPACEINDENT=1 TABINDENT=1
+      export NSPACEINDENT TABINDENT
+      exec "$HOME/usr/bin/git-pre-commit.sh" "$@"
+
+git-topic-creator.pl:
+   To ease maintaining of topic branches i use a linear history, so that
+   i can use 'git rebase -i' for fixups and squashes, without having to
+   worry about recreation of topic branches.
+   Instead i tag commit messages, and use this script to create the topics
+   once i'm finished.
+
+showkey.c:
+   Show keyboard scancodes for FreeBSD, OpenBSD, NetBSD and Linux.
+   This is not yet finished but for Linux.  But it should help to get
+   you going.  (Unfortunately the BSDs are not so documented and i
+   need to dig into the kernel sources to implement the missing pieces.)
 
 Even less of widespread usability:
 
@@ -83,4 +96,4 @@ P.S.: If you do miss web/: that has been replaced by the grazy boosted
       and oh so real S-Web42 project that stands by itself
       (see http://sdaoden.users.sourceforge.net/code.html).
 
-.. vim:set fenc=utf-8 filetype=rst syntax=rst ts=8 sts=3 sw=3 et tw=75:
+.. vim:set fenc=utf-8 syntax=rst ts=8 sts=3 sw=3 et tw=75:
