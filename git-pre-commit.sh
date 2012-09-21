@@ -21,7 +21,7 @@ git diff --cached $against | perl -CI -e '
     # XXX May not be able to swallow all possible diff output yet
     my ($estat, $l, $fname) = (0, undef, undef);
 
-    for (;;) { last if stdin() =~ /^diff/o; }
+    for (;;) { last if stdin() =~ /^diff/; }
     for (;;) { head(); hunk(); }
 
     sub stdin {
@@ -35,19 +35,19 @@ git diff --cached $against | perl -CI -e '
         # Skip anything, including options and entire rename and delete diffs,
         # until we see the ---/+++ line pair
         for (;;) {
-            last if $l =~ /^---/o;
+            last if $l =~ /^---/;
             stdin();
         }
 
         stdin();
-        die "head, 1.: cannot parse diff!" unless $l =~ /^\+\+\+ /o;
+        die "head, 1.: cannot parse diff!" unless $l =~ /^\+\+\+ /;
         $fname = substr($l, 4);
-        $fname = substr($fname, 2) if $fname =~ /^b\//o;
+        $fname = substr($fname, 2) if $fname =~ /^b\//;
     }
 
     sub hunk() {
         stdin();
-        die "hunk, 1.: cannot parse diff!" unless $l =~ /^@@ /o;
+        die "hunk, 1.: cannot parse diff!" unless $l =~ /^@@ /;
 JHUNK:
         # regex shamelessly stolen from git(1), and modified
         $l =~ /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
@@ -55,9 +55,9 @@ JHUNK:
 
         for (;;) {
             stdin();
-            return if $l =~ /^diff/o;       # Different file?
-            goto JHUNK if $l =~ /^@@ /o;    # Same file, different hunk?
-            next if $l =~ /^-/o;            # Ignore removals
+            return if $l =~ /^diff/;        #  Different file?
+            goto JHUNK if $l =~ /^@@ /;     # Same file, different hunk?
+            next if $l =~ /^-/;             # Ignore removals
 
             ++$lno;
             next if $l =~ /^ /o;
@@ -67,7 +67,7 @@ JHUNK:
                 $estat = 1;
                 print "$fname:$lno: non-breaking space (NBSP, U+A0).\n";
             }
-            if ($l =~ /\s+$/o) {
+            if ($l =~ /\s+$/) {
                 $estat = 1;
                 print "$fname:$lno: trailing whitespace.\n";
             }
