@@ -6,7 +6,16 @@
 # This is to avoid problems in rebases when some commit contains files that
 # have been accepted already, i.e., Makefiles need to have tabulator indents
 # due to the standard..
-test x != x"$GIT_NO_PRECOMMIT" && exit 0
+[ -n "$GIT_NO_PRECOMMIT" ] && exit 0
+
+# Wether spaces are not allowed as indentation
+[ -z "$NSPACEINDENT" ] && NSPACEINDENT=0 || NSPACEINDENT=1
+# Wether tabulators in indention is checked
+[ -z "$TABINDENT" ] && TABINDENT=0 || TABINDENT=1
+# Wether tabulator/space mix in indention is checked (space before tab)
+[ -z "$MIXINDENT" ] && MIXINDENT=0 || MIXINDENT=1
+
+##  --  >8  --  8<  --  ##
 
 #if git rev-parse --verify HEAD >/dev/null 2>&1
 #then
@@ -17,66 +26,94 @@ test x != x"$GIT_NO_PRECOMMIT" && exit 0
 #fi
 
 # Oh no, unfortunately not: exec git diff-index --check --cached $against --
-git diff --cached $against | perl -CI -e '
-    # XXX May not be able to swallow all possible diff output yet
-    my ($estat, $l, $fname) = (0, undef, undef);
+git diff --cached $against |
+perl -CI \
+   -e "\$nspaceindent = \"$NSPACEINDENT\";" \
+   -e "\$tabindent= \"$TABINDENT\";" \
+   -e "\$mixindent = \"$MIXINDENT\";" \
+   -e '
+   $tabindent = 1 if $mixindent;
+   # This is rather in sync with s-ws-check.pl..
+   my ($STANDALONE, $INFD, $ESTAT, $FILE, $LNO) = (0, *STDIN, 0);
 
-    for (;;) { last if stdin() =~ /^diff/; }
-    for (;;) { head(); hunk(); }
+   #sub check_diff {
+      # XXX May not be able to swallow all possible diff output yet
+      for (;;) { exit $ESTAT unless rdline(); last if $l =~ /^diff/; }
+      for (;;) { head(); exit $ESTAT unless defined hunk(); }
+   #}
 
-    sub stdin {
-        $l = <STDIN>;
-        exit($estat) unless $l;
-        chomp($l);
-        return $l;
-    }
+   sub rdline {
+      $l = <$INFD>;
+      chomp $l if $l;
+      $l;
+   }
 
-    sub head {
-        # Skip anything, including options and entire rename and delete diffs,
-        # until we see the ---/+++ line pair
-        for (;;) {
-            last if $l =~ /^---/;
-            stdin();
-        }
+   sub head {
+      # Skip anything, including options and entire rename and delete diffs,
+      # until we see the ---/+++ line pair
+      for (;;) {
+         last if $l =~ /^---/;
+         return $l unless rdline();
+      }
 
-        stdin();
-        die "head, 1.: cannot parse diff!" unless $l =~ /^\+\+\+ /;
-        $fname = substr($l, 4);
-        $fname = substr($fname, 2) if $fname =~ /^b\//;
-    }
+      return $l unless rdline();
+      die "$FILE: head, 1.: cannot parse diff!" unless $l =~ /^\+\+\+ /;
+      unless ($STANDALONE) {
+         $FILE = substr $l, 4;
+         $FILE = substr $FILE, 2 if $FILE =~ /^b\//;
+      }
+   }
 
-    sub hunk() {
-        stdin();
-        die "hunk, 1.: cannot parse diff!" unless $l =~ /^@@ /;
-JHUNK:
-        # regex shamelessly stolen from git(1), and modified
-        $l =~ /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
-        my $lno = $1 - 1;
+   sub hunk() {
+      return $l unless rdline();
+      die "$FILE: hunk, 1.: cannot parse diff!" unless $l =~ /^@@ /;
+   JHUNK:
+      # regex shamelessly stolen from git(1), and modified
+      $l =~ /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+      $LNO = $1 - 1;
 
-        for (;;) {
-            stdin();
-            return if $l =~ /^diff/;        #  Different file?
-            goto JHUNK if $l =~ /^@@ /;     # Same file, different hunk?
-            next if $l =~ /^-/;             # Ignore removals
+      for (;;) {
+         return $l unless rdline();
+         return if $l =~ /^diff/;      #  Different file?
+         goto JHUNK if $l =~ /^@@ /;   # Same file, different hunk?
+         next if $l =~ /^-/;           # Ignore removals
 
-            ++$lno;
-            next if $l =~ /^ /o;
-            $l = substr($l, 1);
+         ++$LNO;
+         next if $l =~ /^ /;
+         $l = substr $l, 1;
 
-            if (index($l, "\xA0") != -1) {
-                $estat = 1;
-                print "$fname:$lno: non-breaking space (NBSP, U+A0).\n";
-            }
-            if ($l =~ /\s+$/) {
-                $estat = 1;
-                print "$fname:$lno: trailing whitespace.\n";
-            }
-            if ($l =~ /^(\s+)/o && $1 =~ /\x09/o) {
-                $estat = 1;
-                print "$fname:$lno: tabulator in indent.\n";
-            }
-        }
-    }
-    '
+         check_line();
+      }
+   }
 
-# vim:set fenc=utf-8 ts=4 sts=4 sw=4 et tw=79:
+   sub check_line {
+      if (index($l, "\x{00A0}") != -1) {
+         $ESTAT = 1;
+         print "$FILE:$LNO: non-breaking space (NBSP, U+00A0).\n";
+      }
+      if ($l =~ /\s+$/) {
+         $ESTAT = 1;
+         print "$FILE:$LNO: trailing whitespace.\n";
+      }
+
+      my $h = $1 if $l =~ /^(\s+)/;
+      return unless defined $h;
+      $h =~ s/(\x{0020}+)$//;
+      $h = defined $1 ? $1 : "" unless length $h;
+
+      if ($nspaceindent && $h =~ /\x{0020}/) {
+         $ESTAT = 1;
+         print "$FILE:$LNO: spaces in indent.\n";
+      }
+      if (! $tabindent && $h =~ /\x{0009}/) {
+         $ESTAT = 1;
+         print "$FILE:$LNO: tabulator in indent.\n";
+      }
+      if (! $mixindent && $h =~ /\x{0009}/ && $h =~ /\x{0020}/) {
+         $ESTAT = 1;
+         print "$FILE:$LNO: space(s) before tabulator(s) in indent.\n";
+      }
+   }
+'
+
+# vim:set fenc=utf-8 ts=8 sts=3 sw=3 et tw=79:
