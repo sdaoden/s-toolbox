@@ -6,7 +6,7 @@
 #@ XXX and it could be even more automatic and it would be explicit what happens
 #@ XXX This would also make it safe against (further) changes in git+ namespaces
 #
-# Copyright (c) 2011 - 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
+# Copyright (c) 2011 - 2012 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
 # All rights reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
@@ -130,7 +130,7 @@ final() {
 
 # basename(1) plus cleanup
 bname() {
-    CURRD=$(echo "$CURRD" | sed -e 's/\/\/*$//' -e 's/\(^.*\/\/*\)//')
+    CURRD=`echo "$CURRD" | sed -e 's/\/\/*$//' -e 's/\(^.*\/\/*\)//'`
 }
 
 # Does $1 contain any substring that matches $2[-$X]?
@@ -160,16 +160,16 @@ matches() {
 ## git(1) stuff: all called from within subshell with -o pipefail
 
 #git_check_clean() {
-#    [ 0 != $($GIT clean --dry-run | wc -l | \
-#            sed -Ee 's/^[[:space:]]+(.*)$/\1/') ] && {
+#    [ 0 != `$GIT clean --dry-run | wc -l | \
+#            sed -Ee 's/^[[:space:]]+(.*)$/\1/'` ] && {
 #        echo >&2 "Untracked files present, bailing out!"
 #        exit 10
 #    }
 #}
 
 git_check_status() {
-    [ 0 != $($GIT status --short | wc -l | \
-            sed -Ee 's/^[[:space:]]+(.*)$/\1/') ] && {
+    [ 0 != `$GIT status --short | wc -l | \
+            sed -Ee 's/^[[:space:]]+(.*)$/\1/'` ] && {
         echo >&2 "Modified or untracked files present, bailing out!"
         exit 10
     }
@@ -187,7 +187,7 @@ git_ref_check_gc_update() {
     # Return 41 if no new data, 42 if new data, otherwise error
     local repodir=$1 autogcfile=$2
     $GIT show-ref |
-    perl -C0 -e "\$rd = \"$repodir\"; \$agcf = \"$autogcfile\";" -e '
+    perl -C -e "\$rd = \"$repodir\"; \$agcf = \"$autogcfile\";" -e '
         my (%remotes, %heads);
         while (<STDIN>) {
             chomp;
@@ -241,8 +241,8 @@ xy_bomb_git_update() {
     es=$?
 
     # Commit was performed by update.sh script?
-    if [ "$($GIT show-ref --hash refs/heads/master)" != \
-            "$($GIT show-ref --hash refs/heads/arena-manager-download)" ]; then
+    if [ "`$GIT show-ref --hash refs/heads/master`" != \
+            "`$GIT show-ref --hash refs/heads/arena-manager-download`" ]; then
         modlns=1
         $GIT update-ref refs/remotes/origin/master arena-manager-download \
             || exit 24
@@ -253,16 +253,16 @@ xy_bomb_git_update() {
         # To avoid problems with DOS/Unix newline changes in working
         # directories, don't use status but this hint (note this new approach
         # would allow for changing some sed(1) REs, but .. just wait a bit xxx)
-        modlns=$($GIT add --all --dry-run 2>/dev/null |
+        modlns=`$GIT add --all --dry-run 2>/dev/null |
                 sed -Ee '/(\.svn|CVS|SCCS)\/.*$/d' \
                     -Ee '/\.git/d' -Ee '/\/?\.#/d' |
                 wc -l |
-                sed -Ee 's/^[[:space:]]+(.*)$/\1/')
+                sed -Ee 's/^[[:space:]]+(.*)$/\1/'`
         if [ 0 != "$modlns" ]; then
             echo "... $commname updated some, initiating git(1) commit"
             $GIT add --all || exit 22
             $GIT commit -m \
-                    "arena-manager: $commname update, $(date +'%FT%T%z')" \
+                    "arena-manager: $commname update, `date +'%FT%T%z'`" \
                 || exit 23
             $GIT update-ref refs/remotes/origin/master arena-manager-download \
                 || exit 24
@@ -307,7 +307,7 @@ reduce_expand() {
                 # line stating the master branch's name
                 if [ -z "$git_branch" ]; then
                     if [ -f NULL ]; then
-                        git_branch=$(cat NULL)
+                        git_branch=`cat NULL`
                     else
                         echo >&2 "No file NULL in $CURRD"
                         git_branch=master
@@ -433,12 +433,12 @@ update() {
                 git_checkout arena-manager-config
 
                 # It contains several files which are used to store the config
-                master=$(cat git_master)        # The name of the master branch
-                cvs_root=$(cat cvs_root)        # CVSROOT repo URL (CVS/Root)
-                cvs_module=$(cat cvs_module)    # CVS module (CVS/Repository)
+                master=`cat git_master`        # The name of the master branch
+                cvs_root=`cat cvs_root`        # CVSROOT repo URL (CVS/Root)
+                cvs_module=`cat cvs_module`    # CVS module (CVS/Repository)
                 # The name of the cvsps(1) cache file is stored in here;
                 # that file itself is always stored as 'cvsps_cache' instead
-                cvsps_file=$(cat cvsps_file)
+                cvsps_file=`cat cvsps_file`
                 # Up to you wether you want -R or not
                 [ -f cvs-revisions ] && Rflag=-R || Rflag= # git cvsimport dat
 
@@ -499,7 +499,7 @@ automerge() {
         logerr 'Necessary information for automerge is missing'
         exit 1
     fi
-    for CURRD in $(cat "$AUTOGCFILE")
+    for CURRD in `cat "$AUTOGCFILE"`
     do
         if ! matches "$CURRD" git; then
             log ''
@@ -514,10 +514,10 @@ automerge() {
             # This works with our hackish approach, but is rather unnecessary;
             # if we would have configuration files, it would be so clear!
             # arena-manager.pl could do a much better job!
-            master=$($GIT rev-parse --symbolic-full-name HEAD | \
-                     sed -e 's/^refs\/heads\///')
+            master=`$GIT rev-parse --symbolic-full-name HEAD | \
+                     sed -e 's/^refs\/heads\///'`
             matches "$CURRD" .svn_git && issvn=1 || issvn=0
-            perl -C0 -e "\$git = \"$GIT\"; \$is_svn = $issvn;" -e '
+            perl -C -e "\$git = \"$GIT\"; \$is_svn = $issvn;" -e '
                 my (%remotes, %heads, @reflines);
                 die "Cannot read refs: $^E"
                     unless open RLPIPE, "$git show-ref |";
@@ -571,11 +571,11 @@ autogc() {
         logerr 'Necessary information for autogc is missing'
         exit 1
     fi
-    set -- $(cat "$AUTOGCFILE")
+    set -- `cat "$AUTOGCFILE"`
     PARAMS="$@"
     # Do a full --aggressive gc every three months
-    m=$(date +%m)
-    if [ $(( ${m#0} % 6 )) -eq 0 ]; then
+    m=`date +%m`
+    if [ $(( ${m#0} % 6 )) -eq 0 ]; then # FIXME not old shell compatible
         MODE=fullgc
         log 'Turned over to mode fullgc (full because MONTH % 6 == 0)'
     else
@@ -595,6 +595,10 @@ checkup() {
             log "  [$CURRD: -no_autoup tag, skip]"
             continue
         fi
+        if matches "$CURRD" .tar_bomb_git .sccs_bomb_git; then
+            log "  [$CURRD: $MODE does not apply]"
+            continue
+        fi
         if matches "$CURRD" git; then
             action="$GIT status --short"
         elif matches "$CURRD" .hg; then
@@ -603,8 +607,8 @@ checkup() {
             log "  [$CURRD: $MODE does not apply]"
             continue
         fi
-        if [ 0 != $(cd "$CURRD" && $action | wc -l | \
-                    sed -Ee 's/^[[:space:]]+(.*)$/\1/') ]; then
+        if [ 0 != `cd "$CURRD" && $action | wc -l | \
+                    sed -Ee 's/^[[:space:]]+(.*)$/\1/'` ]; then
             log "! $CURRD: modified or untracked files present!"
             es=1
         else
@@ -638,7 +642,7 @@ fi
 
 [ -z "$MODE" ] && MODE=autoup
 log "$0: script startup, mode $MODE"
-[ $# -eq 0 ] && PARAMS=$(echo *.*)
+[ $# -eq 0 ] && PARAMS=`echo *.*`
 
 case "$MODE" in
 reduce|expand)  reduce_expand;;
@@ -690,4 +694,4 @@ else
     log 'All seems fine around here, ciao'
 fi
 exit $ESTAT
-# vim:set fenc=utf-8 filetype=sh syntax=sh ts=8 sts=4 sw=4 et tw=79:
+# vim:set fenc=utf-8 syntax=sh ts=8 sts=4 sw=4 et tw=79:
