@@ -87,6 +87,7 @@ CVS_UPDATE_FLAGS='-AP'
 
 ##
 
+LC_ALL=C LANG=C
 CVSROOT=/nonexistent
 # These must be in $ARENA!
 LOGFILE=.ARENA-LOG
