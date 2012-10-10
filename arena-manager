@@ -133,14 +133,30 @@ bname() {
     CURRD=`echo "$CURRD" | sed -e 's/\/\/*$//' -e 's/\(^.*\/\/*\)//'`
 }
 
+_pipefail() {
+    if [ -z "$__pipefail" ]; then
+        ( set -o pipefail ) >/dev/null 2>&1 && __pipefail=0 || __pipefail=1
+    fi
+    return $__pipefail
+}
+pipefail_on() {
+    _pipefail || return 0
+    set -o pipefail
+}
+pipefail_off() {
+    _pipefail || return 0
+    set +o pipefail
+}
+
 # Does $1 contain any substring that matches $2[-$X]?
 matches() {
-    local var=$1 i
+    var=$1 i=
     shift
 
+    # Take care for older shells which don't suppor ${//}
     if [ -z "$__matchsubst" ]; then
         i=zauberberg
-        eval "test \${i/ber/} = zauberg" >/dev/null 2>&1 &&
+        ( eval "test \${i/ber/} = zauberg" ) >/dev/null 2>&1 &&
             __matchsubst=1 || __matchsubst=0
     fi
     if [ $__matchsubst -ne 0 ]; then
@@ -155,6 +171,11 @@ matches() {
         done
     fi
     return 1
+}
+# Same as "! matches" except that old shells gobble it
+nmatches() {
+    matches "$@"
+    [ $? -eq 0 ] && return 1 || return 0
 }
 
 ## git(1) stuff: all called from within subshell with -o pipefail
@@ -176,7 +197,7 @@ git_check_status() {
 }
 
 git_checkout() {
-    local br="$1"
+    br="$1"
     $GIT checkout -q -f "$br" -- || {
         echo >&2 "Can't checkout branch $br, bailing out!"
         exit 11
@@ -185,9 +206,9 @@ git_checkout() {
 
 git_ref_check_gc_update() {
     # Return 41 if no new data, 42 if new data, otherwise error
-    local repodir=$1 autogcfile=$2
+    repodir=$1 autogcfile=$2
     $GIT show-ref |
-    perl -C -e "\$rd = \"$repodir\"; \$agcf = \"$autogcfile\";" -e '
+    perl -e "\$rd = \"$repodir\"; \$agcf = \"$autogcfile\";" -e '
         my (%remotes, %heads);
         while (<STDIN>) {
             chomp;
@@ -224,7 +245,7 @@ git_ref_check_gc_update() {
 ## misc
 
 xy_bomb_git_update() {
-    local comm=$1 commname=$2 modlns=0 es
+    comm=$1 commname=$2 modlns=0 es=
 
     # (We need to compare local master and remote to detect wether there were
     # updates; arena-manager2/.pl ...)
@@ -258,7 +279,7 @@ xy_bomb_git_update() {
                     -Ee '/\.git/d' -Ee '/\/?\.#/d' |
                 wc -l |
                 sed -Ee 's/^[[:space:]]+(.*)$/\1/'`
-        if [ 0 != "$modlns" ]; then
+        if [ '0' != "$modlns" ]; then
             echo "... $commname updated some, initiating git(1) commit"
             $GIT add --all || exit 22
             $GIT commit -m \
@@ -270,7 +291,7 @@ xy_bomb_git_update() {
         fi
     fi
 
-    [ 0 = "$modlns" ] && {
+    [ '0' = "$modlns" ] && {
         $GIT reset -q --hard HEAD || exit 26
         echo "... $commname did not seem to have new data"
     }
@@ -293,14 +314,14 @@ reduce_expand() {
     for CURRD in $PARAMS
     do
         bname
-        if matches "$CURRD" no_reduce || ! matches "$CURRD" git hg; then
+        if matches "$CURRD" no_reduce || nmatches "$CURRD" git hg; then
             log ''
             log "[$CURRD: $MODE does not apply]"
             continue
         fi
 
         intro "$CURRD: performing $MODE"
-        set -o pipefail
+        pipefail_on
         (   cd "$CURRD" || exit 10
             if matches "$CURRD" git; then
                 # File NULL on branch arena-manager-null contains a single
@@ -320,17 +341,17 @@ reduce_expand() {
             exit $?
         ) 2>&1 | tee -a "$LOGFILE"
         final $? "$CURRD"
-        set +o pipefail
+        pipefail_off
     done
 }
 
 xgc() {
-    local GCT=
+    GCT=
     [ "$MODE" = fullgc ] && GCT=--aggressive
     for CURRD in $PARAMS
     do
         bname
-        if ! matches "$CURRD" git; then
+        if nmatches "$CURRD" git; then
             log ''
             log "[$CURRD: $MODE does not apply]"
             continue
@@ -342,12 +363,12 @@ xgc() {
             i=
         fi
         intro "$CURRD: performing $m"
-        set -o pipefail
+        pipefail_on
         (   cd "$CURRD" || exit 1
             time git gc $i
         ) 2>&1 | tee -a "$LOGFILE"
         final $? "$CURRD"
-        set +o pipefail
+        pipefail_off
     done
 }
 
@@ -372,9 +393,9 @@ update() {
         fi
 
         intro "$CURRD: performing $MODE"
-        set -o pipefail
+        pipefail_on
         (   cd "$CURRD" || exit 9
-            if ! matches "$CURRD" git; then
+            if nmatches "$CURRD" git; then
                 case "$CURRD" in
                 *.hg*)
                     # TODO use incoming, and produce an AUTOGC entry if there
@@ -487,7 +508,7 @@ update() {
             exit $es
         ) 2>&1 | tee -a "$LOGFILE"
         es=$?
-        set +o pipefail
+        pipefail_off
         final $es "$CURRD"
     done
 
@@ -495,20 +516,20 @@ update() {
 }
 
 automerge() {
-    if [ ! -s "$AUTOGCFILE" ]; then
+    if [ -z "$AUTOGCFILE" ]; then
         logerr 'Necessary information for automerge is missing'
         exit 1
     fi
     for CURRD in `cat "$AUTOGCFILE"`
     do
-        if ! matches "$CURRD" git; then
+        if nmatches "$CURRD" git; then
             log ''
             log "[$CURRD: $MODE does not apply]"
             continue
         fi
 
         intro "$CURRD: performing $MODE"
-        set -o pipefail
+        pipefail_on
         (   cd "$CURRD" || exit 9
             git_check_status
             # This works with our hackish approach, but is rather unnecessary;
@@ -517,7 +538,7 @@ automerge() {
             master=`$GIT rev-parse --symbolic-full-name HEAD | \
                      sed -e 's/^refs\/heads\///'`
             matches "$CURRD" .svn_git && issvn=1 || issvn=0
-            perl -C -e "\$git = \"$GIT\"; \$is_svn = $issvn;" -e '
+            perl -e "\$git = \"$GIT\"; \$is_svn = $issvn;" -e '
                 my (%remotes, %heads, @reflines);
                 die "Cannot read refs: $^E"
                     unless open RLPIPE, "$git show-ref |";
@@ -561,21 +582,22 @@ automerge() {
             git_checkout "$master"
         ) 2>&1 | tee -a "$LOGFILE"
         es=$?
-        set +o pipefail
+        pipefail_off
         final $es "$CURRD"
     done
 }
 
 autogc() {
-    if [ ! -s "$AUTOGCFILE" ]; then
+    if [ -z "$AUTOGCFILE" ]; then
         logerr 'Necessary information for autogc is missing'
         exit 1
     fi
     set -- `cat "$AUTOGCFILE"`
     PARAMS="$@"
-    # Do a full --aggressive gc every three months
+    # Do a full --aggressive gc every xy months
     m=`date +%m`
-    if [ $(( ${m#0} % 6 )) -eq 0 ]; then # FIXME not old shell compatible
+    m=`expr $m : '0*\(.*\)' % 6`
+    if [ 0 = "$m" ]; then
         MODE=fullgc
         log 'Turned over to mode fullgc (full because MONTH % 6 == 0)'
     else
@@ -586,7 +608,7 @@ autogc() {
 }
 
 checkup() {
-    local es=0
+    es=0
     log 'Checking how likely it is an update would succeed'
     for CURRD in $PARAMS
     do
@@ -633,7 +655,7 @@ cd "$ARENA" || {
     exit 1
 }
 
-if [ -e "$LOGFILE" ]; then
+if [ -f "$LOGFILE" ]; then
     mv -f "$LOGFILE" "$LOGFILE-LAST" || {
         echo >&2 "Failed to move old $LOGFILE to $LOGFILE-LAST"
         exit 1
@@ -661,7 +683,7 @@ autoup)
     fi
     MODE='autoup: update'
     update
-    if [ ! -s "$AUTOGCFILE" ]; then
+    if [ -z "$AUTOGCFILE" ]; then
         log ''
         log 'It seems there is no new data at all, skipping merge+gc'
     else
