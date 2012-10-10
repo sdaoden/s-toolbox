@@ -279,7 +279,7 @@ xy_bomb_git_update() {
                     -Ee '/\.git/d' -Ee '/\/?\.#/d' |
                 wc -l |
                 sed -Ee 's/^[[:space:]]+(.*)$/\1/'`
-        if [ '0' != "$modlns" ]; then
+        if [ 0 != "$modlns" ]; then
             echo "... $commname updated some, initiating git(1) commit"
             $GIT add --all || exit 22
             $GIT commit -m \
@@ -291,7 +291,7 @@ xy_bomb_git_update() {
         fi
     fi
 
-    [ '0' = "$modlns" ] && {
+    [ 0 = "$modlns" ] && {
         $GIT reset -q --hard HEAD || exit 26
         echo "... $commname did not seem to have new data"
     }
@@ -516,7 +516,7 @@ update() {
 }
 
 automerge() {
-    if [ -z "$AUTOGCFILE" ]; then
+    if [ ! -s "$AUTOGCFILE" ]; then
         logerr 'Necessary information for automerge is missing'
         exit 1
     fi
@@ -588,7 +588,7 @@ automerge() {
 }
 
 autogc() {
-    if [ -z "$AUTOGCFILE" ]; then
+    if [ ! -s "$AUTOGCFILE" ]; then
         logerr 'Necessary information for autogc is missing'
         exit 1
     fi
@@ -683,10 +683,7 @@ autoup)
     fi
     MODE='autoup: update'
     update
-    if [ -z "$AUTOGCFILE" ]; then
-        log ''
-        log 'It seems there is no new data at all, skipping merge+gc'
-    else
+    if [ -s "$AUTOGCFILE" ]; then
         MODE='autoup: automerge'
         automerge
         if [ -x ./autoup-posthook ]; then
@@ -696,6 +693,9 @@ autoup)
         MODE='autoup: autogc'
         autogc
         GITDID=0
+    else
+        log ''
+        log 'It seems there is no new data at all, skipping merge+gc'
     fi
     ;;
 *)
