@@ -346,7 +346,7 @@ reduce_expand() {
 }
 
 xgc() {
-    GCT=
+    GCT= gcmode= gcarg=
     [ "$MODE" = fullgc ] && GCT=--aggressive
     for CURRD in $PARAMS
     do
@@ -356,16 +356,16 @@ xgc() {
             log "[$CURRD: $MODE does not apply]"
             continue
         fi
-        m=$MODE
-        i=$GCT
+        gcmode=$MODE
+        gcarg=$GCT
         if matches "$CURRD" no_fullgc; then
-            m='gc (fullgc forcefully downgraded)'
-            i=
+            gcmode='gc (fullgc forcefully downgraded)'
+            gcarg=
         fi
-        intro "$CURRD: performing $m"
+        intro "$CURRD: performing $gcmode"
         pipefail_on
         (   cd "$CURRD" || exit 1
-            time git gc $i
+            time git gc $gcarg
         ) 2>&1 | tee -a "$LOGFILE"
         final $? "$CURRD"
         pipefail_off
