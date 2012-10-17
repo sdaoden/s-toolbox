@@ -61,6 +61,11 @@ git-topic-creator.pl:
    Instead i tag commit messages, and use this script to create the topics
    once i'm finished.
 
+s-idn.c:
+   Simple GNU Libidn based thing that encodes and decodes IDNs.
+   Rather identical to the idn utility that comes with that one, but
+   i needed to get comfortable with Libidn and so i've wrote it.
+
 showkey.c:
    Show keyboard scancodes for FreeBSD, OpenBSD, NetBSD and Linux.
    This is not yet finished but for Linux.  But it should help to get
