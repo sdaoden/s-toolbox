@@ -1,10 +1,13 @@
 #!/bin/sh
 #@ arena-manager for dummies (should work with sh(1), bash(1); and ksh(1)).
 #@ Setup your repos once, read this script, and let it do updates in the future
-#@ XXX Think about arena-manager[2].pl, which would require per-repo
-#@ XXX config files; but like that some hackish things could be made clean,
-#@ XXX and it could be even more automatic and it would be explicit what happens
-#@ XXX This would also make it safe against (further) changes in git+ namespaces
+#@ TODO In fact we don't need an arena-manager2, but instead should offer
+#@ TODO a mode that allows a user to create a mapping in between a local branch
+#@ TODO and a ORIGIN BRANCH, which are both somehow name mangled into a single
+#@ TODO spec under a new refs/ ala arena-manager/local___ORIGIN_BRA__NCH.
+#@ TODO Then if the update modes would be able to detect updates of all
+#@ TODO configured ORIGIN BRANCHes then autogc mode would only need to be able
+#@ TODO to loop over all configured specs, and no more need 4 arena-manager2!
 #
 # Copyright (c) 2011 - 2012 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
 # All rights reserved.
@@ -248,7 +251,7 @@ xy_bomb_git_update() {
     comm=$1 commname=$2 modlns=0 es=
 
     # (We need to compare local master and remote to detect wether there were
-    # updates; arena-manager2/.pl ...)
+    # updates)
     $GIT checkout -q -f -B arena-manager-download master -- || {
         echo >&2 "Can't reset branch arena-manager-download, bailing out!"
         exit 20
