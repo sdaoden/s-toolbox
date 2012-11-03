@@ -1,43 +1,31 @@
-#!/usr/bin/perl
-require 5.008;
+#!/usr/bin/env perl
+require 5.008_001;
 #@ Create topic branches from a single line of history with "tagged" commit
 #@ messages, removing those tags along the way (in the topic branches).
 #@ See --help for more.
 my $SELF = 'git-topic-creator.pl';
-my $VERSION = 'v0.1.0';
-my $COPYRIGHT =<<_EOT;
-Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden\@users.sf.net>.
+my $VERSION = 'v0.2.0';
+my $COPYRIGHT =<<__EOT__;
+Copyright (c) 2012 Steffen "Daode" Nurpmeso <sdaoden\@users.sf.net>.
 All rights reserved.
-This software is published under the terms of the "New BSD license".
-_EOT
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
+This software is provided under the terms of the ISC license.
+__EOT__
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
 #
-# 1. Redistributions of source code must retain the above copyright notice,
-#    this list of conditions and the following disclaimer.
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-#    this list of conditions and the following disclaimer in the documentation
-#    and/or other materials provided with the distribution.
-# 3. Neither the name of the author nor the names of its contributors
-#    may be used to endorse or promote products derived from this software
-#    without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-# PURPOSE ARE DISCLAIMED.
-# IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
-# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-# THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 my $GIT = 'git';        # -g/--git
 my $TOPICDIR = 'topic'; # Level under which all topic branches are created
 
-##
+##  --  >8  --  8<  --  ##
 
 use diagnostics -verbose;
 use strict;
@@ -52,7 +40,7 @@ my $TAGRE = ('^[[:space:]]*\[[[:space:]]*(' .
              $BRANCHRE . ')[[:space:]]*\][[:space:]]*' .
              '(.+)$');
 # Reset unless --verbose
-my $REDIR = '> /dev/null';
+my $REDIR = '> /dev/null 2>&1';
 
 $ENV{GIT_EDITOR} = ("perl".
                     " -e 'open(F, \"<\", \$ARGV[0]) || die \$!;'" .
@@ -69,10 +57,10 @@ $SELF ($VERSION)
 $COPYRIGHT
 _EOT
 
-my ($ONTO, $REV_SPEC, $NODELETE, $TOPIC_MERGE, $TOPIC_DELETE);
+my ($SEEN_ANON, $ONTO, $REV_SPEC, $NODELETE, $REBASE, $TOPIC_DELETE);
 my (@REFS, @TOPICS);
 
-jMAIN: {
+sub main_fun { # {{{
     command_line();
 
     check_git();
@@ -88,7 +76,7 @@ jMAIN: {
     }
 
     exit 0;
-}
+} # }}}
 
 sub command_line { # {{{
     my $emsg = undef;
@@ -96,6 +84,7 @@ sub command_line { # {{{
     unless (GetOptions(
                 'git=s'         => \$GIT,
                 'nodelete'      => \$NODELETE,
+                'rebase'        => \$REBASE,
                 'delete-topics' => \$TOPIC_DELETE,
 
                 'h|help|?'      => sub { goto jdocu; },
@@ -126,31 +115,35 @@ sub command_line { # {{{
     return;
 jdocu:
     print STDERR "!PANIC $emsg\n\n" if defined $emsg;
-    print STDERR <<_EOT;
+    print STDERR <<__EOT__;
 ${INTRO}Synopsis:
-  $SELF [:-v|--verbose:] [--git=PATH] [--nodelete] ONTO REV-SPEC
+  $SELF [:-v|--verbose:] [--git=PATH] [--rebase] \
+        [--nodelete] ONTO REV-SPEC
   $SELF [:-v|--verbose:] [--git=PATH] --delete-topics
 
 ONTO specifies the target commit, usually a branch name, onto which all the
-REV-SPECs will be cherry-picked upon.  REV-SPECs are expanded via
-'git rev-parse'.  If --nodelete is given then the topic branches remain, but
-otherwise they're only temporary.
+REV-SPECs will be placed upon.  REV-SPECs are expanded via 'git rev-parse'.
+If --nodelete is given then the topic branches remain, but otherwise they're
+only temporary.  If --rebase is given then each topic branch is rebased onto
+ONTO before it is merged in; this mode is automatically activated if unnamed
+topic branches exist ([-]), since commits from those will be cherry-picked
+onto instead of merged into ONTO and so the others must follow.
 
 The second usage case deletes all heads under $TOPICPATH, which can be
-used to get rid of the topic branches created by a failed run, or if --nodelete
-has been given.
+used to get rid of the topic branches created by a failed run.
+You may want to use --verbose to see git(1) failures, then.
 
 It's a simple script for a simple workflow like, given branches are ["master"],
 "next" and "pu", and flow is pu->next[->master]:
   \$ git-topic-creator.pl next next..pu # (Or even pu...next)
   [left on the "next" branch here]
-  \$ git branch -D pu
-  \$ git checkout -b pu next            # Start next development cycle
+  \$ git checkout -B pu next            # Start next development cycle
 
 And how does this script know?
 It requires the first line of each commit message to start off with a special
 TOPIC-TAG: "[topic-0123_branch-name] Mandatory normal commit message".
-_EOT
+The special tag "[-]" is an unnamed topic that is cherry-picked not merged.
+__EOT__
     exit defined $emsg ? 1 : 0;
 } # }}}
 
@@ -240,24 +233,30 @@ sub read_check_commits {
 }
 
 sub explode_topics { # {{{
-    my ($i, $shas, $onto) = ('');
+    our ($i, $shas, $onto) = ('');
 
     # Commits are in correct order for an array, but in wrong order for
     # cherry-pick, so prepare all the data we need
+    sub __push {
+        my $anon = $i eq '-';
+        $SEEN_ANON += $anon;
+        push @TOPICS, [$i, $shas, $anon] if length $i;
+    }
     foreach (@REFS) {
         if ($_->[2] ne $i) {
-            push @TOPICS, [$i, $shas] if length $i;
+            __push();
             $i = $_->[2];
             $shas = [];
         }
         unshift @$shas, $_->[0];
     }
-    push @TOPICS, [$i, $shas];
+    __push();
 
     # Create topic branches and cherry-pick
     $onto = ' ' . $ONTO;
     foreach (@TOPICS) {
         $i = $_;
+        next if $i->[2];
         verb1("Creating <$i->[0]> and cherry-picking onto it");
 
         system("$GIT checkout -b $TOPICDIR/$i->[0]$onto $REDIR") == 0 ||
@@ -270,7 +269,11 @@ sub explode_topics { # {{{
 
     # we and delete_topics() need only the names, so to avoid calling
     # read_topics() simply adjust @TOPICS (not calling read_topics()..)
-    $_ = $_->[0] foreach (@TOPICS);
+    my @isff;
+    foreach (@TOPICS) {
+        push @isff, $_->[2] ? $_->[1] : undef;
+        $_ = $_->[0];
+    }
 
     # Checkout $ONTO again, and merge all the topics
     verb1("Re-checking-out <$ONTO> and merging topic branches");
@@ -278,9 +281,22 @@ sub explode_topics { # {{{
         panic(1, "Can't re-checkout $ONTO; run --delete-topics");
 
     foreach (@TOPICS) {
-        system("$GIT merge --no-ff --commit --stat --log=1000 --verbose " .
-               "$TOPICDIR/$_ $REDIR") == 0 ||
-            panic(1, "Can't merge $_ into $ONTO; run --delete-topics");
+        my ($br, $cpc) = ($_, shift @isff);
+        if (defined $cpc) {
+            system("$GIT cherry-pick --edit @{$cpc} $REDIR") == 0 ||
+                panic(1, "Can't ff-merge $br into $ONTO; run --delete-topics");
+            next;
+        }
+
+        if ($REBASE || $SEEN_ANON) {
+            system("$GIT rebase $ONTO $TOPICDIR/$br $REDIR") == 0 ||
+                panic(1, "Can't rebase $br onto $ONTO; run --delete-topics");
+            system("$GIT checkout -f $ONTO $REDIR") == 0 ||
+                panic(1, "Can't re-checkout $ONTO; run --delete-topics");
+        }
+        system("$GIT merge -n --no-ff --commit --log=1000 " .
+                "$TOPICDIR/$br $REDIR") == 0 ||
+            panic(1, "Can't merge $br into $ONTO; run --delete-topics");
     }
 } # }}}
 
@@ -307,4 +323,6 @@ sub delete_topics {
     }
 }
 
-# vim:set fenc=utf-8 filetype=perl syntax=perl ts=4 sts=4 sw=4 et tw=79:
+{package main; main_fun();}
+
+# vim:set fenc=utf-8 syntax=perl ts=8 sts=4 sw=4 et tw=79:
