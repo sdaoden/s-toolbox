@@ -67,12 +67,12 @@ sub main_fun { # {{{
 
     if ($TOPIC_DELETE) {
         read_topics();
-        delete_topics();
+        delete_topics(1);
     } else {
         expand_rev_spec();
         read_check_commits();
         explode_topics();
-        delete_topics() unless $NODELETE;
+        delete_topics(0) unless $NODELETE;
     }
 
     exit 0;
@@ -162,6 +162,10 @@ sub panic {
     my $dbg_exit = shift;
     print STDERR '!PANIC ', shift, "\n";
     while (@_ != 0) { print STDERR '!PANIC ++  ', shift, "\n" };
+    print STDERR
+        '!PANIC .. You may need to run "git cherry-pick --abort"', "\n",
+        '!PANIC .. followed by "git reset --hard"', "\n",
+        '!PANIC .. followed by "git-topic-creator.pl --delete-topics"', "\n";
     exit 1 unless $DEBUG && !$dbg_exit;
     return 1;
 }
@@ -233,18 +237,18 @@ sub read_check_commits {
 }
 
 sub explode_topics { # {{{
-    our ($i, $shas, $onto) = ('');
+    our ($i, $shas, $onto, $anon);
 
     # Commits are in correct order for an array, but in wrong order for
     # cherry-pick, so prepare all the data we need
     sub __push {
-        my $anon = $i eq '-';
-        $SEEN_ANON += $anon;
-        push @TOPICS, [$i, $shas, $anon] if length $i;
+        $i = 'anonymous-' . ++$SEEN_ANON if ($anon = $i eq '-');
+        push @TOPICS, [$i, $shas, $anon];
     }
+    $i = '';
     foreach (@REFS) {
         if ($_->[2] ne $i) {
-            __push();
+            __push() if length $i;
             $i = $_->[2];
             $shas = [];
         }
@@ -254,16 +258,14 @@ sub explode_topics { # {{{
 
     # Create topic branches and cherry-pick
     $onto = ' ' . $ONTO;
+    $anon = 0;
     foreach (@TOPICS) {
         $i = $_;
-        next if $i->[2];
         verb1("Creating <$i->[0]> and cherry-picking onto it");
-
         system("$GIT checkout -b $TOPICDIR/$i->[0]$onto $REDIR") == 0 ||
-            panic(1, "Can't create $TOPICDIR/$i->[0]; run --delete-topics");
+            panic(1, "Can't create $TOPICDIR/$i->[0]");
         system("$GIT cherry-pick --edit @{$i->[1]} $REDIR") == 0 ||
-            panic(1, "Can't cherry pick in $i->[0]; run --delete-topics");
-
+            panic(1, "Can't cherry pick in $i->[0]");
         $onto = '';
     }
 
@@ -278,25 +280,25 @@ sub explode_topics { # {{{
     # Checkout $ONTO again, and merge all the topics
     verb1("Re-checking-out <$ONTO> and merging topic branches");
     system("$GIT checkout -f $ONTO $REDIR") == 0 ||
-        panic(1, "Can't re-checkout $ONTO; run --delete-topics");
+        panic(1, "Can't re-checkout $ONTO");
 
     foreach (@TOPICS) {
         my ($br, $cpc) = ($_, shift @isff);
         if (defined $cpc) {
             system("$GIT cherry-pick --edit @{$cpc} $REDIR") == 0 ||
-                panic(1, "Can't ff-merge $br into $ONTO; run --delete-topics");
+                panic(1, "Can't ff-merge $br into $ONTO");
             next;
         }
 
         if ($REBASE || $SEEN_ANON) {
             system("$GIT rebase $ONTO $TOPICDIR/$br $REDIR") == 0 ||
-                panic(1, "Can't rebase $br onto $ONTO; run --delete-topics");
+                panic(1, "Can't rebase $br onto $ONTO");
             system("$GIT checkout -f $ONTO $REDIR") == 0 ||
-                panic(1, "Can't re-checkout $ONTO; run --delete-topics");
+                panic(1, "Can't re-checkout $ONTO");
         }
         system("$GIT merge -n --no-ff --commit --log=1000 " .
                 "$TOPICDIR/$br $REDIR") == 0 ||
-            panic(1, "Can't merge $br into $ONTO; run --delete-topics");
+            panic(1, "Can't merge $br into $ONTO");
     }
 } # }}}
 
