@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/sh -
 #@ arena-manager for dummies (should work with sh(1), bash(1); and ksh(1)).
 #@ Setup your repos once, read this script, and let it do updates in the future
 #@ TODO In fact we don't need an arena-manager2, but instead should offer
@@ -25,6 +25,7 @@
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 # And the version control executables
+SH=/bin/sh
 GIT=git
 HG=hg
 SVN=svn
@@ -428,7 +429,7 @@ update() {
                     git_ref_check_gc_update "$CURRD" "$ARENA/$AUTOGCFILE"
                 ;;
             *.update_bomb_git*)
-                xy_bomb_git_update "sh -c update.sh" 'update.sh'
+                xy_bomb_git_update "$SH -c ./update.sh" 'update.sh'
                 es=$?
                 ;;
             *.svn_bomb_git*)
