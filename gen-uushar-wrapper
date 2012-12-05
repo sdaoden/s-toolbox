@@ -10,7 +10,7 @@
 #@      https://sourceforge.net/projects/s-toolbox
 #@ Git: git.code.sf.net/p/s-toolbox/code
 #
-# Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
+# Copyright (c) 2012 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -101,7 +101,7 @@ CREATION_DATE=`date -u`
 cat <<\! > "$SHAR"
 #!/bin/sh -
 #@ This file has been created by gen-uushar-wrapper, which is
-# Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
+# Copyright (c) 2012 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
 #@ by means of the ISC license.
 #@ It contains a shell-archive-execution-environment. ;}
 #@ Run it, and it will tell you which executable files it contains.
@@ -190,4 +190,4 @@ echo >> "$SHAR" 'exit 0'
 chmod 0755 "$SHAR"
 trap : 0
 exit 0
-# vim:set fenc=utf-8 filetype=sh syntax=sh ts=3 sts=3 sw=3 et tw=79:
+# vim:set fenc=utf-8 syntax=sh ts=8 sts=3 sw=3 et tw=79:
