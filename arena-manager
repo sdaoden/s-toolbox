@@ -32,6 +32,9 @@ SVN=svn
 CVS='cvs -fz 9'
 CVS_UPDATE_FLAGS='-AP'
 
+CVS_RSH=ssh
+export CVS_RSH
+
 # So what can this script do for you?
 # It offers the following modes in an $ARENA of revision control repositories:
 #    reduce|expand|gc|fullgc|update|automerge|autogc|checkup|autoup
