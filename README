@@ -1,65 +1,78 @@
-Some tools which i use personally but which may be of interest for others, too
-==============================================================================
+A repo of some small tools
+==========================
 
 uushar:
-   Writes a sh(1) shell script to the standard output which will recreate
-   the file hierarchy specified by the command line operands.  Directories
-   will be recreated and must be specified before the files they contain
-   Compared to the well-known shar(1) program, uushar adds optional
-   compression and an uuencode(1)/uudecode(1) binary safe layer: ::
+   Writes a sh(1) shell script to the standard output which will
+   recreate the file hierarchy specified by the command line operands.
+   Directories will be recreated and must be specified before the files
+   they contain.  Compared to the well-known shar(1) program, uushar
+   adds optional compression and an uuencode(1)/uudecode(1) binary
+   safe layer::
 
       $ uushar [--(compress|gzip|bzip2|xz)] file ...
 
-   It is easy to insert trojan horses into uushar files.  It is strongly
-   recommended that all shell archive files be examined before running them
-   through sh(1).  Archives produced using this implementation of uushar
-   may be easily examined with the command: ::
+   It is easy to insert trojan horses into uushar files.  It is thus
+   strongly recommended that all shell archive files be examined before
+   running them through sh(1).  Archives produced using this
+   implementation of uushar may be easily examined with the command::
 
       $ grep '^[^X#]' shar.file
 
 gen-uushar-wrapper:
-   Creates a shell archive rather similar to uushar as above, but different
-   to that the generated archive (1) consists only of executable file
-   members, and (2) will be itself executable.  Run it (the generated shell
-   archive script) to invoke any of the programs contained therein.  On the
-   first run, the wrapper will create a hidden directory in your $TMPDIR to
-   unpack the archive therein.  (Run without arguments to show the contents
-   and creation date.)
+   Creates a shell archive similar to uushar as above, except that the
+   archive (1) consists only of executable file members, and (2) will
+   be itself executable.  Run it (the generated shell archive script)
+   to invoke any of the programs contained therein.  On the first run,
+   the wrapper will create a hidden directory in your $TMPDIR to unpack
+   the archive members therein.  (Run without arguments to show its
+   contents and the creation date.)
 
 real-periodic.sh:
-   A *real* periodic for FreeBSD, NetBSD and OpenBSD that ensures that the
-   daily/weekly/monthly maintenance stuff is executed, even if your laptop
-   is running only one hour a day.
-   Invoke this once per hour in the roots crontab and disable the usual
-   periodic stuff of your system instead.
+   A *real* periodic for FreeBSD, NetBSD and OpenBSD that ensures that
+   the daily/weekly/monthly maintenance stuff is executed, even if
+   your laptop is running only one hour a day.  Invoke this once per
+   hour in the roots crontab and disable the usual periodic stuff of
+   your system instead.  E.g., on my NetBSD 6.0 box (lines wrapped)::
 
-s-ws-check.pl:
-   Check indentation, trailing whitespace and non-breaking spaces (see
-   git-pre-commit.sh below) for all files given on the command line.
+      # do daily/weekly/monthly maintenance
+      15 * * * * /usr/bin/nice -n 15 /usr/libexec/real-periodic.sh
+      #15 3 * * * /bin/sh /etc/daily 2>&1 | \
+        tee /var/log/daily.out | sendmail -t
+      #30 4 * * 6 /bin/sh /etc/weekly 2>&1 | \
+        tee /var/log/weekly.out | sendmail -t
+      #30 5 1 * * /bin/sh /etc/monthly 2>&1 | \
+        tee /var/log/monthly.out | sendmail -t
+
+git-topic-creator.pl:
+   To ease maintaining of topic branches i use a linear history, so
+   that i can use ``$ git rebase -i`` for fixups and squashes, without
+   having to worry about recreation of topic branches.  Instead i tag
+   commit messages, and use this script to create the topics once i'm
+   finished.
 
 git-pre-commit.sh:
-   git(1)'s diff --check does unfortunately not offer a mode which detects
-   NBSP (non-breaking space, U+00A0) characters.
+   git(1)'s diff --check does unfortunately not offer a mode which
+   detects NBSP (non-breaking space, U+00A0) characters.
    This is a real problem for keyboards (layouts) which produce combined
-   sequences, i.e., the german keyboard produces NBSP for ALT+SPC, but it
-   also requires ALT to get any of []|{} (ALT+[5-9]).  So NBSP's happen.
-   This script can be used as (a template for a custom) pre-commit hook.
+   sequences, i.e., the german keyboard produces NBSP for ALT+SPC, but
+   it also requires ALT to get any of []|{} (ALT+[5-9]).  So NBSPs
+   happen.  This script can be used as (a template for a custom)
+   pre-commit hook.
 
    It also handles non-space indentations, tabulators and mixed indents,
    dependent on the environment variables NSPACEINDENT, TABINDENT and
-   MIXINDENT.  E.g., this is one of my pre-commit hooks: ::
+   MIXINDENT.  E.g., this is one of my pre-commit hooks::
 
       #!/bin/sh -
       NSPACEINDENT=1 TABINDENT=1
       export NSPACEINDENT TABINDENT
       exec "$HOME/usr/bin/git-pre-commit.sh" "$@"
 
-git-topic-creator.pl:
-   To ease maintaining of topic branches i use a linear history, so that
-   i can use 'git rebase -i' for fixups and squashes, without having to
-   worry about recreation of topic branches.
-   Instead i tag commit messages, and use this script to create the topics
-   once i'm finished.
+s-ws-check.pl:
+   Check indentation, trailing whitespace and non-breaking spaces (see
+   git-pre-commit.sh above) for all files given on the command line.
+   This is a rather primitive and silly program, but sufficient for a
+   sometimes needed quick-n-dirty check of some random file.
 
 s-idn.c:
    Simple GNU Libidn based thing that encodes and decodes IDNs.
@@ -89,16 +102,11 @@ super-shutdown.c:
    You've been warned.
 
 cdoc-freebsd.S:
-   FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.
-   May work on newer ones, but haven't tried it in a while.
-   It was 416 object file bytes (no .EH frames then).
+   FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on
+   newer ones, but haven't tried it in a while.  It had 416 object
+   file bytes when everything was placed in ``.text`` (no .EH frames
+   back then).
 
 openbsd-changelog-plus.pl,
 openbsd-changeset-plus.pl:
    Simple scripts to ease maintaining of OpenBSD plus.html entries.
-
-P.S.: If you do miss web/: that has been replaced by the grazy boosted
-      and oh so real S-Web42 project that stands by itself
-      (see http://sdaoden.users.sourceforge.net/code.html).
-
-.. vim:set fenc=utf-8 syntax=rst ts=8 sts=3 sw=3 et tw=75:
