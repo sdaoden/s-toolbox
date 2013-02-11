@@ -1,11 +1,11 @@
 #!/usr/bin/env perl
 require 5.008_001;
 #@ Check indentation and whitespace in program source files.
-#@ (Adjusted version of my git-pre-commit.sh pre-commit hook.)
+#@ Somewhat in sync with git-pre-commit.sh.
 my $SELF = 's-ws-check.pl';
-my $VERSION = 'v0.0.1';
+my $VERSION = 'v0.0.2';
 my $COPYRIGHT =<<__EOT__;
-Copyright (c) 2012 Steffen "Daode" Nurpmeso <sdaoden\@users.sf.net>
+Copyright (c) 2012, 2013 Steffen "Daode" Nurpmeso <sdaoden\@users.sf.net>
 This software is provided under the terms of the ISC license.
 __EOT__
 # Permission to use, copy, modify, and/or distribute this software for any
@@ -92,54 +92,10 @@ __EOT__
    exit $_[0];
 }
 
-sub check_diff {
-   # XXX May not be able to swallow all possible diff output yet
-   for (;;) { exit $ESTAT unless rdline(); last if $l =~ /^diff/; }
-   for (;;) { head(); exit $ESTAT unless defined hunk(); }
-}
-
 sub rdline {
    $l = <$INFD>;
    chomp $l if $l;
    $l;
-}
-
-sub head {
-   # Skip anything, including options and entire rename and delete diffs,
-   # until we see the ---/+++ line pair
-   for (;;) {
-      last if $l =~ /^---/;
-      return $l unless rdline();
-   }
-
-   return $l unless rdline();
-   die "$FILE: head, 1.: cannot parse diff!" unless $l =~ /^\+\+\+ /;
-   unless ($STANDALONE) {
-      $FILE = substr $l, 4;
-      $FILE = substr $FILE, 2 if $FILE =~ /^b\//;
-   }
-}
-
-sub hunk() {
-   return $l unless rdline();
-   die "$FILE: hunk, 1.: cannot parse diff!" unless $l =~ /^@@ /;
-JHUNK:
-   # regex shamelessly stolen from git(1), and modified
-   $l =~ /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
-   $LNO = $1 - 1;
-
-   for (;;) {
-      return $l unless rdline();
-      return if $l =~ /^diff/;      #  Different file?
-      goto JHUNK if $l =~ /^@@ /;   # Same file, different hunk?
-      next if $l =~ /^-/;           # Ignore removals
-
-      ++$LNO;
-      next if $l =~ /^ /;
-      $l = substr $l, 1;
-
-      check_line();
-   }
 }
 
 sub check_line {
@@ -153,9 +109,7 @@ sub check_line {
    }
 
    my $h = $1 if $l =~ /^(\s+)/;
-   return unless defined $h;
-   $h =~ s/(\x{0020}+)$//;
-   $h = defined $1 ? $1 : "" unless length $h;
+   return unless $h;
 
    if ($nspaceindent && $h =~ /\x{0020}/) {
       $ESTAT = 1;
@@ -165,7 +119,7 @@ sub check_line {
       $ESTAT = 1;
       print "$FILE:$LNO: tabulator in indent.\n";
    }
-   if (! $mixindent && $h =~ /\x{0009}/ && $h =~ /\x{0020}/) {
+   if ($mixindent && $h =~ /^\x{0020}+/ && $h =~ /\x{0009}/) {
       $ESTAT = 1;
       print "$FILE:$LNO: space(s) before tabulator(s) in indent.\n";
    }

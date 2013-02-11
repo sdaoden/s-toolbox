@@ -18,6 +18,9 @@ uushar:
 
       $ grep '^[^X#]' shar.file
 
+   Note that the uudecode(1) program must be capable of decoding to
+   /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
+
 gen-uushar-wrapper:
    Creates a shell archive similar to uushar as above, except that the
    archive (1) consists only of executable file members, and (2) will
@@ -26,6 +29,9 @@ gen-uushar-wrapper:
    the wrapper will create a hidden directory in your $TMPDIR to unpack
    the archive members therein.  (Run without arguments to show its
    contents and the creation date.)
+
+   Note that the uudecode(1) program must be capable of decoding to
+   /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
 
 real-periodic.sh:
    A *real* periodic for FreeBSD, NetBSD and OpenBSD that ensures that
@@ -48,7 +54,8 @@ git-topic-creator.pl:
    that i can use ``$ git rebase -i`` for fixups and squashes, without
    having to worry about recreation of topic branches.  Instead i tag
    commit messages, and use this script to create the topics once i'm
-   finished.
+   finished.  Read the --help output for more, and make use of verbosity
+   when you use it first.
 
 git-pre-commit.sh:
    git(1)'s diff --check does unfortunately not offer a mode which
@@ -57,7 +64,7 @@ git-pre-commit.sh:
    sequences, i.e., the german keyboard produces NBSP for ALT+SPC, but
    it also requires ALT to get any of []|{} (ALT+[5-9]).  So NBSPs
    happen.  This script can be used as (a template for a custom)
-   pre-commit hook.
+   pre-commit hook, especially since i've looked at it, 2013-02-11 ,
 
    It also handles non-space indentations, tabulators and mixed indents,
    dependent on the environment variables NSPACEINDENT, TABINDENT and
@@ -71,8 +78,14 @@ git-pre-commit.sh:
 s-ws-check.pl:
    Check indentation, trailing whitespace and non-breaking spaces (see
    git-pre-commit.sh above) for all files given on the command line.
-   This is a rather primitive and silly program, but sufficient for a
-   sometimes needed quick-n-dirty check of some random file.
+   Sufficient for a needed quick-n-dirty check of some random file;
+   especially since i've looked at it, 2013-02-11 ,
+
+arena-manager:
+   Offers some automatized operations on revision control repositories,
+   like updating, (fast-forward) merging, garbage-collecting.
+
+Even less of widespread usability:
 
 s-idn.c:
    Simple GNU Libidn based thing that encodes and decodes IDNs.
@@ -84,12 +97,6 @@ showkey.c:
    This is not yet finished but for Linux.  But it should help to get
    you going.  (Unfortunately the BSDs are not so documented and i
    need to dig into the kernel sources to implement the missing pieces.)
-
-Even less of widespread usability:
-
-arena-manager:
-   Offers some automatized operations on revision control repositories,
-   like updating, (fast-forward) merging, garbage-collecting.
 
 backup.pl:
    My private backup script.  Simple (uses tar(1)), but does some stuff

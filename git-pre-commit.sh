@@ -1,5 +1,6 @@
-#!/bin/sh
-#
+#!/bin/sh -
+#@ Check indentation and whitespace in program source files.
+#@ Somewhat in sync with s-ws-check.pl.
 # Public Domain.
 
 # If $GIT_NO_PRECOMMIT is nonempty, simply exit success at once.
@@ -97,9 +98,7 @@ perl -CI \
       }
 
       my $h = $1 if $l =~ /^(\s+)/;
-      return unless defined $h;
-      $h =~ s/(\x{0020}+)$//;
-      $h = defined $1 ? $1 : "" unless length $h;
+      return unless $h;
 
       if ($nspaceindent && $h =~ /\x{0020}/) {
          $ESTAT = 1;
@@ -109,7 +108,7 @@ perl -CI \
          $ESTAT = 1;
          print "$FILE:$LNO: tabulator in indent.\n";
       }
-      if (! $mixindent && $h =~ /\x{0009}/ && $h =~ /\x{0020}/) {
+      if ($mixindent && $h =~ /^\x{0020}+/ && $h =~ /\x{0009}/) {
          $ESTAT = 1;
          print "$FILE:$LNO: space(s) before tabulator(s) in indent.\n";
       }
