@@ -20,7 +20,7 @@
 
 /*
  * Code taking from S-nail(1):
- * Bas64 code core taken from NetBSDs mailx(1): */
+ * Base64 code core taken from NetBSDs mailx(1): */
 /*	$NetBSD: mime_codecs.c,v 1.9 2009/04/10 13:08:25 christos Exp $	*/
 /*
  * Copyright (c) 2006 The NetBSD Foundation, Inc.
@@ -84,9 +84,8 @@ main(int argc, char **argv)
 
    /* Mode */
    cp = *++argv;
-   if (strcmp(cp, "--") == 0)
-      goto jstdin;
-   if (strcmp(cp, "--encode") == 0 || strcmp(cp, "-e") == 0)
+   if (strcmp(cp, "--") == 0 ||
+         strcmp(cp, "--encode") == 0 || strcmp(cp, "-e") == 0)
       ;
 #ifdef HAVE_ENCODE_TEXT
    else if (strcmp(cp, "--encode-text") == 0 || strcmp(cp, "-t") == 0)
@@ -131,11 +130,11 @@ jhelp:
    fprintf(error ? stderr : stdout,
 "Synopsis:\n"
 "  s-base64 --help|-h\n"
-"  s-base64 [--encode|-e]    [--] [input-file [output-file]]\n"
+"  s-base64 [--encode|-e|--] [input-file [output-file]]\n"
 #ifdef HAVE_ENCODE_TEXT
-"  s-base64 --encode-text|-t [--] [input-file [output-file]]\n"
+"  s-base64 --encode-text|-t [input-file [output-file]]\n"
 #endif
-"  s-base64 --decode|-d      [--] [input-file [output-file]]\n"
+"  s-base64 --decode|-d      [input-file [output-file]]\n"
 "\n"
 "s-base64 reads input data and encodes or decodes it on the fly.\n"
 #ifdef HAVE_ENCODE_TEXT
