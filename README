@@ -85,12 +85,16 @@ arena-manager:
    Offers some automatized operations on revision control repositories,
    like updating, (fast-forward) merging, garbage-collecting.
 
-Even less of widespread usability:
+s-base64.c:
+   Encode to/decode from Base64 content-transfer-encoding, as specified
+   in RFC 2045, section 6.8.
 
 s-idn.c:
    Simple GNU Libidn based thing that encodes and decodes IDNs.
    Rather identical to the idn utility that comes with that one, but
    i needed to get comfortable with Libidn and so i've wrote it.
+
+Even less of widespread usability:
 
 showkey.c:
    Show keyboard scancodes for FreeBSD, OpenBSD, NetBSD and Linux.
