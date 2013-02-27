@@ -9,7 +9,7 @@
 #@ TODO configured ORIGIN BRANCHes then autogc mode would only need to be able
 #@ TODO to loop over all configured specs, and no more need 4 arena-manager2!
 #
-# Copyright (c) 2011 - 2012 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
+# Copyright (c) 2011 - 2013 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
 # All rights reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
@@ -94,57 +94,61 @@ export CVS_RSH
 
 ##
 
+# Calm perl(1) etc.
 LC_ALL=C
+
 CVSROOT=/nonexistent
 # These must be in $ARENA!
 LOGFILE=.ARENA-LOG
 AUTOGCFILE=.ARENA-AUTOGC
+
+export LC_ALL CVSROOT
 #
 ESTAT=0
 GITDID=0
 AUTOUP=0
 
-MODE="$1"
+MODE="${1}"
 shift
-PARAMS="$@"
+PARAMS=${@+"${@}"}
 CURRD=
 
 log() {
-    echo "$*"
-    echo "$*" >> "$LOGFILE"
+    echo "${*}"
+    echo "${*}" >> "${LOGFILE}"
 }
 logerr() {
-    echo >&2 "ERROR: $*"
-    echo "ERROR: $*" >> "$LOGFILE"
+    echo >&2 "ERROR: ${*}"
+    echo "ERROR: ${*}" >> "${LOGFILE}"
     ESTAT=1
 }
 
 SEP='================================================================'
 intro() {
     log ''
-    log $SEP
-    log $1
+    log ${SEP}
+    log "${1}"
 }
 final() {
-    if [ $1 -eq 0 ]; then
-        log "... ok: $2"
+    if [ ${1} -eq 0 ]; then
+        log "... ok: ${2}"
     else
-        ESTAT=$1
-        logerr "$2"
+        ESTAT=${1}
+        logerr "${2}"
     fi
-    log $SEP
+    log ${SEP}
 }
 
 # basename(1) plus cleanup
 bname() {
-    CURRD=`echo "$CURRD" | sed -e 's/\/\/*$//' -e 's/\(^.*\/\/*\)//'`
+    CURRD=`echo "${CURRD}" | sed -e 's/\/\/*$//' -e 's/\(^.*\/\/*\)//'`
 }
 
 _pipefail() {
-    if [ -z "$__pipefail" ]; then
+    if [ -z "${__pipefail}" ]; then
         ( set -o pipefail ) >/dev/null 2>&1 && __pipefail=0 || __pipefail=1
     fi
-    return $__pipefail
+    return ${__pipefail}
 }
 pipefail_on() {
     _pipefail || return 0
@@ -157,32 +161,32 @@ pipefail_off() {
 
 # Does $1 contain any substring that matches $2[-$X]?
 matches() {
-    var=$1 i=
+    var=${1} i=
     shift
 
     # Take care for older shells which don't suppor ${//}
-    if [ -z "$__matchsubst" ]; then
+    if [ -z "${__matchsubst}" ]; then
         i=zauberberg
         ( eval "test \${i/ber/} = zauberg" ) >/dev/null 2>&1 &&
             __matchsubst=1 || __matchsubst=0
     fi
-    if [ $__matchsubst -ne 0 ]; then
+    if [ ${__matchsubst} -ne 0 ]; then
         for i
         do
-            [ "$var" != "${var/$i/}" ] && return 0
+            [ "${var}" != "${var/${i}/}" ] && return 0
         done
     else
         for i
         do
-            echo $var | grep "$i" >/dev/null 2>&1 && return 0
+            echo ${var} | grep "${i}" >/dev/null 2>&1 && return 0
         done
     fi
     return 1
 }
 # Same as "! matches" except that old shells gobble it
 nmatches() {
-    matches "$@"
-    [ $? -eq 0 ] && return 1 || return 0
+    matches ${@+"$@"}
+    [ ${?} -eq 0 ] && return 1 || return 0
 }
 
 ## git(1) stuff: all called from within subshell with -o pipefail
@@ -600,7 +604,7 @@ autogc() {
         exit 1
     fi
     set -- `cat "$AUTOGCFILE"`
-    PARAMS="$@"
+    PARAMS=${@+"$@"}
     # Do a full --aggressive gc every xy months
     m=`date +%m`
     m=`expr $m : '0*\(.*\)' % 6`

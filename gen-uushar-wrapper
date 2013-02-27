@@ -10,7 +10,7 @@
 #@      https://sourceforge.net/projects/s-toolbox
 #@ Git: git.code.sf.net/p/s-toolbox/code
 #
-# Copyright (c) 2012 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
+# Copyright (c) 2012, 2013 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -27,7 +27,6 @@
 ##  --  >8  --  8<  --  ##
 ARGS=$@
 
-echo 'Howdy howdy, jo-ho hooo!'
 echo 'So let us create an uuencoded shell archive of the given utilities.'
 echo 'Please answer the upcoming questions for this to work.'
 echo 'You can at any time interrupt with CTRL-C.'
@@ -142,8 +141,8 @@ i="$TMPDIR/.$SHAR"
       echo >&2 "Sorry, this archive no program '$DEFEXEC', bailing out"
       exit 54
    fi
-   exec "$i" "$@"
-   echo >&2 "Failed to execute <$DEFEXEC $@>"
+   exec "$i" ${@+"$@"}
+   echo >&2 "Failed to execute <$DEFEXEC ${@+\"${@}\">"
    exit 71 # 71=EX_OSERR
 }
 #
