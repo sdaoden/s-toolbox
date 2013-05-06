@@ -284,15 +284,17 @@ Synopsis:
  --tmpdir=PATH    the (top) temporary directory to use - defaults to the TMPDIR
                   environment variable.
                   Currently "$TMPDIR"
- --cdrom=SPEC,--cdromdev=DEVSPEC
+ --cdrom=SPEC [,--cdromdev=DEVSPEC]
                   set CDROM drive/device to be used.  SPEC is system-dependend
                   and may be something like </dev/cdrom> or </dev/acd1c>.
-                  Mac OS X: SPEC and DEVSPEC are simple drivenumbers, e.g. <1>!
-                  There (only) it may also be necessary to specify --cdromdev:
-                  --cdrom= is used for the drutil(1) '-drive' option,
-                  whereis --cdromdev is used for raw </dev/diskDEVSPEC> access
-                  (dependend on USB usage order these numbers may even vary..).
-                  The default settings are the CDROM/CDROMDEV environ variables
+                  Mac OS X only:
+                    Only here --cdromdev maybe needed in addition, and the
+                    SPEC variables are simple drivenumbers, like, e.g. 1!
+                    --cdrom= is used for the drutil(1) '-drive' option,
+                    --cdromdev= is for raw </dev/disk?> access.
+                    Beware that these may not match, and also depend on usage
+                    order of USB devices.
+                    The default settings come from CDROM/CDROMDEV environment
  -r,--rip-only    exit after the data rip is completed (and see --encode-only)
  -e CDID,--encode-only=CDID
                   resume a --rip-only session.  CDID is the CDDB ID of the
