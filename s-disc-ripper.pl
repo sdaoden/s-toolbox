@@ -371,6 +371,15 @@ sub user_confirm {
     ($u =~ /n/i) ? 0 : 1;
 }
 
+# We have to solve two problems with strings.
+# First of all, strings that come from CDDB may be either in UTF-8 or LATIN1
+# encoding, so ensure they're UTF-8 via utf8ify()
+# Second, we use :encoding to ensure our I/O layer is UTF-8, but that doesn't
+# help for the command line of the audio encode applications we start, since
+# our carefully prepared UTF-8 strings will then be converted according to the
+# Perl I/O layer for STDOUT!  Thus we need to enwrap the open() calls that
+# start the audio encoders in utf_echomode_on() and utf_echomode_off() calls!
+
 sub utf8ify {
     # String comes from CDDB, may be latin1 or utf-8
     my $sr = shift;
@@ -378,6 +387,14 @@ sub utf8ify {
     eval { $s = Encode::decode_utf8($s, 1); };
     eval { $s = Encode::encode_utf8($s); } if $@;
     $$sr = $s;
+}
+
+sub utf8_echomode_on {
+    binmode STDOUT, ':encoding(utf8)'
+}
+
+sub utf8_echomode_off {
+    binmode STDOUT, ':pop'
 }
 # }}}
 
@@ -1916,9 +1933,11 @@ __EOT__
                                ? ('high', ' (high)', '-V 0', $self->{hipath})
                                : ('low', 'LO', '-V 7', $self->{lopath}));
         ::v("Creating MP3 lame(1) $s-quality encoder");
-        die "Can't open AAC$t: $!"
+        ::utf8_echomode_on();
+        die "Can't open MP3$t: $!"
             unless open(my $fd, '| lame --quiet -r -x -s 44.1 --bitwidth 16 ' .
                 "--vbr-new $b -q 0 - - >> $f");
+        ::utf8_echomode_off();
         die "binmode error MP3$t: $!" unless binmode $fd;
         $self->{$ishi ? 'hif' : 'lof'} = $fd;
     }
@@ -2057,9 +2076,11 @@ __EOT__
                                ? ('high', ' (high)', '-q 300', $self->{hipath})
                                : ('low', 'LO', '-q 80', $self->{lopath}));
         ::v("Creating AAC faac(1) $s-quality encoder");
+        ::utf8_echomode_on();
         die "Can't open AAC$t: $!"
             unless  open(my $fd, '| faac -XP --mpeg-vers 4 -ws --tns ' .
                 "$b $self->{aactag} -o $f - >/dev/null 2>&1");
+        ::utf8_echomode_off();
         die "binmode error AAC$t: $!" unless binmode $fd;
         $self->{$ishi ? 'hif' : 'lof'} = $fd;
     }
@@ -2110,8 +2131,10 @@ __EOT__
                                ? ('high', ' (high)', '-q 8.5', $self->{hipath})
                                : ('low', 'LO', '-q 3.8', $self->{lopath}));
         ::v("Creating OGG Vorbis oggenc(1) $s-quality encoder");
-        die "Can't open AAC$t: $!"
+        ::utf8_echomode_on();
+        die "Can't open OGG$t: $!"
             unless open(my $fd, "| oggenc -Q -r $b $self->{oggtag} -o $f -");
+        ::utf8_echomode_off();
         die "binmode error AAC$t: $!" unless binmode $fd;
         $self->{$ishi ? 'hif' : 'lof'} = $fd;
     }
