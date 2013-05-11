@@ -22,7 +22,7 @@ DB_FILE=
 _DB_FILE=/var/cron/real-periodic.stamp
 
 case `/usr/bin/uname -s` in
-FreeBSD)
+FreeBSD|DragonFly)
    _DB_FILE=/var/db/real-periodic.stamp
    MONTHLY='/usr/sbin/periodic monthly'
    WEEKLY='/usr/sbin/periodic weekly'

@@ -34,20 +34,17 @@ gen-uushar-wrapper:
    /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
 
 real-periodic.sh:
-   A *real* periodic for FreeBSD, NetBSD and OpenBSD that ensures that
-   the daily/weekly/monthly maintenance stuff is executed, even if
-   your laptop is running only one hour a day.  Invoke this once per
-   hour in the roots crontab and disable the usual periodic stuff of
-   your system instead.  E.g., on my NetBSD 6.0 box (lines wrapped)::
+   A *real* periodic for FreeBSD, DragonFly BSD, NetBSD and OpenBSD that
+   ensures that the daily/weekly/monthly maintenance stuff is executed,
+   even if your laptop is running only one hour a day.  Invoke this once
+   per hour in the roots crontab and disable the usual periodic stuff of
+   your system instead.  E.g., on my FreeBSD 10.0 box (lines wrapped)::
 
       # do daily/weekly/monthly maintenance
-      15 * * * * /usr/bin/nice -n 15 /usr/libexec/real-periodic.sh
-      #15 3 * * * /bin/sh /etc/daily 2>&1 | \
-        tee /var/log/daily.out | sendmail -t
-      #30 4 * * 6 /bin/sh /etc/weekly 2>&1 | \
-        tee /var/log/weekly.out | sendmail -t
-      #30 5 1 * * /bin/sh /etc/monthly 2>&1 | \
-        tee /var/log/monthly.out | sendmail -t
+      15	*	*	*	*	root  /usr/bin/nice -n 15 /usr/libexec/real-periodic.sh
+      #1	3	*	*	*	root	periodic daily
+      #15	4	*	*	6	root	periodic weekly
+      #30	5	1	*	*	root	periodic monthly
 
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so
