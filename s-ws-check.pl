@@ -3,9 +3,9 @@ require 5.008_001;
 #@ Check indentation and whitespace in program source files.
 #@ Somewhat in sync with git-pre-commit.sh.
 my $SELF = 's-ws-check.pl';
-my $VERSION = 'v0.0.2';
+my $VERSION = 'v0.0.3';
 my $COPYRIGHT =<<__EOT__;
-Copyright (c) 2012, 2013 Steffen "Daode" Nurpmeso <sdaoden\@users.sf.net>
+Copyright (c) 2012 - 2013 Steffen "Daode" Nurpmeso <sdaoden\@users.sf.net>
 This software is provided under the terms of the ISC license.
 __EOT__
 # Permission to use, copy, modify, and/or distribute this software for any
@@ -38,6 +38,7 @@ my ($STANDALONE, $INFD, $ESTAT, $FILE, $LNO) = (1);
 my ($nspaceindent, $tabindent, $mixindent, $l);
 
 sub main_fun {
+   $ESTAT = 0;
    $NSPACEINDENT = 1 if defined $ENV{NSPACEINDENT};
    $TABINDENT = 1 if defined $ENV{TABINDENT};
    $MIXINDENT = 1 if defined $ENV{MIXINDENT};
@@ -49,9 +50,10 @@ sub main_fun {
             'mix' => \$MIXINDENT)) {
       help(1);
    }
-   $nspaceindent = $NSPACEINDENT;
+   help(1) unless @ARGV;
    $mixindent = $MIXINDENT;
    $tabindent = $MIXINDENT ? 1 : $TABINDENT;
+   $nspaceindent = $MIXINDENT ? 0 : $NSPACEINDENT;
 
    my ($good, $bad) = (0, 0);
    while (@ARGV) {
@@ -61,7 +63,7 @@ sub main_fun {
       $LNO = 0;
       while (defined rdline()) {
          ++$LNO;
-         check_line();
+         check_line()
       }
       ++$good unless $ESTAT;
       ++$bad if $ESTAT;
@@ -70,7 +72,7 @@ sub main_fun {
    print "============\nOk : $good\nBad: $bad\n";
    $ESTAT = 1 if $bad;
 
-   exit $ESTAT;
+   exit $ESTAT
 }
 
 sub help {
@@ -87,25 +89,25 @@ Options
                   the environment variable TABINDENT is found.
    --mix          Check for mixed space/tabulator indent (space-before-tabs,
                   implies --tabs).  Automatically set if the environment
-                  variable MIXINDENT is found.
+                  variable MIXINDENT is found.  Overrides NSPACEINDENT.
 __EOT__
-   exit $_[0];
+   exit $_[0]
 }
 
 sub rdline {
    $l = <$INFD>;
    chomp $l if $l;
-   $l;
+   $l
 }
 
 sub check_line {
    if (index($l, "\x{00A0}") != -1) {
       $ESTAT = 1;
-      print "$FILE:$LNO: non-breaking space (NBSP, U+00A0).\n";
+      print "$FILE:$LNO: non-breaking space (NBSP, U+00A0).\n"
    }
    if ($l =~ /\s+$/) {
       $ESTAT = 1;
-      print "$FILE:$LNO: trailing whitespace.\n";
+      print "$FILE:$LNO: trailing whitespace.\n"
    }
 
    my $h = $1 if $l =~ /^(\s+)/;
@@ -113,18 +115,18 @@ sub check_line {
 
    if ($nspaceindent && $h =~ /\x{0020}/) {
       $ESTAT = 1;
-      print "$FILE:$LNO: spaces in indent.\n";
+      print "$FILE:$LNO: spaces in indent.\n"
    }
    if (! $tabindent && $h =~ /\x{0009}/) {
       $ESTAT = 1;
-      print "$FILE:$LNO: tabulator in indent.\n";
+      print "$FILE:$LNO: tabulator in indent.\n"
    }
    if ($mixindent && $h =~ /^\x{0020}+/ && $h =~ /\x{0009}/) {
       $ESTAT = 1;
-      print "$FILE:$LNO: space(s) before tabulator(s) in indent.\n";
+      print "$FILE:$LNO: space(s) before tabulator(s) in indent.\n"
    }
 }
 
 {package main; main_fun();}
 
-# vim:set fenc=utf-8 syntax=perl ts=8 sts=3 sw=3 et tw=79:
+# vim:set fenc=utf-8:s-it-mode

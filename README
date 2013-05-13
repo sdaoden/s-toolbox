@@ -61,22 +61,23 @@ git-pre-commit.sh:
    sequences, i.e., the german keyboard produces NBSP for ALT+SPC, but
    it also requires ALT to get any of []|{} (ALT+[5-9]).  So NBSPs
    happen.  This script can be used as (a template for a custom)
-   pre-commit hook, especially since i've looked at it, 2013-02-11 ,
+   pre-commit hook, now that i've looked at it again (2013-05-13).
 
-   It also handles non-space indentations, tabulators and mixed indents,
-   dependent on the environment variables NSPACEINDENT, TABINDENT and
-   MIXINDENT.  E.g., this is one of my pre-commit hooks::
+   It also handles non-space indentations, tabulators and mixed
+   (space-before-tabs) indents, dependent on the environment variables
+   NSPACEINDENT, TABINDENT and MIXINDENT, respectively.
+   E.g., this is one of my pre-commit hooks::
 
       #!/bin/sh -
-      NSPACEINDENT=1 TABINDENT=1
-      export NSPACEINDENT TABINDENT
+      MIXINDENT=1
+      export MIXINDENT
       exec "$HOME/usr/bin/git-pre-commit.sh" "$@"
 
 s-ws-check.pl:
    Check indentation, trailing whitespace and non-breaking spaces (see
    git-pre-commit.sh above) for all files given on the command line.
    Sufficient for a needed quick-n-dirty check of some random file;
-   especially since i've looked at it, 2013-02-11 ,
+   now that i've looked at it again (2013-05-13).
 
 arena-manager:
    Offers some automatized operations on revision control repositories,
@@ -84,7 +85,7 @@ arena-manager:
 
 s-base64.c:
    Encode to/decode from Base64 content-transfer-encoding, as specified
-   in RFC 2045, section 6.8.
+   in RFC 2045, section 6.8.  Rather failure-tolerant...
 
 s-idn.c:
    Simple GNU Libidn based thing that encodes and decodes IDNs.
