@@ -4,9 +4,9 @@ require 5.008_001;
 #@ messages, removing those tags along the way (in the topic branches).
 #@ See --help for more.
 my $SELF = 'git-topic-creator.pl';
-my $VERSION = 'v0.2.0';
+my $VERSION = 'v0.2.1';
 my $COPYRIGHT =<<__EOT__;
-Copyright (c) 2012 Steffen "Daode" Nurpmeso <sdaoden\@users.sf.net>.
+Copyright (c) 2012 - 2013 Steffen "Daode" Nurpmeso <sdaoden\@users.sf.net>.
 All rights reserved.
 This software is provided under the terms of the ISC license.
 __EOT__
@@ -35,7 +35,7 @@ use Getopt::Long;
 
 my $TOPICPATH = 'refs/heads/' . $TOPICDIR;
 # I.e., '[BRANCH] normal message'
-my $BRANCHRE = '[-_[:alnum:]]+';
+my $BRANCHRE = '[-_.[:alnum:]]+';
 my $TAGRE = ('^[[:space:]]*\[[[:space:]]*(' .
              $BRANCHRE . ')[[:space:]]*\][[:space:]]*' .
              '(.+)$');
