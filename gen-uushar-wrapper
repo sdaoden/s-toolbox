@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/sh -
 #@ gen-uushar-wrapper creates a shar(1)-like shell archive (but with
 #@ uuencode(1)d content) of given files (read from STDIN and/or ARGV), that is
 #@ itself executable.
@@ -10,7 +10,7 @@
 #@      https://sourceforge.net/projects/s-toolbox
 #@ Git: git.code.sf.net/p/s-toolbox/code
 #
-# Copyright (c) 2012, 2013 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
+# Copyright (c) 2012 - 2013 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -100,7 +100,7 @@ CREATION_DATE=`date -u`
 cat <<\! > "$SHAR"
 #!/bin/sh -
 #@ This file has been created by gen-uushar-wrapper, which is
-# Copyright (c) 2012 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
+# Copyright (c) 2012 - 2013 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
 #@ by means of the ISC license.
 #@ It contains a shell-archive-execution-environment. ;}
 #@ Run it, and it will tell you which executable files it contains.
@@ -142,7 +142,7 @@ i="$TMPDIR/.$SHAR"
       exit 54
    fi
    exec "$i" ${@+"$@"}
-   echo >&2 "Failed to execute <$DEFEXEC ${@+\"${@}\">"
+   echo >&2 "Failed to execute <$DEFEXEC ${@+\"${@}\"}>"
    exit 71 # 71=EX_OSERR
 }
 #
@@ -175,7 +175,7 @@ do
       < "$i" uuencode -m /dev/stdout | sed 's/^/X/' >> "$SHAR"
    else
       echo >> "$SHAR" \
-         "sed 's/^X//' << \!| uudecode | $xfun > \"$bi\"; chmod 0755 \"$bi\""
+         "sed 's/^X//' << \! | uudecode | $xfun > \"$bi\"; chmod 0755 \"$bi\""
       < "$i" $cfun | uuencode -m /dev/stdout | sed 's/^/X/' >> "$SHAR"
    fi
    echo >> "$SHAR" '!'
@@ -189,4 +189,4 @@ echo >> "$SHAR" 'exit 0'
 chmod 0755 "$SHAR"
 trap : 0
 exit 0
-# vim:set fenc=utf-8 syntax=sh ts=8 sts=3 sw=3 et tw=79:
+# vim:set fenc=utf-8 syntax=sh:s-it-mode
