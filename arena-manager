@@ -8,6 +8,8 @@
 #@ TODO Then if the update modes would be able to detect updates of all
 #@ TODO configured ORIGIN BRANCHes then autogc mode would only need to be able
 #@ TODO to loop over all configured specs, and no more need 4 arena-manager2!
+#@ FIXME - when updating, check that the working tree is expanded (and we're
+#@ FIXME   on the right branch) for vcs which don't work otherwise, e.g., svn
 #
 # Copyright (c) 2011 - 2013 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
 # All rights reserved.
