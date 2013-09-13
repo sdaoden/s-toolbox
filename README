@@ -47,6 +47,8 @@ real-periodic.sh:
       #30	5	1	*	*	root	periodic monthly
 
 git-topic-creator.pl:
+   2013-09-13: newer git(1) seem to reverse rev-parse output: adjusted.
+
    To ease maintaining of topic branches i use a linear history, so
    that i can use ``$ git rebase -i`` for fixups and squashes, without
    having to worry about recreation of topic branches.  Instead i tag

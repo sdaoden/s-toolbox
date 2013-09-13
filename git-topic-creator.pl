@@ -58,7 +58,7 @@ $COPYRIGHT
 _EOT
 
 my ($SEEN_ANON, $ONTO, $REV_SPEC, $NODELETE, $REBASE, $TOPIC_DELETE);
-my (@REFS, @TOPICS);
+my ($REV_NOT_REVERSED, @REFS, @TOPICS);
 
 sub main_fun { # {{{
     command_line();
@@ -178,6 +178,17 @@ sub check_git {
     panic(1, "$SELF must be run from within a git(1) working directory")
         unless $git =~ /true/;
 
+    # It seems rev-parse output has been order-reversed somewhen.
+    # Assume it was version 1.8
+    $git = `$GIT --version`;
+    $git =~ s/^\w+\s+\w+//;
+    if ($git =~ /(\d+)\.(\d+)/) {
+        my ($m, $s) = (int($1), int($2));
+        $REV_NOT_REVERSED = ($m > 1 || $s >= 8) ? 1 : 0;
+    } else {
+        $REV_NOT_REVERSED = 1;
+    }
+
     $git = `$GIT status --porcelain`;
     panic(1, "Can't execute '$GIT status --porcelain'")
         unless defined $git;
@@ -252,7 +263,11 @@ sub explode_topics { # {{{
             $i = $_->[2];
             $shas = [];
         }
-        unshift @$shas, $_->[0];
+        if ($REV_NOT_REVERSED) {
+            push @$shas, $_->[0];
+        } else {
+            unshift @$shas, $_->[0];
+        }
     }
     __push();
 
