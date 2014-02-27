@@ -1,15 +1,15 @@
 A repo of some small tools
 ==========================
 
-uushar:
+uushar (manual: uushar.1):
    Writes a sh(1) shell script to the standard output which will
    recreate the file hierarchy specified by the command line operands.
    Directories will be recreated and must be specified before the files
-   they contain.  Compared to the well-known shar(1) program, uushar
+   they contain.  Compared to the well-known shar(1) program, uushar(1)
    adds optional compression and an uuencode(1)/uudecode(1) binary
    safe layer::
 
-      $ uushar [--(compress|gzip|bzip2|xz)] file ...
+      $ uushar [-(Z|z|J|j)] file ...
 
    It is easy to insert trojan horses into uushar files.  It is thus
    strongly recommended that all shell archive files be examined before
@@ -20,6 +20,9 @@ uushar:
 
    Note that the uudecode(1) program must be capable of decoding to
    /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
+
+   2014-02-27: rewritten: short options, check and forbid filenames with
+   embedded double quotes, added uushar.1 manual.
 
 gen-uushar-wrapper:
    Creates a shell archive similar to uushar as above, except that the
