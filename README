@@ -30,11 +30,17 @@ gen-uushar-wrapper:
    be itself executable.  Run it (the generated shell archive script)
    to invoke any of the programs contained therein.  On the first run,
    the wrapper will create a hidden directory in your $TMPDIR to unpack
-   the archive members therein.  (Run without arguments to show its
-   contents and the creation date.)
+   the archive members therein.  Run without arguments to show its
+   contents and the creation date.
+   It needs no manual, simply execute it and it will guide you through
+   the archive creation process.
 
    Note that the uudecode(1) program must be capable of decoding to
    /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
+
+   2014-02-27: rewritten: check and forbid filenames with embedded
+   double quotes, ensure the given default executable, if any, is part
+   of the generated archive.
 
 real-periodic.sh:
    A *real* periodic for FreeBSD, DragonFly BSD, NetBSD and OpenBSD that

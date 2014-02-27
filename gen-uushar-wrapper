@@ -10,7 +10,7 @@
 #@      https://sourceforge.net/projects/s-toolbox
 #@ Git: git.code.sf.net/p/s-toolbox/code
 #
-# Copyright (c) 2012 - 2013 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
+# Copyright (c) 2012 - 2014 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -25,7 +25,7 @@
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ##  --  >8  --  8<  --  ##
-ARGS=$@
+ARGS=${@}
 
 echo 'So let us create an uuencoded shell archive of the given utilities.'
 echo 'Please answer the upcoming questions for this to work.'
@@ -33,76 +33,105 @@ echo 'You can at any time interrupt with CTRL-C.'
 
 printf '\nWhat should be the name of the wrapper: [] '
 read SHAR
-[ -f "$SHAR.sh" ] && {
-   echo >&2 "$SHAR.sh already exists, bailing out."
+if [ -f "${SHAR}.sh" ]; then
+   echo >&2 "${SHAR}.sh already exists, bailing out."
    exit 1
-}
-[ -z "$SHAR.sh" ] && {
-   echo >&2 "Cannot use the empty string for that, bailing out."
+fi
+if [ -z "${SHAR}.sh" ]; then
+   echo >&2 'Cannot use the empty string for that, bailing out.'
    exit 1
-}
-SHAR="$SHAR.sh"
+fi
+SHAR="${SHAR}.sh"
 
-printf "Yay, it'll be $SHAR.\n\n%s\n%s" \
+printf "Yay, it'll be ${SHAR}.\n\n%s\n%s" \
    'Is there any subcommand which should be called for "+"?' \
-   "(As in: '\$ $SHAR + -arg1 -arg2' -> '\$ XXX -arg1 -arg2')? [] "
+   "(As in: '\$ ${SHAR} + -arg1 -arg2' -> '\$ XXX -arg1 -arg2')? [] "
 read SHAR_DEFEXEC
+if [ -n "${SHAR_DEFEXEC}" ]; then
+   SHAR_DEFEXEC="`basename \"${SHAR_DEFEXEC}\"`"
+   echo "..this is ${SHAR_DEFEXEC}"
+   NEED_DEFEXEC=0
+fi
 
 printf '\n%s\n%s' \
    'Members can be compressed via compress, gzip, bzip2 and xz.' \
    'Enter desired compressor or the empty string otherwise. [] '
 read COMPRESS
-[ ! -z "$COMPRESS" ] && {
-   x_compress='compress -c -f'
-   ux_compress='uncompress -c'
-   x_gzip='gzip -c -f'
-   ux_gzip='gunzip -c -f'
-   x_bzip2='bzip2 --compress --stdout'
-   ux_bzip2='bzip2 --decompress --stdout'
-   x_xz='xz --compress --stdout'
-   ux_xz='xz --decompress --stdout'
+if [ -n "${COMPRESS}" ]; then
+   x_compress='compress -cf'
+   ux_compress='uncompress -cf'
+   x_gzip='gzip -cf'
+   ux_gzip='gzip -cdf'
+   x_bzip2='bzip2 -cf'
+   ux_bzip2='bzip2 -cdf'
+   x_xz='xz -cf'
+   ux_xz='xz -cdf'
 
-   eval cfun='$x_'"$COMPRESS"
-   eval xfun='$ux_'"$COMPRESS"
-   [ -z "$cfun" ] && {
-      echo >&2 "Unsupported compression method: $COMPRESS"
+   eval cfun='${x_'"$COMPRESS"'}'
+   eval xfun='${ux_'"$COMPRESS"'}'
+   if [ -z "${cfun}" ]; then
+      echo >&2 "Unsupported compression method, bailing out: ${COMPRESS}"
       exit 1
-   }
-}
+   fi
+fi
 
 echo
 echo 'So, we will then enter a loop to read the member programs to include.'
 echo 'An empty value will terminate your input.'
 MEMBERS= MEMBER_BASENAMES=
-[ -n "$ARGS" ] && set -- $ARGS
+[ -n "${ARGS}" ] && set -- ${ARGS}
 while :; do
-   [ -n "$ARGS" ] &&
-      { [ $# -eq 0 ] && break; i=$1; shift; printf '\t- '; :; } ||
-      { printf '\t - [] '; read i; [ -z "$i" ] && break; }
-   [ -x "$i" ] || {
-      echo >&2 "$i does not exist or is not executable, bailing out."
+   if [ -n "${ARGS}" ]; then
+      [ ${#} -eq 0 ] && break
+      i=${1}
+      shift
+      printf '\t- '
+   else
+      printf '\t - [] '
+      read i
+      [ -z "${i}" ] && break
+   fi
+
+   if [ -x "${i}" ]; then
+      :
+   else
+      echo >&2 "${i} does not exist or is not executable, bailing out."
       exit 1
-   }
-   j=`basename "$i"`
-   [ -z "$MEMBERS" ] &&
-      { MEMBERS="$i" MEMBER_BASENAMES="$j"; } ||
-      { MEMBERS="$MEMBERS, $i" MEMBER_BASENAMES="$MEMBER_BASENAMES, $j"; }
-   echo "$i: ok"
+   fi
+   if { j=${i}; echo ${j}; } | grep -q '"'; then
+      echo >&2 "Double-quotes in filenames are unsupported, bailing out: ${i}"
+      exit 1
+   fi
+
+   j=`basename "${i}"`
+   if [ -z "${MEMBERS}" ]; then
+      MEMBERS="${i}"
+      MEMBER_BASENAMES="${j}"
+   else
+      MEMBERS="${MEMBERS}, ${i}"
+      MEMBER_BASENAMES="${MEMBER_BASENAMES}, ${j}"
+   fi
+   [ "${j}" = "${SHAR_DEFEXEC}" ] && unset NEED_DEFEXEC
+   echo "${i}: ok"
 done
+
+if [ -n "${SHAR_DEFEXEC}" ] && [ -n "${NEED_DEFEXEC}" ]; then
+   echo >&2 "The default executable is missing, bailing out: ${SHAR_DEFEXEC}"
+   exit 1
+fi
 
 # Everything get.set.go, so write the actual shell archive
 # (Not backward compatible with Bourne [-C], atomicity problem: set -C)
-echo '.. end of list'
-echo 'Fine, so i am doing my work now ...'
+echo '..creating archive..'
 CREATION_DATE=`date -u`
 
 # Header
-cat <<\! > "$SHAR"
+cat <<\! > "${SHAR}"
 #!/bin/sh -
 #@ This file has been created by gen-uushar-wrapper, which is
-# Copyright (c) 2012 - 2013 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
+# Copyright (c) 2012 - 2014 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
 #@ by means of the ISC license.
-#@ It contains a shell-archive-execution-environment. ;}
+#@ It contains a shell-archive-execution-environment.
 #@ Run it, and it will tell you which executable files it contains.
 #@ Run it with the name of such an executable, and it'll create a hidden
 #@ directory in your $TMPDIR to expand the shipped executables.
@@ -111,82 +140,75 @@ cat <<\! > "$SHAR"
 #@ Archives produced using this implementation of gen-uushar-wrapper
 #@ may be easily examined with the command:
 #@    $ grep '^[^X#]' shell-archive
-
+#
 !
 
 # It's indeed our $SHAR
-trap "rm -rf '$SHAR'" 0
+trap "rm -rf '${SHAR}'" 0
 
 # A shell archive is not a transparent thing either!
-echo >> "$SHAR" "SHAR='$SHAR'"
-echo >> "$SHAR" "CREATION_DATE='$CREATION_DATE'"
-echo >> "$SHAR" "MEMBERS='$MEMBER_BASENAMES'"
-echo >> "$SHAR" '# Default expansion (if argument $1 equals +):'
-echo >> "$SHAR" "DEFEXEC='$SHAR_DEFEXEC'"
-cat <<\! >> "$SHAR"
+echo >> "${SHAR}" "SHAR='${SHAR}'"
+echo >> "${SHAR}" "CREATION_DATE='${CREATION_DATE}'"
+echo >> "${SHAR}" "MEMBERS='${MEMBER_BASENAMES}'"
+echo >> "${SHAR}" '# Default expansion (if argument ${1} equals +):'
+echo >> "${SHAR}" "DEFEXEC='${SHAR_DEFEXEC}'"
+cat <<\! >> "${SHAR}"
 #
-[ $# -eq 0 ] && {
-   echo "Archive creation: $CREATION_DATE"
-   echo "Members: $MEMBERS"
-   exit 0
-}
+[ ${#} -eq 0 ] &&
+   { echo "Creation: ${CREATION_DATE}"; echo "Members: ${MEMBERS}"; exit 0; }
 #
-i="$TMPDIR/.$SHAR"
-[ -d "$i" ] && {
-   PATH="$i:$PATH"
+i="${TMPDIR}/.${SHAR}"
+if [ -d "${i}" ]; then
+   PATH="${i}:${PATH}"
    export PATH
-   [ x"$1" = 'x+' ] && { shift; :; } || { DEFEXEC=$1; shift; }
-   i="$i/$DEFEXEC"
-   if [ ! -f "$i" ] || [ ! -x "$i" ]; then
-      echo >&2 "Sorry, this archive no program '$DEFEXEC', bailing out"
+   [ x"${1}" != 'x+' ] && DEFEXEC=${1}
+   shift
+   i="${i}/${DEFEXEC}"
+   if [ ! -f "${i}" ] || [ ! -x "${i}" ]; then
+      echo >&2 "Sorry, this archive no program '${DEFEXEC}', bailing out"
       exit 54
    fi
-   exec "$i" ${@+"$@"}
-   echo >&2 "Failed to execute <$DEFEXEC ${@+\"${@}\"}>"
+   exec "${i}" ${@+"${@}"}
+   echo >&2 "Failed to execute <${DEFEXEC} ${@+\"${@}\"}>"
    exit 71 # 71=EX_OSERR
-}
+fi
 #
 echo 'The directory'
-echo "	$i"
+echo "	${i}"
 echo 'does not exist, creating it first, and expanding this shell archive..'
-mkdir -p "$i" || {
-   echo >&2 "Cannot create directory '$i'"
-   exit 1
-}
-cd "$i" || {
-   echo >&2 "Cannot chdir '$i' to expand shell archive"
-   exit 1
-}
+mkdir -p "${i}" || { echo >&2 "Cannot create directory '${i}'"; exit 1; }
+cd "${i}" || { echo >&2 "Cannot chdir '${i}' to expand shell archive"; exit 1; }
 #
 !
 
 # uuencode(1)d and optionally compress the members to embed
-oifs=$IFS
+oifs=${IFS}
 IFS=', '
-set -- $MEMBERS
-IFS=$oifs
+set -- ${MEMBERS}
+IFS=${oifs}
 for i
 do
-   bi=`basename "$i"`
-   echo >> "$SHAR" "echo 'X - $bi'"
-   if [ -z "$cfun" ]; then
-      echo >> "$SHAR" \
-         "sed 's/^X//' << \! | uudecode > \"$bi\"; chmod 0755 \"$bi\""
-      < "$i" uuencode -m /dev/stdout | sed 's/^/X/' >> "$SHAR"
+   bi=`basename "${i}"`
+   echo >> "${SHAR}" "echo 'X - ${bi}'"
+   if [ -z "${cfun}" ]; then
+      echo >> "${SHAR}" \
+         "sed 's/^X//' << \! | uudecode > \"${bi}\"; chmod 0755 \"${bi}\""
+      < "${i}" uuencode -m /dev/stdout | sed 's/^/X/' >> "${SHAR}"
    else
-      echo >> "$SHAR" \
-         "sed 's/^X//' << \! | uudecode | $xfun > \"$bi\"; chmod 0755 \"$bi\""
-      < "$i" $cfun | uuencode -m /dev/stdout | sed 's/^/X/' >> "$SHAR"
+      echo >> "${SHAR}" \
+         "sed 's/^X//' << \! | uudecode | ${xfun} > \"${bi}\";\
+          chmod 0755 \"${bi}\""
+      < "${i}" ${cfun} | uuencode -m /dev/stdout | sed 's/^/X/' >> "${SHAR}"
    fi
-   echo >> "$SHAR" '!'
-   echo >> "$SHAR" "# END of $bi"
+   echo >> "${SHAR}" '!'
+   echo >> "${SHAR}" "# END of ${bi}"
 done
 
-echo >> "$SHAR" "echo 'SHAR is now expanded, please rerun your command'"
-echo >> "$SHAR" 'exit 0'
+echo >> "${SHAR}" "echo 'SHAR is now expanded, please rerun your command'"
+echo >> "${SHAR}" 'exit 0'
 
 # The end
-chmod 0755 "$SHAR"
+chmod 0755 "${SHAR}"
 trap : 0
 exit 0
 # vim:set fenc=utf-8 syntax=sh:s-it-mode
