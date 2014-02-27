@@ -25,14 +25,14 @@ if [ ${#} -eq 0 ]; then
    exit 1
 fi
 
-x_Z='compress -c'
-ux_Z='uncompress -c'
-x_z='gzip -c'
-ux_z='gzip -cd'
-x_J='xz -c'
-ux_J='xz -cd'
-x_j='bzip2 -c'
-ux_j='bzip2 -cd'
+x_Z='compress -cf'
+ux_Z='uncompress -cf'
+x_z='gzip -cf'
+ux_z='gzip -cdf'
+x_J='xz -cf'
+ux_J='xz -cdf'
+x_j='bzip2 -cf'
+ux_j='bzip2 -cdf'
 
 case ${1} in
 -*)
