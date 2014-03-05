@@ -38,9 +38,10 @@ gen-uushar-wrapper:
    Note that the uudecode(1) program must be capable of decoding to
    /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
 
-   2014-02-27: rewritten: check and forbid filenames with embedded
+   2014-03-05: rewritten: check and forbid filenames with embedded
    double quotes, ensure the given default executable, if any, is part
-   of the generated archive.
+   of the generated archive, reexecute after archive expansion, truly
+   disallow empty archive name.
 
 real-periodic.sh:
    A *real* periodic for FreeBSD, DragonFly BSD, NetBSD and OpenBSD that

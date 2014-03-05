@@ -1,6 +1,6 @@
 #!/bin/sh -
 #@ gen-uushar-wrapper creates a shar(1)-like shell archive (but with
-#@ uuencode(1)d content) of given files (read from STDIN and/or ARGV), that is
+#@ uuencode(1)d content) of given files (read from STDIN or ARGV), that is
 #@ itself executable.
 #@ Execute it (the generated archive) to invoke any of the programs contained
 #@ therein.  On the first run with arguments, the wrapper will create a hidden
@@ -33,28 +33,29 @@ echo 'You can at any time interrupt with CTRL-C.'
 
 printf '\nWhat should be the name of the wrapper: [] '
 read SHAR
-if [ -f "${SHAR}.sh" ]; then
-   echo >&2 "${SHAR}.sh already exists, bailing out."
-   exit 1
-fi
-if [ -z "${SHAR}.sh" ]; then
+if [ -z "${SHAR}" ]; then
    echo >&2 'Cannot use the empty string for that, bailing out.'
    exit 1
 fi
 SHAR="${SHAR}.sh"
+if [ -f "${SHAR}" ]; then
+   echo >&2 "\`${SHAR}' already exists, bailing out."
+   exit 1
+fi
 
-printf "Yay, it'll be ${SHAR}.\n\n%s\n%s" \
-   'Is there any subcommand which should be called for "+"?' \
-   "(As in: '\$ ${SHAR} + -arg1 -arg2' -> '\$ XXX -arg1 -arg2')? [] "
+printf "Yay, it'll be \`${SHAR}'.\n\n%s\n%s\n%s" \
+   "The special command \`+' should map to a subcommand?" \
+   "(As in: '\$ ${SHAR} + -h' -> '\$ SUBCOMMAND -h')?" \
+   'Enter desired command or the empty string otherwise [] '
 read SHAR_DEFEXEC
 if [ -n "${SHAR_DEFEXEC}" ]; then
    SHAR_DEFEXEC="`basename \"${SHAR_DEFEXEC}\"`"
-   echo "..this is ${SHAR_DEFEXEC}"
+   echo "..this is \`${SHAR_DEFEXEC}'"
    NEED_DEFEXEC=0
 fi
 
 printf '\n%s\n%s' \
-   'Members can be compressed via compress, gzip, bzip2 and xz.' \
+   'Members can be compressed via compress(1), gzip(1), bzip2(1) and xz(1).' \
    'Enter desired compressor or the empty string otherwise. [] '
 read COMPRESS
 if [ -n "${COMPRESS}" ]; then
@@ -76,8 +77,7 @@ if [ -n "${COMPRESS}" ]; then
 fi
 
 echo
-echo 'So, we will then enter a loop to read the member programs to include.'
-echo 'An empty value will terminate your input.'
+echo 'Enter member programs to include, empty value to terminate list.'
 MEMBERS= MEMBER_BASENAMES=
 [ -n "${ARGS}" ] && set -- ${ARGS}
 while :; do
@@ -150,7 +150,7 @@ trap "rm -rf '${SHAR}'" 0
 echo >> "${SHAR}" "SHAR='${SHAR}'"
 echo >> "${SHAR}" "CREATION_DATE='${CREATION_DATE}'"
 echo >> "${SHAR}" "MEMBERS='${MEMBER_BASENAMES}'"
-echo >> "${SHAR}" '# Default expansion (if argument ${1} equals +):'
+echo >> "${SHAR}" "# Default expansion (if argument \${1} equals \`+'):"
 echo >> "${SHAR}" "DEFEXEC='${SHAR_DEFEXEC}'"
 cat <<\! >> "${SHAR}"
 #
@@ -165,7 +165,7 @@ if [ -d "${i}" ]; then
    shift
    i="${i}/${DEFEXEC}"
    if [ ! -f "${i}" ] || [ ! -x "${i}" ]; then
-      echo >&2 "Sorry, this archive no program '${DEFEXEC}', bailing out"
+      echo >&2 "Sorry, there is no program \`${DEFEXEC}' in this archive"
       exit 54
    fi
    exec "${i}" ${@+"${@}"}
@@ -173,11 +173,13 @@ if [ -d "${i}" ]; then
    exit 71 # 71=EX_OSERR
 fi
 #
-echo 'The directory'
-echo "	${i}"
-echo 'does not exist, creating it first, and expanding this shell archive..'
-mkdir -p "${i}" || { echo >&2 "Cannot create directory '${i}'"; exit 1; }
-cd "${i}" || { echo >&2 "Cannot chdir '${i}' to expand shell archive"; exit 1; }
+printf "%s\n%s\n" "The directory \`${i}'" \
+   "doesn't exist: creating it and expanding this archive first"
+MYSELF="`pwd`/${0}"
+[ ${?} -ne 0 ] && { echo >&2 "Can't detect current working directory"; exit 1; }
+mkdir -p "${i}" || { echo >&2 "Can't create directory \`${i}'"; exit 1; }
+cd "${i}" ||
+   { echo >&2 "Can't cd into \`${i}', removing it"; rm -rf "${i}"; exit 1; }
 #
 !
 
@@ -204,8 +206,8 @@ do
    echo >> "${SHAR}" "# END of ${bi}"
 done
 
-echo >> "${SHAR}" "echo 'SHAR is now expanded, please rerun your command'"
-echo >> "${SHAR}" 'exit 0'
+echo >> "${SHAR}" "echo 'Archive is expanded, rerunning command...'"
+echo >> "${SHAR}" 'exec "${MYSELF}" ${@+"${@}"}'
 
 # The end
 chmod 0755 "${SHAR}"
