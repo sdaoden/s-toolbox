@@ -48,13 +48,15 @@ real-periodic.sh:
    ensures that the daily/weekly/monthly maintenance stuff is executed,
    even if your laptop is running only one hour a day.  Invoke this once
    per hour in the roots crontab and disable the usual periodic stuff of
-   your system instead.  E.g., on my FreeBSD 10.0 box (lines wrapped)::
+   your system instead.  Note it doesn't deal with timezone and DST
+   (daylight saving time) switches, but instead only checks the day of
+   the year that is reported by date(1).  E.g., on my FreeBSD 10.0 box::
 
       # do daily/weekly/monthly maintenance
-      15	*	*	*	*	root  /usr/bin/nice -n 15 /usr/libexec/real-periodic.sh
-      #1	3	*	*	*	root	periodic daily
-      #15	4	*	*	6	root	periodic weekly
-      #30	5	1	*	*	root	periodic monthly
+      15  * * * * root /usr/bin/nice -n 15 /usr/libexec/real-periodic.sh
+      #1  3 * * * root periodic daily
+      #15 4 * * 6 root periodic weekly
+      #30 5 1 * * root periodic monthly
 
 git-topic-creator.pl:
    2013-09-13: newer git(1) seem to reverse rev-parse output: adjusted.

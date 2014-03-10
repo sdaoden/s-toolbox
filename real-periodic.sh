@@ -53,10 +53,10 @@ esac
 
 # Current YearDay
 yd=`/bin/date +%j`
-[ $? -ne 0 ] && {
+if [ $? -ne 0 ]; then
    echo 'Unable to execute /bin/date +%j.  Bailing out.'
    exit 1
-}
+fi
 # Strip leading zeroes
 yd=`echo ${yd} | sed 's/^0*//'`
 
@@ -74,27 +74,27 @@ if [ ${yd} -lt ${lmonth} ] || [ ${yd} -lt ${lweek} ] || \
 fi
 
 i=`expr ${yd} - 30`
-[ ${i} -ge ${lmonth} ] && {
+if [ ${i} -ge ${lmonth} ]; then
    echo 'Invoking monthly periodical things.'
    lmonth=${yd}
    eval ${MONTHLY}
-}
+fi
 
 i=`expr ${yd} - 7`
-[ ${i} -ge ${lweek} ] && {
+if [ ${i} -ge ${lweek} ]; then
    echo 'Invoking weekly periodical things.'
    lweek=${yd}
    eval ${WEEKLY}
-}
+fi
 
-[ ${yd} -ne ${lday} ] && {
+if [ ${yd} -ne ${lday} ]; then
    echo 'Invoking daily periodical things.'
    lday=${yd}
    eval ${DAILY}
-}
+fi
 
 echo "${lmonth} ${lweek} ${lday}" > "${DB_FILE}"
 /bin/chmod 0644 "${DB_FILE}"
 
 exit 0
-# vim:set fenc=utf-8 syntax=sh ts=8 sts=3 sw=3 et tw=79:
+# vim:set fenc=utf-8:s-it-mode
