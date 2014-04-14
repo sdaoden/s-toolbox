@@ -92,7 +92,8 @@ git-pre-commit.sh:
 
    It also handles non-space indentations, tabulators and mixed
    (space-before-tabs) indents, dependent on the environment variables
-   NSPACEINDENT, TABINDENT and MIXINDENT, respectively.
+   NSPACEINDENT, TABINDENT and MIXINDENT, respectively.  Setting
+   MKFILEDIG will treat [Mm]akefile and *.mk files specially.
    E.g., this is one of my pre-commit hooks::
 
       #!/bin/sh -
@@ -100,11 +101,14 @@ git-pre-commit.sh:
       export MIXINDENT
       exec "$HOME/usr/bin/git-pre-commit.sh" "${@}"
 
+   2014-04-14: added MKFILEDIG.
+
 s-ws-check.pl:
    Check indentation, trailing whitespace and non-breaking spaces (see
    git-pre-commit.sh above) for all files given on the command line.
    Sufficient for a needed quick-n-dirty check of some random file;
    now that i've looked at it again (2013-05-13).
+   2014-04-14: added MKFILEDIG.
 
 s-base64.c:
    Encode to/decode from Base64 content-transfer-encoding, as specified

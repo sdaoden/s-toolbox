@@ -1,6 +1,7 @@
 #!/bin/sh -
 #@ Check indentation and whitespace in program source files.
-#@ Somewhat in sync with s-ws-check.pl.
+#@ Somewhat in sync with s-ws-check.pl, which is written by
+#@ Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
 # Public Domain.
 
 # If $GIT_NO_PRECOMMIT is nonempty, simply exit success at once.
@@ -15,6 +16,8 @@
 [ -z "$TABINDENT" ] && TABINDENT=0 || TABINDENT=1
 # Wether tabulator/space mix in indention is checked (space before tab)
 [ -z "$MIXINDENT" ] && MIXINDENT=0 || MIXINDENT=1
+# Wether [Mm]akefile and *.mk should be treated specially (leading tabs)
+[ -z "$MKFILEDIG" ] && MKFILEDIG=0 || MKFILEDIG=1
 
 ##  --  >8  --  8<  --  ##
 
@@ -32,11 +35,12 @@ perl -CI \
    -e "\$nspaceindent = \"$NSPACEINDENT\";" \
    -e "\$tabindent= \"$TABINDENT\";" \
    -e "\$mixindent = \"$MIXINDENT\";" \
+   -e "\$mkfiledig = \"$MKFILEDIG\";" \
    -e '
    $nspaceindent = 0 if $mixindent;
    $tabindent = 1 if $mixindent;
    # This is rather in sync with s-ws-check.pl..
-   my ($STANDALONE, $INFD, $ESTAT, $FILE, $LNO) = (0, *STDIN, 0);
+   my ($STANDALONE, $INFD, $ESTAT, $FILE, $MKFILE, $LNO) = (0, *STDIN, 0);
 
    #sub check_diff {
       # XXX May not be able to swallow all possible diff output yet
@@ -64,6 +68,7 @@ perl -CI \
          $FILE = substr $l, 4;
          $FILE = substr $FILE, 2 if $FILE =~ /^b\//
       }
+      $MKFILE = ($FILE =~ /^[Mm]akefile$/ || $FILE =~ /\.mk$/);
    }
 
    sub hunk() {
@@ -101,15 +106,16 @@ perl -CI \
       my $h = $1 if $l =~ /^(\s+)/;
       return unless $h;
 
-      if ($nspaceindent && $h =~ /\x{0020}/) {
+      if ((($mkfiledig && $MKFILE) || $nspaceindent) && $h =~ /\x{0020}/) {
          $ESTAT = 1;
          print "$FILE:$LNO: spaces in indent.\n"
       }
-      if (! $tabindent && $h =~ /\x{0009}/) {
+      if ((!$tabindent && (!$mkfiledig || !$MKFILE)) && $h =~ /\x{0009}/) {
          $ESTAT = 1;
          print "$FILE:$LNO: tabulator in indent.\n"
       }
-      if ($mixindent && $h =~ /^\x{0020}+/ && $h =~ /\x{0009}/) {
+      if ((($mkfiledig && $MKFILE) || $mixindent) &&
+            $h =~ /^\x{0020}+/ && $h =~ /\x{0009}/) {
          $ESTAT = 1;
          print "$FILE:$LNO: space(s) before tabulator(s) in indent.\n"
       }

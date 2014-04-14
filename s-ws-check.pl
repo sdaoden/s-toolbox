@@ -3,9 +3,9 @@ require 5.008_001;
 #@ Check indentation and whitespace in program source files.
 #@ Somewhat in sync with git-pre-commit.sh.
 my $SELF = 's-ws-check.pl';
-my $VERSION = 'v0.0.3';
+my $VERSION = 'v0.0.4';
 my $COPYRIGHT =<<__EOT__;
-Copyright (c) 2012 - 2013 Steffen "Daode" Nurpmeso <sdaoden\@users.sf.net>
+Copyright (c) 2012 - 2014 Steffen (Daode) Nurpmeso <sdaoden\@users.sf.net>
 This software is provided under the terms of the ISC license.
 __EOT__
 # Permission to use, copy, modify, and/or distribute this software for any
@@ -28,13 +28,13 @@ use warnings;
 
 use Getopt::Long;
 
-my ($NSPACEINDENT, $TABINDENT, $MIXINDENT) = (0, 0, 0);
+my ($NSPACEINDENT, $TABINDENT, $MIXINDENT, $MKFILEDIG) = (0, 0, 0, 0);
 my $INTRO =<<__EOT__;
 $SELF ($VERSION)
 $COPYRIGHT
 __EOT__
 
-my ($STANDALONE, $INFD, $ESTAT, $FILE, $LNO) = (1);
+my ($STANDALONE, $INFD, $ESTAT, $FILE, $MKFILE, $LNO) = (1);
 my ($nspaceindent, $tabindent, $mixindent, $l);
 
 sub main_fun {
@@ -42,12 +42,14 @@ sub main_fun {
    $NSPACEINDENT = 1 if defined $ENV{NSPACEINDENT};
    $TABINDENT = 1 if defined $ENV{TABINDENT};
    $MIXINDENT = 1 if defined $ENV{MIXINDENT};
+   $MKFILEDIG = 1 if defined $ENV{MKFILEDIG};
    Getopt::Long::Configure('bundling');
    unless (GetOptions(
             'h|help|?'   => sub { help(0); },
             'nspace' => \$NSPACEINDENT,
             'tabs' => \$TABINDENT,
-            'mix' => \$MIXINDENT)) {
+            'mix' => \$MIXINDENT,
+            'mkfiledig' => \$MKFILEDIG)) {
       help(1);
    }
    help(1) unless @ARGV;
@@ -58,6 +60,7 @@ sub main_fun {
    my ($good, $bad) = (0, 0);
    while (@ARGV) {
       $FILE = shift @ARGV;
+      $MKFILE = ($FILE =~ /^[Mm]akefile$/ || $FILE =~ /\.mk$/);
       open($INFD, '<', $FILE) || die "Cannot open $FILE: $^E";
       $ESTAT = 0;
       $LNO = 0;
@@ -79,7 +82,7 @@ sub help {
    print STDERR <<__EOT__;
 ${INTRO}Synopsis
    s-ws-check.pl -h|--help|-?
-   s-ws-check.pl [--tabindent] [--mixindent] FILE [:FILE:]
+   s-ws-check.pl [--nspace] [--tabs] [--mix] [--mkfiledig] FILE [:FILE:]
 
 Options
    -h|--help|-?   Print this help
@@ -90,6 +93,7 @@ Options
    --mix          Check for mixed space/tabulator indent (space-before-tabs,
                   implies --tabs).  Automatically set if the environment
                   variable MIXINDENT is found.  Overrides NSPACEINDENT.
+   --mkfiledig    Enable special treatment for [Mm]akefile and *.mk files.
 __EOT__
    exit $_[0]
 }
@@ -113,15 +117,16 @@ sub check_line {
    my $h = $1 if $l =~ /^(\s+)/;
    return unless $h;
 
-   if ($nspaceindent && $h =~ /\x{0020}/) {
+   if ((($MKFILEDIG && $MKFILE) || $nspaceindent) && $h =~ /\x{0020}/) {
       $ESTAT = 1;
       print "$FILE:$LNO: spaces in indent.\n"
    }
-   if (! $tabindent && $h =~ /\x{0009}/) {
+   if ((!$tabindent && (!$MKFILEDIG || !$MKFILE)) && $h =~ /\x{0009}/) {
       $ESTAT = 1;
       print "$FILE:$LNO: tabulator in indent.\n"
    }
-   if ($mixindent && $h =~ /^\x{0020}+/ && $h =~ /\x{0009}/) {
+   if ((($MKFILEDIG && $MKFILE) || $mixindent) &&
+         $h =~ /^\x{0020}+/ && $h =~ /\x{0009}/) {
       $ESTAT = 1;
       print "$FILE:$LNO: space(s) before tabulator(s) in indent.\n"
    }
