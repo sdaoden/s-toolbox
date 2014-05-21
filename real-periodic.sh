@@ -1,5 +1,5 @@
 #!/bin/sh -
-# real-periodic.sh: *real* periodic for *BSD that ensures that the
+# real-periodic.sh: a real periodic for *BSD that ensures that the
 # daily/weekly/monthly maintenance stuff is executed, even if your laptop
 # is running only one hour a day.
 # Invoke this once per hour in the roots crontab and disable the usual periodic
@@ -77,20 +77,20 @@ i=`expr ${yd} - 30`
 if [ ${i} -ge ${lmonth} ]; then
    echo 'Invoking monthly periodical things.'
    lmonth=${yd}
-   eval ${MONTHLY}
+   ( eval ${MONTHLY} )
 fi
 
 i=`expr ${yd} - 7`
 if [ ${i} -ge ${lweek} ]; then
    echo 'Invoking weekly periodical things.'
    lweek=${yd}
-   eval ${WEEKLY}
+   ( eval ${WEEKLY} )
 fi
 
 if [ ${yd} -ne ${lday} ]; then
    echo 'Invoking daily periodical things.'
    lday=${yd}
-   eval ${DAILY}
+   ( eval ${DAILY} )
 fi
 
 echo "${lmonth} ${lweek} ${lday}" > "${DB_FILE}"

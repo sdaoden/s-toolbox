@@ -44,7 +44,7 @@ gen-uushar-wrapper:
    disallow empty archive name.
 
 real-periodic.sh:
-   A *real* periodic for FreeBSD, DragonFly BSD, NetBSD and OpenBSD that
+   A _real_ periodic for NetBSD, FreeBSD, DragonFly BSD and OpenBSD that
    ensures that the daily/weekly/monthly maintenance stuff is executed,
    even if your laptop is running only one hour a day.  Invoke this once
    per hour in the roots crontab and disable the usual periodic stuff of
@@ -57,6 +57,9 @@ real-periodic.sh:
       #1  3 * * * root periodic daily
       #15 4 * * 6 root periodic weekly
       #30 5 1 * * root periodic monthly
+
+   2014-05-21: maintenance stuff is now run in a subshell to isolate the
+   script's process a bit better.
 
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so
