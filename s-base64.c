@@ -2,8 +2,9 @@
  *@ Compile: $ c99 -O 1 -o s-base64 s-base64.c
  *@ Use    : $ s-base64 --help
  * XXX What about mbtowc and iswspace() instead of isspace()??
+ * TODO This utility is plain shit :)
  *
- * Copyright (c) 2013 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
+ * Copyright (c) 2013 - 2014 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -84,16 +85,15 @@ main(int argc, char **argv)
 
    /* Mode */
    cp = *++argv;
-   if (strcmp(cp, "--") == 0 ||
-         strcmp(cp, "--encode") == 0 || strcmp(cp, "-e") == 0)
+   if (!strcmp(cp, "--") || !strcmp(cp, "--encode") || !strcmp(cp, "-e"))
       ;
 #ifdef HAVE_ENCODE_TEXT
-   else if (strcmp(cp, "--encode-text") == 0 || strcmp(cp, "-t") == 0)
+   else if (!strcmp(cp, "--encode-text") || !strcmp(cp, "-t"))
       fun = &b64_encode_text;
 #endif
-   else if (strcmp(cp, "--decode") == 0 || strcmp(cp, "-d") == 0)
+   else if (!strcmp(cp, "--decode") || !strcmp(cp, "-d"))
       fun = &b64_decode;
-   else if (strcmp(cp, "--help") == 0 || strcmp(cp, "-h") == 0) {
+   else if (!strcmp(cp, "--help") || !strcmp(cp, "-h")) {
       error = false;
       goto jhelp;
    } else
@@ -151,7 +151,7 @@ jhelp:
 "file it'll be created as necessary; yet existent contents are overwritten.\n"
 "The decoder ignores *any* encountered whitespace.\n"
 "\n"
-"Copyright (c) 2013 Steffen \"Daode\" Nurpmeso <sdaoden@users.sf.net>.\n"
+"Copyright (c) 2013 - 2014 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.\n"
 "This software is provided under the terms of the ISC license.\n"
 "It incorporates code that is subject to the 2-clause (Net)BSD license.\n"
    );
@@ -267,7 +267,7 @@ b64_encode(void)
    if ((il = ir) != 0)
       goto Jput;
 jleave:
-   return il != 0;
+   return (il != 0);
 }
 
 static bool
@@ -281,8 +281,9 @@ b64_decode(void)
       for (cp = ib; il != 0;) {
          /* Ignore WS; we need exactly four octets */
          for (; il != 0 && ril != 4; ++cp, --il)
-            if (! isspace(*cp))
+            if (!isspace(*cp))
                rib[ril++] = *cp;
+
          if (il == 0 && ril != 4)
             break;
          if (seeneot)
@@ -291,7 +292,7 @@ b64_decode(void)
 
          ssize_t dl = _b64_decode(ob, rib);
          if (dl < 0)
-            error = true;
+            goto jbail;
          if (fwrite(ob, sizeof *ob, dl, stdout) != (size_t)dl) {
             perror("b64_decode output failed");
             goto jleave;
@@ -303,10 +304,11 @@ b64_decode(void)
    error = (ril != 0);
 
    if (error)
+jbail:
       fprintf(stderr, "Data stream contained invalid Base64: output is most "
          "likely corrupted\n");
 jleave:
    return error;
 }
 
-/* vim:set fenc=utf-8 syntax=c ts=8 sts=3 sw=3 et tw=79: */
+/* s-it-mode */

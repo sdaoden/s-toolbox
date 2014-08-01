@@ -117,6 +117,13 @@ s-base64.c:
    Encode to/decode from Base64 content-transfer-encoding, as specified
    in RFC 2045, section 6.8.  Rather failure-tolerant...
 
+   2014-07-29: fixed SIGSEGV which could happen because of ignoring
+   errors during base64 decoding; this tool needs a rewrite to actually
+   do what it is supposed to, i.e., provide a failure-tolerant decoding
+   facility: it should print something like `xy bytes remain unparsed'
+   after an error occurred instead of simply stating that there was
+   invalid base64.
+
 s-idn.c:
    Simple GNU Libidn based thing that encodes and decodes IDNs.
    Rather identical to the idn utility that comes with that one, but
