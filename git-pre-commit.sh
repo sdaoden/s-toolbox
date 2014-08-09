@@ -68,7 +68,7 @@ perl -CI \
          $FILE = substr $l, 4;
          $FILE = substr $FILE, 2 if $FILE =~ /^b\//
       }
-      $MKFILE = ($FILE =~ /^[Mm]akefile$/ || $FILE =~ /\.mk$/);
+      $MKFILE = ($FILE =~ /[Mm]akefile$/ || $FILE =~ /\.mk$/);
    }
 
    sub hunk() {
