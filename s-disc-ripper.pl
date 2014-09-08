@@ -3,6 +3,7 @@ require 5.008_001;
 my $SELF = 's-disc-ripper.pl'; #@ part of S-MusicBox; handles CD ripping.
 #@ Requirements:
 #@  - unless --no-volume-normalize is used: sox(1) (sox.sourceforge.net)
+#@    NOTE: sox(1) changed - see $NEW_SOX below
 #@  - if MP3 is used: lame(1) (www.mp3dev.org)
 #@  - if MP4/AAC is used: faac(1) (www.audiocoding.com)
 #@  - if Ogg/Vorbis is used: oggenc(1) (www.xiph.org)
@@ -10,7 +11,7 @@ my $SELF = 's-disc-ripper.pl'; #@ part of S-MusicBox; handles CD ripping.
 my $VERSION = '0.5.0';
 my $COPYRIGHT =<<__EOT__;
 Copyright (c) 1998 - 2003,
-Copyright (c) 2010 - 2013 Steffen "Daode" Nurpmeso <sdaoden\@users.sf.net>.
+Copyright (c) 2010 - 2014 Steffen (Daode) Nurpmeso <sdaoden\@users.sf.net>.
 All rights reserved under the terms of the ISC license.
 __EOT__
 # Permission to use, copy, modify, and/or distribute this software for any
@@ -24,6 +25,11 @@ __EOT__
 # WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+# New sox(1) with '-e signed-integer' instead of -s, '-b 16' instead of -w
+# and -n (null device) instead of -e (to stop input file processing)
+# (I guess this refers to post v14)
+my $NEW_SOX = 1;
 
 # May be changed for different site-global default settings
 my ($MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO) = (0,0, 1,1, 1,0);
@@ -1812,7 +1818,10 @@ __EOT__
             my $f = $t->{RAW_FILE};
             die "Can't open SOX stat for $f: $!"
                 unless open SOX,
-                    "sox -t raw -r44100 -c2 -w -s $f -e stat -v 2>&1 |";
+                    ($NEW_SOX
+                     ? "sox -t raw -r 44100 -c 2 -b 16 -e signed-integer $f " .
+                        "-n stat -v 2>&1 |"
+                     : "sox -t raw -r 44100 -c 2 -w -s $f -e stat -v 2>&1 |");
             my $avg = <SOX>;
             die "Can't close SOX stat for $f: $!" unless close SOX;
             chomp $avg;
@@ -1853,8 +1862,10 @@ __EOT__
 
         if (defined $VolNorm) {
             die "Can't open RAW input sox(1) pipe: $!"
-                unless open RAW, "sox $VolNorm -t raw -r44100 -c2 -w -s " .
-                    $title->{RAW_FILE} . ' -t raw - |';
+                unless open RAW,
+                    "sox $VolNorm -t raw -r 44100 -c 2 " .
+                        ($NEW_SOX ? "-b 16 -e signed-integer" : "-w -s") .
+                        " " . $title->{RAW_FILE} . ' -t raw - |';
         } else {
             die "Can't open RAW input file: $!"
                 unless open RAW, '<', $title->{RAW_FILE};
