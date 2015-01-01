@@ -29,89 +29,86 @@ use POSIX;
 use Socket;
 
 sub nntp_command {
-    my ($cmd) = @_;
-    $cmd =~ s/[\r\n]+$//; # canonicalize linebreaks.
-    #print STDERR ">> $cmd\n";
-    print NNTP "$cmd\r\n";
+   my ($cmd) = @_;
+   $cmd =~ s/[\r\n]+$//; # canonicalize linebreaks.
+   #print STDERR ">> $cmd\n";
+   print NNTP "$cmd\r\n"
 }
 
 sub nntp_response {
-    my ($no_error) = @_;
-    $_ = <NNTP>;
-    s/[\r\n]+$//; # canonicalize linebreaks.
-    #print STDERR "<< $_\n";
-    if ( ! m/^[0-9][0-9][0-9] / ) {
-        die("malformed NNTP response: $_");
-    }
-    if ( ! $no_error && ! m/^2[0-9][0-9] / ) {
-        die("NNTP error: $_");
-    }
-    return $_;
+   my ($no_error) = @_;
+   $_ = <NNTP>;
+   s/[\r\n]+$//; # canonicalize linebreaks.
+   #print STDERR "<< $_\n";
+   die "Malformed NNTP response: $_" if !m/^[0-9][0-9][0-9] /;
+   die "NNTP error: $_" if !$no_error && !m/^2[0-9][0-9] /;
+   $_
 }
 
 sub nntp_open {
-    my ($hostname, $port) = @_;
-    $port = 119 unless $port;
-
-    # Open a socket and get the data
-    my ($sockaddr,$there,$response,$tries) = ("Snc4x8");
-    my $there = pack($sockaddr,2,$port, &getaddress($hostname));
-    my ($a, $b, $c, $d) = unpack('C4', $hostaddr);
-
-    my $proto = (getprotobyname ('tcp'))[2];
-
-    if (!socket(NNTP,AF_INET,SOCK_STREAM,$proto)) {
-	die "$0:  Fatal Error.  $!\n"; }
-    if (!connect(NNTP,$there)) { die "$0:  Fatal Error.  $!\n"; }
-    select(NNTP);$|=1;
-    select(STDOUT);$|=1;
-
-    nntp_response;
-
-    sub getaddress {
-      my($host) = @_;
-      my(@ary);
+   sub _getaddress {
+      my ($host) = @_;
+      my (@ary);
       @ary = gethostbyname($host);
-      return(unpack("C4",$ary[4]));
-    }
+      unpack("C4", $ary[4])
+   }
+
+   my ($hostname, $port) = @_;
+   $port = 119 unless $port;
+
+   # Open a socket and get the data
+   my ($sockaddr,$there,$response,$tries) = ("Snc4x8");
+   my $there = pack($sockaddr,2,$port, _getaddress($hostname));
+   my ($a, $b, $c, $d) = unpack('C4', $hostaddr);
+
+   my $proto = (getprotobyname('tcp'))[2];
+
+   die "$0: Fatal Error. $!\n" if !socket(NNTP, AF_INET, SOCK_STREAM, $proto);
+   die "$0: Fatal Error. $!\n" unless connect(NNTP, $there);
+   select(NNTP);$|=1;
+   select(STDOUT);$|=1;
+
+   nntp_response;
 }
 
 sub nntp_close {
-    nntp_command "QUIT";
-    close NNTP;
+   nntp_command "QUIT";
+   close NNTP
 }
 
 sub nntp_group {
-    my ($group) = @_;
-    nntp_command "GROUP $group";
-    $_ = nntp_response;
-    my ($from, $to) = m/^[0-9]+ [0-9]+ ([0-9]+) ([0-9]+) .*/;
-    return ($from, $to);
+   my ($group) = @_;
+   nntp_command "GROUP $group";
+   $_ = nntp_response 1;
+   return (undef, undef) if /^411 /; # No such newsgroup
+   my ($from, $to) = m/^[0-9]+ [0-9]+ ([0-9]+) ([0-9]+) .*/;
+   ($from, $to)
 }
 
 sub nntp_article {
-    my ($fh, $group, $art) = @_;
-    nntp_command "ARTICLE $art";
-    $_ = nntp_response 1;
+   my ($fh, $group, $art) = @_;
+   nntp_command "ARTICLE $art";
+   $_ = nntp_response 1;
 
-    if ( m/^423 / ) {
-        print STDERR "\n! Article $art expired or cancelled?\n";
-        return;
-    }
+   if (m/^423 /) {
+      print STDERR "\n! Article $art expired or cancelled?\n";
+      return 0
+   }
+   if (!m/^2[0-9][0-9] /) {
+      print STDERR "\n! NNTP error: $_\n";
+      return 0
+   }
 
-    if ( ! m/^2[0-9][0-9] / ) {
-        die("NNTP error: $_");
-    }
-
-    print $fh "From ${group}-${art} ", scalar gmtime, "\n";
-    while (<NNTP>) {
-        s/[\r\n]+$//;    # canonicalize linebreaks.
-        last if m/^\.$/; # lone dot terminates
-        s/^\.//;         # de-dottify.
-        s/^(From )/>\1/; # de-Fromify.
-        print $fh "$_\n";
-    }
-    print $fh "\n";
+   print $fh "From ${group}-${art} ", scalar gmtime, "\n";
+   while (<NNTP>) {
+      s/[\r\n]+$//;    # canonicalize linebreaks.
+      last if m/^\.$/; # lone dot terminates
+      s/^\.//;         # de-dottify.
+      s/^(From )/>\1/; # de-Fromify.
+      print $fh "$_\n"
+   }
+   print $fh "\n";
+   1
 }
 
 sub main {
@@ -156,14 +153,20 @@ sub main {
          print STDERR
             ". Update $gr->[0] #$gr->[3] ($gr->[1]/$gr->[2]) .. "
       }
-      ($gr->[1], $gr->[2]) = nntp_group($gr->[0]);
-      print STDERR "$gr->[1]/$gr->[2]\n";
 
-      if ($gr->[3] < 0) {
-         $gr->[3] = $gr->[2]
+      my ($f, $t) = nntp_group($gr->[0]);
+      if (!defined $f) {
+         print STDERR "GROUP INACCESSABLE, skipping entry\n";
+         next;
+      }
+      print STDERR "$f/$t\n";
+      ($gr->[1], $gr->[2]) = ($f, $t);
+
+      if (!defined $gr->[3] || $gr->[3] < 0 || $gr->[3] > $t) {
+         $gr->[3] = $t
       } else {
          my $j = 0;
-         while ($gr->[3] < $gr->[2]) {
+         while ($gr->[3] < $t) {
             ++$gr->[3];
             if ($j++ == 0) {
                print STDERR "   $gr->[3]"
@@ -172,7 +175,8 @@ sub main {
             } else {
                print STDERR " $gr->[3]";
             }
-            nntp_article(($update > 0 ? *MBOX : *STDOUT), $gr->[0], $gr->[3])
+            last unless
+               nntp_article(($update > 0 ? *MBOX : *STDOUT), $gr->[0], $gr->[3])
          }
          print STDERR "\n" if $j > 0;
       }
