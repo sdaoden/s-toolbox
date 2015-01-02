@@ -1,4 +1,5 @@
 #!/usr/bin/env perl
+require 5.008_001;
 #@ gmane-fetch.pl: connect to $HOSTNAME and query/update all groups that are
 #@ mentioned in the configuration file $RCFILE, store fetched articles of
 #@ updated groups in $MBOX (appended), finally update $RCFILE.
@@ -11,7 +12,7 @@ my $HOSTNAME = "news.gmane.org";
 my $RCFILE = "${ENV{HOME}}/arena/data/mail/.gmane.rc";
 my $MBOX = "${ENV{HOME}}/arena/data/mail/gmane";
 #
-# Copyright © 2014 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
+# Copyright © 2014 - 2015 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
 #
 # Based on the script nntp-to-mbox.pl that is:
 #
@@ -25,6 +26,11 @@ my $MBOX = "${ENV{HOME}}/arena/data/mail/gmane";
 # software for any purpose.  It is provided "as is" without express or 
 # implied warranty.
 
+use diagnostics -verbose;
+use warnings;
+use strict;
+
+use Encode;
 use POSIX;
 use Socket;
 
@@ -46,27 +52,21 @@ sub nntp_response {
 }
 
 sub nntp_open {
-   sub _getaddress {
-      my ($host) = @_;
-      my (@ary);
-      @ary = gethostbyname($host);
-      unpack("C4", $ary[4])
-   }
-
    my ($hostname, $port) = @_;
    $port = 119 unless $port;
 
+   my $iaddr = gethostbyname($hostname);
+   die "$0: Cannot resolve hostname \"$hostname\".  $!" unless $iaddr;
+
    # Open a socket and get the data
-   my ($sockaddr,$there,$response,$tries) = ("Snc4x8");
-   my $there = pack($sockaddr,2,$port, _getaddress($hostname));
-   my ($a, $b, $c, $d) = unpack('C4', $hostaddr);
 
-   my $proto = (getprotobyname('tcp'))[2];
+   die "$0: Cannot create socket: $!\n"
+      if !socket NNTP, AF_INET, SOCK_STREAM, (getprotobyname('tcp'))[2];
 
-   die "$0: Fatal Error. $!\n" if !socket(NNTP, AF_INET, SOCK_STREAM, $proto);
-   die "$0: Fatal Error. $!\n" unless connect(NNTP, $there);
+   die "$0: Cannot connect: $!\n"
+      unless connect NNTP, pack_sockaddr_in($port, $iaddr);
+   binmode NNTP, ":bytes";
    select(NNTP);$|=1;
-   select(STDOUT);$|=1;
 
    nntp_response;
 }
@@ -104,7 +104,7 @@ sub nntp_article {
       s/[\r\n]+$//;    # canonicalize linebreaks.
       last if m/^\.$/; # lone dot terminates
       s/^\.//;         # de-dottify.
-      s/^(From )/>\1/; # de-Fromify.
+      s/^(From )/>$1/; # de-Fromify.
       print $fh "$_\n"
    }
    print $fh "\n";
@@ -113,7 +113,7 @@ sub nntp_article {
 
 sub main {
    print STDERR ". Reading resource file ${RCFILE}..\n";
-   open RC, '<', $RCFILE or die $^E;
+   open RC, '<:bytes', $RCFILE or die $^E;
    my @ogrps = <RC>;
    close RC or die $^E;
 
@@ -140,7 +140,8 @@ sub main {
    }
 
    if ($update > 0) {
-      open MBOX, '>>', $MBOX or die $^E;
+      open MBOX, '>>:bytes', $MBOX or die $^E;
+      select MBOX;$|=1;
    }
    print STDERR ". Connecting to ${HOSTNAME}..\n";
    nntp_open $HOSTNAME;
@@ -188,7 +189,7 @@ sub main {
    }
 
    print STDERR ". Writing resource file ${RCFILE}..\n";
-   open RC, '>', $RCFILE or die $^E;
+   open RC, '>:bytes', $RCFILE or die $^E;
    while (@comments) {
       my $c = shift @comments;
       print RC $c, "\n"
