@@ -84,6 +84,9 @@ arena-manager.sh:
 
 Even less of widespread usability:
 
+phk-utcdrift.c:
+   Fetch a PHK DNS A record and decode it.
+
 gmane-fetch.pl:
    Download NNTP articles from Gmane.org, incrementally, and store them in
    a local MBOX.
