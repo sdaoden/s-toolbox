@@ -1,7 +1,9 @@
 /*@ Fetch a PHK DNS A record and calculate current leapsecond status.
  *@ Compile:  $ cc -o leapsec phk-utcdrift.c
  *@ Fallback: $ cc -DWANT_GETHOSTBYNAME -o leapsec phk-utcdrift.c
- *@ Synopsis: $ ./leapsec SERVER
+ *@ Synopsis:
+ *@   Fetching: $ ./leapsec SERVER
+ *@     Encode: $ ./leapsec YEAR MONTH BASE-DRIFT ADJUSTMENT
  *
  * Written 2015 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
  * Public Domain.
@@ -71,6 +73,14 @@ typedef signed int        si32_t;
 
 typedef enum {FAL0, TRU1} bool_t;
 
+/*
+ * PHK DNS A:
+ * - Class E: 4-bit (0b1111)
+ * - Months since 1972: 10-bit
+ * - Base drift before leapsecond: 8-bit
+ * - Drift adjustment: 2-bit
+ * - CRC-8 PHK checksum: 8-bit
+ */
 struct dns_leapinfo {
   ui32_t  dl_addr_parts[4];
   ui8_t   _dl_pad1[1];
@@ -82,9 +92,12 @@ struct dns_leapinfo {
   char    dl_addr[NI_MAXHOST];
 };
 
+static int    _encode(char **argv, struct dns_leapinfo *dlp);
+
 static bool_t _fetch_addr(char const *host, struct dns_leapinfo *dlp);
 static bool_t _dl_addr_to_aparts(struct dns_leapinfo *dlp);
-static bool_t _dl_crc8_phk(struct dns_leapinfo const *dlp);
+/* count specifies the number of array entries to be walked */
+static ui32_t _dl_crc8_phk(struct dns_leapinfo const *dlp, ui32_t count);
 static bool_t _dl_explode(struct dns_leapinfo *dlp);
 
 int
@@ -94,15 +107,23 @@ main(int argc, char **argv)
   int rv;
 
   rv = _EX_USAGE;
-  if (argc != 2) {
-    fprintf(stderr, "Synopsis: %s SERVER\n", argv[0]);
+  if (argc != 2 && argc != 5) {
+    fprintf(stderr,
+      "Synopsis fetch : %s SERVER\n"
+      "         encode: %s YEAR MONTH BASE-DRIFT ADJUSTMENT\n",
+      argv[0], argv[0]);
     goto jleave;
   }
 
-  rv = _EX_NOHOST;
-  if (!_fetch_addr(argv[1], &dl)) {
-    fprintf(stderr, "! DNS failed to resolve `%s'\n", argv[1]);
-    goto jleave;
+  if (argc == 5)
+    argc = _encode(argv + 1, &dl);
+  else {
+    argc = _EX_OK;
+    rv = _EX_NOHOST;
+    if (!_fetch_addr(argv[1], &dl)) {
+      fprintf(stderr, "! DNS failed to resolve `%s'\n", argv[1]);
+      goto jleave;
+    }
   }
 
   rv = _EX_DATAERR;
@@ -111,7 +132,7 @@ main(int argc, char **argv)
     goto jprint;
   }
 
-  if (!_dl_crc8_phk(&dl)) {
+  if (_dl_crc8_phk(&dl, NELEM(dl.dl_addr_parts)) != 0) {
     fprintf(stderr, "! CRC checksum failure\n");
     goto jprint;
   }
@@ -122,14 +143,79 @@ main(int argc, char **argv)
     goto jprint;
   }
 
-  rv = _EX_OK;
+  rv = (argc != _EX_OK) ? argc : _EX_OK;
 jprint:
-  printf("%s -> %s %04u-%02u %c%d %c%d\n",
+  printf("%s -> %s %04u-%02u %s%d %s%d\n",
     dl.dl_addr, (rv == _EX_OK ? "OK" : "BAD"),
     (ui32_t)dl.dl_year, (ui32_t)dl.dl_month,
-    (dl.dl_drift < 0 ? '-' : '+'), (si32_t)dl.dl_drift,
-    (dl.dl_adjust < 0 ? '-' : '+'), (si32_t)dl.dl_adjust);
+    (dl.dl_drift < 0 ? "" : "+"), (si32_t)dl.dl_drift,
+    (dl.dl_adjust < 0 ? "" : "+"), (si32_t)dl.dl_adjust);
 jleave:
+  return rv;
+}
+
+static int
+_encode(char **argv, struct dns_leapinfo *dlp)
+{
+  ui32_t y, m, i;
+  si32_t drift, adj;
+  int rv = _EX_OK;
+
+  /* Regarding strto*() handling */
+  printf("Warning: encode mode doesn't truly verify arguments!\n");
+
+  y = (ui32_t)strtoul(argv[0], NULL, 0);
+  if (y < 1972 || y > 2057) {
+    fprintf(stderr, "! Invalid (non-representable) year: %u\n", y);
+    rv = _EX_DATAERR;
+  }
+  m = (ui32_t)strtoul(argv[1], NULL, 0);
+  if (m < 1 || m > 12 || (y == 2057 && m > 4)) {
+    fprintf(stderr, "! Invalid (non-representable) month %u (for year %u)\n",
+      m, y);
+    rv = _EX_DATAERR;
+  }
+  drift = (si32_t)strtol(argv[2], NULL, 0);
+  if (drift < -128 || drift > 127) {
+    fprintf(stderr, "! Invalid (non-representable) drift: %d\n", drift);
+    rv = _EX_DATAERR;
+  }
+  adj = (si32_t)strtol(argv[3], NULL, 0);
+  if (adj < -1 || adj > 1 || adj == 0) {
+    fprintf(stderr, "! Invalid adjustment: %d\n", adj);
+    rv = _EX_DATAERR;
+  }
+
+  i = (y - 1972) * 12 + (m - 1);
+  i <<= 8;
+  i |= drift;
+  i <<= 2;
+  switch (adj) {
+  case  1: i |= 0x1; break;
+  case -1: i |= 0x3; break;
+  default: break;
+  }
+  i <<= 8;
+  i |= 0xF0000000u;
+
+  dlp->dl_addr_parts[0] = i >> 24;
+  dlp->dl_addr_parts[1] = (i >> 16) & 0xFF;
+  dlp->dl_addr_parts[2] = (i >>  8) & 0xFF;
+  dlp->dl_addr_parts[3] = _dl_crc8_phk(dlp, NELEM(dlp->dl_addr_parts) - 1);
+
+#if defined __STDC_VERSION__ && __STDC_VERSION__ + 0 >= 199901L
+  snprintf
+#else
+  sprintf
+#endif
+    (dlp->dl_addr,
+#if defined __STDC_VERSION__ && __STDC_VERSION__ + 0 >= 199901L
+      sizeof dlp->dl_addr,
+#endif
+    "%u.%u.%u.%u",
+    dlp->dl_addr_parts[0], dlp->dl_addr_parts[1], dlp->dl_addr_parts[2],
+    dlp->dl_addr_parts[3]
+  );
   return rv;
 }
 
@@ -251,13 +337,13 @@ jleave:
   return rv;
 }
 
-static bool_t
-_dl_crc8_phk(struct dns_leapinfo const *dlp)
+static ui32_t
+_dl_crc8_phk(struct dns_leapinfo const *dlp, ui32_t count)
 {
   ui32_t const poly = 0xCF;
   ui32_t crc, i, slot, j, mix;
 
-  for (crc = i = 0; i < NELEM(dlp->dl_addr_parts); ++i)
+  for (crc = i = 0; i < count; ++i)
     for (slot = dlp->dl_addr_parts[i], j = 0; j < 8; ++j) {
       mix = (crc ^ slot) & 0x01;
       crc >>= 1;
@@ -265,7 +351,7 @@ _dl_crc8_phk(struct dns_leapinfo const *dlp)
         crc ^= poly;
       slot >>= 1;
     }
-  return (crc == 0 ? TRU1 : FAL0);
+  return crc;
 }
 
 static bool_t
@@ -284,11 +370,11 @@ _dl_explode(struct dns_leapinfo *dlp)
   i &= ~0xF00000;
 
   switch ((dlp->dl_adjust = (si8_t)(i & 0x03))) {
-  case 0x00:
   case 0x02:
     goto jleave;
   case 0x03:
     dlp->dl_adjust = -1;
+  case 0x00:
   default:
     break;
   }
