@@ -162,7 +162,7 @@ _encode(char **argv, struct dns_leapinfo *dlp)
   int rv = _EX_OK;
 
   /* Regarding strto*() handling */
-  printf("Warning: encode mode doesn't truly verify arguments!\n");
+  fprintf(stderr, "Warning: encode mode doesn't truly verify arguments!\n");
 
   y = (ui32_t)strtoul(argv[0], NULL, 0);
   if (y < 1972 || y > 2057) {
@@ -181,7 +181,7 @@ _encode(char **argv, struct dns_leapinfo *dlp)
     rv = _EX_DATAERR;
   }
   adj = (si32_t)strtol(argv[3], NULL, 0);
-  if (adj < -1 || adj > 1 || adj == 0) {
+  if (adj < -1 || adj > 1) {
     fprintf(stderr, "! Invalid adjustment: %d\n", adj);
     rv = _EX_DATAERR;
   }
