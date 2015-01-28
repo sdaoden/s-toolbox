@@ -331,8 +331,6 @@ _dl_addr_to_aparts(struct dns_leapinfo *dlp)
       goto jleave;
     }
   }
-
-  rv = TRU1;
 jleave:
   return rv;
 }
