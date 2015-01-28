@@ -55,6 +55,7 @@ my @NORMAL_INPUT = (
     "$HOME/arena/docs.2wheel",
     "$HOME/arena/docs.4wheel",
     "$HOME/arena/docs.coding",
+    "$HOME/arena/docs.literature",
     "$HOME/arena/docs.misc",
     "$HOME/arena/movies.snapshots",
     "$HOME/arena/pics.artwork",
@@ -63,6 +64,7 @@ my @NORMAL_INPUT = (
 my @COMPLETE_INPUT = (
     "$HOME/arena/code.local",
     "$HOME/arena/data",
+    "$HOME/arena/docs.literature",
     "$HOME/arena/movies.snapshots",
     "$HOME/arena/pics.artwork",
     "$HOME/arena/pics.snapshots"
