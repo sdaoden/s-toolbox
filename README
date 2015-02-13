@@ -75,7 +75,7 @@ arena-manager.sh:
    Offers some automatized operations on revision control repositories,
    like updating, (fast-forward) merging, garbage-collecting.
 
-   2014-XX-XX: complete rewrite that completely replaces the old
+   2015-XX-XX: complete rewrite that completely replaces the old
    ``arena-manager`` and requires only a POSIX environment (no perl(1)).
    The new ``setup`` mode must be used to initialize a managed
    (git(1)-based) repository; this results in a much more powerful
@@ -91,6 +91,11 @@ gmane-fetch.pl:
    Download NNTP articles from Gmane.org, incrementally, and store them in
    a local MBOX.
    Read and adjustthe script header for documentation and configuration.
+
+simple-git-push.sh:
+   Synchronize a bunch of local repos with their remotes.
+   Brute simple version that only can push.
+   Needs awk(1).
 
 git-pre-commit.sh:
    git(1)'s diff --check does unfortunately not offer a mode which
