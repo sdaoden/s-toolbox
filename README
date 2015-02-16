@@ -92,9 +92,9 @@ gmane-fetch.pl:
    a local MBOX.
    Read and adjustthe script header for documentation and configuration.
 
-simple-git-push.sh:
+git-simple-push.sh:
    Synchronize a bunch of local repos with their remotes.
-   Brute simple version that only can push.
+   Brute simple version that can only push.
    Needs awk(1).
 
 git-pre-commit.sh:

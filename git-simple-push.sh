@@ -2,8 +2,7 @@
 #@ simple-git-push.sh - synchronize a bunch of local repos with their remotes.
 #@ ..In case any local branch has a different SHA1 as the remote ref this
 #@ brute simple thing will invoke "git push -f REMOTE".
-#@ TODO do more checking, auto-fetch instead as necessary.
-#@ TODO when we do support auto-fetch, keep tags in sync, too
+#@ TODO do a real version compare, like that we could manage tags, too!
 #
 # Public Domain
 
@@ -46,8 +45,8 @@ for d in ${REPOS}; do
           next
         }
 
-        rembr[br] = br
-        remsha[br] = $1
+        rembr[repo br] = br
+        remsha[repo br] = $1
         remrepo[repo] = repo
       } else if ($2 ~ /^refs\/heads/) {
         br = substr($2, 12)
@@ -56,14 +55,14 @@ for d in ${REPOS}; do
       }
     }
     END {
-      for (rr in remrepo) {
+      for (repo in remrepo) {
         for (br in locbr) {
           # We ignore non-existent branches
-          if (!rembr[br])
+          if (!rembr[repo br])
             continue
-          if (locsha[br] != remsha[br]) {
-            print "++ Pushing to \"" rr "\" (at least \"" br "\" differs)!"
-            system("git push -f " rr)
+          if (locsha[br] != remsha[repo br]) {
+            print "++ Pushing to \"" repo "\" (at least \"" br "\" differs)!"
+            system("git push -f " repo)
             break
           }
         }
