@@ -1,5 +1,5 @@
 #!/bin/sh -
-#@ simple-git-push.sh - synchronize a bunch of local repos with their remotes.
+#@ git-simple-push.sh - synchronize a bunch of local repos with their remotes.
 #@ ..In case any local branch has a different SHA1 as the remote ref this
 #@ brute simple thing will invoke "git push -f REMOTE".
 #@ TODO do a real version compare, like that we could manage tags, too!
