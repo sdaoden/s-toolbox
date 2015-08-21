@@ -6,7 +6,7 @@
 #
 # Public Domain
 
-cd "${HOME}/arena/code.local" || exit 42
+cd "${HOME}/arena/code" || exit 42
 REPOS="s-cacert.update_bomb_git\
     s-ctext.git\
     s-musicbox.git\
