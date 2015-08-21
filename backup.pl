@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 #@ Simple updater, places backup and metadata files in $(REPO_)?OUTPUT_DIR.
 #@ default: (tar -rf) backup.tar files changed since (timestamp of) last run
 #@ -r/--reset: do not take care about timestamps, do create xy.dateTtime.tbz
@@ -32,7 +32,7 @@ my $REPO_OUTPUT_DIR = "$HOME/arena/data/backups";
 # "bundle" command with all possible flags to create the backup for everything
 # that is not found in --remotes, which thus automatically includes stashes
 # etc. (for the latter .git/logs/refs/stash is also backed up)
-my $REPO_SRC_DIR = "$HOME/src";
+my $REPO_SRC_DIR = "$HOME/usr/src";
 
 # Our metadata storage file
 my $TSTAMP = "$OUTPUT_DIR/.-backup.dat";
@@ -50,24 +50,10 @@ my @EXLIST = qw(.DS_Store .localized .Trash);
 # List of input directories for normal mode/--complete mode, respectively.
 # @NORMAL_INPUT is regulary extended by all directories found in $ADDONS, iff
 my @NORMAL_INPUT = (
-    "$HOME/arena/code.local",
-    "$HOME/arena/data",
-    "$HOME/arena/docs.2wheel",
-    "$HOME/arena/docs.4wheel",
-    "$HOME/arena/docs.coding",
-    "$HOME/arena/docs.literature",
-    "$HOME/arena/docs.misc",
-    "$HOME/arena/movies.snapshots",
-    "$HOME/arena/pics.artwork",
-    "$HOME/arena/pics.snapshots"
+    "$HOME/arena"
 );
 my @COMPLETE_INPUT = (
-    "$HOME/arena/code.local",
-    "$HOME/arena/data",
-    "$HOME/arena/docs.literature",
-    "$HOME/arena/movies.snapshots",
-    "$HOME/arena/pics.artwork",
-    "$HOME/arena/pics.snapshots"
+    "$HOME/arena"
 );
 
 ###  >8  ###
