@@ -58,8 +58,8 @@ real-periodic.sh:
       #15 4 * * 6 root periodic weekly
       #30 5 1 * * root periodic monthly
 
-   2014-05-21: maintenance stuff is now run in a subshell to isolate the
-   script's process a bit better.
+   2015-08-24: newer periodic(8) sleep in between jobs, so update the DB
+   before we start it!
 
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so

@@ -73,28 +73,30 @@ if [ ${yd} -lt ${lmonth} ] || [ ${yd} -lt ${lweek} ] || \
    lmonth=-42 lweek=-42 lday=-42
 fi
 
+# Newer versions of FreeBSD periodic(8) seem to sleep in between jobs, so
+# let's update our DB before we call it!
+echo "${lmonth} ${lweek} ${lday}" > "${DB_FILE}"
+/bin/chmod 0644 "${DB_FILE}"
+
 i=`expr ${yd} - 30`
 if [ ${i} -ge ${lmonth} ]; then
    echo 'Invoking monthly periodical things.'
    lmonth=${yd}
-   ( eval ${MONTHLY} )
+   ( < /dev/null eval ${MONTHLY} )
 fi
 
 i=`expr ${yd} - 7`
 if [ ${i} -ge ${lweek} ]; then
    echo 'Invoking weekly periodical things.'
    lweek=${yd}
-   ( eval ${WEEKLY} )
+   ( < /dev/null eval ${WEEKLY} )
 fi
 
 if [ ${yd} -ne ${lday} ]; then
    echo 'Invoking daily periodical things.'
    lday=${yd}
-   ( eval ${DAILY} )
+   ( < /dev/null eval ${DAILY} )
 fi
 
-echo "${lmonth} ${lweek} ${lday}" > "${DB_FILE}"
-/bin/chmod 0644 "${DB_FILE}"
-
 exit 0
-# vim:set fenc=utf-8:s-it-mode
+# s-it-mode
