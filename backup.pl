@@ -5,6 +5,7 @@
 #@ -c/--complete: other input (@COMPLETE_INPUT), always xy.dateTtime.tbz
 #@ -t/--timestamp: don't backup, but set the timestamp to the current time
 #@ With either of -r and -c $ADDONS, if existent, is removed.
+#@ 2015-09-02: no longer following symbolic links
 #
 # Public Domain.
 
@@ -362,7 +363,7 @@ sub do_exit {
                 unless rmdir($dest) == 1;
         } else {
             ::msg(3, "Creating new $what backup") if $VERBOSE;
-            $flag = system("tar -c -j -L -f $target $dest " .
+            $flag = system("tar -c -j -f $target $dest " .
                         "> /dev/null 2>> $MFFN");
             ::err(3, "tar(1) execution failed for $target")
                 if ($flag >> 8) != 0;
@@ -597,7 +598,7 @@ jOUTER:     foreach my $dentry (@dents) {
             ::msg(0, "Creating/Updating archive <$ar>");
         }
 
-        unless (open XARGS, "| xargs -0 tar -r -h -f $ar >/dev/null 2>>$MFFN") {
+        unless (open XARGS, "| xargs -0 tar -r -f $ar >/dev/null 2>>$MFFN") {
             ::err(1, "Failed to create pipe: $^E");
             ::do_exit(1);
         }
