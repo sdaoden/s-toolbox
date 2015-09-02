@@ -288,8 +288,8 @@ xy_bomb_git_update() {
         # directories, don't use status but this hint (note this new approach
         # would allow for changing some sed(1) REs, but .. just wait a bit xxx)
         modlns=`$GIT add --all --dry-run 2>/dev/null |
-                sed -Ee '/(\.svn|CVS|SCCS)\/.*$/d' \
-                    -Ee '/\.git/d' -Ee '/\/?\.#/d' |
+                sed -E -e '/(\.svn|CVS|SCCS)\/.*$/d' \
+                    -e '/\.git/d' -e '/\/?\.#/d' |
                 wc -l |
                 sed -Ee 's/^[[:space:]]+(.*)$/\1/'`
         if [ 0 != "$modlns" ]; then
