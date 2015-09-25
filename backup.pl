@@ -51,7 +51,8 @@ my @EXLIST = qw(.DS_Store .localized .Trash);
 # List of input directories for normal mode/--complete mode, respectively.
 # @NORMAL_INPUT is regulary extended by all directories found in $ADDONS, iff
 my @NORMAL_INPUT = (
-    "$HOME/arena"
+    "$HOME/arena",
+    "$HOME/code.arena"
 );
 my @COMPLETE_INPUT = (
     "$HOME/arena"
