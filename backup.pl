@@ -1,13 +1,23 @@
-#!/usr/bin/env perl
+#!/bin/sh -
 #@ Simple updater, places backup and metadata files in $(REPO_)?OUTPUT_DIR.
 #@ default: (tar -rf) backup.tar files changed since (timestamp of) last run
-#@ -r/--reset: do not take care about timestamps, do create xy.dateTtime.tbz
-#@ -c/--complete: other input (@COMPLETE_INPUT), always xy.dateTtime.tbz
+#@ -r/--reset: do not take care about timestamps, do create xy.dateTtime.tar.XY
+#@ -c/--complete: other input (@COMPLETE_INPUT), always xy.dateTtime.tar.XY
 #@ -t/--timestamp: don't backup, but set the timestamp to the current time
+#@ -b/--basename: only with -r/-c: not xy.dateTtime.tar.XY but backup.tar.XY
 #@ With either of -r and -c $ADDONS, if existent, is removed.
+#@ 2015-10-09: add -b/--basename option, add $COMPRESSOR variable, start
+#@             via shell and $PERL5OPT clear to avoid multibyte problems
 #@ 2015-09-02: no longer following symbolic links
 #
 # Public Domain.
+
+# Now start perl(1) without PERL5OPT set to avoid multibyte sequence errors
+PERL5OPT= PERL5LIB= exec perl -x "${0}" "${@}"
+exit
+# Thanks to perl(5) and it's -x / #! perl / __END__ mechanism!
+# Why can env(1) not be used for such easy things in #!?
+#!perl
 
 ## Note: all _absolute_ directories and _not_ globs ##
 
@@ -58,6 +68,10 @@ my @COMPLETE_INPUT = (
     "$HOME/arena"
 );
 
+# Compressor for --complete and --reset, must compress STDIN to STDOUT
+my $COMPRESSOR = 'xz --threads=0 -c';
+my $COMPRESSOR_EXT = '.xz';
+
 ###  >8  ###
 
 use diagnostics -verbose;
@@ -68,7 +82,7 @@ use File::Temp;
 use Getopt::Long;
 use IO::Handle;
 
-my ($COMPLETE, $RESET, $TIMESTAMP, $VERBOSE) = (0, 0, 0, 0);
+my ($COMPLETE, $RESET, $TIMESTAMP, $BASENAME, $VERBOSE) = (0, 0, 0, 0, 0);
 my $FS_TIME_ANDOFF = 3; # Filesystem precision adjust (must be mask) ...
 my ($INPUT);            # References to above syms
 
@@ -79,7 +93,8 @@ jMAIN: {
     msg(0, "Parsing command line");
     Getopt::Long::Configure('bundling');
     GetOptions('c|complete' => \$COMPLETE, 'r|reset' => \$RESET,
-               't|timestamp' => \$TIMESTAMP, 'v|verbose' => \$VERBOSE);
+               't|timestamp' => \$TIMESTAMP, 'b|basename' => \$BASENAME,
+               'v|verbose' => \$VERBOSE);
     if ($COMPLETE) {
         msg(1, 'Using "complete" backup configuration');
         $INPUT = \@COMPLETE_INPUT;
@@ -89,6 +104,8 @@ jMAIN: {
     $RESET = 1 if $TIMESTAMP;
     msg(1, 'Ignoring old timestamps due to "--reset"') if $RESET;
     msg(1, 'Only updating the timestamp due to "--timestamp"') if $TIMESTAMP;
+    err(1, '-b/--basename only meaningful with "--complete" or "--reset"')
+        if $BASENAME && !($COMPLETE || $RESET);
 
     Timestamp::query();
     unless ($TIMESTAMP) {
@@ -585,35 +602,33 @@ jOUTER:     foreach my $dentry (@dents) {
         my $listref = Filelist::get_listref();
         my $backup = 'backup'; #$COMPLETE ? 'complete-backup' : 'backup';
 
-        my $ar;
+        my ($ar, $tarxcmd);
         if ($RESET || $COMPLETE) {
-            $ar = $Timestamp::CURRENT_DATE;
-            $ar =~ s/:/_/g;
-            $ar =~ s/^(.*?)[[:space:]]+[[:alpha:]]+[[:space:]]*$/$1/;
-            $ar = "$OUTPUT_DIR/$backup.$ar.tar";
-            ::msg(0, "Creating complete archive <$ar.bz2>");
-            ::err(3, "Archive <$ar> already exists: $^E")
-                if (-e $ar || -e "$ar.bz");
+            if (!$BASENAME) {
+                $ar = $Timestamp::CURRENT_DATE;
+                $ar =~ s/:/_/g;
+                $ar =~ s/^(.*?)[[:space:]]+[[:alpha:]]+[[:space:]]*$/$1/;
+            } else {
+                $ar = '';
+            }
+            $ar = "$OUTPUT_DIR/$backup$ar.tar$COMPRESSOR_EXT";
+            ::msg(0, "Creating complete archive <$ar>");
+            ::err(3, "Archive <$ar> already exists: $^E") if -e $ar;
+
+            $tarxcmd = "tar -c -f - | $COMPRESSOR > $ar";
         } else {
             $ar = "$OUTPUT_DIR/$backup.tar";
             ::msg(0, "Creating/Updating archive <$ar>");
+            $tarxcmd = "tar -r -f $ar >/dev/null";
         }
 
-        unless (open XARGS, "| xargs -0 tar -r -f $ar >/dev/null 2>>$MFFN") {
+        unless (open XARGS, "| xargs -0 $tarxcmd 2>>$MFFN") {
             ::err(1, "Failed to create pipe: $^E");
             ::do_exit(1);
         }
 
         foreach my $p (@$listref) { print XARGS $p, "\x00"; }
         close XARGS;
-
-        if ($RESET || $COMPLETE) {
-            my $sr = system("bzip2 $ar >/dev/null 2>>$MFFN");
-            if (($sr >> 8) != 0) {
-                ::err(1, "Couldn't compress $ar");
-                ::do_exit(1);
-            }
-        }
     }
 }
 

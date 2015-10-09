@@ -155,6 +155,8 @@ backup.pl:
    clones but not yet pushed to their "real" counterparts).
 
    2015-09-02: no longer following symbolic links
+   2015-10-09: add -b/--basename option, add $COMPRESSOR variable, start
+               via shell and $PERL5OPT clear to avoid multibyte problems
 
 super-shutdown.c:
    Single setuid root BSD program to invoke /sbin/shutdown(8), either
