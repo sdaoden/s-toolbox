@@ -149,6 +149,8 @@ showkey.c:
    you going.  (Unfortunately the BSDs are not so documented and i
    need to dig into the kernel sources to implement the missing pieces.)
 
+   2015-10-20: make it compile via c99(1) under Linux.
+
 backup.pl:
    My private backup script.  Simple (uses tar(1)), but does some stuff
    which i need for my work flow (backups data which is in local repo

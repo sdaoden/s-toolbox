@@ -1,4 +1,4 @@
-/*@ showkey.c v8: show keyboard scancodes for FreeBSD, OpenBSD, (NetBSD), Linux.
+/*@ showkey.c v9: show keyboard scancodes for FreeBSD, OpenBSD, (NetBSD), Linux.
  *@ - Linux should be completely correct since v8.
  *@ - OpenBSD should work fine except for some; you can always compare against
  *@   '$ wsconsctl keyboard.map' for problems with NumLock key combinations+.
@@ -9,7 +9,7 @@
  *@ Run         : $ ./showkey [{k}sv]  ({keycodes,} scancodes, values)
  *@ Exit status : 0=timeout, 1=signal/read error, 3=use/setup failure
  *
- * Copyright (c) 2012 Steffen Daode Nurpmeso <sdaoden@users.sf.net>.
+ * Copyright (c) 2012, 2015 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
  * All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -26,9 +26,14 @@
  */
 
 /* How many seconds of inactivity before program terminates? */
-#define ALARM_DELAY     9
+#define ALARM_DELAY     5
 
 /**  >8  **  8<  **/
+
+/* Given the sheer number of bugs in the feature macro series (ECHOCTL wasn't
+ * available with the former), brute force */
+/*#define _POSIX_C_SOURCE 200809L*/
+#define _GNU_SOURCE
 
 #include <errno.h>
 #include <signal.h>
@@ -57,6 +62,18 @@
 # error Operating system not supported
 #endif
 
+#ifdef NSIG_MAX
+# undef NSIG
+# define NSIG       NSIG_MAX
+#elif !defined NSIG
+# ifdef _NSIG
+#  define NSIG      _NSIG
+# else
+#  define NSIG      ((sizeof(sigset_t) * 8) - 1)
+# endif
+#endif
+
+
 #ifdef USE_ERRC
 # define ERRC               errc
 # define ERRC_ERRNO(VAL)
@@ -72,37 +89,37 @@ enum operation {
 #ifdef USE_LINUX
     op_KEYCODE,
 #else
-    op_KEYCODE  = op_SCANCODE,
+    op_KEYCODE = op_SCANCODE,
 #endif
     op_VALUE
 };
 
-static enum operation   op_mode;
-static int              caught_sig;
-static struct termios   tios_orig, tios_raw;
+static enum operation op_mode;
+static int caught_sig;
+static struct termios tios_orig, tios_raw;
 
 /* Signal handler, exit 0 if SIGALRM, 1 otherwise */
-static void     onsig(int sig);
+static void onsig(int sig);
 
 /* Terminal handling */
-static void     raw_init(void), raw_on(void), raw_off(void);
+static void raw_init(void), raw_on(void), raw_off(void);
 
 /* Actual modes */
-static ssize_t  mode_value(unsigned char *buf, ssize_t len),
+static ssize_t mode_value(unsigned char *buf, ssize_t len),
 #ifdef USE_LINUX
-                mode_keycode(unsigned char *buf, ssize_t len),
+    mode_keycode(unsigned char *buf, ssize_t len),
 #else
-# define        mode_keycode mode_scancode
+# define mode_keycode mode_scancode
 #endif
-                mode_scancode(unsigned char *buf, ssize_t len);
+    mode_scancode(unsigned char *buf, ssize_t len);
 
 int
 main(int argc, char **argv)
 {
-    auto struct sigaction sa;
-    auto struct itimerval it;
-    auto unsigned char buf[64];
-    ssize_t (*mode)(unsigned char*, ssize_t) = NULL;
+    struct sigaction sa;
+    struct itimerval it;
+    unsigned char buf[64];
+    ssize_t (*mode)(unsigned char *, ssize_t) = NULL;
     ssize_t i, skip;
 
     if (argc > 1)
@@ -132,7 +149,7 @@ main(int argc, char **argv)
 #endif
             "scancode, value)");
 
-    if (! isatty(STDIN_FILENO))
+    if (!isatty(STDIN_FILENO))
         err(3, "STDIN is not a terminal");
     raw_init();
 
@@ -176,7 +193,6 @@ static void
 onsig(int sig)
 {
     caught_sig = 1 + (sig == SIGALRM);
-    return;
 }
 
 static void
@@ -186,17 +202,20 @@ raw_init(void)
         err(3, "Can't query terminal attributes");
 
     tios_raw = tios_orig;
-    if (op_mode != op_VALUE)
-        (void)cfmakeraw(&tios_raw);
-    else {
+    if (op_mode != op_VALUE) {
+        tios_raw.c_cflag &= ~(CSIZE | PARENB);
+        tios_raw.c_cflag |= CS8;
+        tios_raw.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+        tios_raw.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP |
+                INLCR | IGNCR | ICRNL | IXON);
+        tios_raw.c_oflag &= ~OPOST;
+    } else {
         tios_raw.c_lflag &= ~(ICANON | ISIG);
         tios_raw.c_lflag |= ECHO | ECHOCTL;
         tios_raw.c_iflag = 0;
         tios_raw.c_cc[VMIN] = 1;
         tios_raw.c_cc[VTIME] = 0;
     }
-
-    return;
 }
 
 #if defined USE_SYSCONS || defined USE_LINUX
@@ -224,6 +243,7 @@ raw_on(void)
     if (op_mode != op_VALUE &&
             ioctl(STDIN_FILENO, KDSKBMODE, (long)kbmode_raw) < 0) {
         int sverr = errno;
+
         (void)tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios_orig);
         /* Used to test for ENOTTY, but Linux seems not to use it.
          * So simplify error message */
@@ -241,16 +261,14 @@ raw_off(void)
         (void)ioctl(STDIN_FILENO,  KDSKBMODE, (long)kbmode_orig);
 
     (void)tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios_orig);
-    return;
 }
-
 #endif /* USE_SYSCONS || USE_LINUX */
-#ifdef USE_WSCONS
 
+#ifdef USE_WSCONS
 static void
 raw_on(void)
 {
-    auto int arg = WSKBD_RAW;
+    int arg = WSKBD_RAW;
 
     if (tcsetattr(STDIN_FILENO, TCSANOW, &tios_raw) < 0)
         err(3, "Can't set terminal attributes");
@@ -263,22 +281,18 @@ raw_on(void)
         ERRC_ERRNO(arg);
         ERRC(3, ERRC_ARG(arg) "Can't set keyboard mode (on a pty?)");
     }
-
-    return;
 }
 
 static void
 raw_off(void)
 {
-    auto int arg = WSKBD_TRANSLATED;
+    int arg = WSKBD_TRANSLATED;
 
     if (op_mode != op_VALUE)
         (void)ioctl(STDIN_FILENO, WSKBDIO_SETMODE, &arg);
 
     (void)tcsetattr(STDIN_FILENO, TCSANOW, &tios_orig);
-    return;
 }
-
 #endif /* USE_WSCONS */
 
 static ssize_t
@@ -286,14 +300,13 @@ mode_value(unsigned char *buf, ssize_t len)
 {
     while (--len >= 0) {
         unsigned int v = (unsigned int)*buf++;
+
         printf("\t%4d 0%03o 0x%02X\r\n", v, v, v);
     }
-
-    return (0);
+    return 0;
 }
 
 #ifdef USE_LINUX
-
 static ssize_t
 mode_keycode(unsigned char *buf, ssize_t len)
 {
@@ -320,10 +333,8 @@ mode_keycode(unsigned char *buf, ssize_t len)
 
         printf("keycode %3u %s\r\n", rc, ((kc & 0x80) ? "release" : "press"));
     }
-
     return (len < 0 ? 0 : len);
 }
-
 #endif /* USE_LINUX */
 
 static ssize_t
@@ -374,8 +385,7 @@ mode_scancode(unsigned char *buf, ssize_t len)
 #endif
         }
     }
-
     return (len < 0 ? 0 : len);
 }
 
-/* vim:set fenc=utf-8 filetype=c syntax=c ts=4 sts=4 sw=4 et tw=79: */
+/* vim:set fenc=utf-8 ts=4 sts=4 sw=4 et tw=79: */
