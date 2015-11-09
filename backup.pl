@@ -43,7 +43,7 @@ my $REPO_OUTPUT_DIR = "$HOME/arena/data/backups";
 # "bundle" command with all possible flags to create the backup for everything
 # that is not found in --remotes, which thus automatically includes stashes
 # etc. (for the latter .git/logs/refs/stash is also backed up)
-my $REPO_SRC_DIR = "$HOME/usr/src";
+my $REPO_SRC_DIR = "$HOME/src";
 
 # Our metadata storage file
 my $TSTAMP = "$OUTPUT_DIR/.-backup.dat";
