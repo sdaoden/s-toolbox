@@ -82,12 +82,12 @@ arena-manager.sh:
    functionality and automatization.  Please look into the script header
    for more.  The old script has been removed (see ``git(1)`` history).
 
-Even less of widespread usability:
+Even of less widespread usability:
 
 gmane-fetch.pl:
    Download NNTP articles from Gmane.org, incrementally, and store them in
-   a local MBOX.
-   Read and adjustthe script header for documentation and configuration.
+   (append them to) a local MBOX.
+   Read and adjust the script header for documentation and configuration.
 
 git-simple-push.sh:
    Synchronize a bunch of local repos with their remotes.

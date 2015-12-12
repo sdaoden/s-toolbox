@@ -8,6 +8,7 @@ require 5.008_001;
 #@    gmane.mail.s-nail.user
 #@ then run this script.
 #@ TODO Primitive yet: no real error recovery, no command line, no help etc.
+#@ TODO P.S.: also: no file locking
 my $HOSTNAME = "news.gmane.org";
 my $RCFILE = "${ENV{HOME}}/arena/data/mail/.gmane.rc";
 my $MBOX = "${ENV{HOME}}/arena/data/mail/gmane";
@@ -44,6 +45,7 @@ sub nntp_command {
 sub nntp_response {
    my ($no_error) = @_;
    $_ = <NNTP>;
+   die "Got no NNTP response" unless defined $_;
    s/[\r\n]+$//; # canonicalize linebreaks.
    #print STDERR "<< $_\n";
    die "Malformed NNTP response: $_" if !m/^[0-9][0-9][0-9] /;
