@@ -7,7 +7,7 @@
 # Public Domain
 
 cd "${HOME}/arena/code" || exit 42
-REPOS="s-cacert.update_bomb_git-no_reduce\
+REPOS="s-cacert.update_bomb_git\
     s-ctext.git\
     s-musicbox.git\
     s-nail.git\
