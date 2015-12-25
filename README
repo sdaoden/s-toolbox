@@ -153,9 +153,11 @@ backup.pl:
    which i need for my work flow (backups data which is in local repo
    clones but not yet pushed to their "real" counterparts).
 
-   2015-09-02: no longer following symbolic links
+   2015-09-02: no longer following symbolic links.
    2015-10-09: add -b/--basename option, add $COMPRESSOR variable, start
-               via shell and $PERL5OPT clear to avoid multibyte problems
+               via shell and $PERL5OPT clear to avoid multibyte problems.
+   2015-12-25: excluding symbolic links from archives; change
+               $SYMLINK_INCLUDE in the script header to change this.
 
 super-shutdown.c:
    Single setuid root BSD program to invoke /sbin/shutdown(8), either

@@ -68,6 +68,10 @@ my @COMPLETE_INPUT = (
     "$HOME/arena"
 );
 
+# Symbolic links will be skipped actively if this is true.
+# Otherwise they will be added to the backup as symbolic links!
+my $SYMLINK_INCLUDE = 0;
+
 # Compressor for --complete and --reset, must compress STDIN to STDOUT
 my $COMPRESSOR = 'xz --threads=0 -c';
 my $COMPRESSOR_EXT = '.xz';
@@ -559,7 +563,7 @@ sub do_exit {
         my @exglob = glob $EXGLOB;
 
         my @subdirs;
-jOUTER:     foreach my $dentry (@dents) {
+jOUTER: foreach my $dentry (@dents) {
             next if $dentry eq '.' || $dentry eq '..';
             foreach (@exglob) {
                 if ($dentry eq $_) {
@@ -579,6 +583,10 @@ jOUTER:     foreach my $dentry (@dents) {
                 push(@subdirs, $path);
                 ::msg(2, "<$dentry> dir-traversal enqueued") if $VERBOSE;
             } elsif (-f _) {
+                if(!$SYMLINK_INCLUDE && -l _){
+                    ::msg(2, "excluded symbolic link <$dentry>") if $VERBOSE;
+                    next jOUTER
+                }
                 if (! -r _) {
                     ::err(2, "<$path> not readable");
                     next jOUTER;
