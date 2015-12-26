@@ -583,14 +583,19 @@ jOUTER: foreach my $dentry (@dents) {
                 push(@subdirs, $path);
                 ::msg(2, "<$dentry> dir-traversal enqueued") if $VERBOSE;
             } elsif (-f _) {
-                if(!$SYMLINK_INCLUDE && -l _){
-                    ::msg(2, "excluded symbolic link <$dentry>") if $VERBOSE;
+                if(!-r _){
+                    ::err(2, "<$path> not readable");
                     next jOUTER
                 }
-                if (! -r _) {
-                    ::err(2, "<$path> not readable");
-                    next jOUTER;
+                if(!$SYMLINK_INCLUDE){
+                    lstat $dentry;
+                    if(-l _){
+                        ::msg(2, "excluded symbolic link <$dentry>")
+                            if $VERBOSE;
+                        next jOUTER
+                    }
                 }
+
                 my $mtime = (stat _)[9] & ~$FS_TIME_ANDOFF;
                 if ($RESET || $mtime >= $Timestamp::LAST) {
                     push @List, $path;
