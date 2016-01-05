@@ -4,7 +4,7 @@
  * XXX What about mbtowc and iswspace() instead of isspace()??
  * TODO This utility is plain shit :)
  *
- * Copyright (c) 2013 - 2014 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
+ * Copyright (c) 2013 - 2016 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -151,7 +151,7 @@ jhelp:
 "file it'll be created as necessary; yet existent contents are overwritten.\n"
 "The decoder ignores *any* encountered whitespace.\n"
 "\n"
-"Copyright (c) 2013 - 2014 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.\n"
+"Copyright (c) 2013 - 2016 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.\n"
 "This software is provided under the terms of the ISC license.\n"
 "It incorporates code that is subject to the 2-clause (Net)BSD license.\n"
    );

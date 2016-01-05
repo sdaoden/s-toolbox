@@ -1,7 +1,7 @@
 #!/bin/sh -
 #@ Check indentation and whitespace in program source files.
 #@ Somewhat in sync with s-ws-check.pl, which is written by
-#@ Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
+#@ Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain.
 
 # If $GIT_NO_PRECOMMIT is nonempty, simply exit success at once.

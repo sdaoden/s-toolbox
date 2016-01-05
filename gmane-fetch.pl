@@ -13,7 +13,7 @@ my $HOSTNAME = "news.gmane.org";
 my $RCFILE = "${ENV{HOME}}/arena/data/mail/.gmane.rc";
 my $MBOX = "${ENV{HOME}}/arena/data/mail/gmane";
 #
-# Copyright © 2014 - 2015 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
+# Copyright © 2014 - 2016 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 #
 # Based on the script nntp-to-mbox.pl that is:
 #

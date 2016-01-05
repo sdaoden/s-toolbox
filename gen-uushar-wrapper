@@ -6,11 +6,10 @@
 #@ therein.  On the first run with arguments, the wrapper will create a hidden
 #@ directory in your $TMPDIR to unpack the archive therein; without arguments
 #@ it'll always print creation time and members shipped.
-#@ Web: http://sdaoden.users.sourceforge.net/code.html;
-#@      https://sourceforge.net/projects/s-toolbox
-#@ Git: git.code.sf.net/p/s-toolbox/code
+#@ Web: https://www.sdaoden.eu/code.html
+#@ Git: git://git.sdaoden.eu/s-toolbox.git
 #
-# Copyright (c) 2012 - 2014 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
+# Copyright (c) 2012 - 2016 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -129,7 +128,7 @@ CREATION_DATE=`date -u`
 cat <<\! > "${SHAR}"
 #!/bin/sh -
 #@ This file has been created by gen-uushar-wrapper, which is
-# Copyright (c) 2012 - 2014 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
+# Copyright (c) 2012 - 2016 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 #@ by means of the ISC license.
 #@ It contains a shell-archive-execution-environment.
 #@ Run it, and it will tell you which executable files it contains.
@@ -194,11 +193,11 @@ do
    echo >> "${SHAR}" "echo 'X - ${bi}'"
    if [ -z "${cfun}" ]; then
       echo >> "${SHAR}" \
-         "sed 's/^X//' << \! | uudecode > \"${bi}\"; chmod 0755 \"${bi}\""
+         "sed 's/^X//' << \! | uudecode -o /dev/stdout > \"${bi}\"; chmod 0755 \"${bi}\""
       < "${i}" uuencode -m /dev/stdout | sed 's/^/X/' >> "${SHAR}"
    else
       echo >> "${SHAR}" \
-         "sed 's/^X//' << \! | uudecode | ${xfun} > \"${bi}\";\
+         "sed 's/^X//' << \! | uudecode -o /dev/stdout | ${xfun} > \"${bi}\";\
           chmod 0755 \"${bi}\""
       < "${i}" ${cfun} | uuencode -m /dev/stdout | sed 's/^/X/' >> "${SHAR}"
    fi

@@ -6,7 +6,7 @@ require 5.008_001;
 my $SELF = 'git-topic-creator.pl';
 my $VERSION = 'v0.2.1';
 my $COPYRIGHT =<<__EOT__;
-Copyright (c) 2012 - 2013 Steffen "Daode" Nurpmeso <sdaoden\@users.sf.net>.
+Copyright (c) 2012 - 2016 Steffen (Daode) Nurpmeso <steffen\@sdaoden.eu>.
 All rights reserved.
 This software is provided under the terms of the ISC license.
 __EOT__

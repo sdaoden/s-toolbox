@@ -4,7 +4,7 @@
  *@ Compile: gcc -O2 -Wall -Wextra -pedantic -o s-idn s-idn.c -lidn
  *@ Use    : $ s-idn --help
  *
- * Copyright (c) 2012 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
+ * Copyright (c) 2012, 2016 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -78,7 +78,7 @@ jsyn:
    "input.\n"
 "Errors will be printed on standard error with an \"ERR:\" prefix.\n"
 "\n"
-"Copyright (c) 2012 Steffen \"Daode\" Nurpmeso <sdaoden@users.sf.net>.\n"
+"Copyright (c) 2012, 2016 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.\n"
 "This software is provided under the terms of the ISC license.\n"
    );
    goto jleave;

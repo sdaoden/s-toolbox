@@ -5,7 +5,7 @@ require 5.008_001;
 my $SELF = 's-ws-check.pl';
 my $VERSION = 'v0.0.4';
 my $COPYRIGHT =<<__EOT__;
-Copyright (c) 2012 - 2014 Steffen (Daode) Nurpmeso <sdaoden\@users.sf.net>
+Copyright (c) 2012 - 2016 Steffen (Daode) Nurpmeso <steffen\@sdaoden.eu>
 This software is provided under the terms of the ISC license.
 __EOT__
 # Permission to use, copy, modify, and/or distribute this software for any

@@ -1,6 +1,6 @@
 .\"@ Manual for uushar(1).
 .\"
-.\" Copyright (c) 2012 - 2014 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
+.\" Copyright (c) 2012 - 2016 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 .\" All rights reserved.
 .\"
 .\" Permission to use, copy, modify, and/or distribute this software for any
@@ -15,15 +15,26 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd February 27, 2014
+.Dd January 05, 2016
 .Dt UUSHAR 1
+.Os
+.Mx -enable
+.
+.
 .Sh NAME
 .Nm uushar
 .Nd create a shell archive of uuencoded and optionally compressed files
+.
+.
 .Sh SYNOPSIS
 .Nm
 .Op Fl ZzJj
 .Ar
+.
+.
+.Mx -toc -tree html pdf ps xhtml
+.
+.
 .Sh DESCRIPTION
 .Nm
 writes a
@@ -34,6 +45,7 @@ Directories will be recreated and must be specified before the files
 they contain (the
 .Xr find 1
 utility does this correctly).
+.
 .Pp
 Different to well-known
 .Xr shar 1
@@ -46,6 +58,7 @@ compression for the embedded files and automatically applies an
 conversion so that the generated archive is safe for distribution via
 text transport, e.g., via
 .Xr mailx 1 .
+.
 .Bl -tag -width ".Fl A"
 .It Fl Z
 Use
@@ -64,10 +77,8 @@ Use
 .Xr bzip2 1
 for compression.
 .El
-.Sh BUGS
-.Nm
-makes no provisions for special types of files or files containing
-magic characters.
+.
+.
 .Sh EXAMPLES
 To create a shell archive of the program
 .Xr s-nail 1
@@ -76,8 +87,10 @@ and mail it to Rick:
 cd s-nail
 uushar -z `find . -print` \&| mailx -s "s-nail(1) source" rick
 .Ed
+.
 .Pp
 To recreate the program directory:
+.
 .Bd -literal -offset indent
 mkdir ls
 cd s-nail
@@ -86,6 +99,18 @@ cd s-nail
 \&...
 sh archive
 .Ed
+.
+.
+.Sh AUTHORS
+.An Steffen Po Daode Pc Nurpmeso Aq steffen@sdaoden.eu
+.
+.
+.Sh BUGS
+.Nm
+makes no provisions for special types of files or files containing
+magic characters.
+.
+.
 .Sh SECURITY CONSIDERATIONS
 It is easy to insert trojan horses into
 .Nm
@@ -96,11 +121,8 @@ before running them through
 Archives produced using this implementation of
 .Nm
 may be easily examined with the command:
-.Dl grep '^[^X#]' shar.file
-.Sh "IMPLEMENTATION NOTES"
-Note that the
-.Xr uudecode 1
-program must be capable of decoding to `/dev/stdout', i.e., it must be
-POSIX compliant (Issue 6 iirc).
-.Sh AUTHORS
-.An Steffen Po Daode Pc Nurpmeso Aq sdaoden@users.sf.net
+.
+.Bd -literal -offset indent
+grep '^[^X#]' shar.file
+.Ed
+.\" s-ts-mode

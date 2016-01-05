@@ -9,7 +9,7 @@
  *@ Run         : $ ./showkey [{k}sv]  ({keycodes,} scancodes, values)
  *@ Exit status : 0=timeout, 1=signal/read error, 3=use/setup failure
  *
- * Copyright (c) 2012, 2015 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
+ * Copyright (c) 2012 - 2016 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
  * All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any

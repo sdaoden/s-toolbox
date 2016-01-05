@@ -1,11 +1,10 @@
 #!/bin/sh -
 #@ Like shar(1), but with an uuencode(1)/uudecode(1) binary safe layer added.
 #@ Member compression via optional --(compress|gzip|bzip2|xz) argument.
-#@ Web: http://sdaoden.users.sourceforge.net/code.html;
-#@      https://sourceforge.net/projects/s-toolbox
-#@ Git: git.code.sf.net/p/s-toolbox/code
+#@ Web: https://www.sdaoden.eu/code.html
+#@ Git: git://git.sdaoden.eu/s-toolbox.git
 #
-# Copyright (c) 2012 - 2014 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
+# Copyright (c) 2012 - 2016 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 # All rights reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
@@ -80,12 +79,12 @@ do
       echo "mkdir -p \"${i}\" > /dev/null 2>&1"
    elif [ -z "$cfun" ]; then
       echo "echo x - ${i}"
-      echo "sed 's/^X//' << \! | uudecode > \"${i}\""
+      echo "sed 's/^X//' << \! | uudecode -o /dev/stdout > \"${i}\""
       < "${i}" uuencode -m /dev/stdout | sed 's/^/X/'
       echo '!'
    else
       echo "echo xx - ${i}"
-      echo "sed 's/^X//' << \! | uudecode | ${xfun} > \"${i}\""
+      echo "sed 's/^X//' << \! | uudecode -o /dev/stdout | ${xfun} > \"${i}\""
       < "${i}" ${cfun} | uuencode -m /dev/stdout | sed 's/^/X/'
       echo '!'
    fi

@@ -1,6 +1,8 @@
 A repo of some small tools
 ==========================
 
+2016-01-05: updates for sdaoden.eu (OpenPGP signed commit).
+
 uushar (manual: uushar.1):
    Writes a sh(1) shell script to the standard output which will
    recreate the file hierarchy specified by the command line operands.
@@ -22,7 +24,10 @@ uushar (manual: uushar.1):
    /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
 
    2014-02-27: rewritten: short options, check and forbid filenames with
-   embedded double quotes, added uushar.1 manual.
+               embedded double quotes, added uushar.1 manual.
+   2016-01-05: port to FreeBSD: uudecode(1) doesn't honour /dev/stdout
+               in-stream, so give -o command line option.
+               mdocmx(7)ified++ manual.
 
 gen-uushar-wrapper:
    Creates a shell archive similar to uushar as above, except that the
@@ -39,9 +44,11 @@ gen-uushar-wrapper:
    /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
 
    2014-03-05: rewritten: check and forbid filenames with embedded
-   double quotes, ensure the given default executable, if any, is part
-   of the generated archive, reexecute after archive expansion, truly
-   disallow empty archive name.
+               double quotes, ensure the given default executable, if any,
+               is part of the generated archive, reexecute after archive
+               expansion, truly disallow empty archive name.
+   2016-01-05: port to FreeBSD: uudecode(1) doesn't honour /dev/stdout
+               in-stream, so give -o command line option.
 
 real-periodic.sh:
    A _real_ periodic for NetBSD, FreeBSD, DragonFly BSD and OpenBSD that
@@ -59,7 +66,7 @@ real-periodic.sh:
       #30 5 1 * * root periodic monthly
 
    2015-08-24: newer periodic(8) sleep in between jobs, so update the DB
-   before we start it!
+               before we start it!
 
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so
@@ -129,11 +136,11 @@ s-base64.c:
    in RFC 2045, section 6.8.  Rather failure-tolerant...
 
    2014-07-29: fixed SIGSEGV which could happen because of ignoring
-   errors during base64 decoding; this tool needs a rewrite to actually
-   do what it is supposed to, i.e., provide a failure-tolerant decoding
-   facility: it should print something like `xy bytes remain unparsed'
-   after an error occurred instead of simply stating that there was
-   invalid base64.
+               errors during base64 decoding; this tool needs a rewrite to
+               actually do what it is supposed to, i.e., provide
+               a failure-tolerant decoding facility: it should print something
+               like `xy bytes remain unparsed' after an error occurred instead
+               of simply stating that there was invalid base64.
 
 s-idn.c:
    Simple GNU Libidn based thing that encodes and decodes IDNs.
