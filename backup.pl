@@ -33,7 +33,7 @@ my $OUTPUT_DIR = "$HOME/traffic";
 # stored in the directory given here; note that these are *not* automatically
 # backed up, so place them in @XY_INPUT so that they end up in the actual
 # backup archive ...  Simply comment this variable out if you don't want this.
-my $REPO_OUTPUT_DIR = "$HOME/arena/data/backups";
+my $REPO_OUTPUT_DIR = "$HOME/sec.arena/backups";
 
 # What actually happens is that $REPO_SRC_DIR is walked.
 # For hg(1), directories encountered and ending with .hg (and having xy.hg/.hg),
@@ -62,10 +62,12 @@ my @EXLIST = qw(.DS_Store .localized .Trash);
 # @NORMAL_INPUT is regulary extended by all directories found in $ADDONS, iff
 my @NORMAL_INPUT = (
     "$HOME/arena",
-    "$HOME/code.arena"
+    "$HOME/code.arena",
+    "$HOME/sec.arena"
 );
 my @COMPLETE_INPUT = (
-    "$HOME/arena"
+    "$HOME/arena",
+    "$HOME/sec.arena"
 );
 
 # Symbolic links will be skipped actively if this is true.

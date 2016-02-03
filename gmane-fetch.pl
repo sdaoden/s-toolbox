@@ -10,8 +10,8 @@ require 5.008_001;
 #@ TODO Primitive yet: no real error recovery, no command line, no help etc.
 #@ TODO P.S.: also: no file locking
 my $HOSTNAME = "news.gmane.org";
-my $RCFILE = "${ENV{HOME}}/arena/data/mail/.gmane.rc";
-my $MBOX = "${ENV{HOME}}/arena/data/mail/gmane";
+my $RCFILE = "${ENV{HOME}}/sec.arena/mail/.gmane.rc";
+my $MBOX = "${ENV{HOME}}/sec.arena/mail/gmane";
 #
 # Copyright © 2014 - 2016 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 #
