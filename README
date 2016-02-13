@@ -1,8 +1,6 @@
 A repo of some small tools
 ==========================
 
-2016-01-05: updates for sdaoden.eu (OpenPGP signed commit).
-
 uushar (manual: uushar.1):
    Writes a sh(1) shell script to the standard output which will
    recreate the file hierarchy specified by the command line operands.
@@ -89,71 +87,10 @@ arena-manager.sh:
    functionality and automatization.  Please look into the script header
    for more.  The old script has been removed (see ``git(1)`` history).
 
-Even of less widespread usability:
-
 gmane-fetch.pl:
    Download NNTP articles from Gmane.org, incrementally, and store them in
    (append them to) a local MBOX.
    Read and adjust the script header for documentation and configuration.
-
-git-simple-push.sh:
-   Synchronize a bunch of local repos with their remotes.
-   Brute simple version that can only push.
-   Needs awk(1).
-
-git-pre-commit.sh:
-   git(1)'s diff --check does unfortunately not offer a mode which
-   detects NBSP (non-breaking space, U+00A0) characters.
-   This is a real problem for keyboards (layouts) which produce combined
-   sequences, i.e., the german keyboard produces NBSP for ALT+SPC, but
-   it also requires ALT to get any of []|{} (ALT+[5-9]).  So NBSPs
-   happen.  This script can be used as (a template for a custom)
-   pre-commit hook, now that i've looked at it again (2013-05-13).
-
-   It also handles non-space indentations, tabulators and mixed
-   (space-before-tabs) indents, dependent on the environment variables
-   NSPACEINDENT, TABINDENT and MIXINDENT, respectively.  Setting
-   MKFILEDIG will treat [Mm]akefile and *.mk files specially.
-   E.g., this is one of my pre-commit hooks::
-
-      #!/bin/sh -
-      MIXINDENT=1
-      export MIXINDENT
-      exec "$HOME/usr/bin/git-pre-commit.sh" "${@}"
-
-   2014-04-14: added MKFILEDIG.
-
-s-ws-check.pl:
-   Check indentation, trailing whitespace and non-breaking spaces (see
-   git-pre-commit.sh above) for all files given on the command line.
-   Sufficient for a needed quick-n-dirty check of some random file;
-   now that i've looked at it again (2013-05-13).
-
-   2014-04-14: added MKFILEDIG.
-
-s-base64.c:
-   Encode to/decode from Base64 content-transfer-encoding, as specified
-   in RFC 2045, section 6.8.  Rather failure-tolerant...
-
-   2014-07-29: fixed SIGSEGV which could happen because of ignoring
-               errors during base64 decoding; this tool needs a rewrite to
-               actually do what it is supposed to, i.e., provide
-               a failure-tolerant decoding facility: it should print something
-               like `xy bytes remain unparsed' after an error occurred instead
-               of simply stating that there was invalid base64.
-
-s-idn.c:
-   Simple GNU Libidn based thing that encodes and decodes IDNs.
-   Rather identical to the idn utility that comes with that one, but
-   i needed to get comfortable with Libidn and so i've wrote it.
-
-showkey.c:
-   Show keyboard scancodes for FreeBSD, OpenBSD, NetBSD and Linux.
-   This is not yet finished but for Linux.  But it should help to get
-   you going.  (Unfortunately the BSDs are not so documented and i
-   need to dig into the kernel sources to implement the missing pieces.)
-
-   2015-10-20: make it compile via c99(1) under Linux.
 
 backup.pl:
    My private backup script.  Simple (uses tar(1)), but does some stuff
