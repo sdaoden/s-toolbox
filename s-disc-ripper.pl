@@ -470,8 +470,9 @@ sub cddb_query { # {{{
     eval 'require CDDB';
     if ($@) {
         print "Failed to load the CDDB.pm module!\n",
-              "  Maybe it's not installed (search the internet for CPAN).\n",
-              "  Shall i continue nonetheless?",
+              "  Maybe it's not installed?  Search the internet for CPAN,\n",
+              "  and install it via \"\$ cpan CDDB\"\n",
+              "  Confirm to use CDDB.pm, otherwise we create faked entries.",
     } else {
         print 'Shall CDDB be contacted online (otherwise entries are faked)';
     }
