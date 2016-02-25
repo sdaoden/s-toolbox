@@ -2,7 +2,7 @@
 #@ Like shar(1), but with an uuencode(1)/uudecode(1) binary safe layer added.
 #@ Member compression via optional --(compress|gzip|bzip2|xz) argument.
 #@ Web: https://www.sdaoden.eu/code.html
-#@ Git: git://git.sdaoden.eu/s-toolbox.git
+#@ Git: https?://git.sdaoden.eu/cgit/s-toolbox.git
 #
 # Copyright (c) 2012 - 2016 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 # All rights reserved.
