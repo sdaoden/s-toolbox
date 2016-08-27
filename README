@@ -102,6 +102,7 @@ backup.pl:
                via shell and $PERL5OPT clear to avoid multibyte problems.
    2015-12-25: excluding symbolic links from archives; change
                $SYMLINK_INCLUDE in the script header to change this.
+   2016-08-27: FIX faulty xarg/tar -c invocations (Ralph Corderoy)
 
 super-shutdown.c:
    Single setuid root BSD program to invoke /sbin/shutdown(8), either
