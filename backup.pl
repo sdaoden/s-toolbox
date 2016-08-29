@@ -77,8 +77,10 @@ my @COMPLETE_INPUT = (
 # Otherwise they will be added to the backup as symbolic links!
 my $SYMLINK_INCLUDE = 0;
 
-# Compressor for --complete and --reset, must compress STDIN to STDOUT
-my $COMPRESSOR = 'xz --threads=0 -c';
+# Compressor for --complete and --reset.  It must compress its filename
+# argument to FILENAME${COMPRESSOR_EXT}.  If it doesn't remove the original
+# file, we will do
+my $COMPRESSOR = 'xz --threads=0';
 my $COMPRESSOR_EXT = '.xz';
 
 ###  >8  ###
@@ -646,8 +648,8 @@ jOUTER: foreach my $dentry (@dents) {
       close XARGS;
 
       if($RESET || $COMPLETE){
-         system("$COMPRESSOR < $ar > $far");
-         unless(unlink $ar){
+         system("$COMPRESSOR $ar");
+         unless(! -f $ar || unlink $ar){
             ::err(1, "Temporary archive $ar cannot be deleted: $^E");
             ::do_exit(1)
          }
