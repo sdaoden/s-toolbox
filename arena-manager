@@ -260,7 +260,7 @@ git_ref_check_gc_update() {
 xy_bomb_git_update() {
     comm=$1 commname=$2 modlns=0 es=
 
-    # (We need to compare local master and remote to detect wether there were
+    # (We need to compare local master and remote to detect whether there were
     # updates)
     $GIT checkout -q -f -B arena-manager-download master -- || {
         echo >&2 "Can't reset branch arena-manager-download, bailing out!"
@@ -283,7 +283,7 @@ xy_bomb_git_update() {
         echo "$CURRD" >> "$ARENA/$AUTOGCFILE" || exit 25
     else
         # Ignore all updates which occur in .svn/CVS directories, at least for
-        # checking wether any repo content has been updated.
+        # checking whether any repo content has been updated.
         # To avoid problems with DOS/Unix newline changes in working
         # directories, don't use status but this hint (note this new approach
         # would allow for changing some sed(1) REs, but .. just wait a bit xxx)
@@ -447,7 +447,7 @@ update() {
                 ;;
             *.svn_git*)
                 # This auto-merges into "master", so that there can be found no
-                # indication of wether there were updates or not; thus the
+                # indication of whether there were updates or not; thus the
                 # local "pseudo" branch we use for that (better solution is
                 # clear, maybe in arena-manager.pl which is single instance and
                 # can store all refs before in memory and compare against refs
@@ -473,7 +473,7 @@ update() {
                 # The name of the cvsps(1) cache file is stored in here;
                 # that file itself is always stored as 'cvsps_cache' instead
                 cvsps_file=`cat cvsps_file`
-                # Up to you wether you want -R or not
+                # Up to you whether you want -R or not
                 [ -f cvs-revisions ] && Rflag=-R || Rflag= # git cvsimport dat
 
                 # Prepare cvsps(1) (and git(1) cvsimport) cache

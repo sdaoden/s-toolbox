@@ -330,7 +330,7 @@ sub do_exit {
       ::msg(3, "... target: $target") if $VERBOSE;
 
       # hg bundle (also) returns 1 if no changes have been found, so use
-      # modification times to decide wether an error occurred.
+      # modification times to decide whether an error occurred.
       # If not we can also throw away the old bundle..
       $omodt = -1;
       {  my @x = stat $target;

@@ -66,7 +66,7 @@ mwd='-42 -42 -42'
 set -- ${mwd}
 lmonth=$1 lweek=$2 lday=$3
 
-# Check wether the year has changed
+# Check whether the year has changed
 if [ ${yd} -lt ${lmonth} ] || [ ${yd} -lt ${lweek} ] || \
       [ ${yd} -lt ${lday} ]; then
    echo 'I do think the year has turned over.  Restarting!'
