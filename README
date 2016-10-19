@@ -104,6 +104,7 @@ backup.sh:
                $SYMLINK_INCLUDE in the script header to change this.
    2016-08-27: FIX faulty xarg/tar -c invocations (Ralph Corderoy)
    2016-10-19: Renamed from backup.pl "now" that we start via sh(1).
+   2016-10-19: Removed support for Mercurial: not tested in years.
 
 super-shutdown.c:
    Single setuid root BSD program to invoke /sbin/shutdown(8), either

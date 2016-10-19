@@ -13,6 +13,7 @@
 #@       in the script header to change this.
 #@ 2016-08-27: s-it-mode;  FIX faulty xarg/tar -c invocations (Ralph Corderoy)
 #@ 2016-10-19: Renamed from backup.pl "now" that we start via sh(1).
+#@ 2016-10-19: Removed support for Mercurial: not tested in years.
 #
 # Public Domain.
 
@@ -33,16 +34,14 @@ my $EMAIL = defined($ENV{'EMAIL'}) ? $ENV{'EMAIL'} : 'postmaster@localhost';
 # Where to store backup(s) and metadata
 my $OUTPUT_DIR = "$HOME/traffic";
 
-# We are also able to create backup bundles for hg(1) and git(1), which are
-# stored in the directory given here; note that these are *not* automatically
-# backed up, so place them in @XY_INPUT so that they end up in the actual
-# backup archive ...  Simply comment this variable out if you don't want this.
+# We are also able to create backup bundles for git(1).
+# They are stored in the directory given here; note that these are *not*
+# automatically backed up, so place them in @XY_INPUT so that they end up in
+# the actual backup archive ...
+# Simply comment this variable out if you don't want this.
 my $REPO_OUTPUT_DIR = "$HOME/sec.arena/backups";
 
 # What actually happens is that $REPO_SRC_DIR is walked.
-# For hg(1), directories encountered and ending with .hg (and having xy.hg/.hg),
-# are backed up via 'hg bundle' (thus using default push location).
-# In addition shelve and mq patches are also backed up, if existent.
 # For git(1) this is xy.git (plus xy.git/.git).  Here we simply use the git(1)
 # "bundle" command with all possible flags to create the backup for everything
 # that is not found in --remotes, which thus automatically includes stashes
@@ -123,7 +122,6 @@ jMAIN:{
    unless($TIMESTAMP){
       Addons::manage($COMPLETE || $RESET);
 
-      HGBundles::create();
       GitBundles::create();
 
       Filelist::create();
@@ -264,138 +262,6 @@ sub do_exit{
       unless(unlink $ADDONS){
          ::err(1, "Addons file cannot be deleted: $^E");
          ::do_exit(1)
-      }
-   }
-}
-
-{package HGBundles;
-   my @HG_Dirs;
-
-   sub create{
-      return unless defined $REPO_OUTPUT_DIR;
-      _create_list();
-      _create_backups() if @HG_Dirs
-   }
-
-   sub _create_list{
-      ::msg(0, 'Collecting hg(1) repo information');
-      unless(-d $REPO_OUTPUT_DIR){
-         ::err(0, 'FAILURE: no HG backup-bundle/-shelve/-patch dir found');
-         ::do_exit(1)
-      }
-
-      unless(opendir DIR, $REPO_SRC_DIR){
-         ::err(1, "opendir($REPO_SRC_DIR) failed: $^E");
-         ::do_exit(1)
-      }
-      my @dents = readdir DIR;
-      closedir DIR;
-
-      foreach my $dent (@dents){
-         next if $dent eq '.' || $dent eq '..';
-         my $abs = $REPO_SRC_DIR . '/' . $dent;
-         next unless -d $abs;
-         next unless $abs =~ /\.hg$/;
-         next unless -d "$abs/.hg";
-         push @HG_Dirs, $dent;
-         ::msg(1, "added <$dent>")
-      }
-   }
-
-   sub _create_backups{
-      ::msg(0, "Creating HG bundle/shelve/patch backups");
-      foreach my $e (@HG_Dirs){
-         ::msg(1, "Processing $e");
-         my $src = $REPO_SRC_DIR . '/' . $e;
-         unless(chdir $src){
-            ::err(2, "HGBundles: cannot chdir($src): $^E");
-            ::do_exit(1)
-         }
-
-         _do_bundle($e);
-         _do_shelves_or_patches($e, 'shelves');
-         _do_shelves_or_patches($e, 'patches')
-      }
-   }
-
-   sub _do_bundle{
-      my $e = shift;
-      my ($target, $flag, $omodt);
-      ::msg(2, 'Checking for new bundle') if $VERBOSE;
-
-      $target = "$REPO_OUTPUT_DIR/$e";
-      $target = $1 if $target =~ /(.+)\..+$/;
-      $target .= '.bundle';
-      $flag = $VERBOSE ? '-v' : '';
-      ::msg(3, "... target: $target") if $VERBOSE;
-
-      # hg bundle (also) returns 1 if no changes have been found, so use
-      # modification times to decide whether an error occurred.
-      # If not we can also throw away the old bundle..
-      $omodt = -1;
-      {  my @x = stat $target;
-         if(@x){ $omodt = $x[9] }
-      }
-      $flag = system("hg bundle $flag $target >> $MFFN 2>&1");
-      if(($flag >> 8) != 0){
-         my ($nmodt, @x) = (-1, stat($target));
-         if(@x){ $nmodt = $x[9] }
-
-         if($omodt == $nmodt){
-            ::msg(3, 'No updates available, dropping outdated bundles')
-               if $VERBOSE;
-            ::err(3, "Failed to unlink outdated bundle $target: $^E")
-               unless($nmodt == -1 || unlink($target) == 1)
-         }else{
-            ::err(3, "hg(1) bundle failed for $target");
-            ::do_exit(1)
-         }
-      }
-   }
-
-   sub _do_shelves_or_patches{
-      my ($e, $what) = @_;
-      my ($target, $dest, $flag);
-      ::msg(2, "Checking for $what") if $VERBOSE;
-
-      $target = "$REPO_OUTPUT_DIR/$e";
-      $target = $1 if $target =~ /(.+)\..+$/;
-      $target .= "-$what.tbz";
-      ::msg(3, "... target: $target") if $VERBOSE;
-      $dest = ".hg/$what";
-      unless(-d $dest){
-         ::msg(3, "No $dest directory, skipping") if $VERBOSE;
-         return
-      }
-
-      # Only if none-empty
-      unless(opendir DIR, $dest){
-         ::err(3, "opendir($dest) failed: $^E");
-         return
-      }
-      $flag = 0;
-      {  my @dents = readdir DIR;
-         closedir DIR;
-         foreach my $dent(@dents){
-            next if $dent eq '.' || $dent eq '..';
-            $flag = 1;
-            last
-         }
-      }
-
-      if($flag == 0){
-         ::msg(3, "No $what, dropping directory and outdated backups")
-            if $VERBOSE;
-         ::err(3, "Failed to unlink outdated $what backup: $^E")
-            unless(! -f $target || unlink($target) == 1);
-         ::err(3, "Failed to rmdir empty $dest: $^E")
-            unless rmdir($dest) == 1
-      }else{
-         ::msg(3, "Creating new $what backup") if $VERBOSE;
-         $flag = system("tar -c -j -f $target $dest " .
-               "> /dev/null 2>> $MFFN");
-         ::err(3, "tar(1) execution failed for $target")
-            if ($flag >> 8) != 0
       }
    }
 }
