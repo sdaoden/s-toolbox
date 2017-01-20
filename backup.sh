@@ -344,6 +344,7 @@ sub do_exit{
       }
 
       $flag = system("git bundle create $target $flag >> $MFFN 2>&1");
+      seek $MFFH, 0, 2
       # Does not create an empty bundle: 128
       if($flag >> 8 == 128){
          ::msg(3, 'No updates available, dropping outdated bundles, if any')
@@ -507,7 +508,7 @@ jOUTER:
          ::msg(0, "Creating/Updating archive <$ar>")
       }
 
-      unless(open XARGS, "| xargs -0 tar -r -f $ar >/dev/null 2>>$MFFN"){
+      unless(open XARGS, "| xargs -0 tar -v -r -f $ar >>$MFFN 2>&1"){
          ::err(1, "Failed to create pipe: $^E");
          ::do_exit(1)
       }
@@ -515,12 +516,14 @@ jOUTER:
       close XARGS;
 
       if($RESET || $COMPLETE){
-         system("$COMPRESSOR $ar");
+         system("$COMPRESSOR $ar >>$MFFN 2>&1");
          unless(! -f $ar || unlink $ar){
             ::err(1, "Temporary archive $ar cannot be deleted: $^E");
             ::do_exit(1)
          }
       }
+
+      seek $MFFH, 0, 2
    }
 }
 
