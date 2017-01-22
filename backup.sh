@@ -344,7 +344,7 @@ sub do_exit{
       }
 
       $flag = system("git bundle create $target $flag >> $MFFN 2>&1");
-      seek $MFFH, 0, 2
+      seek $MFFH, 0, 2;
       # Does not create an empty bundle: 128
       if($flag >> 8 == 128){
          ::msg(3, 'No updates available, dropping outdated bundles, if any')
