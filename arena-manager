@@ -11,7 +11,7 @@
 #@ FIXME - when updating, check that the working tree is expanded (and we're
 #@ FIXME   on the right branch) for vcs which don't work otherwise, e.g., svn
 #
-# Copyright (c) 2011 - 2013 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
+# Copyright (c) 2011 - 2017 Steffen "Daode" Nurpmeso <sdaoden@users.sf.net>.
 # All rights reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
@@ -669,10 +669,13 @@ cd "$ARENA" || {
 }
 
 if [ -f "$LOGFILE" ]; then
-    mv -f "$LOGFILE" "$LOGFILE-LAST" || {
-        echo >&2 "Failed to move old $LOGFILE to $LOGFILE-LAST"
-        exit 1
-    }
+    for i in 4 3 2 1; do
+        if [ -f "${LOGFILE}.${i}" ]; then
+            j=`expr ${i} + 1`
+            mv -f "${LOGFILE}.${i}" "${LOGFILE}.${j}" ||
+                echo >&2 "Failed to move ${LOGFILE}.${i} to ${LOGFILE}.${j}"
+        fi
+    done
 fi
 
 [ -z "$MODE" ] && MODE=autoup
