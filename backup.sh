@@ -80,8 +80,8 @@ my $SYMLINK_INCLUDE = 0;
 # Compressor for --complete and --reset.  It must compress its filename
 # argument to FILENAME${COMPRESSOR_EXT}.  If it doesn't remove the original
 # file, we will do
-my $COMPRESSOR = 'xz --threads=0';
-my $COMPRESSOR_EXT = '.xz';
+my $COMPRESSOR = 'zstd -19';
+my $COMPRESSOR_EXT = '.zst';
 
 ###  --  >8  --  8<  --  ###
 
