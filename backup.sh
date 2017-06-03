@@ -502,8 +502,14 @@ jOUTER:
          }
          $far = $ar . $COMPRESSOR_EXT;
          ::msg(0, "Creating complete archive <$far>");
-         ::err(3, "Archive <$ar> already exists: $^E") if -e $ar;
-         ::err(3, "Archive <$far> already exists: $^E") if -e $far
+         if(-e $far){
+            ::err(3, "Archive <$far> already exists");
+            ::do_exit(1)
+         }
+         if(-e $ar && !unlink $ar){
+            ::err(1, "Old archive <$ar> exists but cannot be deleted: $^E");
+            ::do_exit(1)
+         }
       }else{
          $ar = "$OUTPUT_DIR/$backup.tar";
          ::msg(0, "Creating/Updating archive <$ar>")
