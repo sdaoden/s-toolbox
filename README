@@ -105,8 +105,8 @@ backup.sh:
    2016-08-27: FIX faulty xarg/tar -c invocations (Ralph Corderoy)
    2016-10-19: Renamed from backup.pl "now" that we start via sh(1).
    2016-10-19: Removed support for Mercurial: not tested in years.
-   2017-01-20: include verbose output of tar(1) and used compressor,
-               need to seek() tmpfile, then.
+   ..2017-06-12: Various little fixes still due to the xarg/tar stuff.
+   2017-06-13: Add $HOOK mechanism.
 
 super-shutdown.c:
    Single setuid root BSD program to invoke /sbin/shutdown(8), either

@@ -14,6 +14,8 @@
 #@ 2016-08-27: s-it-mode;  FIX faulty xarg/tar -c invocations (Ralph Corderoy)
 #@ 2016-10-19: Renamed from backup.pl "now" that we start via sh(1).
 #@ 2016-10-19: Removed support for Mercurial: not tested in years.
+#@ ..2017-06-12: Various little fixes still due to the xarg/tar stuff.
+#@ 2017-06-13: Add $HOOK mechanism.
 #
 # Public Domain.
 
@@ -55,7 +57,14 @@ my $TSTAMP = "$OUTPUT_DIR/.-backup.dat";
 # but adjusting the backup script is too blown for this.
 # If this file here exists, each line is treated as the specification of such
 # a directory (again: absolute paths, please).
+# $ADDONS will be removed in complete/reset mode, if it exists.
 my $ADDONS = "$OUTPUT_DIR/.backup-addons.txt";
+
+# We watch out for a hook and call it after the backup is completed, the first
+# argument being the created/updated archive, the second whether complete/reset
+# mode was used, the third $^O (or not; and, again: absolute paths, please).
+# The file list that has been backed up can be read from stdin.
+my $HOOK = "$OUTPUT_DIR/.backup-hook.sh";
 
 # A fileglob (may really be a glob) and a list of directories to always exclude
 my $EXGLOB = '._* *~ *.swp';
@@ -95,7 +104,7 @@ use IO::Handle;
 
 my ($COMPLETE, $RESET, $TIMESTAMP, $BASENAME, $VERBOSE) = (0, 0, 0, 0, 0);
 my $FS_TIME_ANDOFF = 3; # Filesystem precision adjust (must be mask) ...
-my ($INPUT); # References to above syms
+my ($INPUT, $ARCHIVE); # References to above syms, final archive
 
 # Messages also go into this finally mail(1)ed file
 my ($MFFH,$MFFN) = File::Temp::tempfile(UNLINK => 1);
@@ -133,6 +142,9 @@ jMAIN:{
       Archive::create()
    }
    Timestamp::save();
+
+   Hook::call() if Hook::exists();
+
    exit(0) if $TIMESTAMP;
    do_exit(0)
 }
@@ -487,7 +499,6 @@ jOUTER:
 
 {package Archive;
    sub create{
-      my $listref = Filelist::get_listref();
       my $backup = 'backup'; #$COMPLETE ? 'complete-backup' : 'backup';
 
       my ($ar, $far);
@@ -510,8 +521,9 @@ jOUTER:
             ::err(1, "Old archive <$ar> exists but cannot be deleted: $^E");
             ::do_exit(1)
          }
+         $ARCHIVE = $far
       }else{
-         $ar = "$OUTPUT_DIR/$backup.tar";
+         $ARCHIVE = $ar = "$OUTPUT_DIR/$backup.tar";
          ::msg(0, "Creating/Updating archive <$ar>")
       }
 
@@ -519,6 +531,7 @@ jOUTER:
          ::err(1, "Failed to create pipe: $^E");
          ::do_exit(1)
       }
+      my $listref = Filelist::get_listref();
       foreach my $p (@$listref){ print XARGS $p, "\x00" }
       close XARGS;
 
@@ -531,6 +544,26 @@ jOUTER:
       }
 
       seek $MFFH, 0, 2
+   }
+}
+
+{package Hook;
+   sub exists{
+      -x $HOOK
+   }
+
+   sub call{
+      unless(open HOOK, "| $HOOK $ARCHIVE " . ($COMPLETE || $RESET) .
+            " $^O >>$MFFN 2>&1"){
+         ::err(1, "Failed to create hook pipe: $^E");
+         ::do_exit(1)
+      }else{
+         my ($stop, $listref) = (0, Filelist::get_listref());
+         local *hdl = sub{ $stop = 1 };
+         local $SIG{PIPE} = \&hdl;
+         foreach my $p (@$listref){ last if $stop; print HOOK $p, "\n" }
+      }
+      close HOOK;
    }
 }
 
