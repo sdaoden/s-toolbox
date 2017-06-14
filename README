@@ -106,7 +106,7 @@ backup.sh:
    2016-10-19: Renamed from backup.pl "now" that we start via sh(1).
    2016-10-19: Removed support for Mercurial: not tested in years.
    ..2017-06-12: Various little fixes still due to the xarg/tar stuff.
-   2017-06-13: Add $HOOK mechanism.
+   2017-06-13,14: Add $HOOK mechanism, an alternative archiver approach.
 
 super-shutdown.c:
    Single setuid root BSD program to invoke /sbin/shutdown(8), either

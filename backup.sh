@@ -15,7 +15,7 @@
 #@ 2016-10-19: Renamed from backup.pl "now" that we start via sh(1).
 #@ 2016-10-19: Removed support for Mercurial: not tested in years.
 #@ ..2017-06-12: Various little fixes still due to the xarg/tar stuff.
-#@ 2017-06-13: Add $HOOK mechanism.
+#@ 2017-06-13,14: Add $HOOK mechanism.
 #
 # Public Domain.
 
@@ -60,10 +60,10 @@ my $TSTAMP = "$OUTPUT_DIR/.-backup.dat";
 # $ADDONS will be removed in complete/reset mode, if it exists.
 my $ADDONS = "$OUTPUT_DIR/.backup-addons.txt";
 
-# We watch out for a hook and call it after the backup is completed, the first
-# argument being the created/updated archive, the second whether complete/reset
-# mode was used, the third $^O (or not; and, again: absolute paths, please).
-# The file list that has been backed up can be read from stdin.
+# A hook can be registered for archive creation, it will read the file to be
+# backup-up from standard input.
+# It takes two arguments: a boolean that indicates whether complete/reset
+# mode was used, and the perl $^O string (again: absolute paths, please).
 my $HOOK = "$OUTPUT_DIR/.backup-hook.sh";
 
 # A fileglob (may really be a glob) and a list of directories to always exclude
@@ -104,7 +104,7 @@ use IO::Handle;
 
 my ($COMPLETE, $RESET, $TIMESTAMP, $BASENAME, $VERBOSE) = (0, 0, 0, 0, 0);
 my $FS_TIME_ANDOFF = 3; # Filesystem precision adjust (must be mask) ...
-my ($INPUT, $ARCHIVE); # References to above syms, final archive
+my $INPUT; # References to above syms
 
 # Messages also go into this finally mail(1)ed file
 my ($MFFH,$MFFN) = File::Temp::tempfile(UNLINK => 1);
@@ -139,11 +139,13 @@ jMAIN:{
          do_exit(0)
       }
 
-      Archive::create()
+      if(Hook::exists()){
+         Hook::call()
+      }else{
+         Archive::create()
+      }
    }
    Timestamp::save();
-
-   Hook::call() if Hook::exists();
 
    exit(0) if $TIMESTAMP;
    do_exit(0)
@@ -521,9 +523,8 @@ jOUTER:
             ::err(1, "Old archive <$ar> exists but cannot be deleted: $^E");
             ::do_exit(1)
          }
-         $ARCHIVE = $far
       }else{
-         $ARCHIVE = $ar = "$OUTPUT_DIR/$backup.tar";
+         $ar = "$OUTPUT_DIR/$backup.tar";
          ::msg(0, "Creating/Updating archive <$ar>")
       }
 
@@ -553,7 +554,7 @@ jOUTER:
    }
 
    sub call{
-      unless(open HOOK, "| $HOOK $ARCHIVE " . ($COMPLETE || $RESET) .
+      unless(open HOOK, "| $HOOK " . ($COMPLETE || $RESET) .
             " $^O >>$MFFN 2>&1"){
          ::err(1, "Failed to create hook pipe: $^E");
          ::do_exit(1)
@@ -564,6 +565,8 @@ jOUTER:
          foreach my $p (@$listref){ last if $stop; print HOOK $p, "\n" }
       }
       close HOOK;
+
+      seek $MFFH, 0, 2
    }
 }
 
