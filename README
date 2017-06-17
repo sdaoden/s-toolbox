@@ -91,6 +91,8 @@ gmane-fetch.pl:
    Download NNTP articles from Gmane.org, incrementally, and store them in
    (append them to) a local MBOX.
    Read and adjust the script header for documentation and configuration.
+   2017-06-17: ensure resource file is updated as necessary even when script
+               dies due to failure.  Add $SAFE_FSYNC, default on.
 
 backup.sh:
    My private backup script.  Simple (uses tar(1)), but does some stuff
