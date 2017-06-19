@@ -76,21 +76,11 @@ git-topic-creator.pl:
 
    2013-09-13: newer git(1) reverse ``rev-parse`` output: adjusted.
 
-arena-manager.sh:
-   Offers some automatized operations on revision control repositories,
-   like updating, (fast-forward) merging, garbage-collecting.
-
-   2016-XX-XX: complete rewrite that completely replaces the old
-   ``arena-manager`` and requires only a POSIX environment (no perl(1)).
-   The new ``setup`` mode must be used to initialize a managed
-   (git(1)-based) repository; this results in a much more powerful
-   functionality and automatization.  Please look into the script header
-   for more.  The old script has been removed (see ``git(1)`` history).
-
 gmane-fetch.pl:
    Download NNTP articles from Gmane.org, incrementally, and store them in
    (append them to) a local MBOX.
    Read and adjust the script header for documentation and configuration.
+
    2017-06-17: ensure resource file is updated as necessary even when script
                dies due to failure.  Add $SAFE_FSYNC, default on.
 
@@ -109,6 +99,17 @@ backup.sh:
    2016-10-19: Removed support for Mercurial: not tested in years.
    ..2017-06-12: Various little fixes still due to the xarg/tar stuff.
    2017-06-13,14: Add $HOOK mechanism, an alternative archiver approach.
+
+arena-manager.sh:
+   Offers some automatized operations on revision control repositories,
+   like updating, (fast-forward) merging, garbage-collecting.
+
+   2016-XX-XX: complete rewrite that completely replaces the old
+   ``arena-manager`` and requires only a POSIX environment (no perl(1)).
+   The new ``setup`` mode must be used to initialize a managed
+   (git(1)-based) repository; this results in a much more powerful
+   functionality and automatization.  Please look into the script header
+   for more.  The old script has been removed (see ``git(1)`` history).
 
 super-shutdown.c:
    Single setuid root BSD program to invoke /sbin/shutdown(8), either
