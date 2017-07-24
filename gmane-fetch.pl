@@ -1,14 +1,15 @@
 #!/usr/bin/env perl
 require 5.008_001;
-#@ gmane-fetch.pl: connect to $HOSTNAME and query/update all groups that are
-#@ mentioned in the configuration file $RCFILE, store fetched articles of
-#@ updated groups in $MBOX (appended), finally update $RCFILE.
+#@ gmane-fetch.pl: connect to any hostnames in %HOSTS and query/update all
+#@ groups that are mentioned for the corresponding name in the configuration
+#@ file $RCFILE (are named NAME.), store fetched articles of updated groups in
+#@ $MBOX (appended), finally update $RCFILE.
 #@ $RCFILE can contain comments: lines that start with # (like this one).
 #@ To init a new group, simply place its name alone on a line, as in:
-#@    gmane.mail.s-nail.user
+#@    gwene.mail.s-mailx
 #@ then run this script.
 #@ TODO Primitive yet: no command line, no help, no file locking.
-my $HOSTNAME = "news.gmane.org";
+my %HOSTS = ("gmane" => "news.gmane.org", "gwene" => "news.gwene.org");
 my $RCFILE = "${ENV{HOME}}/sec.arena/mail/.gmane.rc";
 my $MBOX = "${ENV{HOME}}/sec.arena/mail/gmane";
 my $SAFE_FSYNC = 1; # fsync(3) after each message (etc.)?
@@ -174,48 +175,56 @@ sub main {
       select MBOX;$|=1;
    }
 
-   print STDERR ". Connecting to ${HOSTNAME}..\n";
-   nntp_open $HOSTNAME;
+   foreach my $name (keys %HOSTS){
+      my $hostname = $HOSTS{$name};
+      print STDERR ". Connecting to ${hostname}..\n";
+      nntp_open $hostname;
 
-   for(my $i = 0; $i < @NGRPS; ++$i){
-      my $gr = $NGRPS[$i];
-      if($gr->[3] < 0){
-         print STDERR ". Query $gr->[0] .. "
-      }else{
-         print STDERR ". Update $gr->[0] #$gr->[3] ($gr->[1]/$gr->[2]) .. "
-      }
+      for(my $i = 0; $i < @NGRPS; ++$i){
+         my $gr = $NGRPS[$i];
 
-      my ($f, $t) = nntp_group($gr->[0]);
-      if(!defined $f){
-         print STDERR "GROUP INACCESSABLE, skipping entry\n";
-         next;
-      }
-      print STDERR "$f/$t\n";
-      ($gr->[1], $gr->[2]) = ($f, $t);
+         next unless $gr->[0] =~ /^$name\./;
 
-      if(!defined $gr->[3] || $gr->[3] < 0 || $gr->[3] > $t){
-         $gr->[3] = $t;
-         $RCFILE_SAVE = 1
-      }else{
-         my $j = 0;
-         while($gr->[3] < $t){
-            ++$gr->[3];
-            $RCFILE_SAVE = 1;
-            if($j++ == 0){
-               print STDERR "   $gr->[3]"
-            }elsif ($j % 8 == 0){
-               print STDERR "\n   $gr->[3]"
-            }else{
-               print STDERR " $gr->[3]";
-            }
-            last unless
-               nntp_article(($UPDATE > 0 ? *MBOX : *STDOUT), $gr->[0], $gr->[3])
+         if($gr->[3] < 0){
+            print STDERR ". Query $gr->[0] .. "
+         }else{
+            print STDERR ". Update $gr->[0] #$gr->[3] ($gr->[1]/$gr->[2]) .. "
          }
-         print STDERR "\n" if $j > 0
+
+         my ($f, $t) = nntp_group($gr->[0]);
+         if(!defined $f){
+            print STDERR "GROUP INACCESSABLE, skipping entry\n";
+            next;
+         }
+         print STDERR "$f/$t\n";
+         ($gr->[1], $gr->[2]) = ($f, $t);
+
+         if(!defined $gr->[3] || $gr->[3] < 0 || $gr->[3] > $t){
+            $gr->[3] = $t;
+            $RCFILE_SAVE = 1
+         }else{
+            my $j = 0;
+            while($gr->[3] < $t){
+               ++$gr->[3];
+               $RCFILE_SAVE = 1;
+               if($j++ == 0){
+                  print STDERR "   $gr->[3]"
+               }elsif ($j % 8 == 0){
+                  print STDERR "\n   $gr->[3]"
+               }else{
+                  print STDERR " $gr->[3]";
+               }
+               last unless
+                  nntp_article(($UPDATE > 0 ? *MBOX : *STDOUT),
+                     $gr->[0], $gr->[3])
+            }
+            print STDERR "\n" if $j > 0
+         }
       }
+
+      nntp_close;
    }
 
-   nntp_close;
    if($UPDATE > 0){
       close MBOX or die $^E
    }
