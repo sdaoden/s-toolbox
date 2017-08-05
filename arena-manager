@@ -676,6 +676,7 @@ if [ -f "$LOGFILE" ]; then
                 echo >&2 "Failed to move ${LOGFILE}.${i} to ${LOGFILE}.${j}"
         fi
     done
+    mv "$LOGFILE" "$LOGFILE".1
 fi
 
 [ -z "$MODE" ] && MODE=autoup
