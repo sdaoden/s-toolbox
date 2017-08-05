@@ -73,28 +73,29 @@ if [ ${yd} -lt ${lmonth} ] || [ ${yd} -lt ${lweek} ] || \
    lmonth=-42 lweek=-42 lday=-42
 fi
 
-# Newer versions of FreeBSD periodic(8) seem to sleep in between jobs, so
-# let's update our DB before we call it!
+# Newer versions of FreeBSD periodic(8) seem to sleep in between jobs,
+# so let's update our DB before we call it!
+i=`expr ${yd} - 30`
+[ ${i} -ge ${lmonth} ] && lmonth=${yd} monthly=1 || monthly=
+i=`expr ${yd} - 7`
+[ ${i} -ge ${lweek} ] && lweek=${yd} weekly=1 || weeky=
+[ ${yd} -ne ${lday} ] && lday=${yd} daily=1 || daily=
 echo "${lmonth} ${lweek} ${lday}" > "${DB_FILE}"
 /bin/chmod 0644 "${DB_FILE}"
 
-i=`expr ${yd} - 30`
-if [ ${i} -ge ${lmonth} ]; then
+# And do what has to be done thereafter
+if [ -n "${monthly}" ]; then
    echo 'Invoking monthly periodical things.'
-   lmonth=${yd}
    ( < /dev/null eval ${MONTHLY} )
 fi
 
-i=`expr ${yd} - 7`
-if [ ${i} -ge ${lweek} ]; then
+if [ -n "${weekly}" ]; then
    echo 'Invoking weekly periodical things.'
-   lweek=${yd}
    ( < /dev/null eval ${WEEKLY} )
 fi
 
-if [ ${yd} -ne ${lday} ]; then
+if [ -n "${daily}" ]; then
    echo 'Invoking daily periodical things.'
-   lday=${yd}
    ( < /dev/null eval ${DAILY} )
 fi
 

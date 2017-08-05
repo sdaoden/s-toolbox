@@ -65,6 +65,7 @@ real-periodic.sh:
 
    2015-08-24: newer periodic(8) sleep in between jobs, so update the DB
                before we start it!
+   2017-08-05: oh, fix the latter mess!  No more sleeps there, too?
 
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so
