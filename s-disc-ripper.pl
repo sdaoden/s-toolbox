@@ -11,7 +11,7 @@ my $SELF = 's-disc-ripper.pl'; #@ part of S-MusicBox; handles CD ripping.
 my $VERSION = '0.5.0';
 my $COPYRIGHT =<<__EOT__;
 Copyright (c) 1998 - 2003, 2010 - 2014,
-Copyright (c) 2016 Steffen (Daode) Nurpmeso <steffen\@sdaoden.eu>.
+Copyright (c) 2016 - 2017 Steffen (Daode) Nurpmeso <steffen\@sdaoden.eu>.
 All rights reserved under the terms of the ISC license.
 __EOT__
 # Permission to use, copy, modify, and/or distribute this software for any
@@ -1903,6 +1903,7 @@ __EOT__
 
     sub write {
         my ($self, $data) = @_;
+
         if ($self->{hif}) {
             die "Write error $self->{hiname}: $!"
                 unless print {$self->{hif}} $data;
@@ -2090,7 +2091,7 @@ __EOT__
         ::v("Creating AAC faac(1) $s-quality encoder");
         ::utf8_echomode_on();
         die "Can't open AAC$t: $!"
-            unless  open(my $fd, '| faac -XP --mpeg-vers 4 -ws --tns ' .
+            unless open(my $fd, '| faac -XP --mpeg-vers 4 -w --tns ' .
                 "$b $self->{aactag} -o $f - >/dev/null 2>&1");
         ::utf8_echomode_off();
         die "binmode error AAC$t: $!" unless binmode $fd;
