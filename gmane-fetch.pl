@@ -9,12 +9,12 @@ require 5.008_001;
 #@    gwene.mail.s-mailx
 #@ then run this script.
 #@ TODO Primitive yet: no command line, no help, no file locking.
-my %HOSTS = ("gmane" => "news.gmane.org", "gwene" => "news.gwene.org");
+my %HOSTS = ("gmane" => "news.gmane.org");#, "gwene" => "news.gwene.org");
 my $RCFILE = "${ENV{HOME}}/sec.arena/mail/.gmane.rc";
 my $MBOX = "${ENV{HOME}}/sec.arena/mail/gmane";
 my $SAFE_FSYNC = 1; # fsync(3) after each message (etc.)?
 #
-# Copyright (c) 2014 - 2017 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+# Copyright (c) 2014 - 2018 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 #
 # Based on the script nntp-to-mbox.pl that is:
 #
