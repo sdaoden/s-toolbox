@@ -3,8 +3,7 @@
 #@ Works with Bourne/Korn/POSIX shells, requires awk(1) (a POSIX environment).
 #@ Setup your repos once via `setup' mode ($ arena-manager.sh setup).
 #
-# Copyright (c) 2011 - 2014 Steffen (Daode) Nurpmeso <sdaoden@users.sf.net>.
-# All rights reserved.
+# Copyright (c) 2011 - 2018 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -770,4 +769,4 @@ else
    log 'All seems fine around here, ciao'
 fi
 exit ${ESTAT}
-# vim:set fenc=utf-8:s-it-mode
+# s-it-mode

@@ -4,8 +4,7 @@
 #@ Web: https://www.sdaoden.eu/code.html
 #@ Git: https?://git.sdaoden.eu/cgit/s-toolbox.git
 #
-# Copyright (c) 2012 - 2016 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
-# All rights reserved.
+# Copyright (c) 2012 - 2018 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -93,4 +92,4 @@ echo exit
 echo
 
 exit
-# vim:set fenc=utf-8:s-it-mode
+# s-it-mode
