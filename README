@@ -101,6 +101,9 @@ backup.sh:
    2016-10-19: Removed support for Mercurial: not tested in years.
    ..2017-06-12: Various little fixes still due to the xarg/tar stuff.
    2017-06-13,14: Add $HOOK mechanism, an alternative archiver approach.
+   2018-10-12: Fix $HOOK mechanism for filenames with spaces as shown by
+               POSIX, assuming no newlines are in a name:
+                  sed −e 's/"/"\\""/g' −e 's/.*/"&"/'
 
 arena-manager:
    Offers some automatized operations on revision control repositories,

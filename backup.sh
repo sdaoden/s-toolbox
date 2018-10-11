@@ -562,7 +562,12 @@ jOUTER:
          my ($stop, $listref) = (0, Filelist::get_listref());
          local *hdl = sub{ $stop = 1 };
          local $SIG{PIPE} = \&hdl;
-         foreach my $p (@$listref){ last if $stop; print HOOK $p, "\n" }
+         foreach my $p (@$listref){
+            last if $stop;
+            $p =~ s/\"/\"\\\"\"/g;
+            $p = '"' . $p . '"';
+            print HOOK $p, "\n"
+         }
       }
       close HOOK;
 
