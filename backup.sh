@@ -94,7 +94,7 @@ my $COMPRESSOR_EXT = '.zst';
 
 ###  --  >8  --  8<  --  ###
 
-use diagnostics -verbose;
+#use diagnostics -verbose;
 use warnings;
 #use strict;
 use sigtrap qw(die normal-signals);

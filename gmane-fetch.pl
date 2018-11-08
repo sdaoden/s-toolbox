@@ -28,7 +28,7 @@ my $SAFE_FSYNC = 1; # fsync(3) after each message (etc.)?
 # software for any purpose.  It is provided "as is" without express or 
 # implied warranty.
 
-use diagnostics -verbose;
+#use diagnostics;# -verbose;
 use warnings;
 use strict;
 

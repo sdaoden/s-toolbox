@@ -26,7 +26,7 @@ my $TOPICDIR = 'topic'; # Level under which all topic branches are created
 
 ##  --  >8  --  8<  --  ##
 
-use diagnostics -verbose;
+#use diagnostics -verbose;
 use strict;
 use warnings;
 
