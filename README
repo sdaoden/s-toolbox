@@ -1,6 +1,72 @@
 A repo of some small tools
 ==========================
 
+Somewhat useful:
+
+backup.sh:
+   My private backup script.  Simple (uses tar(1)), but does some stuff
+   which i need for my work flow (backups data which is in local repo
+   clones but not yet pushed to their "real" counterparts).  Needs perl(1).
+
+   2015-09-02: no longer following symbolic links.
+   2015-10-09: add -b/--basename option, add $COMPRESSOR variable, start
+               via shell and $PERL5OPT clear to avoid multibyte problems.
+   2015-12-25: excluding symbolic links from archives; change
+               $SYMLINK_INCLUDE in the script header to change this.
+   2016-08-27: FIX faulty xarg/tar -c invocations (Ralph Corderoy)
+   2016-10-19: Renamed from backup.pl "now" that we start via sh(1).
+   2016-10-19: Removed support for Mercurial: not tested in years.
+   ..2017-06-12: Various little fixes still due to the xarg/tar stuff.
+   2017-06-13,14: Add $HOOK mechanism, an alternative archiver approach.
+   2018-10-12: Fix $HOOK mechanism for filenames with spaces as shown by
+               POSIX, assuming no newlines are in a name:
+                  sed −e 's/"/"\\""/g' −e 's/.*/"&"/'
+   2018-11-12: add -p option to tar.
+
+fancontrol.sh:
+   A simple fancontrol shell script for an MacBook Air.
+   Can be adjusted to others, of course.
+
+gen-uushar-wrapper:
+   Creates a shell archive similar to uushar as below, except that the
+   archive (1) consists only of executable file members, and (2) will
+   be itself executable.  Run it (the generated shell archive script)
+   to invoke any of the programs contained therein.  On the first run,
+   the wrapper will create a hidden directory in your $TMPDIR to unpack
+   the archive members therein.  Run without arguments to show its
+   contents and the creation date.
+   It needs no manual, simply execute it and it will guide you through
+   the archive creation process.
+
+   Note that the uudecode(1) program must be capable of decoding to
+   /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
+
+   2014-03-05: rewritten: check and forbid filenames with embedded
+               double quotes, ensure the given default executable, if any,
+               is part of the generated archive, reexecute after archive
+               expansion, truly disallow empty archive name.
+   2016-01-05: port to FreeBSD: uudecode(1) doesn't honour /dev/stdout
+               in-stream, so give -o command line option.
+
+git-topic-creator.pl:
+   To ease maintaining of topic branches i use a linear history, so
+   that i can use ``$ git rebase -i`` for fixups and squashes, without
+   having to worry about recreation of topic branches.  Instead i tag
+   commit messages, and use this script to create the topics once i'm
+   finished.  Read the --help output for more, and make use of verbosity
+   when you use it first.
+
+   2013-09-13: newer git(1) reverse ``rev-parse`` output: adjusted.
+
+gmane-fetch.pl:
+   Download NNTP articles from Gmane.org and Gwene.org, incrementally, and
+   store them in (append them to) a local MBOX.
+   Read and adjust the script header for documentation and configuration.
+
+   2017-06-17: ensure resource file is updated as necessary even when script
+               dies due to failure.  Add $SAFE_FSYNC, default on.
+   2017-07-24: add support for multiple servers and add gwene.org.
+
 uushar (manual: uushar.1):
    Writes a sh(1) shell script to the standard output which will
    recreate the file hierarchy specified by the command line operands.
@@ -27,26 +93,22 @@ uushar (manual: uushar.1):
                in-stream, so give -o command line option.
                mdocmx(7)ified++ manual.
 
-gen-uushar-wrapper:
-   Creates a shell archive similar to uushar as above, except that the
-   archive (1) consists only of executable file members, and (2) will
-   be itself executable.  Run it (the generated shell archive script)
-   to invoke any of the programs contained therein.  On the first run,
-   the wrapper will create a hidden directory in your $TMPDIR to unpack
-   the archive members therein.  Run without arguments to show its
-   contents and the creation date.
-   It needs no manual, simply execute it and it will guide you through
-   the archive creation process.
 
-   Note that the uudecode(1) program must be capable of decoding to
-   /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
+You do not wanna know:
 
-   2014-03-05: rewritten: check and forbid filenames with embedded
-               double quotes, ensure the given default executable, if any,
-               is part of the generated archive, reexecute after archive
-               expansion, truly disallow empty archive name.
-   2016-01-05: port to FreeBSD: uudecode(1) doesn't honour /dev/stdout
-               in-stream, so give -o command line option.
+arena-manager:
+   Offers some automatized operations on revision control repositories,
+   like updating, (fast-forward) merging, garbage-collecting.
+
+cdoc-freebsd.S:
+   FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on
+   newer ones, but haven't tried it in a while.  It had 416 object
+   file bytes when everything was placed in ``.text`` (no .EH frames
+   back then).
+
+openbsd-changelog-plus.pl,
+openbsd-changeset-plus.pl:
+   Simple scripts to ease maintaining of OpenBSD plus.html entries.
 
 real-periodic.sh:
    A _real_ periodic for NetBSD, FreeBSD, DragonFly BSD and OpenBSD that
@@ -67,62 +129,9 @@ real-periodic.sh:
                before we start it!
    2017-08-05: oh, fix the latter mess!  No more sleeps there, too?
 
-git-topic-creator.pl:
-   To ease maintaining of topic branches i use a linear history, so
-   that i can use ``$ git rebase -i`` for fixups and squashes, without
-   having to worry about recreation of topic branches.  Instead i tag
-   commit messages, and use this script to create the topics once i'm
-   finished.  Read the --help output for more, and make use of verbosity
-   when you use it first.
-
-   2013-09-13: newer git(1) reverse ``rev-parse`` output: adjusted.
-
-gmane-fetch.pl:
-   Download NNTP articles from Gmane.org and Gwene.org, incrementally, and
-   store them in (append them to) a local MBOX.
-   Read and adjust the script header for documentation and configuration.
-
-   2017-06-17: ensure resource file is updated as necessary even when script
-               dies due to failure.  Add $SAFE_FSYNC, default on.
-   2017-07-24: add support for multiple servers and add gwene.org.
-
-backup.sh:
-   My private backup script.  Simple (uses tar(1)), but does some stuff
-   which i need for my work flow (backups data which is in local repo
-   clones but not yet pushed to their "real" counterparts).  Needs perl(1).
-
-   2015-09-02: no longer following symbolic links.
-   2015-10-09: add -b/--basename option, add $COMPRESSOR variable, start
-               via shell and $PERL5OPT clear to avoid multibyte problems.
-   2015-12-25: excluding symbolic links from archives; change
-               $SYMLINK_INCLUDE in the script header to change this.
-   2016-08-27: FIX faulty xarg/tar -c invocations (Ralph Corderoy)
-   2016-10-19: Renamed from backup.pl "now" that we start via sh(1).
-   2016-10-19: Removed support for Mercurial: not tested in years.
-   ..2017-06-12: Various little fixes still due to the xarg/tar stuff.
-   2017-06-13,14: Add $HOOK mechanism, an alternative archiver approach.
-   2018-10-12: Fix $HOOK mechanism for filenames with spaces as shown by
-               POSIX, assuming no newlines are in a name:
-                  sed −e 's/"/"\\""/g' −e 's/.*/"&"/'
-   2018-11-12: add -p option to tar.
-
-arena-manager:
-   Offers some automatized operations on revision control repositories,
-   like updating, (fast-forward) merging, garbage-collecting.
-
 super-shutdown.c:
    Single setuid root BSD program to invoke /sbin/shutdown(8), either
    to reboot or to halt the system.
    You've been warned.
-
-cdoc-freebsd.S:
-   FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on
-   newer ones, but haven't tried it in a while.  It had 416 object
-   file bytes when everything was placed in ``.text`` (no .EH frames
-   back then).
-
-openbsd-changelog-plus.pl,
-openbsd-changeset-plus.pl:
-   Simple scripts to ease maintaining of OpenBSD plus.html entries.
 
 # s-it-mode
