@@ -1,6 +1,6 @@
 #!/bin/sh -
 #@ Simple updater, places backup and metadata files in $(REPO_)?OUTPUT_DIR.
-#@ default: (tar -rf) backup.tar files changed since (timestamp of) last run
+#@ default: (tar -rpf) backup.tar files changed since (timestamp of) last run
 #@ -r/--reset: do not take care about timestamps, do create xy.dateTtime.tar.XY
 #@ -c/--complete: other input (@COMPLETE_INPUT), always xy.dateTtime.tar.XY
 #@ -t/--timestamp: don't backup, but set the timestamp to the current time
@@ -528,7 +528,7 @@ jOUTER:
          ::msg(0, "Creating/Updating archive <$ar>")
       }
 
-      unless(open XARGS, "| xargs -0 tar -v -r -f $ar >>$MFFN 2>&1"){
+      unless(open XARGS, "| xargs -0 tar -v -r -p -f $ar >>$MFFN 2>&1"){
          ::err(1, "Failed to create pipe: $^E");
          ::do_exit(1)
       }

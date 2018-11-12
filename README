@@ -104,6 +104,7 @@ backup.sh:
    2018-10-12: Fix $HOOK mechanism for filenames with spaces as shown by
                POSIX, assuming no newlines are in a name:
                   sed −e 's/"/"\\""/g' −e 's/.*/"&"/'
+   2018-11-12: add -p option to tar.
 
 arena-manager:
    Offers some automatized operations on revision control repositories,
