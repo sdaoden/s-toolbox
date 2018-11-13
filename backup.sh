@@ -16,6 +16,11 @@
 #@ 2016-10-19: Removed support for Mercurial: not tested in years.
 #@ ..2017-06-12: Various little fixes still due to the xarg/tar stuff.
 #@ 2017-06-13,14: Add $HOOK mechanism.
+#@ 2018-10-12: Fix $HOOK mechanism for filenames with spaces as shown by
+#@       POSIX, assuming no newlines are in a name:
+#@          sed −e 's/"/"\\""/g' −e 's/.*/"&"/'
+#@ 2018-11-12: add -p option to tar.
+#@ 2018-11-13: change builtin path set.
 #
 # Public Domain.
 
@@ -74,12 +79,14 @@ my @EXLIST = qw(.DS_Store .localized .Trash);
 # @NORMAL_INPUT is regulary extended by all directories found in $ADDONS, iff
 my @NORMAL_INPUT = (
    "$HOME/arena",
-   "$HOME/code.arena",
-   "$HOME/sec.arena"
+   "$HOME/sec.arena",
+   "/x/src",
+   "/x/doc"
 );
 my @COMPLETE_INPUT = (
    "$HOME/arena",
-   "$HOME/sec.arena"
+   "$HOME/sec.arena",
+   "/x/doc"
 );
 
 # Symbolic links will be skipped actively if this is true.

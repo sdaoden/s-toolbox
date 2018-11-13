@@ -3,26 +3,6 @@ A repo of some small tools
 
 Somewhat useful:
 
-backup.sh:
-   My private backup script.  Simple (uses tar(1)), but does some stuff
-   which i need for my work flow (backups data which is in local repo
-   clones but not yet pushed to their "real" counterparts).  Needs perl(1).
-
-   2015-09-02: no longer following symbolic links.
-   2015-10-09: add -b/--basename option, add $COMPRESSOR variable, start
-               via shell and $PERL5OPT clear to avoid multibyte problems.
-   2015-12-25: excluding symbolic links from archives; change
-               $SYMLINK_INCLUDE in the script header to change this.
-   2016-08-27: FIX faulty xarg/tar -c invocations (Ralph Corderoy)
-   2016-10-19: Renamed from backup.pl "now" that we start via sh(1).
-   2016-10-19: Removed support for Mercurial: not tested in years.
-   ..2017-06-12: Various little fixes still due to the xarg/tar stuff.
-   2017-06-13,14: Add $HOOK mechanism, an alternative archiver approach.
-   2018-10-12: Fix $HOOK mechanism for filenames with spaces as shown by
-               POSIX, assuming no newlines are in a name:
-                  sed −e 's/"/"\\""/g' −e 's/.*/"&"/'
-   2018-11-12: add -p option to tar.
-
 fancontrol.sh:
    A simple fancontrol shell script for an MacBook Air.
    Can be adjusted to others, of course.
@@ -93,12 +73,34 @@ uushar (manual: uushar.1):
                in-stream, so give -o command line option.
                mdocmx(7)ified++ manual.
 
-
-You do not wanna know:
+You likely do not wanna know:
 
 arena-manager:
    Offers some automatized operations on revision control repositories,
    like updating, (fast-forward) merging, garbage-collecting.
+
+backup.sh:
+   My private backup script.  Simple (uses tar(1)), but does some stuff
+   which i need for my work flow (backups data which is in local repo
+   clones but not yet pushed to their "real" counterparts).  Needs perl(1).
+   P.S.: it is fantastic to have a filesystem with snapshots thats can be
+   "send" in addition!
+
+   2015-09-02: no longer following symbolic links.
+   2015-10-09: add -b/--basename option, add $COMPRESSOR variable, start
+               via shell and $PERL5OPT clear to avoid multibyte problems.
+   2015-12-25: excluding symbolic links from archives; change
+               $SYMLINK_INCLUDE in the script header to change this.
+   2016-08-27: FIX faulty xarg/tar -c invocations (Ralph Corderoy)
+   2016-10-19: Renamed from backup.pl "now" that we start via sh(1).
+   2016-10-19: Removed support for Mercurial: not tested in years.
+   ..2017-06-12: Various little fixes still due to the xarg/tar stuff.
+   2017-06-13,14: Add $HOOK mechanism, an alternative archiver approach.
+   2018-10-12: Fix $HOOK mechanism for filenames with spaces as shown by
+               POSIX, assuming no newlines are in a name:
+                  sed −e 's/"/"\\""/g' −e 's/.*/"&"/'
+   2018-11-12: add -p option to tar.
+   2018-11-13: change builtin path set.
 
 cdoc-freebsd.S:
    FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on
