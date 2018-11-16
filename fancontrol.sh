@@ -1,7 +1,20 @@
 #!/bin/sh -
-#@ Simple fancontrol script, by default for an MacBook Air.
-#
-# Public Domain.
+#@ Simple fancontrol script, by default for MacBook Air.
+#@
+#@   start() {
+#@   	ebegin "Starting fancontrol"
+#@   	start-stop-daemon --start --background \
+#@   		--make-pidfile --pidfile ${PID} \
+#@   		--exec /etc/fancontrol.sh -- ${CONFIG}
+#@   	eend ${?}
+#@   }
+#@   stop() {
+#@   	ebegin "Stopping fancontrol"
+#@   	start-stop-daemon --stop --pidfile ${PID}
+#@   	eend ${?}
+#@   }
+#@
+#@ Public Domain
 
 ## Generic fancontrol.sh settings and variables
 
@@ -21,6 +34,7 @@ FASTCAT=0
 
 #
 DEBUG=0
+DBGOUT=/tmp/fancontrol.dbg
 
 # New fan value if we step, newlvl to step to (evtl.), new redux-at level
 # (evtl.), and the sleep duration before next query
@@ -97,7 +111,7 @@ fi
 
 dbg() {
    if [ $DEBUG -ne 0 ]; then
-      echo >&2 $*
+      echo $* >> $DBGOUT
    fi
 }
 
@@ -133,9 +147,16 @@ else
       i=$((i + 1))
    done
 fi
-dbg "= fan1=$fan1,fan2=$fan2,fan3=$fan3,fan4=$fan4,fanmax=$fanmax"
 
+trap "echo 0 > $FANSTORE; exit 1" INT HUP QUIT TERM
+trap "echo 0 > $FANSTORE; lvl_curr=0 lvl_reduxat=0 init=" USR1
+
+init=
 while [ 1 -eq 1 ]; do
+   if [ -z "$init" ]; then
+      dbg "= fan1=$fan1,fan2=$fan2,fan3=$fan3,fan4=$fan4,fanmax=$fanmax"
+      init=1
+   fi
    classify
 
    i=
@@ -163,7 +184,11 @@ while [ 1 -eq 1 ]; do
    fi
    dbg "_ sleep=$sleepdur,lvl_curr=$lvl_curr,lvl_reduxat=$lvl_reduxat,\
 lvl_reduxone=$lvl_reduxone"
-   sleep $sleepdur
+   # The way the shell handles signals is complicated, only mksh was able
+   # to always honour signals regardless of what.  bash(1) documents the
+   # following approach to always work, and that seems to be portable behaviour
+   sleep $sleepdur &
+   wait
 done
 
 # s-sh-mode
