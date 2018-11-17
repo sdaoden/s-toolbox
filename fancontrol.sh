@@ -1,5 +1,8 @@
 #!/bin/sh -
 #@ Simple fancontrol script, by default for MacBook Air.
+#@ Assumes the value of "0" can be safely stored in $FANSTORE.
+#@ Currently assumed control levels are forgotten with SIGUSR1.
+#@ INT/HUP/QUIT/TERM cause exit, "turning off" fan (via "0").
 #@
 #@   start() {
 #@   	ebegin "Starting fancontrol"
@@ -18,19 +21,16 @@
 
 ## Generic fancontrol.sh settings and variables
 
-# Whether the default "off" speed shall be 0 rather thank original value
-OFFIS0=1
 # If defined used in favour of calculation; plus: off=0, max=$FANMAX-500
 FANVALS='2000 3000 4000 5000'
+
 # Whether we shall decrease fan speed if we would have stepped back *one* speed
 # level ten times in a row.  By default we only step back if we can step down
 # two levels, or somewhat similar to that.
 REDUXONEOK=1
+
 # Sleeps until next classify()
 SHORT=30 LONG=30 VERYLONG=60
-
-# Queried below: $(< ) possible (instead of cat(1))?
-FASTCAT=0
 
 #
 DEBUG=0
@@ -42,6 +42,9 @@ newfan= newlvl= lvl_rat=0 sleepdur=0
 
 lvl_curr=0 lvl_reduxat=0 lvl_reduxone=0
 fan1= fan2= fan3= fan4= fanmax=
+
+# Queried below: $(< ) possible (instead of cat(1))?
+FASTCAT=0
 
 ## Local environment settings
 
@@ -148,7 +151,8 @@ else
    done
 fi
 
-trap "echo 0 > $FANSTORE; exit 1" INT HUP QUIT TERM
+trap "echo 0 > $FANSTORE" EXIT
+trap "trap \"\" INT HUP QUIT TERM; exit 1" INT HUP QUIT TERM
 trap "echo 0 > $FANSTORE; lvl_curr=0 lvl_reduxat=0 init=" USR1
 
 init=

@@ -7,6 +7,7 @@ fancontrol.sh:
    A simple fancontrol shell script for an MacBook Air.
    Can be adjusted to others, of course.
    2018-11-16: added signal traps for openrc integration.
+   2018-11-18: add EXIT trap, a bit of cleanup.
 
 gen-uushar-wrapper:
    Creates a shell archive similar to uushar as below, except that the
