@@ -43,7 +43,7 @@ DBGLOG=/tmp/fancontrol.dbg
 REDUXONEOK=1
 
 # Sleeps until next classify()
-SHORT=20 LONG=30 VERYLONG=60
+SHORT=15 MEDIUM=20 LONG=30 VERYLONG=60
 
 # Queried below: $(< ) possible (instead of cat(1))?
 FASTCAT=0
@@ -104,16 +104,16 @@ classify_MACBOOK_AIR_2011() {
    dbg "= fan=$fan,cpu0=$t0,cpu1=$t1,gpu=$t2"
 
    sleepdur=$LONG
-   if [ $t0 -le 53000 ] && [ $t1 -le 53000 ] && [ $t2 -le 60000 ]; then
+   if [ $t0 -le 54000 ] && [ $t1 -le 54000 ] && [ $t2 -le 60000 ]; then
       newfan=$FANMIN newlvl=0 lvl_rat=0
-   elif [ $t0 -le 57000 ] && [ $t1 -le 57000 ] && [ $t2 -le 64000 ]; then
+   elif [ $t0 -le 58000 ] && [ $t1 -le 58000 ] && [ $t2 -le 65000 ]; then
       newfan=$fan1 newlvl=1 lvl_rat=0
    elif [ $t0 -le 62000 ] && [ $t1 -le 62000 ] && [ $t2 -le 68000 ]; then
       newfan=$fan2 newlvl=2 lvl_rat=0
-   elif [ $t0 -le 67000 ] && [ $t1 -le 67000 ] && [ $t2 -le 72000 ]; then
-      newfan=$fan3 newlvl=3 lvl_rat=1
+   elif [ $t0 -le 66000 ] && [ $t1 -le 66000 ] && [ $t2 -le 72000 ]; then
+      newfan=$fan3 newlvl=3 lvl_rat=1 sleepdur=$MEDIUM
    elif [ $t0 -le 71000 ] && [ $t1 -le 71000 ] && [ $t2 -le 76000 ]; then
-      newfan=$fan4 newlvl=4 lvl_rat=2
+      newfan=$fan4 newlvl=4 lvl_rat=2 sleepdur=$MEDIUM
    elif [ $t0 -le 74000 ] && [ $t1 -le 74000 ] && [ $t2 -le 79000 ]; then
       newfan=$fan5 newlvl=5 lvl_rat=3 sleepdur=$SHORT
    elif [ $t0 -le 77000 ] && [ $t1 -le 77000 ] && [ $t2 -le 81000 ]; then
@@ -125,7 +125,7 @@ classify_MACBOOK_AIR_2011() {
 
 reduxoneok_MACBOOK_AIR_2011() {
    if [ $lvl_curr -eq 2 ]; then
-      if [ $t0 -le 55000 ] && [ $t1 -le 55000 ] && [ $t2 -le 63000 ]; then
+      if [ $t0 -le 56000 ] && [ $t1 -le 56000 ] && [ $t2 -le 63000 ]; then
          return 0
       fi
    elif [ $lvl_curr -eq 3 ]; then
