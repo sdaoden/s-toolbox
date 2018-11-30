@@ -5,7 +5,7 @@
 #@
 #@   start() {
 #@   	ebegin "Starting fancontrol"
-#@   	start-stop-daemon --start --background \
+#@   	start-stop-daemon --start --background --nicelevel -10 \
 #@   		--make-pidfile --pidfile ${PID} \
 #@   		--exec /etc/fancontrol.sh -- ${CONFIG}
 #@   	eend ${?}
@@ -104,7 +104,7 @@ classify_MACBOOK_AIR_2011() {
    dbg "= fan=$fan,cpu0=$t0,cpu1=$t1,gpu=$t2"
 
    sleepdur=$LONG
-   if [ $t0 -le 54000 ] && [ $t1 -le 54000 ] && [ $t2 -le 60000 ]; then
+   if [ $t0 -le 54000 ] && [ $t1 -le 54000 ] && [ $t2 -le 62000 ]; then
       newfan=$FANMIN newlvl=0 lvl_rat=0
    elif [ $t0 -le 58000 ] && [ $t1 -le 58000 ] && [ $t2 -le 65000 ]; then
       newfan=$fan1 newlvl=1 lvl_rat=0
