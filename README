@@ -4,8 +4,8 @@ A repo of some small tools
 Somewhat useful:
 
 fancontrol.sh:
-   A simple Linux fancontrol shell script, by default for MacBook Air.
-   Can be adjusted to others, of course.
+   A simple Linux fancontrol shell script, by default for MacBook Air,
+   but can be adjusted easily by providing a $MODEL specific set.
    2018-11-16: added signal traps for openrc integration.
    2018-11-18: add EXIT trap, a bit of cleanup.
    2018-11-30: introduce $MODEL specific interface, add $FANOFF etc.
