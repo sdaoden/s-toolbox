@@ -1,7 +1,7 @@
 #!/bin/sh -
-#@ Simple fancontrol script for Linux.
+#@ Simple fancontrol script, by default for Linux.
 #@ Currently assumed control levels are forgotten with SIGUSR1.
-#@ INT/HUP/QUIT/TERM cause exit, "turning off" fan (via "$FANOFF > $FANSTORE").
+#@ INT/HUP/QUIT/TERM cause exit, "turning off" fan.
 #@
 #@   start() {
 #@   	ebegin "Starting fancontrol"
@@ -20,131 +20,128 @@
 
 ## Generic fancontrol.sh settings and variables
 
-# Predefined sets; with -z "$MODEL" an init() and a classify() must be
-# provided.  The init() must provide $FANOFF ("turn off fan"), $FANMIN,
-# $FANMAX and $FANSTORE (where to write the value to).
+# Predefined sets; see MACBOOK_AIR_2011 set for an example.
+# - init_MODEL() must provide $FANOFF ("turn off fan"), $FANMIN, and $FANMAX.
+#   It may adjust $REDUXONEOK, and set $FANVALS, as below.
+# - classify_MODEL() is periodically called and must set $NEWFAN, $NEWLVL and
+#   $SLEEPDUR, as below.
+# - By default we step down only if the $NEWLVL is two levels below the current
+#   one, but with $REDUXONEOK reduxoneok_MODEL() will be called with $1=current
+#   level whenever we would have stepped down one level several successive
+#   times: if that returns 0 then we will perform the step one level back.
+# - fanadjust_MODEL(): called with $1=new RPM.  (Or $FANOFF.)
 MODEL=
 MODEL=MACBOOK_AIR_2011
 
-# If set, no automatic calculation of six fan values in between $FANMIN and
-# $FANMAX is transformed, and the members are taken as mandatory.
-# May be set by $MODEL specific init().
-# The number of entries actually also model specific ...
-FANVALS=
+# In general it is up to the MODEL how many levels exist, and which RPM values
+# they use -- we only look for $NEWFAN, $NEWLVL, $SLEEPDUR and $REDUXONEOK.
+# We also use $FANOFF and $FANMIN (and $FANMAX).
+# After init_MODEL() is called we will calculate six fan speed levels.
+   FAN1= FAN2= FAN3= FAN4= FAN5= FAN6=
+# within the range $FANMIN..$FANMAX unless
+   FANVALS=
+# is set, in which case that string is split and that many FANxy are created.
 
-# Noisy (in $DBGLOG)
+# See $MODEL.
+   REDUXONEOK=
+
+# To be set within classify_MODEL().
+# New fan RPM value shall we step, a numeric level assigned to that fan value
+# (sequential decimal digits starting with 0), and the sleep duration before
+# the next call to classify_MODEL().  Upon startup we are 0/$FANOFF/undef.
+NEWFAN= NEWLVL= SLEEPDUR=0
+
+# Noisy (in $DBGLOG).
 DEBUG=0
 DBGLOG=/tmp/fancontrol.dbg
 
-# Whether we shall call reduxoneok[_$MODEL]() to check whether we can decrease
-# fan speed if we would have stepped back *one* speed level ten times in a row.
-# By default we only step back if we can step down two levels, or somewhat
-# similar to that.
-REDUXONEOK=1
+# Set non-empty if shell supports $(< ) (instead of cat(1))?
+FASTCAT=
 
-# Sleeps until next classify()
-SHORT=15 MEDIUM=20 LONG=30 VERYLONG=60
+## MODELs
 
-# Queried below: $(< ) possible (instead of cat(1))?
-FASTCAT=0
+# Hull
 
-# New fan value if we step, newlvl to step to (evtl.), new redux-at level
-# (evtl.), and the sleep duration before next query
-newfan= newlvl= lvl_rat=0 sleepdur=0
+init() { echo >&2 'I need an init() function'; exit 1; }
+classify() { echo >&2 'I need a classify() function'; exit 1; }
+reduxoneok() { echo >&2 'Current level: '$1; return 1; } # Only if $REDUXONEOK
+fanadjust() { echo >&2 'I would adjust fan to '$1; }
 
-   lvl_curr=0 lvl_reduxat=0 lvl_reduxone=0
-   # + $FANOFF, $FANMIN, $FANMAX
-   fan1= fan2= fan3= fan4= fan5= fan6=
-
-## Local environment settings
-
-init() {
-   FANOFF=0
-   FANMIN=2000
-   #FANMAX=`cat /sys/class/hwmon/hwmon1/device/fan1_max`
-   #FANSTORE=/sys/class/hwmon/hwmon1/device/fan1_min
-   echo >&2 'I need an init() function'
-   exit 1
-}
-
-classify() {
-   echo >&2 'I need a classify() function'
-   exit 1
-}
-
-# Only if $REDUXONEOK
-reduxoneok() { return 1; }
+# MACBOOK_AIR_2011
 
 init_MACBOOK_AIR_2011() {
    FANOFF=0
    FANMIN=2000
-   FANMAX=`cat /sys/class/hwmon/hwmon1/device/fan1_max`
+   FANMAX=`cat /sys/class/hwmon/hwmon1/device/fan1_max` # only once: no FASTCAT
    [ $FANMAX -eq 6500 ] && FANVALS='3000 3600 4200  5000 5750 6250'
-   FANSTORE=/sys/class/hwmon/hwmon1/device/fan1_min
+   REDUXONEOK=1
 
-   CPU0=/sys/class/hwmon/hwmon0/temp2_input
-   CPU1=/sys/class/hwmon/hwmon0/temp3_input
-   GPU=/sys/class/hwmon/hwmon2/temp1_input
-   FAN=/sys/class/hwmon/hwmon1/device/fan1_input
-   t0= t1= t2=
+   m_sleep1=15 m_sleep2=20 m_sleep3=30 m_sleep4=60 # -> $SLEEPDUR
+
+   m_cpu0=/sys/class/hwmon/hwmon0/temp2_input
+   m_cpu1=/sys/class/hwmon/hwmon0/temp3_input
+   m_gpu=/sys/class/hwmon/hwmon2/temp1_input
+   m_fan0=/sys/class/hwmon/hwmon1/device/fan1_input
+   m_fan0store=/sys/class/hwmon/hwmon1/device/fan1_min
+   m_t0= m_t1= m_t2= m_f0=
+   dbg 'M Created MacBook Air 2011 settings'
 }
 
 classify_MACBOOK_AIR_2011() {
-   if [ $FASTCAT -eq 0 ]; then
-      eval t0=$(< $CPU0)
-      eval t1=$(< $CPU1)
-      eval t2=$(< $GPU)
-      [ $DEBUG -ne 0 ] && eval fan=$(< $FAN)
+   if [ -n "$FASTCAT" ]; then
+      eval m_t0=$(< $m_cpu0)
+      eval m_t1=$(< $m_cpu1)
+      eval m_t2=$(< $m_gpu)
+      [ $DEBUG -ne 0 ] && eval m_f0=$(< $m_fan0)
    else
-      t0=`cat $CPU0`
-      t1=`cat $CPU1`
-      t2=`cat $GPU`
-      [ $DEBUG -ne 0 ] && fan=`cat $FAN`
+      m_t0=`cat $m_cpu0`
+      m_t1=`cat $m_cpu1`
+      m_t2=`cat $m_gpu`
+      [ $DEBUG -ne 0 ] && m_f0=`cat $m_fan0`
    fi
-   dbg "= fan=$fan,cpu0=$t0,cpu1=$t1,gpu=$t2"
+   dbg "M fan0=$m_f0,cpu0=$m_t0,cpu1=$m_t1,gpu=$m_t2"
 
-   sleepdur=$LONG
-   if [ $t0 -le 54000 ] && [ $t1 -le 54000 ] && [ $t2 -le 62000 ]; then
-      newfan=$FANMIN newlvl=0 lvl_rat=0
-   elif [ $t0 -le 58000 ] && [ $t1 -le 58000 ] && [ $t2 -le 65000 ]; then
-      newfan=$fan1 newlvl=1 lvl_rat=0
-   elif [ $t0 -le 62000 ] && [ $t1 -le 62000 ] && [ $t2 -le 68000 ]; then
-      newfan=$fan2 newlvl=2 lvl_rat=0
-   elif [ $t0 -le 66000 ] && [ $t1 -le 66000 ] && [ $t2 -le 72000 ]; then
-      newfan=$fan3 newlvl=3 lvl_rat=1 sleepdur=$MEDIUM
-   elif [ $t0 -le 71000 ] && [ $t1 -le 71000 ] && [ $t2 -le 76000 ]; then
-      newfan=$fan4 newlvl=4 lvl_rat=2 sleepdur=$MEDIUM
-   elif [ $t0 -le 74000 ] && [ $t1 -le 74000 ] && [ $t2 -le 79000 ]; then
-      newfan=$fan5 newlvl=5 lvl_rat=3 sleepdur=$SHORT
-   elif [ $t0 -le 77000 ] && [ $t1 -le 77000 ] && [ $t2 -le 81000 ]; then
-      newfan=$fan6 newlvl=6 lvl_rat=4 sleepdur=$SHORT
+   SLEEPDUR=$m_sleep3
+   if [ $m_t0 -gt 77000 ] || [ $m_t1 -gt 77000 ] || [ $m_t2 -gt 81000 ]; then
+      NEWFAN=$FANMAX NEWLVL=7 SLEEPDUR=$m_sleep4
+   elif [ $m_t0 -gt 74000 ] || [ $m_t1 -gt 74000 ] || [ $m_t2 -gt 79000 ]; then
+      NEWFAN=$FAN6 NEWLVL=6 SLEEPDUR=$m_sleep1
+   elif [ $m_t0 -gt 71000 ] || [ $m_t1 -gt 71000 ] || [ $m_t2 -gt 76000 ]; then
+      NEWFAN=$FAN5 NEWLVL=5 SLEEPDUR=$m_sleep1
+   elif [ $m_t0 -gt 66000 ] || [ $m_t1 -gt 66000 ] || [ $m_t2 -gt 72000 ]; then
+      NEWFAN=$FAN4 NEWLVL=4 SLEEPDUR=$m_sleep2
+   elif [ $m_t0 -gt 62000 ] || [ $m_t1 -gt 62000 ] || [ $m_t2 -gt 68000 ]; then
+      NEWFAN=$FAN3 NEWLVL=3 SLEEPDUR=$m_sleep2
+   elif [ $m_t0 -gt 58000 ] || [ $m_t1 -gt 58000 ] || [ $m_t2 -gt 65000 ]; then
+      NEWFAN=$FAN2 NEWLVL=2
+   elif [ $m_t0 -gt 52000 ] || [ $m_t1 -gt 52000 ] || [ $m_t2 -gt 62000 ]; then
+      NEWFAN=$FAN1 NEWLVL=1
    else
-      newfan=$FANMAX newlvl=7 lvl_rat=4 sleepdur=$VERYLONG
+      NEWFAN=$FANMIN NEWLVL=0
    fi
 }
 
 reduxoneok_MACBOOK_AIR_2011() {
-   if [ $lvl_curr -eq 2 ]; then
-      if [ $t0 -le 56000 ] && [ $t1 -le 56000 ] && [ $t2 -le 63000 ]; then
+   if [ $1 -eq 2 ]; then
+      if [ $m_t0 -le 56000 ] && [ $m_t1 -le 56000 ] && [ $m_t2 -le 63000 ]; then
          return 0
       fi
-   elif [ $lvl_curr -eq 3 ]; then
-      if [ $t0 -le 60000 ] && [ $t1 -le 60000 ] && [ $t2 -le 66000 ]; then
+   elif [ $1 -eq 3 ]; then
+      if [ $m_t0 -le 60000 ] && [ $m_t1 -le 60000 ] && [ $m_t2 -le 66000 ]; then
          return 0
       fi
    fi
    return 1
 }
 
+fanadjust_MACBOOK_AIR_2011() {
+   dbg "M fanadjust: $1"
+   echo $1 > $m_fan0store
+}
+
 ## 8< ----- >8
 
-if ( echo $(( 10 - 10 / 10 )) ) >/dev/null 2>&1; then :; else
-   echo >&2 'Shell cannot do arithmetic, bailing out'
-   exit 1
-fi
-if ( $(< /dev/null) ) >/dev/null 2>&1; then
-   FASTCAT=1
-fi
+lvl_curr=0 lvl_reduxone=0
 
 dbg() {
    if [ $DEBUG -ne 0 ]; then
@@ -152,13 +149,26 @@ dbg() {
    fi
 }
 
-initfun=init classifyfun=classify reduxoneokfun=reduxoneok
+if ( echo $(( 10 - 10 / 10 )) ) >/dev/null 2>&1; then :; else
+   echo >&2 'Shell cannot do arithmetic, bailing out'
+   exit 1
+fi
+
+if [ -f /etc/fstab ] && command -v cksum >/dev/null 2>&1 &&
+      [ "`{ i=\`cat /etc/fstab\`; echo $i; } | cksum`" = \
+         "`{ i=$(< /etc/fstab); echo $i; } | cksum`" ]; then
+   dbg '= Enabling FASTCAT for this shell'
+   FASTCAT=1
+fi
+
+initfun=init classifyfun=classify \
+   reduxoneokfun=reduxoneok fanadjustfun=fanadjust
 if [ -n "${MODEL}" ]; then
    initfun=${initfun}_${MODEL}
    classifyfun=${classifyfun}_${MODEL}
    reduxoneokfun=${reduxoneokfun}_${MODEL}
+   fanadjustfun=${fanadjustfun}_${MODEL}
 fi
-echo $initfun/$classifyfun/$reduxoneokfun
 
 $initfun
 
@@ -168,69 +178,73 @@ if [ -n "$FANVALS" ]; then
    set -- $FANVALS
    for j
    do
-      eval fan${i}=$j
-      msg="${msg}fan${i}=$j,"
+      eval FAN${i}=$j
+      msg="${msg}FAN${i}=$j,"
       i=$((i + 1))
    done
    dbg "= FANMIN=$FANMIN,${msg}FANMAX=$FANMAX"
-
 else
-   if [ $FANMAX -lt 500 ]; then
-      echo >&2 'Cannot deal with fan, max rpm to small'
+   i=$((($FANMAX - $FANMIN)))
+   if [ $FANMAX -lt 500 ] || [ $i -lt 500 ]; then
+      echo >&2 'Cannot deal with FANMAX/FANMIN values, bailing out'
       exit 2
    fi
    i=$((($FANMAX - $FANMIN) / 8))
    i=$(($i + (-$i % 50)))
-   fan1=$(($FANMIN + $i))
-   fan2=$(($fan1 + $i + $i / 2))
-   fan3=$(($fan2 + $i + $i / 2))
+   FAN1=$(($FANMIN + $i))
+   FAN2=$(($FAN1 + $i + $i / 2))
+   FAN3=$(($FAN2 + $i + $i / 2))
 
-   i=$((($FANMAX - $fan3 + $i) / 4))
+   i=$((($FANMAX - $FAN3 + $i) / 4))
    i=$(($i + (-$i % 50)))
-   fan4=$(($fan3 + $i))
-   fan5=$(($fan4 + $i))
-   fan6=$(($fan5 + $i))
+   FAN4=$(($FAN3 + $i))
+   FAN5=$(($FAN4 + $i))
+   FAN6=$(($FAN5 + $i))
    dbg "= FANMIN=$FANMIN,\
-fan1=$fan1,fan2=$fan2,fan3=$fan3,fan4=$fan4,fan5=$fan5,fan6=$fan6,\
+FAN1=$FAN1,FAN2=$FAN2,FAN3=$FAN3,FAN4=$FAN4,FAN5=$FAN5,FAN6=$FAN6,\
 FANMAX=$FANMAX"
 fi
 
-trap "echo $FANOFF > $FANSTORE" EXIT
+trap "dbg '= EXIT trap'; $fanadjustfun $FANOFF" EXIT
 trap "trap \"\" INT HUP QUIT TERM; exit 1" INT HUP QUIT TERM
-trap "echo $FANMIN > $FANSTORE; lvl_curr=0 lvl_reduxat=0 init=" USR1
+trap "dbg '= Received SIGUSR1'; $fanadjustfun $FANMIN; lvl_curr=0" USR1
 
 while [ 1 -eq 1 ]; do
    $classifyfun
+   dbg "- NEWFAN=$NEWFAN,NEWLVL=$NEWLVL,SLEEPDUR=$SLEEPDUR,\
+lvl_curr=$lvl_curr,lvl_reduxone=$lvl_reduxone"
 
    i=
-   if [ $newlvl -eq $lvl_curr ]; then
+   if [ $NEWLVL -eq $lvl_curr ]; then
       lvl_reduxone=0
-   elif [ $newlvl -gt $lvl_curr ]; then
-      dbg "+ increasing fan min: $newfan"
+   elif [ $NEWLVL -gt $lvl_curr ]; then
+      dbg "+ increasing fan min: $NEWFAN"
       i=1
-   elif [ $newlvl -le $lvl_reduxat ]; then
-      dbg "+ decreasing fan min: $newfan"
-      i=1
-   elif [ $newlvl -lt $lvl_curr ]; then
-      lvl_reduxone=$(($lvl_reduxone + 1))
-      if [ $REDUXONEOK -ne 0 ]; then
-         if [ $lvl_reduxone -ge 10 ] && $reduxoneokfun; then
-            dbg "+ reduxone limit, decreasing fan min: $newfan"
-            i=1
+   elif [ $NEWLVL -lt $lvl_curr ]; then
+      i=$(($lvl_curr - 2))
+      if [ $i -ge $NEWLVL ]; then
+         dbg "+ decreasing fan min: $NEWFAN"
+         i=1
+      else
+         i=
+         lvl_reduxone=$(($lvl_reduxone + 1))
+         if [ $REDUXONEOK -ne 0 ]; then
+            if [ $lvl_reduxone -ge 10 ] && $reduxoneokfun; then
+               dbg "+ reduxone limit, decreasing fan min: $NEWFAN"
+               i=1
+            fi
          fi
       fi
    fi
 
    if [ -n "$i" ]; then
-      echo $newfan > $FANSTORE
-      lvl_curr=$newlvl lvl_reduxat=$lvl_rat lvl_reduxone=0
+      $fanadjustfun $NEWFAN
+      lvl_curr=$NEWLVL lvl_reduxone=0
    fi
-   dbg "_ sleep=$sleepdur,lvl_curr=$lvl_curr,lvl_reduxat=$lvl_reduxat,\
-lvl_reduxone=$lvl_reduxone"
    # The way the shell handles signals is complicated, only mksh was able
    # to always honour signals regardless of what.  bash(1) documents the
    # following approach to always work, and that seems to be portable behaviour
-   sleep $sleepdur &
+   sleep $SLEEPDUR &
    wait
 done
 

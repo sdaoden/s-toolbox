@@ -9,7 +9,8 @@ fancontrol.sh:
    2018-11-16: added signal traps for openrc integration.
    2018-11-18: add EXIT trap, a bit of cleanup.
    2018-11-30: introduce $MODEL specific interface, add $FANOFF etc.
-               Also, introduce a new $MEDIUM sleep duration.
+               Thereafter, reverse logic and test for high temperatures
+               first, and make this a generic, easily hookable script.
 
 gen-uushar-wrapper:
    Creates a shell archive similar to uushar as below, except that the
