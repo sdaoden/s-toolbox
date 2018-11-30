@@ -154,11 +154,12 @@ if ( echo $(( 10 - 10 / 10 )) ) >/dev/null 2>&1; then :; else
    exit 1
 fi
 
-if [ -f /etc/fstab ] && command -v cksum >/dev/null 2>&1 &&
+if ( $(< /dev/null) ) >/dev/null 2>&1 &&
+      [ -f /etc/fstab ] && command -v cksum >/dev/null 2>&1 &&
       [ "`{ i=\`cat /etc/fstab\`; echo $i; } | cksum`" = \
          "`{ i=$(< /etc/fstab); echo $i; } | cksum`" ]; then
    dbg '= Enabling FASTCAT for this shell'
-   FASTCAT=1
+   FASTCAT=yes
 fi
 
 initfun=init classifyfun=classify \
