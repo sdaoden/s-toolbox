@@ -36,8 +36,9 @@ MODEL=MACBOOK_AIR_2011
 # In general it is up to the MODEL how many levels exist, and which RPM values
 # they use -- we only look for $NEWFAN, $NEWLVL, $SLEEPDUR and $REDUXONEOK.
 # We also use $FANOFF and $FANMIN (and $FANMAX).
-# After init_MODEL() is called we will calculate six fan speed levels.
-   FAN1= FAN2= FAN3= FAN4= FAN5= FAN6=
+# After init_MODEL() is called we will calculate seven fan speed levels, plus
+# the always existing 0=$FANMIN and x+1=$FANMAX.
+   FAN1= FAN2= FAN3= FAN4= FAN5= FAN6= FAN7=
 # within the range $FANMIN..$FANMAX unless
    FANVALS=
 # is set, in which case that string is split and that many FANxy are created.
@@ -73,10 +74,10 @@ init_MACBOOK_AIR_2011() {
    FANOFF=0
    FANMIN=2000
    FANMAX=`cat /sys/class/hwmon/hwmon1/device/fan1_max` # only once: no FASTCAT
-   [ $FANMAX -eq 6500 ] && FANVALS='3000 3600 4200  5000 5750 6250'
+   [ $FANMAX -eq 6500 ] && FANVALS='2500 3000 3600 4200  5000 5750 6250'
    REDUXONEOK=1
 
-   m_sleep1=15 m_sleep2=20 m_sleep3=30 m_sleep4=60 # -> $SLEEPDUR
+   m_sleep1=15 m_sleep2=25 m_sleep3=40 m_sleep4=60 # -> $SLEEPDUR
 
    m_cpu0=/sys/class/hwmon/hwmon0/temp2_input
    m_cpu1=/sys/class/hwmon/hwmon0/temp3_input
@@ -103,18 +104,20 @@ classify_MACBOOK_AIR_2011() {
 
    SLEEPDUR=$m_sleep3
    if [ $m_t0 -gt 77000 ] || [ $m_t1 -gt 77000 ] || [ $m_t2 -gt 81000 ]; then
-      NEWFAN=$FANMAX NEWLVL=7 SLEEPDUR=$m_sleep4
+      NEWFAN=$FANMAX NEWLVL=8 SLEEPDUR=$m_sleep4
    elif [ $m_t0 -gt 74000 ] || [ $m_t1 -gt 74000 ] || [ $m_t2 -gt 79000 ]; then
-      NEWFAN=$FAN6 NEWLVL=6 SLEEPDUR=$m_sleep1
+      NEWFAN=$FAN7 NEWLVL=7 SLEEPDUR=$m_sleep1
    elif [ $m_t0 -gt 71000 ] || [ $m_t1 -gt 71000 ] || [ $m_t2 -gt 76000 ]; then
-      NEWFAN=$FAN5 NEWLVL=5 SLEEPDUR=$m_sleep1
+      NEWFAN=$FAN6 NEWLVL=6 SLEEPDUR=$m_sleep1
    elif [ $m_t0 -gt 66000 ] || [ $m_t1 -gt 66000 ] || [ $m_t2 -gt 72000 ]; then
-      NEWFAN=$FAN4 NEWLVL=4 SLEEPDUR=$m_sleep2
+      NEWFAN=$FAN5 NEWLVL=5 SLEEPDUR=$m_sleep2
    elif [ $m_t0 -gt 62000 ] || [ $m_t1 -gt 62000 ] || [ $m_t2 -gt 68000 ]; then
-      NEWFAN=$FAN3 NEWLVL=3 SLEEPDUR=$m_sleep2
+      NEWFAN=$FAN4 NEWLVL=4 SLEEPDUR=$m_sleep2
    elif [ $m_t0 -gt 58000 ] || [ $m_t1 -gt 58000 ] || [ $m_t2 -gt 65000 ]; then
+      NEWFAN=$FAN3 NEWLVL=3
+   elif [ $m_t0 -gt 54000 ] || [ $m_t1 -gt 54000 ] || [ $m_t2 -gt 63000 ]; then
       NEWFAN=$FAN2 NEWLVL=2
-   elif [ $m_t0 -gt 52000 ] || [ $m_t1 -gt 52000 ] || [ $m_t2 -gt 62000 ]; then
+   elif [ $m_t0 -gt 50000 ] || [ $m_t1 -gt 50000 ] || [ $m_t2 -gt 60000 ]; then
       NEWFAN=$FAN1 NEWLVL=1
    else
       NEWFAN=$FANMIN NEWLVL=0
@@ -122,11 +125,11 @@ classify_MACBOOK_AIR_2011() {
 }
 
 reduxoneok_MACBOOK_AIR_2011() {
-   if [ $1 -eq 2 ]; then
+   if [ $1 -eq 3 ]; then
       if [ $m_t0 -le 56000 ] && [ $m_t1 -le 56000 ] && [ $m_t2 -le 63000 ]; then
          return 0
       fi
-   elif [ $1 -eq 3 ]; then
+   elif [ $1 -eq 4 ]; then
       if [ $m_t0 -le 60000 ] && [ $m_t1 -le 60000 ] && [ $m_t2 -le 66000 ]; then
          return 0
       fi
@@ -193,16 +196,17 @@ else
    i=$((($FANMAX - $FANMIN) / 8))
    i=$(($i + (-$i % 50)))
    FAN1=$(($FANMIN + $i))
-   FAN2=$(($FAN1 + $i + $i / 2))
+   FAN2=$(($FAN1 + $i / 2))
    FAN3=$(($FAN2 + $i + $i / 2))
-
-   i=$((($FANMAX - $FAN3 + $i) / 4))
-   i=$(($i + (-$i % 50)))
    FAN4=$(($FAN3 + $i))
+
+   i=$((($FANMAX - $FAN4 + $i) / 4))
+   i=$(($i + (-$i % 50)))
    FAN5=$(($FAN4 + $i))
    FAN6=$(($FAN5 + $i))
+   FAN7=$(($FAN6 + $i))
    dbg "= FANMIN=$FANMIN,\
-FAN1=$FAN1,FAN2=$FAN2,FAN3=$FAN3,FAN4=$FAN4,FAN5=$FAN5,FAN6=$FAN6,\
+FAN1=$FAN1,FAN2=$FAN2,FAN3=$FAN3,FAN4=$FAN4,FAN5=$FAN5,FAN6=$FAN6,FAN7=$FAN7,\
 FANMAX=$FANMAX"
 fi
 

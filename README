@@ -11,6 +11,8 @@ fancontrol.sh:
    2018-11-30: introduce $MODEL specific interface, add $FANOFF etc.
                Thereafter, reverse logic and test for high temperatures
                first, and make this a generic, easily hookable script.
+   2018-12-01: Finally: add another RPM level to accommodate better for
+               power saving, increase some sleeps.
 
 gen-uushar-wrapper:
    Creates a shell archive similar to uushar as below, except that the
