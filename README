@@ -11,8 +11,9 @@ fancontrol.sh:
    2018-11-30: introduce $MODEL specific interface, add $FANOFF etc.
                Thereafter, reverse logic and test for high temperatures
                first, and make this a generic, easily hookable script.
-   2018-12-01: Finally: add another RPM level to accommodate better for
-               power saving, increase some sleeps.
+   2018-12-01: Add another RPM level to accommodate better for power
+               saving, and increase some sleeps.
+   2018-12-02: MACBOOK_AIR_2011: adjust reduxone for additional level(s).
 
 gen-uushar-wrapper:
    Creates a shell archive similar to uushar as below, except that the
@@ -32,14 +33,14 @@ gen-uushar-wrapper:
                double quotes, ensure the given default executable, if any,
                is part of the generated archive, reexecute after archive
                expansion, truly disallow empty archive name.
-   2016-01-05: port to FreeBSD: uudecode(1) doesn't honour /dev/stdout
+   2016-01-05: port to FreeBSD: uudecode(1) does not honour /dev/stdout
                in-stream, so give -o command line option.
 
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so
    that i can use ``$ git rebase -i`` for fixups and squashes, without
    having to worry about recreation of topic branches.  Instead i tag
-   commit messages, and use this script to create the topics once i'm
+   commit messages, and use this script to create the topics once i am
    finished.  Read the --help output for more, and make use of verbosity
    when you use it first.
 
@@ -76,7 +77,7 @@ uushar (manual: uushar.1):
 
    2014-02-27: rewritten: short options, check and forbid filenames with
                embedded double quotes, added uushar.1 manual.
-   2016-01-05: port to FreeBSD: uudecode(1) doesn't honour /dev/stdout
+   2016-01-05: port to FreeBSD: uudecode(1) does not honour /dev/stdout
                in-stream, so give -o command line option.
                mdocmx(7)ified++ manual.
 
@@ -111,7 +112,7 @@ backup.sh:
 
 cdoc-freebsd.S:
    FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on
-   newer ones, but haven't tried it in a while.  It had 416 object
+   newer ones, but have not tried it in a while.  It had 416 object
    file bytes when everything was placed in ``.text`` (no .EH frames
    back then).
 
@@ -124,7 +125,7 @@ real-periodic.sh:
    ensures that the daily/weekly/monthly maintenance stuff is executed,
    even if your laptop is running only one hour a day.  Invoke this once
    per hour in the roots crontab and disable the usual periodic stuff of
-   your system instead.  Note it doesn't deal with timezone and DST
+   your system instead.  Note it does not deal with timezone and DST
    (daylight saving time) switches, but instead only checks the day of
    the year that is reported by date(1).  E.g., on my FreeBSD 10.0 box::
 
@@ -141,6 +142,6 @@ real-periodic.sh:
 super-shutdown.c:
    Single setuid root BSD program to invoke /sbin/shutdown(8), either
    to reboot or to halt the system.
-   You've been warned.
+   You have been warned.
 
 # s-it-mode

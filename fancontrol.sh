@@ -105,15 +105,15 @@ classify_MACBOOK_AIR_2011() {
    SLEEPDUR=$m_sleep3
    if [ $m_t0 -gt 77000 ] || [ $m_t1 -gt 77000 ] || [ $m_t2 -gt 81000 ]; then
       NEWFAN=$FANMAX NEWLVL=8 SLEEPDUR=$m_sleep4
-   elif [ $m_t0 -gt 74000 ] || [ $m_t1 -gt 74000 ] || [ $m_t2 -gt 79000 ]; then
+   elif [ $m_t0 -gt 74000 ] || [ $m_t1 -gt 74000 ] || [ $m_t2 -gt 78000 ]; then
       NEWFAN=$FAN7 NEWLVL=7 SLEEPDUR=$m_sleep1
-   elif [ $m_t0 -gt 71000 ] || [ $m_t1 -gt 71000 ] || [ $m_t2 -gt 76000 ]; then
+   elif [ $m_t0 -gt 71000 ] || [ $m_t1 -gt 71000 ] || [ $m_t2 -gt 75000 ]; then
       NEWFAN=$FAN6 NEWLVL=6 SLEEPDUR=$m_sleep1
    elif [ $m_t0 -gt 66000 ] || [ $m_t1 -gt 66000 ] || [ $m_t2 -gt 72000 ]; then
       NEWFAN=$FAN5 NEWLVL=5 SLEEPDUR=$m_sleep2
-   elif [ $m_t0 -gt 62000 ] || [ $m_t1 -gt 62000 ] || [ $m_t2 -gt 68000 ]; then
+   elif [ $m_t0 -gt 62000 ] || [ $m_t1 -gt 62000 ] || [ $m_t2 -gt 69000 ]; then
       NEWFAN=$FAN4 NEWLVL=4 SLEEPDUR=$m_sleep2
-   elif [ $m_t0 -gt 58000 ] || [ $m_t1 -gt 58000 ] || [ $m_t2 -gt 65000 ]; then
+   elif [ $m_t0 -gt 58000 ] || [ $m_t1 -gt 58000 ] || [ $m_t2 -gt 66000 ]; then
       NEWFAN=$FAN3 NEWLVL=3
    elif [ $m_t0 -gt 54000 ] || [ $m_t1 -gt 54000 ] || [ $m_t2 -gt 63000 ]; then
       NEWFAN=$FAN2 NEWLVL=2
@@ -125,15 +125,22 @@ classify_MACBOOK_AIR_2011() {
 }
 
 reduxoneok_MACBOOK_AIR_2011() {
-   if [ $1 -eq 3 ]; then
-      if [ $m_t0 -le 56000 ] && [ $m_t1 -le 56000 ] && [ $m_t2 -le 63000 ]; then
+   case $1 in
+   4) [ $m_t0 -le 60000 ] && [ $m_t1 -le 60000 ] && [ $m_t2 -le 67000 ] &&
          return 0
-      fi
-   elif [ $1 -eq 4 ]; then
-      if [ $m_t0 -le 60000 ] && [ $m_t1 -le 60000 ] && [ $m_t2 -le 66000 ]; then
+      ;;
+   3) [ $m_t0 -le 56000 ] && [ $m_t1 -le 56000 ] && [ $m_t2 -le 64000 ] &&
          return 0
-      fi
-   fi
+      ;;
+   2) [ $m_t0 -le 52000 ] && [ $m_t1 -le 52000 ] && [ $m_t2 -le 61000 ] &&
+         return 0
+      ;;
+   1) [ $m_t0 -le 48000 ] && [ $m_t1 -le 48000 ] && [ $m_t2 -le 58000 ] &&
+         return 0
+      ;;
+   *)
+      ;;
+   esac
    return 1
 }
 
