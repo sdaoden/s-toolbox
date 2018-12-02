@@ -607,15 +607,15 @@ autogc() {
     set -- `cat "$AUTOGCFILE"`
     PARAMS=${@+"$@"}
     # Do a full --aggressive gc every xy months
-    m=`date +%m`
-    m=`expr $m : '0*\(.*\)' % 6`
-    if [ 0 = "$m" ]; then
-        MODE=fullgc
-        log 'Turned over to mode fullgc (full because MONTH % 6 == 0)'
-    else
+#    m=`date +%m`
+#    m=`expr $m : '0*\(.*\)' % 6`
+#    if [ 0 = "$m" ]; then
+#        MODE=fullgc
+#        log 'Turned over to mode fullgc (full because MONTH % 6 == 0)'
+#    else
         MODE=gc
-        log 'Turned over to mode gc'
-    fi
+#        log 'Turned over to mode gc'
+#    fi
     xgc
 }
 
