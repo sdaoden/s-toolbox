@@ -73,17 +73,52 @@ fanadjust() { echo >&2 'I would adjust fan to '$1; }
 init_MACBOOK_AIR_2011() {
    FANOFF=0
    FANMIN=2000
-   FANMAX=`cat /sys/class/hwmon/hwmon1/device/fan1_max` # only once: no FASTCAT
-   [ $FANMAX -eq 6500 ] && FANVALS='2500 3000 3600 4200  5000 5750 6250'
    REDUXONEOK=1
-
    m_sleep1=15 m_sleep2=25 m_sleep3=40 m_sleep4=60 # -> $SLEEPDUR
 
-   m_cpu0=/sys/class/hwmon/hwmon0/temp2_input
-   m_cpu1=/sys/class/hwmon/hwmon0/temp3_input
-   m_gpu=/sys/class/hwmon/hwmon2/temp1_input
-   m_fan0=/sys/class/hwmon/hwmon1/device/fan1_input
-   m_fan0store=/sys/class/hwmon/hwmon1/device/fan1_min
+   i=
+   for d in /sys/class/hwmon/hwmon*; do
+      if [ -f $d/device/fan1_input ]; then
+         i=$d
+         break
+      fi
+   done
+   if [ -z "$i" ]; then
+      echo >&2 'Cannot identify the /sys/class/hwmon/ fan entries, bailing out'
+      exit 1
+   fi
+   m_fan0=$i/device/fan1_input
+   m_fan0store=$i/device/fan1_min
+   FANMAX=`cat $i/device/fan1_max` # only once: no FASTCAT
+   [ $FANMAX -eq 6500 ] && FANVALS='2500 3000 3600 4200  5000 5750 6250'
+
+   i=
+   for d in /sys/class/hwmon/hwmon*; do
+      if [ -f $d/temp1_crit_hyst ] && [ -f $d/temp1_input ]; then
+         i=$d
+         break
+      fi
+   done
+   if [ -z "$i" ]; then
+      echo >&2 'Cannot identify the /sys/class/hwmon/ GPU entries, bailing out'
+      exit 1
+   fi
+   m_gpu0=$i/temp1_input
+
+   i=
+   for d in /sys/class/hwmon/hwmon*; do
+      if [ -f $d/temp2_input ] && [ -f $d/temp3_input ]; then
+         i=$d
+         break
+      fi
+   done
+   if [ -z "$i" ]; then
+      echo >&2 'Cannot identify the /sys/class/hwmon/ CPU entries, bailing out'
+      exit 1
+   fi
+   m_cpu0=$i/temp2_input
+   m_cpu1=$i/temp3_input
+
    m_t0= m_t1= m_t2= m_f0=
    dbg 'M Created MacBook Air 2011 settings'
 }
@@ -92,12 +127,12 @@ classify_MACBOOK_AIR_2011() {
    if [ -n "$FASTCAT" ]; then
       eval m_t0=$(< $m_cpu0)
       eval m_t1=$(< $m_cpu1)
-      eval m_t2=$(< $m_gpu)
+      eval m_t2=$(< $m_gpu0)
       [ $DEBUG -ne 0 ] && eval m_f0=$(< $m_fan0)
    else
       m_t0=`cat $m_cpu0`
       m_t1=`cat $m_cpu1`
-      m_t2=`cat $m_gpu`
+      m_t2=`cat $m_gpu0`
       [ $DEBUG -ne 0 ] && m_f0=`cat $m_fan0`
    fi
    dbg "M fan0=$m_f0,cpu0=$m_t0,cpu1=$m_t1,gpu=$m_t2"
