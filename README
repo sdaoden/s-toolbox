@@ -6,11 +6,7 @@ Somewhat useful:
 fancontrol.sh:
    A simple Linux fancontrol shell script, by default for MacBook Air,
    but can be adjusted easily by providing a $MODEL specific set.
-   2018-11-16: added signal traps for openrc integration.
-   2018-11-18: add EXIT trap, a bit of cleanup.
-   2018-11-30: introduce $MODEL specific interface, add $FANOFF etc.
-               Thereafter, reverse logic and test for high temperatures
-               first, and make this a generic, easily hookable script.
+   ..
    2018-12-01: Add another RPM level to accommodate better for power
                saving, and increase some sleeps.
    2018-12-02: MACBOOK_AIR_2011: adjust reduxone for additional level(s).
@@ -32,11 +28,7 @@ gen-uushar-wrapper:
 
    Note that the uudecode(1) program must be capable of decoding to
    /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
-
-   2014-03-05: rewritten: check and forbid filenames with embedded
-               double quotes, ensure the given default executable, if any,
-               is part of the generated archive, reexecute after archive
-               expansion, truly disallow empty archive name.
+   ...
    2016-01-05: port to FreeBSD: uudecode(1) does not honour /dev/stdout
                in-stream, so give -o command line option.
 
@@ -54,9 +46,7 @@ gmane-fetch.pl:
    Download NNTP articles from Gmane.org and Gwene.org, incrementally, and
    store them in (append them to) a local MBOX.
    Read and adjust the script header for documentation and configuration.
-
-   2017-06-17: ensure resource file is updated as necessary even when script
-               dies due to failure.  Add $SAFE_FSYNC, default on.
+   ...
    2017-07-24: add support for multiple servers and add gwene.org.
 
 uushar (manual: uushar.1):
@@ -78,12 +68,15 @@ uushar (manual: uushar.1):
 
    Note that the uudecode(1) program must be capable of decoding to
    /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
-
-   2014-02-27: rewritten: short options, check and forbid filenames with
-               embedded double quotes, added uushar.1 manual.
+   ...
    2016-01-05: port to FreeBSD: uudecode(1) does not honour /dev/stdout
                in-stream, so give -o command line option.
                mdocmx(7)ified++ manual.
+
+zte.sh:
+   Control a ZTE modem (MF79 and many others according to web search)
+   from the command line.  Needs curl(1) and OpenSSL(1).
+   The PASSWORT= variable has to be adjusted
 
 You likely do not wanna know:
 
@@ -97,17 +90,9 @@ backup.sh:
    clones but not yet pushed to their "real" counterparts).  Needs perl(1).
    P.S.: it is fantastic to have a filesystem with snapshots thats can be
    "send" in addition!
-
-   2015-09-02: no longer following symbolic links.
-   2015-10-09: add -b/--basename option, add $COMPRESSOR variable, start
-               via shell and $PERL5OPT clear to avoid multibyte problems.
-   2015-12-25: excluding symbolic links from archives; change
-               $SYMLINK_INCLUDE in the script header to change this.
+   ...
    2016-08-27: FIX faulty xarg/tar -c invocations (Ralph Corderoy)
-   2016-10-19: Renamed from backup.pl "now" that we start via sh(1).
-   2016-10-19: Removed support for Mercurial: not tested in years.
-   ..2017-06-12: Various little fixes still due to the xarg/tar stuff.
-   2017-06-13,14: Add $HOOK mechanism, an alternative archiver approach.
+   ...
    2018-10-12: Fix $HOOK mechanism for filenames with spaces as shown by
                POSIX, assuming no newlines are in a name:
                   sed −e 's/"/"\\""/g' −e 's/.*/"&"/'
@@ -138,9 +123,7 @@ real-periodic.sh:
       #1  3 * * * root periodic daily
       #15 4 * * 6 root periodic weekly
       #30 5 1 * * root periodic monthly
-
-   2015-08-24: newer periodic(8) sleep in between jobs, so update the DB
-               before we start it!
+   ...
    2017-08-05: oh, fix the latter mess!  No more sleeps there, too?
 
 super-shutdown.c:
