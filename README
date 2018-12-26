@@ -3,6 +3,12 @@ A repo of some small tools
 
 Somewhat useful:
 
+btrfs-snapshot.sh:
+   Simple script to deal with BTRFS snapshots: create, trim, receive and
+   setmounts are the actions which are provided.
+   $THEVOL, $DIRS and $ACCUDIR have to be adjusted (maybe also $UNPRIVU
+   and $UNPRIVG), then many mount points can be handled with one command.
+
 fancontrol.sh:
    A simple Linux fancontrol shell script, by default for MacBook Air,
    but can be adjusted easily by providing a $MODEL specific set.
@@ -14,23 +20,6 @@ fancontrol.sh:
                on kernel version etc.?  Be more tolerant and actively search
                for the files we expect under hwmon*/, bail out if we cannot
                (seem to) identify what we expect.
-
-gen-uushar-wrapper:
-   Creates a shell archive similar to uushar as below, except that the
-   archive (1) consists only of executable file members, and (2) will
-   be itself executable.  Run it (the generated shell archive script)
-   to invoke any of the programs contained therein.  On the first run,
-   the wrapper will create a hidden directory in your $TMPDIR to unpack
-   the archive members therein.  Run without arguments to show its
-   contents and the creation date.
-   It needs no manual, simply execute it and it will guide you through
-   the archive creation process.
-
-   Note that the uudecode(1) program must be capable of decoding to
-   /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
-   ...
-   2016-01-05: port to FreeBSD: uudecode(1) does not honour /dev/stdout
-               in-stream, so give -o command line option.
 
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so
@@ -49,36 +38,12 @@ gmane-fetch.pl:
    ...
    2017-07-24: add support for multiple servers and add gwene.org.
 
-uushar (manual: uushar.1):
-   Writes a sh(1) shell script to the standard output which will
-   recreate the file hierarchy specified by the command line operands.
-   Directories will be recreated and must be specified before the files
-   they contain.  Compared to the well-known shar(1) program, uushar(1)
-   adds optional compression and an uuencode(1)/uudecode(1) binary
-   safe layer::
-
-      $ uushar [-(Z|z|J|j)] file ...
-
-   It is easy to insert trojan horses into uushar files.  It is thus
-   strongly recommended that all shell archive files be examined before
-   running them through sh(1).  Archives produced using this
-   implementation of uushar may be easily examined with the command::
-
-      $ grep '^[^X#]' shar.file
-
-   Note that the uudecode(1) program must be capable of decoding to
-   /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
-   ...
-   2016-01-05: port to FreeBSD: uudecode(1) does not honour /dev/stdout
-               in-stream, so give -o command line option.
-               mdocmx(7)ified++ manual.
-
 zte.sh:
    Control a ZTE modem (MF79 and many others according to web search)
    from the command line.  Needs curl(1) and OpenSSL(1).
-   The PASSWORT= variable has to be adjusted
    ..
-   2018-12-26: "login" now asks until there is a password.
+   2018-12-26: "login" now asks until there is a password, but PASSWORD=
+               could still be set to avoid that.
 
 You likely do not wanna know:
 
@@ -107,9 +72,22 @@ cdoc-freebsd.S:
    file bytes when everything was placed in ``.text`` (no .EH frames
    back then).
 
-openbsd-changelog-plus.pl,
-openbsd-changeset-plus.pl:
-   Simple scripts to ease maintaining of OpenBSD plus.html entries.
+gen-uushar-wrapper:
+   Creates a shell archive similar to uushar as below, except that the
+   archive (1) consists only of executable file members, and (2) will
+   be itself executable.  Run it (the generated shell archive script)
+   to invoke any of the programs contained therein.  On the first run,
+   the wrapper will create a hidden directory in your $TMPDIR to unpack
+   the archive members therein.  Run without arguments to show its
+   contents and the creation date.
+   It needs no manual, simply execute it and it will guide you through
+   the archive creation process.
+
+   Note that the uudecode(1) program must be capable of decoding to
+   /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
+   ...
+   2016-01-05: port to FreeBSD: uudecode(1) does not honour /dev/stdout
+               in-stream, so give -o command line option.
 
 real-periodic.sh:
    A _real_ periodic for NetBSD, FreeBSD, DragonFly BSD and OpenBSD that
@@ -128,9 +106,28 @@ real-periodic.sh:
    ...
    2017-08-05: oh, fix the latter mess!  No more sleeps there, too?
 
-super-shutdown.c:
-   Single setuid root BSD program to invoke /sbin/shutdown(8), either
-   to reboot or to halt the system.
-   You have been warned.
+uushar (manual in uushar.1):
+   Writes a sh(1) shell script to the standard output which will
+   recreate the file hierarchy specified by the command line operands.
+   Directories will be recreated and must be specified before the files
+   they contain.  Compared to the well-known shar(1) program, uushar(1)
+   adds optional compression and an uuencode(1)/uudecode(1) binary
+   safe layer::
+
+      $ uushar [-(Z|z|J|j)] file ...
+
+   It is easy to insert trojan horses into uushar files.  It is thus
+   strongly recommended that all shell archive files be examined before
+   running them through sh(1).  Archives produced using this
+   implementation of uushar may be easily examined with the command::
+
+      $ grep '^[^X#]' shar.file
+
+   Note that the uudecode(1) program must be capable of decoding to
+   /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
+   ...
+   2016-01-05: port to FreeBSD: uudecode(1) does not honour /dev/stdout
+               in-stream, so give -o command line option.
+               mdocmx(7)ified++ manual.
 
 # s-it-mode

@@ -1,5 +1,8 @@
 #!/bin/sh -
 #@ ZTE Modem per script
+#@
+#@ 2018 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+#@ Public Domain.
 
 # Will be asked on TTY if empty
 PASSWORD=

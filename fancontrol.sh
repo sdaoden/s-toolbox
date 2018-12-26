@@ -7,7 +7,7 @@
 #@   	ebegin "Starting fancontrol"
 #@   	start-stop-daemon --start --background --nicelevel -10 \
 #@   		--make-pidfile --pidfile ${PID} \
-#@   		--exec /etc/fancontrol.sh -- ${CONFIG}
+#@   		--exec /root/fancontrol.sh -- ${CONFIG}
 #@   	eend ${?}
 #@   }
 #@   stop() {
@@ -15,8 +15,9 @@
 #@   	start-stop-daemon --stop --pidfile ${PID}
 #@   	eend ${?}
 #@   }
-#@
-#@ Public Domain
+#
+# 2018 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+# Public Domain
 
 ## Generic fancontrol.sh settings and variables
 
