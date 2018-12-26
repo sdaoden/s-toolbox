@@ -1,6 +1,7 @@
 #!/bin/sh -
 #@ ZTE Modem per script
 
+# Will be asked on TTY if empty
 PASSWORD=
 
 set_cmd() {
@@ -29,6 +30,16 @@ get_cmd() {
 
 case "$@" in
 login)
+   while [ -z "$PASSWORD" ]; do
+      ttyreset=
+      if command -v stty >/dev/null 2>&1; then
+         ttyreset="stty `stty -g`"
+         stty -echo
+      fi
+      printf 'Enter passphrase: '
+      read PASSWORD
+      $ttyreset
+   done
    i=`printf '%s' "$PASSWORD" | openssl base64`
    set_cmd LOGIN "password=$i"
    ;;

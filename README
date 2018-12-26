@@ -77,6 +77,8 @@ zte.sh:
    Control a ZTE modem (MF79 and many others according to web search)
    from the command line.  Needs curl(1) and OpenSSL(1).
    The PASSWORT= variable has to be adjusted
+   ..
+   2018-12-26: "login" now asks until there is a password.
 
 You likely do not wanna know:
 
