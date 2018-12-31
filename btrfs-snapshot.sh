@@ -179,7 +179,7 @@ create_send() {
       set -- `find . -maxdepth 1 -type d -not -path . | sort | tail -n 2`
       parent=`basename "$1"` this=`basename "$2"`
       target="$mydir"/"$this"
-      echo '== '$mydir': with parent '$parent''\
+      echo '== '$mydir': with parent '$parent' '\
 'to '$ACCUDIR'/btrfs-snaps/'$target
       parent=' -p '"$parent"
    fi
