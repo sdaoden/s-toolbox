@@ -15,7 +15,8 @@
 #define a_RAND_NO_BYTES 512
 
 /* When saving, the minimum number of entropy_avail we keep in the pool.
- * _This_ is checked after we have read once (512 we test initially). */
+ * _This_ is checked after we have read once (512 we test initially).
+ * We will refuse to save a dump which offers less than 128 bits. */
 #define a_RAND_ENTROPY_COUNT_MIN 1024
 
 /* Default storage */
@@ -123,8 +124,9 @@ jeuse:
          rv = EX_IOERR;
          goto jerr2;
       }
-      /* The latter rather arbitrary (like the suff as such?) */
-      if(x.rpi.entropy_count < 0 || x.rpi.entropy_count > 1000000){
+      /* The former because we will refuse to save less than that, the latter
+       * rather arbitrary (like the suff as such?) */
+      if(x.rpi.entropy_count < 128 || x.rpi.entropy_count > 1000000){
          fprintf(stderr, "Storage %s seems corrupted (%d entropy bits)\n",
             store, x.rpi.entropy_count);
          rv = EX_IOERR;
@@ -172,7 +174,7 @@ jeuse:
    }else{
       /* Since we are reading in non-blocking mode, and since reading from
        * /dev/random returns not that much in this mode, read in a loop until
-       * it no longer serves / the entropy count falls under a a_RAND_*/
+       * it no longer serves / the entropy count falls under a a_RAND_ */
       size_t rem_size;
       int entrop_cnt;
 
@@ -184,11 +186,16 @@ jeuse:
          goto jerr2;
       }
 
-      x.rpi.buf_size = 0;
+      x.rpi.buf_size = x.rpi.entropy_count = 0;
       rem_size = sizeof x.buf;
 jread_more:
       len = read(randfd, rpibuf, rem_size);
       if(len == -1){
+         /* Ignore the EAGAIN that /dev/random reports when it would block
+          * (Bernd Petrovitsch (bernd at petrovitsch dot priv dot at)) */
+         if(errno == EAGAIN)
+            goto jread_done;
+
          fprintf(stderr, "Failed to read from " a_RAND_DEV ": %s\n",
             strerror(errno));
          rv = EX_IOERR;
@@ -208,11 +215,13 @@ jread_more:
       entrop_cnt -= iocarg;
       x.rpi.entropy_count += entrop_cnt;
 
-      if(len != 0 && (entrop_cnt = iocarg) >= a_RAND_ENTROPY_COUNT_MIN &&
+      /* Try to read more? */
+      if(len > 0 && (entrop_cnt = iocarg) >= a_RAND_ENTROPY_COUNT_MIN &&
             rem_size >= 64)
          goto jread_more;
       printf("- %d bits of entropy remain at " a_RAND_DEV "\n", iocarg);
 
+jread_done:
       if(x.rpi.entropy_count <= 128){
          fprintf(stderr, "Insufficient entropy to save from " a_RAND_DEV
             " (%d bits)\n", x.rpi.entropy_count);

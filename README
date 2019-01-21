@@ -14,10 +14,12 @@ entropy-saver.c:
    incremented when i restore the saved random seed that machines have
    collected so hard.  This little program touches this count also.
 
+   2019-01-21: Small fixes, and take care for EAGAIN (Bernd Petrovitsch).
+
 fancontrol.sh:
    A simple Linux fancontrol shell script, by default for MacBook Air,
    but can be adjusted easily by providing a $MODEL specific set.
-   ..
+   ...
    2018-12-01: Add another RPM level to accommodate better for power
                saving, and increase some sleeps.
    2018-12-02: MACBOOK_AIR_2011: adjust reduxone for additional level(s).
