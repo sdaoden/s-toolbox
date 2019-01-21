@@ -9,6 +9,11 @@ btrfs-snapshot.sh:
    $THEVOL, $DIRS and $ACCUDIR have to be adjusted (maybe also $UNPRIVU
    and $UNPRIVG), then many mount points can be handled with one command.
 
+entropy-saver.c:
+   For my use cases i find it annoying that "entropy_avail" is not
+   incremented when i restore the saved random seed that machines have
+   collected so hard.  This little program touches this count also.
+
 fancontrol.sh:
    A simple Linux fancontrol shell script, by default for MacBook Air,
    but can be adjusted easily by providing a $MODEL specific set.
