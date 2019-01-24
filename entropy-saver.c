@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sysexits.h>
+#include <syslog.h>
 #include <unistd.h>
 
 #include <linux/random.h>
@@ -74,11 +75,17 @@ jeuse:
       goto jleave;
    }
 
+   openlog("entropy-saver",
+#ifdef LOG_PERROR
+      LOG_PERROR |
+#endif
+      LOG_PID, LOG_DAEMON);
+
    /* Open our two files according to chosen action */
    randfd = open(a_RAND_DEV, (O_RDONLY | O_NONBLOCK));
    if(randfd == -1){
       accu = errno;
-      fprintf(stderr, "Failed to open " a_RAND_DEV ": %s\n",
+      syslog(LOG_ERR, "Failed to open " a_RAND_DEV ": %s\n",
          strerror(accu));
       rv = (accu == EACCES || accu == EPERM) ? EX_NOPERM : EX_IOERR;
       goto jleave;
@@ -89,7 +96,7 @@ jeuse:
          : O_WRONLY | O_CREAT | O_TRUNC), (S_IRUSR | S_IWUSR));
    if(storfd == -1){
       accu = errno;
-      fprintf(stderr, "Failed to open %s: %s\n", store, strerror(accu));
+      syslog(LOG_ERR, "Failed to open %s: %s\n", store, strerror(accu));
       rv = (accu == EACCES || accu == EPERM) ? EX_NOPERM : EX_IOERR;
       goto jerr1;
    }
@@ -97,7 +104,7 @@ jeuse:
    /* For at least statistics query entropy count once */
    rv = ioctl(randfd, (int)RNDGETENTCNT, &iocarg);
    if(rv == -1){
-      fprintf(stderr, "Failed to query available entropy of " a_RAND_DEV
+      syslog(LOG_ERR, "Failed to query available entropy of " a_RAND_DEV
          ": %s\n", strerror(errno));
       rv = EX_IOERR;
       goto jerr2;
@@ -107,19 +114,19 @@ jeuse:
    rpibuf = (char*)x.rpi.buf;
 
    if(accu == a_LOAD){
-      printf("- %d bits of entropy available at " a_RAND_DEV "\n",
+      syslog(LOG_INFO, "%d bits of entropy available at " a_RAND_DEV "\n",
          x.rpi.entropy_count);
 
       /* INT: entropy bits */
       len = read(storfd, &x.rpi.entropy_count, sizeof x.rpi.entropy_count);
       if(len == -1){
-         fprintf(stderr, "Failed to read from %s: %s\n",
+         syslog(LOG_ERR, "Failed to read from %s: %s\n",
             store, strerror(errno));
          rv = EX_IOERR;
          goto jerr2;
       }
       if(len != sizeof x.rpi.entropy_count){
-         fprintf(stderr, "Storage %s: seems corrupted (false format)\n",
+         syslog(LOG_ERR, "Storage %s: seems corrupted (false format)\n",
             store);
          rv = EX_IOERR;
          goto jerr2;
@@ -127,7 +134,7 @@ jeuse:
       /* The former because we will refuse to save less than that, the latter
        * rather arbitrary (like the suff as such?) */
       if(x.rpi.entropy_count < 128 || x.rpi.entropy_count > 1000000){
-         fprintf(stderr, "Storage %s seems corrupted (%d entropy bits)\n",
+         syslog(LOG_ERR, "Storage %s seems corrupted (%d entropy bits)\n",
             store, x.rpi.entropy_count);
          rv = EX_IOERR;
          goto jerr2;
@@ -136,32 +143,31 @@ jeuse:
       /* REST: pool bytes */
       len = read(storfd, rpibuf, sizeof x.buf);
       if(len == -1){
-         fprintf(stderr, "Failed to read from %s: %s\n",
+         syslog(LOG_ERR, "Failed to read from %s: %s\n",
             store, strerror(errno));
          rv = EX_IOERR;
          goto jerr2;
       }
       if(len == 0){
-         fprintf(stderr, "Storage %s: seems corrupted (no entropy)\n",
-            store);
+         syslog(LOG_ERR, "Storage %s: seems corrupted (no entropy)\n", store);
          rv = EX_TEMPFAIL;
          goto jerr2;
       }
       x.rpi.buf_size = (int)len;
 
       if(read(storfd, &accu, 1) != 0){
-         fprintf(stderr, "Storage %s: seems corrupted (no EOF seen)\n",
+         syslog(LOG_ERR, "Storage %s: seems corrupted (no EOF seen)\n",
             store);
          rv = EX_IOERR;
          goto jerr2;
       }
 
-      printf("- %d bytes / %d bits of entropy read from %s\n",
+      syslog(LOG_INFO, "%d bytes / %d bits of entropy read from %s\n",
          x.rpi.buf_size, x.rpi.entropy_count, store);
 
       accu = ioctl(randfd, RNDADDENTROPY, &x.rpi);
       if(accu == -1){
-         fprintf(stderr, "Failed to add %d bits of entropy to " a_RAND_DEV
+         syslog(LOG_ERR, "Failed to add %d bits of entropy to " a_RAND_DEV
             ": %s\n", x.rpi.entropy_count, strerror(errno));
          rv = EX_IOERR;
          goto jerr2;
@@ -170,16 +176,17 @@ jeuse:
       /* For at least statistics */
       rv = ioctl(randfd, (int)RNDGETENTCNT, &iocarg);
       if(rv != -1)
-         printf("- %d bits of entropy are at at " a_RAND_DEV "\n", iocarg);
+         syslog(LOG_INFO, "%d bits of entropy are at at " a_RAND_DEV "\n",
+            iocarg);
    }else{
       /* Since we are reading in non-blocking mode, and since reading from
        * /dev/random returns not that much in this mode, read in a loop until
        * it no longer serves / the entropy count falls under a a_RAND_ */
       size_t rem_size;
-      int entrop_cnt;
+      int entrop_cnt, e;
 
       entrop_cnt = x.rpi.entropy_count;
-      printf("- %d bits of entropy available at " a_RAND_DEV "%s\n",
+      syslog(LOG_INFO, "%d bits of entropy available at " a_RAND_DEV "%s\n",
          entrop_cnt, (entrop_cnt <= 512 ? ": temporary failure" : ""));
       if(entrop_cnt <= 512){
          rv = EX_TEMPFAIL;
@@ -193,10 +200,14 @@ jread_more:
       if(len == -1){
          /* Ignore the EAGAIN that /dev/random reports when it would block
           * (Bernd Petrovitsch (bernd at petrovitsch dot priv dot at)) */
-         if(errno == EAGAIN)
+         if((e = errno) == EAGAIN ||
+#if defined EWOULDBLOCK && EWOULDBLOCK != EAGAIN
+               e == EWOULDBLOCK ||
+#endif
+               e == EBUSY)
             goto jread_done;
 
-         fprintf(stderr, "Failed to read from " a_RAND_DEV ": %s\n",
+         syslog(LOG_ERR, "Failed to read from " a_RAND_DEV ": %s\n",
             strerror(errno));
          rv = EX_IOERR;
          goto jerr2;
@@ -207,7 +218,7 @@ jread_more:
 
       rv = ioctl(randfd, (int)RNDGETENTCNT, &iocarg);
       if(rv == -1){
-         fprintf(stderr, "Failed to query remaining entropy of " a_RAND_DEV
+         syslog(LOG_ERR, "Failed to query remaining entropy of " a_RAND_DEV
             ": %s\n", strerror(errno));
          rv = EX_IOERR;
          goto jerr2;
@@ -219,11 +230,12 @@ jread_more:
       if(len > 0 && (entrop_cnt = iocarg) >= a_RAND_ENTROPY_COUNT_MIN &&
             rem_size >= 64)
          goto jread_more;
-      printf("- %d bits of entropy remain at " a_RAND_DEV "\n", iocarg);
+      syslog(LOG_INFO, "%d bits of entropy remain at " a_RAND_DEV "\n",
+         iocarg);
 
 jread_done:
       if(x.rpi.entropy_count <= 128){
-         fprintf(stderr, "Insufficient entropy to save from " a_RAND_DEV
+         syslog(LOG_ERR, "Insufficient entropy to save from " a_RAND_DEV
             " (%d bits)\n", x.rpi.entropy_count);
          rv = EX_TEMPFAIL;
          goto jerr2;
@@ -234,24 +246,23 @@ jread_done:
       if((ssize_t)sizeof(x.rpi.entropy_count) != write(storfd,
                &x.rpi.entropy_count, sizeof x.rpi.entropy_count) ||
             len != write(storfd, rpibuf, len)){
-         fprintf(stderr, "Failed to write to %s: %s\n",
+         syslog(LOG_ERR, "Failed to write to %s: %s\n",
             store, strerror(errno));
          rv = EX_IOERR;
          goto jerr2;
       }
 
-      printf("- %d bits / %d bytes of entropy saved to %s\n",
+      syslog(LOG_INFO, "%d bits / %d bytes of entropy saved to %s\n",
          x.rpi.entropy_count, x.rpi.buf_size, store);
    }
 
    rv = 0;
 jerr2:
    if(close(storfd) == -1)
-      fprintf(stderr, "Error closing %s: %s\n", store, strerror(errno));
+      syslog(LOG_ERR, "Error closing %s: %s\n", store, strerror(errno));
 jerr1:
    if(close(randfd) == -1)
-      fprintf(stderr, "Error closing " a_RAND_DEV ": %s\n",
-         strerror(errno));
+      syslog(LOG_ERR, "Error closing " a_RAND_DEV ": %s\n", strerror(errno));
 jleave:
    return rv;
 }
