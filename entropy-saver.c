@@ -1,7 +1,7 @@
 /*@ Save and load Linux (2.6.0+) entropy.
  *@ Different to "cat XY > /dev/urandom" this increments "entropy_avail".
  *@ NOTE: this will not work correctly if used in conjunction with haveged
- *@ or a similar entropy managing daemon; *unless* it is enjured it loads
+ *@ or a similar entropy managing daemon; *unless* it is ensured it loads
  *@ entropy before, and saves entropy after the daemon lifetime!
  *@ Synopsis: entropy-saver save [file]
  *@ Synopsis: entropy-saver load [file]
@@ -75,7 +75,7 @@ jeuse:
          "storage-file defaults to " a_RAND_FILE_STORE "\n"
          "Exit: sysexits.h: EX_USAGE, EX_NOPERM, EX_IOERR, EX_TEMPFAIL\n");
       rv = EX_USAGE;
-      goto jleave;
+      goto j_leave;
    }
 
    openlog("entropy-saver",
@@ -204,7 +204,7 @@ jread_more:
          /* Ignore the EAGAIN that /dev/random reports when it would block
           * (Bernd Petrovitsch (bernd at petrovitsch dot priv dot at)) */
          if((e = errno) == EAGAIN ||
-#if defined EWOULDBLOCK && EWOULDBLOCK != EAGAIN
+#if defined EWOULDBLOCK && EWOULDBLOCK != EAGAIN /* xxx never true on Linux */
                e == EWOULDBLOCK ||
 #endif
                e == EBUSY)
@@ -267,6 +267,8 @@ jerr1:
    if(close(randfd) == -1)
       syslog(LOG_ERR, "Error closing " a_RAND_DEV ": %s\n", strerror(errno));
 jleave:
+   closelog();
+j_leave:
    return rv;
 }
 
