@@ -15,7 +15,8 @@ entropy-saver.c:
    collected so hard.  This little program touches this count also.
 
    2019-01-21: Small fixes, and take care for EAGAIN (Bernd Petrovitsch).
-   2019-02-24: use syslog(3) instead; also test EBUSY (Bernd Petrovitsch).
+   2019-01-24: use syslog(3) instead; also test EBUSY (Bernd Petrovitsch).
+   2019-01-25: add comment regarding interaction with haveged etc.
 
 fancontrol.sh:
    A simple Linux fancontrol shell script, by default for MacBook Air,

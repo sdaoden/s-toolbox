@@ -1,5 +1,8 @@
 /*@ Save and load Linux (2.6.0+) entropy.
  *@ Different to "cat XY > /dev/urandom" this increments "entropy_avail".
+ *@ NOTE: this will not work correctly if used in conjunction with haveged
+ *@ or a similar entropy managing daemon; *unless* it is enjured it loads
+ *@ entropy before, and saves entropy after the daemon lifetime!
  *@ Synopsis: entropy-saver save [file]
  *@ Synopsis: entropy-saver load [file]
  *@ "file" defaults to a_RAND_FILE_STORE.
