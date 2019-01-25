@@ -29,6 +29,12 @@ fancontrol.sh:
                for the files we expect under hwmon*/, bail out if we cannot
                (seem to) identify what we expect.
 
+find-command.sh:
+   Find an executable command within a POSIX shell.
+   which(1) is not standardized, and command(1) -v may return non-executable,
+   so here is how it is possible to really find a usable executable file.
+   Thanks to Robert Elz (kre).
+
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so
    that i can use ``$ git rebase -i`` for fixups and squashes, without
