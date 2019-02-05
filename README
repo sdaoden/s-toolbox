@@ -36,6 +36,8 @@ find-command.sh:
    so here is how it is possible to really find a usable executable file.
    Thanks to Robert Elz (kre).
 
+   2019-02-05: truly support presets again (e.g. "awk=nawk TESTFUN ...")
+
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so
    that i can use ``$ git rebase -i`` for fixups and squashes, without
