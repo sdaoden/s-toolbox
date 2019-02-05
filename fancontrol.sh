@@ -16,7 +16,7 @@
 #@   	eend ${?}
 #@   }
 #
-# 2018 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+# 2018 - 2019 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain
 
 ## Generic fancontrol.sh settings and variables
@@ -185,7 +185,7 @@ fanadjust_MACBOOK_AIR_2011() {
    echo $1 > $m_fan0store
 }
 
-## 8< ----- >8
+##  --  >8  - -  8<  --  ##
 
 lvl_curr=0 lvl_reduxone=0
 
