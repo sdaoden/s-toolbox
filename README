@@ -37,6 +37,7 @@ find-command.sh:
    Thanks to Robert Elz (kre).
 
    2019-02-05: truly support presets again (e.g. "awk=nawk TESTFUN ...")
+   2019-03-07: fix brain damage
 
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so
