@@ -18,17 +18,10 @@ entropy-saver.c:
    2019-01-24: use syslog(3) instead; also test EBUSY (Bernd Petrovitsch).
    2019-01-25: add comment regarding interaction with haveged etc.
 
-fancontrol.sh:
-   A simple Linux fancontrol shell script, by default for MacBook Air,
-   but can be adjusted easily by providing a $MODEL specific set.
-   ...
-   2018-12-01: Add another RPM level to accommodate better for power
-               saving, and increase some sleeps.
-   2018-12-02: MACBOOK_AIR_2011: adjust reduxone for additional level(s).
-   2018-12-10: Oh!  The Linux hwmon* classification is not fixed but depends
-               on kernel version etc.?  Be more tolerant and actively search
-               for the files we expect under hwmon*/, bail out if we cannot
-               (seem to) identify what we expect.
+fan-adaptive.sh:
+   "Adaptive", more generic, and much more easily adaptable successor to
+   fancontrol.sh.  For now with simulator and MacBook Air model support.
+   See the script header for more.
 
 find-command.sh:
    Find an executable command within a POSIX shell.
