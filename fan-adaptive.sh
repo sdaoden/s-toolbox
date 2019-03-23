@@ -358,7 +358,8 @@ status() {
 
       dbg ' - Dataset '$i' temp '$old'->'$curr' of '$min'/'$max'; level '\
 $olvl'->'$nlvl'('$xnlvl'; trend '$trend')'
-      eval fc_level_new_$i=$nlvl fc_trend_$i=$trend fc_temp_old_$i=$curr
+      eval fc_level_new_$i=$nlvl fc_adjust_$i=$adj fc_trend_$i=$trend \
+         fc_temp_old_$i=$curr
       [ $olvl -ne $nlvl ] && need_adjust=1
       i=$((i + 1))
    done
