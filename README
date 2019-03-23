@@ -24,6 +24,7 @@ fan-adaptive.sh:
    See the script header for more.
 
    2019-03-23: fix trend handling
+   2019-03-23: remember adaption to avoid adjusting fan too often
 
 find-command.sh:
    Find an executable command within a POSIX shell.

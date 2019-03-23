@@ -41,6 +41,8 @@ FASTCAT=
 
 # Models need to provide three functions, where "MODEL" is the model name:
 # init_MODEL(), status_MODEL() and adjust_MODEL().
+# MACBOOK_AIR_2011 is a good template, and almost generic.  Unfortunately Linux
+# does not provide generic accessors, so adjustments are due.
 #
 # In general we work on $fc_no datasets.  A dataset consists of the constant
 # members $fc_temp_min_NO and $fc_temp_max_NO.
@@ -55,9 +57,9 @@ FASTCAT=
 # be set by status_MODEL().
 #
 # adjust_MODEL() will be called whenever any of the datasets entered
-# a different level.  If the $fc_level_new_NO is 0 then fans shall be turned
-# off, otherwise appropriate steps have to be taken.  adjust_MODEL() has to
-# update $fc_level_curr_NO to $fc_level_new_NO once the work is done (only).
+# a different level.  If $fc_level_new_NO is 0 then fans shall be turned off,
+# otherwise appropriate steps have to be taken.  adjust_MODEL() has to update
+# $fc_level_curr_NO to $fc_level_new_NO once the work is done (only).
 #
 # init_MODEL() also needs to set $fc_sleep_min and $fc_sleep_max, used to
 # decide how much we can spread our status_MODEL() interval.  The used sleep
@@ -67,7 +69,7 @@ FASTCAT=
 # - $fc_temp_percent: the maximum temperature percentage of all datasets.
 #   This is used to calculate the next sleep time.
 #   The value of the former status round is in $fc_temp_percent_old.
-# - $fc_level_max: number of levels in dataset with most levels.
+# - $fc_level_max: number of levels in dataset with highest value.
 
 # SIM, the test simulator
 
@@ -159,13 +161,13 @@ init_MACBOOK_AIR_2011() {
       fi
       mac_input_2=$i/temp2_input
          fc_temp_max_2=$((`cat $i/temp2_max`))
-            fc_temp_min_2=$((fc_temp_max_2 - (55 * (fc_temp_max_2 / 100)) ))
+            fc_temp_min_2=$((fc_temp_max_2 - (52 * (fc_temp_max_2 / 100)) ))
             fc_temp_min_2=$((fc_temp_min_2 / 1000))
             fc_temp_max_2=$((fc_temp_max_2 - (25 * (fc_temp_max_2 / 100)) ))
             fc_temp_max_2=$((fc_temp_max_2 / 1000))
       mac_input_3=$i/temp3_input
          fc_temp_max_3=$((`cat $i/temp3_max`))
-            fc_temp_min_3=$((fc_temp_max_3 - (55 * (fc_temp_max_3 / 100)) ))
+            fc_temp_min_3=$((fc_temp_max_3 - (52 * (fc_temp_max_3 / 100)) ))
             fc_temp_min_3=$((fc_temp_min_3 / 1000))
             fc_temp_max_3=$((fc_temp_max_3 - (25 * (fc_temp_max_3 / 100)) ))
             fc_temp_max_3=$((fc_temp_max_3 / 1000))
@@ -190,6 +192,7 @@ status_MACBOOK_AIR_2011() {
 }
 
 adjust_MACBOOK_AIR_2011() {
+   # Only has one fan, so use maximum
    i=1
    lvlmax=0
    while [ $i -le $fc_no ]; do
@@ -237,7 +240,7 @@ init() {
    while [ $i -le $fc_no ]; do
       eval fc_level_no_$i=0 \
          fc_level_curr_$i=0 fc_level_new_$i=0 \
-         fc_trend_$i=0 fc_temp_old_$i=0 \
+         fc_adjust_$i=0 fc_trend_$i=0 fc_temp_old_$i=0 \
          j=\$fc_temp_min_$i k=\$fc_temp_max_$i
 
       # We need some tolerance in the temperature range of levels in order
@@ -289,15 +292,15 @@ status() {
       eval curr=\$fc_temp_curr_$i old=\$fc_temp_old_$i \
          max=\$fc_temp_max_$i min=\$fc_temp_min_$i \
          olvl=\$fc_level_curr_$i \
-         trend=\$fc_trend_$i
+         adj=\$fc_adjust_$i trend=\$fc_trend_$i
 
       if [ $curr -ge $max ]; then
          dbg ' ! Dataset '$i' at maximum'
          eval nlvl=\$fc_level_no_$i
-         xnlvl=$nlvl fc_temp_percent=100 trend=0
+         xnlvl=$nlvl fc_temp_percent=100 adj=0 trend=0
       elif [ $curr -le $min ]; then
          dbg ' ! Dataset '$i' at minimum'
-         nlvl=0 xnlvl=0 trend=0
+         nlvl=0 xnlvl=0 adj=0 trend=0
       else
          nlvl=$(( ((curr - min) * 1000) / (((max - min) * 1000) / 100) ))
          [ $nlvl -gt $fc_temp_percent ] && fc_temp_percent=$nlvl
@@ -305,11 +308,12 @@ status() {
          nlvl=$(( (nlvl * lno) / 100 ))
          xnlvl=$nlvl
 
-         # Any adaptive adjustment?
+         # Unchanged?
          if [ $fc_first_time -eq 1 ] || [ $olvl -eq $nlvl ]; then
-            trend=0
+            adj=0 trend=0
+         # Heated?  Possibly apply adaptive changes
          elif [ $olvl -lt $nlvl ]; then
-            j=0
+            adj=0
             if [ $trend -lt 0 ]; then
                trend=0
             else
@@ -317,32 +321,37 @@ status() {
                if [ $trend -ge 3 ]; then
                   dbg ' . Dataset '$i' heats 3rd+ time in row, adaption'
                   trend=0
-                  j=$((j + 2))
+                  adj=$((adj + 1))
                fi
             fi
 
-            if [ $((nlvl - olvl)) -ge 3 ]; then
+            j=$((nlvl - olvl))
+            if [ $j -ge 3 ]; then
                dbg ' . Dataset '$i' heated up 3+ levels, adaption'
-               j=$((j + 2))
+               adj=$((adj + 2))
+            elif [ $j -ge 2 ]; then
+               dbg ' . Dataset '$i' heated up 2+ levels, adaption'
+               adj=$((adj + 1))
             fi
 
-            nlvl=$((nlvl + j))
+            nlvl=$((nlvl + adj))
             [ $nlvl -gt $lno ] && nlvl=$lno
+         # Cooled down; but do not be too eager in lowering level
+         elif [ $adj -gt 0 ]; then
+            adj=$((adj - 1)) trend=0
+         elif [ $trend -gt 0 ]; then
+            trend=0
          else
-            if [ $trend -gt 0 ]; then
+            trend=$((trend - 1))
+            # Step down anyway if wanted quite often
+            if [ $trend -le -5 ]; then
                trend=0
+            # Or if temperature fell a lot
+            elif [ $((olvl - nlvl)) -gt 2 ]; then
+               trend=0
+               nlvl=$((nlvl + 1))
             else
-               trend=$((trend - 1))
-               # Step down anyway if wanted quite often
-               if [ $trend -le -8 ]; then
-                  trend=0
-               # Or if temperature fell a lot
-               elif [ $((olvl - nlvl)) -gt 2 ]; then
-                  trend=0
-                  nlvl=$((nlvl + 1))
-               else
-                  nlvl=$olvl
-               fi
+               nlvl=$olvl
             fi
          fi
       fi
