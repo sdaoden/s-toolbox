@@ -338,9 +338,9 @@ status() {
             [ $nlvl -gt $lno ] && nlvl=$lno
          # Cooled down; but do not be too eager in lowering level
          elif [ $adj -gt 0 ]; then
-            adj=$((adj - 1)) trend=0
+            adj=$((adj - 1)) trend=0 nlvl=$olvl
          elif [ $trend -gt 0 ]; then
-            trend=0
+            trend=0 nlvl=$olvl
          else
             trend=$((trend - 1))
             # Step down anyway if wanted quite often
@@ -373,7 +373,8 @@ $olvl'->'$nlvl'('$xnlvl'; trend '$trend')'
             ((fc_temp_percent * (fc_sleep_max - fc_sleep_min)) / 100) ))
    fi
 
-   dbg ' = fc_temp_percent='$fc_temp_percent', fc_sleep_curr='$fc_sleep_curr
+   dbg ' = fc_temp_percent='$fc_temp_percent\
+', fc_sleep_curr='$fc_sleep_curr', adjust='$need_adjust
    fc_first_time=0
    [ $need_adjust -ne 0 ] && eval adjust_$MODEL
 }
