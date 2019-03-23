@@ -19,9 +19,11 @@ entropy-saver.c:
    2019-01-25: add comment regarding interaction with haveged etc.
 
 fan-adaptive.sh:
-   "Adaptive", more generic, and much more easily adaptable successor to
+   "Adaptive", more generic, and much more easily adaptable successor of
    fancontrol.sh.  For now with simulator and MacBook Air model support.
    See the script header for more.
+
+   2019-03-23: fix trend handling
 
 find-command.sh:
    Find an executable command within a POSIX shell.

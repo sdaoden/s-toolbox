@@ -31,7 +31,7 @@ MODEL=SIM
 MODEL=MACBOOK_AIR_2011
 
 # Noisy (in $DBGLOG), can be toggled at runtime via SIGUSR1.
-DEBUG=0 # TODO 
+DEBUG=
 DBGLOG=/tmp/fan-adaptive.log
 
 # Set to non-empty if shell truly supports $(< ) (instead of cat(1))?
@@ -294,20 +294,21 @@ status() {
       if [ $curr -ge $max ]; then
          dbg ' ! Dataset '$i' at maximum'
          eval nlvl=\$fc_level_no_$i
-         fc_temp_percent=100 trend=0
+         xnlvl=$nlvl fc_temp_percent=100 trend=0
       elif [ $curr -le $min ]; then
          dbg ' ! Dataset '$i' at minimum'
-         nlvl=0 trend=0
+         nlvl=0 xnlvl=0 trend=0
       else
          nlvl=$(( ((curr - min) * 1000) / (((max - min) * 1000) / 100) ))
          [ $nlvl -gt $fc_temp_percent ] && fc_temp_percent=$nlvl
          eval lno=\$fc_level_no_$i
          nlvl=$(( (nlvl * lno) / 100 ))
+         xnlvl=$nlvl
 
          # Any adaptive adjustment?
          if [ $fc_first_time -eq 1 ] || [ $olvl -eq $nlvl ]; then
             trend=0
-         elif [ $olvl -lt $nlvl ] && [ $curr -lt $old ]; then
+         elif [ $olvl -lt $nlvl ]; then
             j=0
             if [ $trend -lt 0 ]; then
                trend=0
@@ -315,6 +316,7 @@ status() {
                trend=$((trend + 1))
                if [ $trend -ge 3 ]; then
                   dbg ' . Dataset '$i' heats 3rd+ time in row, adaption'
+                  trend=0
                   j=$((j + 2))
                fi
             fi
@@ -327,12 +329,26 @@ status() {
             nlvl=$((nlvl + j))
             [ $nlvl -gt $lno ] && nlvl=$lno
          else
-            [ $trend -gt 0 ] && trend=0 || trend=$((trend - 1))
+            if [ $trend -gt 0 ]; then
+               trend=0
+            else
+               trend=$((trend - 1))
+               # Step down anyway if wanted quite often
+               if [ $trend -le -8 ]; then
+                  trend=0
+               # Or if temperature fell a lot
+               elif [ $((olvl - nlvl)) -gt 2 ]; then
+                  trend=0
+                  nlvl=$((nlvl + 1))
+               else
+                  nlvl=$olvl
+               fi
+            fi
          fi
       fi
 
-      dbg ' - Dataset '$i' temp '$curr' of '$min'/'$max'; level '$olvl' -> '\
-$nlvl'; trend '$trend
+      dbg ' - Dataset '$i' temp '$old'->'$curr' of '$min'/'$max'; level '\
+$olvl'->'$nlvl'('$xnlvl'; trend '$trend')'
       eval fc_level_new_$i=$nlvl fc_trend_$i=$trend fc_temp_old_$i=$curr
       [ $olvl -ne $nlvl ] && need_adjust=1
       i=$((i + 1))
@@ -340,7 +356,7 @@ $nlvl'; trend '$trend
 
    if [ $fc_temp_percent -ge 80 ]; then
       fc_sleep_curr=$fc_sleep_min
-   elif [ $fc_temp_percent -le 20 ]; then
+   elif [ $fc_temp_percent -le 25 ]; then
       fc_sleep_curr=$fc_sleep_max
    else
       fc_sleep_curr=$(( fc_sleep_max - \
