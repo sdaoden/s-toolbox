@@ -218,6 +218,8 @@ adjust_MACBOOK_AIR_2011() {
 
       dbg ' = MACBOOK_AIR_2011: fan to '$tp
       [ $MODEL != SIM ] && echo $tp > $mac_fan_control
+   else
+      dbg ' = MACBOOK_AIR_2011: equal fan speed would result, not adjusting'
    fi
 
    mac_maxlvl_old=$lvlmax
@@ -347,7 +349,8 @@ status() {
             if [ $trend -le -5 ]; then
                trend=0
             # Or if temperature fell a lot
-            elif [ $((olvl - nlvl)) -gt 2 ]; then
+            elif [ $((olvl - nlvl)) -gt $((lno / 3)) ]; then
+               dbg ' . Dataset '$i' cooled down a lot, adaption'
                trend=0
                nlvl=$((nlvl + 1))
             else
@@ -357,7 +360,7 @@ status() {
       fi
 
       dbg ' - Dataset '$i' temp '$old'->'$curr' of '$min'/'$max'; level '\
-$olvl'->'$nlvl'('$xnlvl'; trend '$trend')'
+$olvl'->'$nlvl'('$xnlvl'; trend '$trend', adjust '$adj')'
       eval fc_level_new_$i=$nlvl fc_adjust_$i=$adj fc_trend_$i=$trend \
          fc_temp_old_$i=$curr
       [ $olvl -ne $nlvl ] && need_adjust=1
