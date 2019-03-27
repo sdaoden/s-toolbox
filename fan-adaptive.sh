@@ -21,6 +21,10 @@
 #@ - USR1 toggles debug flag (log to $DBGLOG below).
 #@ - USR2 turns off fans and performs a complete reinit.
 #@ - INT/HUP/QUIT/TERM cause exit, "turning off" fan.
+#@ TODO If the logic would now that the model merges multiple
+#@ TODO datasets to one fan, we could avoid useless actions.
+#@ TODO When calculating sleeps, adaptions etc. we should pay
+#@ TODO attention to the overall temperature percentage.
 #
 # 2018 - 2019 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain
@@ -113,7 +117,8 @@ adjust_SIM() {
 
 init_MACBOOK_AIR_2011() {
    if [ $1 -eq 0 ]; then
-      fc_no=3 fc_sleep_min=10 fc_sleep_max=35 mac_maxlvl_old=0
+      fc_no=3 fc_sleep_min=10 fc_sleep_max=40 \
+         mac_maxlvl_old=0 mac_fanspeed=0
 
       i=
       for d in /sys/class/hwmon/hwmon*; do
@@ -202,9 +207,9 @@ adjust_MACBOOK_AIR_2011() {
       i=$((i + 1))
    done
 
+   adj=
    if [ $lvlmax -eq 0 ]; then
-      dbg ' = MACBOOK_AIR_2011: fan off'
-      [ $MODEL != SIM ] && echo 0 > $mac_fan_control
+      adj=0
    elif [ $lvlmax -ne $mac_maxlvl_old ]; then
       i=$lvlmax
       if [ $i -gt $(( fc_level_max / 2 )) ]; then
@@ -212,12 +217,16 @@ adjust_MACBOOK_AIR_2011() {
       elif [ $i -gt 1 ]; then
          i=$((i - 1))
       fi
-      tp=$(( (((mac_fan_max - mac_fan_min) / fc_level_max) * i) + mac_fan_min))
-      tp=$(( (tp - (tp % 100)) ))
-      [ $tp -gt $mac_fan_max ] && tp=$mac_fan_max
+      adj=$(( (((mac_fan_max - mac_fan_min) / fc_level_max) * i) +mac_fan_min))
+      adj=$(( (adj - (adj % 100)) ))
+      [ $adj -gt $mac_fan_max ] && adj=$mac_fan_max
+      [ $adj -eq $mac_fanspeed ] && adj=
+   fi
 
-      dbg ' = MACBOOK_AIR_2011: fan to '$tp
-      [ $MODEL != SIM ] && echo $tp > $mac_fan_control
+   if [ -n "$adj" ]; then
+      dbg ' = MACBOOK_AIR_2011: fan to '$adj
+      mac_fanspeed=$adj
+      [ $MODEL != SIM ] && echo $adj > $mac_fan_control
    else
       dbg ' = MACBOOK_AIR_2011: equal fan speed would result, not adjusting'
    fi
@@ -349,7 +358,7 @@ status() {
             if [ $trend -le -5 ]; then
                trend=0
             # Or if temperature fell a lot
-            elif [ $((olvl - nlvl)) -gt $((lno / 3)) ]; then
+            elif [ $((olvl - nlvl)) -gt $((lno / 4)) ]; then
                dbg ' . Dataset '$i' cooled down a lot, adaption'
                trend=0
                nlvl=$((nlvl + 1))

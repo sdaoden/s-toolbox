@@ -26,6 +26,7 @@ fan-adaptive.sh:
    2019-03-23: fix trend handling, and remember adaption to avoid
                adjusting the fan too often.
    2019-03-25: more debug statements and lesser cool-down adjustments.
+   2019-03-27: nits.
 
 find-command.sh:
    Find an executable command within a POSIX shell.
