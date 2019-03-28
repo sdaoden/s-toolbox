@@ -27,6 +27,8 @@ fan-adaptive.sh:
                adjusting the fan too often.
    2019-03-25: more debug statements and lesser cool-down adjustments.
    2019-03-27: nits.
+   2919-03-29: even with adaptive adjustment lingering do adjust the fan
+               if the temperature fell drastically.
 
 find-command.sh:
    Find an executable command within a POSIX shell.

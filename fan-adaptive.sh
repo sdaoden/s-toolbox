@@ -347,22 +347,27 @@ status() {
 
             nlvl=$((nlvl + adj))
             [ $nlvl -gt $lno ] && nlvl=$lno
-         # Cooled down; but do not be too eager in lowering level
-         elif [ $adj -gt 0 ]; then
-            adj=$((adj - 1)) trend=0 nlvl=$olvl
-         elif [ $trend -gt 0 ]; then
-            trend=0 nlvl=$olvl
+         # Cooled down; do not be too eager in lowering level
          else
-            trend=$((trend - 1))
-            # Step down anyway if wanted quite often
-            if [ $trend -le -5 ]; then
-               trend=0
-            # Or if temperature fell a lot
-            elif [ $((olvl - nlvl)) -gt $((lno / 4)) ]; then
-               dbg ' . Dataset '$i' cooled down a lot, adaption'
-               trend=0
-               nlvl=$((nlvl + 1))
+            beold=
+
+            if [ $adj -gt 0 ]; then
+               adj=$((adj - 1)) trend=0 beold=y
+            elif [ $trend -gt 0 ]; then
+               trend=0 beold=y
             else
+               trend=$((trend - 1))
+               # Step down anyway if wanted quite often
+               if [ $trend -gt -5 ]; then
+                  beold=y
+               fi
+            fi
+
+            # But, if temperature fell a lot, do adjust now
+            if [ $((olvl - nlvl)) -gt $((lno / 4)) ]; then
+               dbg ' . Dataset '$i' cooled down a lot, adaption'
+               adj=0 trend=0 nlvl=$((nlvl + 1))
+            elif [ -n "$beold" ]; then
                nlvl=$olvl
             fi
          fi
