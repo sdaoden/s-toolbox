@@ -22,13 +22,8 @@ fan-adaptive.sh:
    "Adaptive", more generic, and much more easily adaptable successor of
    fancontrol.sh.  For now with simulator and MacBook Air model support.
    See the script header for more.
-
-   2019-03-23: fix trend handling, and remember adaption to avoid
-               adjusting the fan too often.
-   2019-03-25: more debug statements and lesser cool-down adjustments.
-   2019-03-27: nits.
-   2919-03-29: even with adaptive adjustment lingering do adjust the fan
-               if the temperature fell drastically.
+   ...
+   2019-04-09: add a SIGTSTP handler which only stops fans.
 
 find-command.sh:
    Find an executable command within a POSIX shell.

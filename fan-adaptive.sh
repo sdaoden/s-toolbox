@@ -20,6 +20,7 @@
 #@   }
 #@ - USR1 toggles debug flag (log to $DBGLOG below).
 #@ - USR2 turns off fans and performs a complete reinit.
+#@ - TSTP turns off fans.
 #@ - INT/HUP/QUIT/TERM cause exit, "turning off" fan.
 #@ TODO If the logic would now that the model merges multiple
 #@ TODO datasets to one fan, we could avoid useless actions.
@@ -428,6 +429,7 @@ trap 'dbg "= EXIT trap"; fanoff' EXIT
 trap 'trap "" INT HUP QUIT TERM; exit 1' INT HUP QUIT TERM
 trap 'dbg "= Received SIGUSR1"; [ -z "$DEBUG" ] && DEBUG=1 || DEBUG=' USR1
 trap 'dbg "= Received SIGUSR2, fanoff, reinit"; fanoff; init' USR2
+trap 'dbg "= Received SIGTSTP, fanoff"; fanoff' TSTP
 
 while [ 1 -eq 1 ]; do
    status
