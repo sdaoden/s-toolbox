@@ -77,7 +77,7 @@ backup.sh:
                POSIX, assuming no newlines are in a name:
                   sed −e 's/"/"\\""/g' −e 's/.*/"&"/'
    2018-11-12: add -p option to tar.
-   2018-11-13: change builtin path set.
+   2019-04-14: change builtin path set, and $OUTPUT_DIR.
 
 cdoc-freebsd.S:
    FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on

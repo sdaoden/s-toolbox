@@ -40,7 +40,7 @@ my $HOME = $ENV{'HOME'};
 my $EMAIL = defined($ENV{'EMAIL'}) ? $ENV{'EMAIL'} : 'postmaster@localhost';
 
 # Where to store backup(s) and metadata
-my $OUTPUT_DIR = "$HOME/traffic";
+my $OUTPUT_DIR = '/var/tmp/' . (getpwuid($<))[0] . '/backups';
 
 # We are also able to create backup bundles for git(1).
 # They are stored in the directory given here; note that these are *not*
@@ -80,13 +80,15 @@ my @EXLIST = qw(.DS_Store .localized .Trash);
 # @NORMAL_INPUT is regulary extended by all directories found in $ADDONS, iff
 my @NORMAL_INPUT = (
    "$HOME/arena",
-   "$HOME/sec.arena",
+   "$HOME/.sec.arena",
+   "$HOME/.sic",
    "/x/src",
    "/x/doc"
 );
 my @COMPLETE_INPUT = (
    "$HOME/arena",
-   "$HOME/sec.arena",
+   "$HOME/.sec.arena",
+   "$HOME/.sic",
    "/x/doc"
 );
 
