@@ -3,12 +3,6 @@ A repo of some small tools
 
 Somewhat useful:
 
-btrfs-snapshot.sh:
-   Simple script to deal with BTRFS snapshots: create, trim, receive and
-   setmounts are the actions which are provided.
-   $THEVOL, $DIRS and $ACCUDIR have to be adjusted (maybe also $UNPRIVU
-   and $UNPRIVG), then many mount points can be handled with one command.
-
 entropy-saver.c:
    For my use cases i find it annoying that "entropy_avail" is not
    incremented when i restore the saved random seed that machines have
@@ -78,6 +72,13 @@ backup.sh:
                   sed −e 's/"/"\\""/g' −e 's/.*/"&"/'
    2018-11-12: add -p option to tar.
    2019-04-14: change builtin path set, and $OUTPUT_DIR.
+
+btrfs-snapshot.sh:
+   Simple script to deal with BTRFS snapshots.
+
+   2019-04-25: rewritten to work with /root/$HOSTNAME/btrfs-snapshot
+               configuration files, and added some primitives.  Code neater.
+               E.g., "HOSTNAME=stickname btrfs-snapshot.sh sync-to-cwd /X".
 
 cdoc-freebsd.S:
    FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on
