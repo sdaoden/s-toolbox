@@ -79,6 +79,8 @@ btrfs-snapshot.sh:
    2019-04-25: rewritten to work with /root/$HOSTNAME/btrfs-snapshot
                configuration files, and added some primitives.  Code neater.
                E.g., "HOSTNAME=stickname btrfs-snapshot.sh sync-to-cwd /X".
+   2019-04-29: tweak latter: now "receive-ball" everywhere.
+               Also do not expand all the ball, but only dir to work with.
 
 cdoc-freebsd.S:
    FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on

@@ -72,7 +72,7 @@ DEBUG=
 
 ## 8< >8
 
-# Will be set by "receive"
+# Will be set by "receive-ball"
 BALLS=
 
 the_worker() { # Will run in subshell!
@@ -125,18 +125,16 @@ the_worker() { # Will run in subshell!
 
       create_ball
       trap "$UMOUNT" EXIT
-   elif [ $1 = receive ]; then
+   elif [ $1 = receive-ball ]; then
       echo '= Setting up ball receive environment'
       receive_setup
       trap "cd; rm -rf \"$ACCUDIR\"/btrfs-snaps; $UMOUNT" EXIT
-
-      echo '= Expanding ball(s) '$BALLS
-      receive_expand
 
       echo '= Receiving snapshots from '$ACCUDIR'/btrfs-snaps'
       for d in $DIRS; do
          receive_one "$d"
       done
+
       act rm -rf "$ACCUDIR"/btrfs-snaps
       trap "$UMOUNT" EXIT
    elif [ $1 = trim ]; then
@@ -274,33 +272,39 @@ receive_setup() {
       fi
    done
    act mkdir "$ACCUDIR"/btrfs-snaps
-}
-
-receive_expand() {
-   (
-   xact cd "$ACCUDIR"/btrfs-snaps
-   act chown -R ${UNPRIVU}:${UNPRIVG} .
-
-   for f in $BALLS; do
-      if [ "$f" != "${f%.zst}" ]; then
-         act su -s /bin/sh $UNPRIVU -c '"zstd -dc < "\"'"$f"'\"" | tar -xf -"'
-      else
-         act su -s /bin/sh $UNPRIVU -c '"< "\"'"$f"'\"" tar -xf -"'
-      fi
-   done
-   ) || exit $?
+   act chown -R ${UNPRIVU}:${UNPRIVG} "$ACCUDIR"/btrfs-snaps/
 }
 
 receive_one() {
    (
    mydir=$1
+
+   # receive_expand() which simply unpacked all the balls was removed.
+   # Now we do dir by dir to reduce space.  Still not ideal..
+   echo '== Expanding '"$mydir"' from ball(s) '$BALLS
+   (
+   xact cd "$ACCUDIR"/btrfs-snaps
+
+   for f in $BALLS; do
+      if [ "$f" != "${f%.zst}" ]; then
+         act su -s /bin/sh $UNPRIVU -c \
+           '"zstd -dc < "\"'"$f"'\"" | tar -xf - btrfs-snaps/"\"'"$mydir"'\"/"'
+      else
+         act su -s /bin/sh $UNPRIVU -c \
+            '"< "\"'"$f"'\"" tar -xf - btrfs-snaps/"\"'"$mydir"'\"/"'
+      fi
+   done
+   ) || exit $?
+
    cd snapshots/"$mydir" || exit 11
 
    find "$ACCUDIR"/btrfs-snaps/btrfs-snaps/"$mydir" -type f -print | sort |
    while read f; do
       echo '== '$mydir': receiving snapshot: '$f
-      act btrfs receive . "<" $f
+      act btrfs receive . "<" "$f"
    done
+
+   act rm -rf btrfs-snaps/"$mydir"
    ) || exit $?
 }
 
@@ -367,7 +371,7 @@ setmount_one() {
 clone_to_cwd() {
    if [ "$1" = 1 ]; then
       for d in $DIRS; do
-         i=
+        i=
          [ -d "$CLONEDIR/$d" ] || i="$i \"$CLONEDIR/$d\""
          [ -d "$CLONEDIR/snapshots/$d" ] || i="$i \"$CLONEDIR/snapshots/$d\""
          [ -n "$i" ] && act mkdir -p $i
@@ -436,13 +440,13 @@ mytee() {
 syno() {
    echo 'Synopsis: btrfs-snapshot.sh create|trim|setmounts'
    echo 'Synopsis: btrfs-snapshot.sh create-ball'
-   echo 'Synopsis: btrfs-snapshot.sh receive [:BALL:]'
+   echo 'Synopsis: btrfs-snapshot.sh receive-ball [:BALL:]'
    echo 'Synopsis: btrfs-snapshot.sh clone-to-cwd|sync-to-cwd'
    exit $1
 }
 
 cmd=$1
-if [ "$cmd" = receive ]; then
+if [ "$cmd" = receive-ball ]; then
    shift
    BALLS="$@"
 else
@@ -450,7 +454,7 @@ else
    case $cmd in
    help) syno 0;;
    create) ;; trim) ;; setmounts) ;;
-   create-ball) ;; #receive) ;;
+   create-ball) ;; #receive-ball) ;;
    clone-to-cwd) ;; sync-to-cwd) ;;
    *) syno 1;;
    esac
