@@ -67,11 +67,8 @@ backup.sh:
    ...
    2016-08-27: FIX faulty xarg/tar -c invocations (Ralph Corderoy)
    ...
-   2018-10-12: Fix $HOOK mechanism for filenames with spaces as shown by
-               POSIX, assuming no newlines are in a name:
-                  sed −e 's/"/"\\""/g' −e 's/.*/"&"/'
-   2018-11-12: add -p option to tar.
    2019-04-14: change builtin path set, and $OUTPUT_DIR.
+   2019-05-10: extend exclude glob.
 
 btrfs-snapshot.sh:
    Simple script to deal with BTRFS snapshots.

@@ -73,7 +73,7 @@ my $ADDONS = "$OUTPUT_DIR/.backup-addons.txt";
 my $HOOK = "$OUTPUT_DIR/.backup-hook.sh";
 
 # A fileglob (may really be a glob) and a list of directories to always exclude
-my $EXGLOB = '._* *~ *.swp';
+my $EXGLOB = '._* *~ %* *.swp .encfs*.xml';
 my @EXLIST = qw(.DS_Store .localized .Trash);
 
 # List of input directories for normal mode/--complete mode, respectively.
