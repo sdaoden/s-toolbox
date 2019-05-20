@@ -89,7 +89,7 @@ the_worker() { # Will run in subshell!
          echo 'Cannot mount '$THEVOL
          exit 1
       fi
-      UMOUNT="cd; umount \"$THEVOL\""
+      UMOUNT="cd && umount \"$THEVOL\""
       trap "$UMOUNT" EXIT
    fi
 
@@ -155,7 +155,7 @@ the_worker() { # Will run in subshell!
       clone_to_cwd 0
    fi
 
-   if $UMOUNT; then :; else
+   if eval $UMOUNT; then :; else
       echo '== Failed to umount '$THEVOL
    fi
    trap "" EXIT
@@ -169,15 +169,6 @@ act() {
       echo eval "$@"
       return
    fi
-   eval "$@"
-   if [ $? -ne 0 ]; then
-      echo 'PANIC: '$*
-      exit 1
-   fi
-}
-
-xact() {
-   [ -n "$DEBUG" ] && echo eval "$@"
    eval "$@"
    if [ $? -ne 0 ]; then
       echo 'PANIC: '$*
@@ -246,7 +237,7 @@ create_send() {
 
 create_ball() {
    (
-   xact cd "$ACCUDIR"
+   act cd "$ACCUDIR"
    ext=tar
    [ -n "$DOZSTD" ] && ext=${ext}.zst
    echo '== In '"$ACCUDIR"', creating ball btrfs-snaps_'${now}.${ext}
@@ -371,7 +362,7 @@ setmount_one() {
 clone_to_cwd() {
    if [ "$1" = 1 ]; then
       for d in $DIRS; do
-        i=
+         i=
          [ -d "$CLONEDIR/$d" ] || i="$i \"$CLONEDIR/$d\""
          [ -d "$CLONEDIR/snapshots/$d" ] || i="$i \"$CLONEDIR/snapshots/$d\""
          [ -n "$i" ] && act mkdir -p $i
@@ -385,7 +376,7 @@ clone_to_cwd() {
          continue
       fi
       (
-      xact cd "$target"
+      act cd "$target"
 
       set -- `find . -maxdepth 1 -type d -not -path . | sort`
       while [ $# -gt 1 ]; do
@@ -393,7 +384,7 @@ clone_to_cwd() {
       done
       lastsync=$1
 
-      xact cd "$THEVOL"/snapshots/"$d"
+      act cd "$THEVOL"/snapshots/"$d"
 
       set -- `find . -maxdepth 1 -type d -not -path . | sort`
       if [ $# -eq 0 ]; then
