@@ -49,6 +49,8 @@ quote-rndtrip.sh:
    Round trip quote strings in POSIX (and elder) shell(s).
    Thanks to Robert Elz (kre).
 
+   2019-05-27: ensure outer driver(s) do not leak variabes (Steven Penny)
+
 zte.sh:
    Control a ZTE modem (MF79 and many others according to web search)
    from the command line.  Needs curl(1) and OpenSSL(1).
