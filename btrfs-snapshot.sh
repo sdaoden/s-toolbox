@@ -130,11 +130,13 @@ the_worker() { # Will run in subshell!
       receive_setup
       trap "cd; rm -rf \"$ACCUDIR\"/btrfs-snaps; $UMOUNT" EXIT
 
+      echo '= Expanding ball(s) '$BALLS
+      receive_expand
+
       echo '= Receiving snapshots from '$ACCUDIR'/btrfs-snaps'
       for d in $DIRS; do
          receive_one "$d"
       done
-
       act rm -rf "$ACCUDIR"/btrfs-snaps
       trap "$UMOUNT" EXIT
    elif [ $1 = trim ]; then
@@ -263,39 +265,33 @@ receive_setup() {
       fi
    done
    act mkdir "$ACCUDIR"/btrfs-snaps
-   act chown -R ${UNPRIVU}:${UNPRIVG} "$ACCUDIR"/btrfs-snaps/
+}
+
+receive_expand() {
+   (
+   act cd "$ACCUDIR"/btrfs-snaps
+   act chown -R ${UNPRIVU}:${UNPRIVG} .
+
+   for f in $BALLS; do
+      if [ "$f" != "${f%.zst}" ]; then
+         act su -s /bin/sh $UNPRIVU -c '"zstd -dc < "\"'"$f"'\"" | tar -xf -"'
+      else
+         act su -s /bin/sh $UNPRIVU -c '"< "\"'"$f"'\"" tar -xf -"'
+      fi
+   done
+   ) || exit $?
 }
 
 receive_one() {
    (
    mydir=$1
-
-   # receive_expand() which simply unpacked all the balls was removed.
-   # Now we do dir by dir to reduce space.  Still not ideal..
-   echo '== Expanding '"$mydir"' from ball(s) '$BALLS
-   (
-   xact cd "$ACCUDIR"/btrfs-snaps
-
-   for f in $BALLS; do
-      if [ "$f" != "${f%.zst}" ]; then
-         act su -s /bin/sh $UNPRIVU -c \
-           '"zstd -dc < "\"'"$f"'\"" | tar -xf - btrfs-snaps/"\"'"$mydir"'\"/"'
-      else
-         act su -s /bin/sh $UNPRIVU -c \
-            '"< "\"'"$f"'\"" tar -xf - btrfs-snaps/"\"'"$mydir"'\"/"'
-      fi
-   done
-   ) || exit $?
-
    cd snapshots/"$mydir" || exit 11
 
    find "$ACCUDIR"/btrfs-snaps/btrfs-snaps/"$mydir" -type f -print | sort |
    while read f; do
       echo '== '$mydir': receiving snapshot: '$f
-      act btrfs receive . "<" "$f"
+      act btrfs receive . "<" $f
    done
-
-   act rm -rf btrfs-snaps/"$mydir"
    ) || exit $?
 }
 
