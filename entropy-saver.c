@@ -6,6 +6,7 @@
  *@ Synopsis: entropy-saver save [file]
  *@ Synopsis: entropy-saver load [file]
  *@ "file" defaults to a_RAND_FILE_STORE.
+ *@ XXX save: should build [file].new, and link(2) to [file] only on success.
  *
  * 2019 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
  * Public Domain
@@ -184,7 +185,7 @@ jeuse:
    }else{
       /* Since we are reading in non-blocking mode, and since reading from
        * /dev/random returns not that much in this mode, read in a loop until
-       * it no longer serves / the entropy count falls under a a_RAND_ */
+       * it no longer serves / the entropy count falls under a _COUNT_MIN */
       size_t rem_size;
       int entrop_cnt, e;
 
@@ -208,7 +209,7 @@ jread_more:
                e == EWOULDBLOCK ||
 #endif
                e == EBUSY)
-            goto jread_done;
+            goto jread_insuff;
 
          syslog(LOG_ERR, "Failed to read from " a_RAND_DEV ": %s\n",
             strerror(errno));
@@ -236,8 +237,8 @@ jread_more:
       syslog(LOG_INFO, "%d bits of entropy remain at " a_RAND_DEV "\n",
          iocarg);
 
-jread_done:
       if(x.rpi.entropy_count <= 128){
+jread_insuff:
          syslog(LOG_ERR, "Insufficient entropy to save from " a_RAND_DEV
             " (%d bits)\n", x.rpi.entropy_count);
          rv = EX_TEMPFAIL;

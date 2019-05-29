@@ -11,6 +11,7 @@ entropy-saver.c:
    2019-01-21: Small fixes, and take care for EAGAIN (Bernd Petrovitsch).
    2019-01-24: use syslog(3) instead; also test EBUSY (Bernd Petrovitsch).
    2019-01-25: add comment regarding interaction with haveged etc.
+   2019-05-30: jump more directly; add a XXX on file creation.
 
 fan-adaptive.sh:
    "Adaptive", more generic, and much more easily adaptable successor of
