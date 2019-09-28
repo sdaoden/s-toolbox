@@ -27,6 +27,15 @@
 #@
 #@ - "receive-ball" receives one or multiple $BALLS, which must have been
 #@   created by "create-ball", and merges them in snapshots/.
+#@   A ball can also be split(1)ted up into subfiles, for example to store it
+#@   on a VFAT partition: if a BALL is a directory we will join all files via
+#@   a cat(1) * glob, and expand the output behind a pipe instead.
+#@      i=`basename "$1" .tar.gz`
+#@      mkdir "$i".split || exit 7
+#@      cd "$i".split
+#@      < "$1" split -a 4 -b 2000000000 -d - || exit 8
+#@      cd ..
+#@      btrfs-snapshot.sh receive-ball "$i".split
 #@
 #@ - "clone-to-cwd" and "sync-to-cwd" need one existing snapshot (series),
 #@   and will clone all the latest snapshots to the CWD.
@@ -275,6 +284,8 @@ receive_expand() {
    for f in $BALLS; do
       if [ "$f" != "${f%.zst}" ]; then
          act su -s /bin/sh $UNPRIVU -c '"zstd -dc < "\"'"$f"'\"" | tar -xf -"'
+      elif [ -d "$f" ]; then
+         act su -s /bin/sh $UNPRIVU -c '"cat "\"'"$f"'\"/*" | tar -xf -"'
       else
          act su -s /bin/sh $UNPRIVU -c '"< "\"'"$f"'\"" tar -xf -"'
       fi
