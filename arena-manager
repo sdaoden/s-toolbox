@@ -376,7 +376,7 @@ xgc() {
         fi
         intro "$CURRD: performing $gcmode"
         pipefail_on
-        (   cd "$CURRD" || exit 1
+        </dev/null (   cd "$CURRD" || exit 1
             time git gc $gcarg --prune='10 seconds ago'
         ) 2>&1 | tee -a "$LOGFILE"
         final $? "$CURRD"
