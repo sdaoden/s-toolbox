@@ -10,8 +10,8 @@ my $SELF = 's-disc-ripper.pl'; #@ part of S-MusicBox; handles CD ripping.
 #@ - OPTIONAL: CDDB.pm (www.CPAN.org)
 my $VERSION = '0.5.0-dirty';
 my $COPYRIGHT =<<__EOT__;
-Copyright (c) 1998 - 2003, 2010 - 2014,
-Copyright (c) 2016 - 2018 Steffen (Daode) Nurpmeso <steffen\@sdaoden.eu>.
+Copyright (c) 1998 - 2003, 2010 - 2014, 2016-2018
+Copyright (c) 2020 Steffen (Daode) Nurpmeso <steffen\@sdaoden.eu>.
 ISC license.
 __EOT__
 # Permission to use, copy, modify, and/or distribute this software for any
