@@ -473,37 +473,7 @@ jREDO:
 } # }}}
 
 sub cddb_query{ # {{{
-   print "\n";
-   if($CDInfo::IsFaked){
-      print "Creating CDDB entry fakes, 'cause CDDB-ID could not be queried\n";
-      goto jFAKE
-   }
-   eval 'require CDDB';
-   if($@){
-      print "Failed to load the CDDB.pm module!\n",
-        "  Maybe it is not installed?   Search the internet for CPAN,\n",
-        "  and install it via \"\$ cpan CDDB\"\n",
-        "  Confirm to use CDDB.pm, otherwise we create faked entries."
-   }else{
-      print 'Shall CDDB be contacted online (otherwise entries are faked)'
-   }
-   unless(user_confirm()){
-      print "  Creating entry fakes ...\n";
-      goto jFAKE
-   }
-
-   print "  Starting CDDB query for $CDInfo::Id\n";
-   my $cddb = new CDDB;
-   die "Cannot create CDDB object: $!" unless defined $cddb;
-   my @discs = $cddb->get_discs($CDInfo::Id, \@CDInfo::TrackOffsets,
-         $CDInfo::TotalSeconds);
-
-   if(@discs == 0){
-      print "! CDDB did not match, i will create entry fakes!\n",
-         '! Maybe there is no network connection? Shall i continue? ';
-      exit 10 unless user_confirm();
-
-jFAKE:
+   sub _fake{
       %CDDB = ();
       $CDDB{GENRE} = genre('Humour');
       $CDDB{ARTIST} = 'Unknown';
@@ -516,6 +486,38 @@ jFAKE:
          push @titles, $s
       }
       return
+   }
+
+   print "\n";
+   if($CDInfo::IsFaked){
+      print "Creating CDDB entry fakes, 'cause CDDB-ID could not be queried\n";
+      return _fake();
+   }
+   eval 'require CDDB';
+   if($@){
+      print "Failed to load the CDDB.pm module!\n",
+        "  Maybe it is not installed?   Search the internet for CPAN,\n",
+        "  and install it via \"\$ cpan CDDB\"\n",
+        "  Confirm to use CDDB.pm, otherwise we create faked entries."
+   }else{
+      print 'Shall CDDB be contacted online (otherwise entries are faked)'
+   }
+   unless(user_confirm()){
+      print "  Creating entry fakes ...\n";
+      return _fake();
+   }
+
+   print "  Starting CDDB query for $CDInfo::Id\n";
+   my $cddb = new CDDB;
+   die "Cannot create CDDB object: $!" unless defined $cddb;
+   my @discs = $cddb->get_discs($CDInfo::Id, \@CDInfo::TrackOffsets,
+         $CDInfo::TotalSeconds);
+
+   if(@discs == 0){
+      print "! CDDB did not match, i will create entry fakes!\n",
+         '! Maybe there is no network connection? Shall i continue? ';
+      exit 10 unless user_confirm();
+      return _fake();
    }
 
    my ($usr, $dinf);
@@ -538,7 +540,7 @@ jREDO:
    }
    if($usr == 0){
       print "  creating entry fakes ...\n";
-      goto jFAKE
+      return _fake();
    }
    $usr = $discs[--$usr];
 
