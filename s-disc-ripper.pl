@@ -4,6 +4,7 @@ my $SELF = 's-disc-ripper.pl'; #@ part of S-MusicBox; handles CD ripping.
 #@ Requirements:
 #@ - unless --no-volume-normalize is used: sox(1) (sox.sourceforge.net)
 #@   NOTE: sox(1) changed - see $NEW_SOX below
+#@ - on Linux: cd-paranoia(1) for ripping and cd-info(1) for TOC info
 #@ - if MP3 is used: lame(1) (www.mp3dev.org)
 #@ - if MP4/AAC is used: faac(1) (www.audiocoding.com)
 #@ - if Ogg/Vorbis is used: oggenc(1) (www.xiph.org)
@@ -31,6 +32,9 @@ __EOT__
 # (I guess this refers to post v14)
 my $NEW_SOX = 1;
 
+# cdparanoia(1) is no longer maintained, cd-paranoia(1) seems to be.
+my $CDPARANOIA = 'cd-paranoia';
+
 # May be changed for different site-global default settings
 my ($MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO) = (0,0, 1,1, 1,0);
 # Dito: change the undef to '/Desired/Path'
@@ -40,6 +44,8 @@ my $TMPDIR = (defined $ENV{TMPDIR} && -d $ENV{TMPDIR}) ? $ENV{TMPDIR} : undef;
 
 my $CDROMDEV = (defined $ENV{CDROMDEV} ? $ENV{CDROMDEV} #: undef;
       : defined $CDROM ? $CDROM : undef);
+my $LINUX_CDTOCVIA = 'cd-info';
+my $LINUX_CDTOCOFFSET = 2;
 
 ## -- >8 -- 8< -- ##
 
@@ -235,6 +241,16 @@ sub command_line{ # {{{
    );
    if($^O eq 'darwin'){
       $opts{'cdromdev=s'} = \$CDROMDEV
+   }elsif($^O eq 'linux'){
+      $opts{'toc-via=s'} = sub{
+            my ($on, $ov) = @_;
+            if($ov eq 'cdparanoia' || $ov eq 'cd-info'){
+               $LINUX_CDTOCVIA = $ov
+            }else{
+               die '--toc-via: either cdparanoia or cd-info'
+            }
+            };
+      $opts{'toc-offset=i'} = \$LINUX_CDTOCOFFSET
    }
 
    my ($emsg) = (undef);
@@ -325,6 +341,16 @@ MacOS only:
                Beware that these may not match, and also depend on usage
                order of USB devices.  The default settings come from the
                CDROMDEV environment variable
+__EOT__
+   }elsif($^O eq 'linux'){
+      print STDERR <<__EOT__;
+Linux only:
+ --toc-via=cdparanoia|cd-info
+              Linux only: either $CDPARANOIA(1) or cd-info(1) are used to
+              print the table-of-content of an audio CD
+ --toc-off=SECS
+              Linux only: if cdparanoia is used the MSF table seems to be
+              off by some (gap) seconds.  Defaults to 2
 __EOT__
    }
 
@@ -722,26 +748,111 @@ jREDO:
    } # }}}
 
    sub _os_freebsd{ # TODO
-      my $drive = defined $CDROM ? $CDROM : '/dev/cdrom';
-      print "  FreeBSD: using drive $drive\n";
+      my ($dev);
+
+      $dev = defined $CDROM ? $CDROM : '/dev/cdrom';
+      print "  FreeBSD: device $dev\n";
       die "FreeBSD support in fact missing";
    }
-
    sub _os_netbsd{ # TODO
-      my $drive = defined $CDROM ? $CDROM : '/dev/cdrom';
-      print "  NetBSD: using drive $drive\n";
+      my ($dev);
+
+      $dev = defined $CDROM ? $CDROM : '/dev/cdrom';
+      print "  NetBSD: device $dev\n";
       die "NetBSD support in fact missing";
    }
 
-   sub _os_linux{ # TODO
-      my $drive = defined $CDROM ? $CDROM : '/dev/cdrom';
-      print "  Linux: using drive $drive\n";
-      die "Linux support in fact missing";
-   }
+   sub _os_linux{ # {{{
+      my ($dev,$l,@res,@cdtoc,$li);
+
+      $dev = defined $CDROM ? $CDROM : '/dev/cdrom';
+      print "  Linux: device $dev\n";
+
+      $FileRipper = sub{
+         my $title = shift;
+         return undef if 0 == system("$CDPARANOIA --force-cdrom-device=$dev " .
+               '--output-raw-little-endian ' . $title->{NUMBER} . ' - > ' .
+               $title->{RAW_FILE});
+         return "device $dev: cannot rip track $title->{NUMBER}: $?"
+      };
+
+      if($LINUX_CDTOCVIA eq 'cdparanoia'){
+         $l = $CDPARANOIA . ' -Q --force-cdrom-device ' . $dev;
+         ::v("Invoking $l");
+         $l = `$l 2>&1`;
+         return "device $dev: failed reading TOC: $!" if $?;
+         @res = split "\n", $l;
+
+         for(;;){
+            return "device $dev: i do not understand TOC" unless @res;
+            $l = shift @res;
+            last if $l =~ /^=+$/
+         }
+
+         sub _toa{
+            my ($m, $s, $f) = (@_);
+            $s += $LINUX_CDTOCOFFSET;
+            if($s > 59){
+               $m += int($s / 60);
+               $s %= 60
+            }
+            "$m $s $f"
+         }
+
+         for($li = 0;; ++$li){
+            $l = shift @res;
+            last unless defined $l;
+            if($l =~ /^TOTAL\s+\d+\s+\[(\d+):(\d+)\.(\d+)\]/){
+               push @cdtoc, '999 ' . _toa($1, $2, $3);
+               _calc_cdid(\@cdtoc);
+               return undef
+            }elsif($l =~ /^\s*(\d+)\.\s+\d+\s+\[\d+:\d+\.\d+\]
+                  \s+\d+\s+\[(\d+):(\d+)\.(\d+)\]/x){
+               return "device $dev: corrupted TOC: $1 follows $li"
+                     unless $1 == $li + 1;
+               $cdtoc[$li] = "$1 " . _toa($2, $3, $4);
+            }else{
+               last
+            }
+         }
+      }elsif($LINUX_CDTOCVIA eq 'cd-info'){
+         $l = 'cd-info --no-cddb --no-device-info --no-vcd ' .
+               '--no-analyze --no-disc-mode --cdrom-device=' . $dev;
+         ::v("Invoking $l");
+         $l = `$l`;
+         return "device $dev: failed reading TOC: $!" if $?;
+         @res = split "\n", $l;
+
+         for(;;){
+            return "device $dev: i do not understand TOC" unless @res;
+            $l = shift @res;
+            last if $l =~ /^\s+#:\s+MSF\s+/
+         }
+
+         for($li = 0;; ++$li){
+            $l = shift @res;
+            last unless defined $l;
+            if($l =~ /^\s*\d+:\s+(\d+):(\d+):(\d+)\s+\d+\s+leadout\s+/){
+               push @cdtoc, "999 $1 $2 $3";
+               _calc_cdid(\@cdtoc);
+               return undef
+            }elsif($l =~ /^\s*(\d+):\s+(\d+):(\d+):(\d+)\s+/){
+               return "device $dev: corrupted TOC: $1 follows $li"
+               unless $1 == $li + 1;
+               $cdtoc[$li] = "$1 $2 $3 $4"
+            }else{
+               last
+            }
+         }
+      }
+      return "device $dev: no valid track information found"
+   } # }}}
 
    sub _os_openbsd{ # TODO
-      my $drive = defined $CDROM ? $CDROM : '/dev/cdrom';
-      print "  OpenBSD: using drive $drive\n";
+      my ($dev);
+
+      $dev = defined $CDROM ? $CDROM : '/dev/cdrom';
+      print "  OpenBSD: device $dev\n";
       die "OpenBSD support in fact missing";
    }
 
@@ -765,7 +876,7 @@ jREDO:
       }
       $TrackCount = scalar @TrackOffsets;
       $Id = sprintf("%02x%04x%02x",
-            $sum % 255, $TotalSeconds - $sec_first, scalar @TrackOffsets)
+            $sum % 255, $TotalSeconds - $sec_first, $TrackCount)
    } # }}}
 
    sub _unix_default_rip{ # {{{
