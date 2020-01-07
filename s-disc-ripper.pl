@@ -36,9 +36,10 @@ my ($MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO) = (0,0, 1,1, 1,0);
 # Dito: change the undef to '/Desired/Path'
 my $MUSICDB = defined $ENV{S_MUSICDB} ? $ENV{S_MUSICDB} : undef;
 my $CDROM = defined $ENV{CDROM} ? $ENV{CDROM} : undef;
+my $TMPDIR = (defined $ENV{TMPDIR} && -d $ENV{TMPDIR}) ? $ENV{TMPDIR} : undef;
+
 my $CDROMDEV = (defined $ENV{CDROMDEV} ? $ENV{CDROMDEV} #: undef;
       : defined $CDROM ? $CDROM : undef);
-my $TMPDIR = (defined $ENV{TMPDIR} && -d $ENV{TMPDIR}) ? $ENV{TMPDIR} : undef;
 
 ## -- >8 -- 8< -- ##
 
@@ -214,25 +215,30 @@ It does not seem to belong to this disc, you need to re-rip it."
 END {finalize() if $CLEANUP_OK}
 
 sub command_line{ # {{{
-   my $emsg = undef;
    Getopt::Long::Configure('bundling');
-   unless(GetOptions(
+   my %opts = (
          'h|help|?' => sub {goto jdocu},
          'g|genre-list' => sub{
                printf("%3d %s\n", $_->[0], $_->[1]) foreach(@Genres);
                exit 0
-         },
+               },
          'musicdb=s' => \$MUSICDB,
          'tmpdir=s' => \$TMPDIR,
          'cdrom=s' => \$CDROM,
-         'cdromdev=s' => \$CDROMDEV,
          'r|rip-only' => \$RIP_ONLY,
          'e|encode-only=s' => \$ENC_ONLY,
          'no-volume-normalize' => \$NO_VOL_NORM,
          'mp3=i' => \$MP3HI, 'mp3lo=i' => \$MP3LO,
          'aac=i' => \$AACHI, 'aaclo=i' => \$AACLO,
          'ogg=i' => \$OGGHI, 'ogglo=i' => \$OGGLO,
-         'v|verbose' => \$VERBOSE)){
+         'v|verbose' => \$VERBOSE
+   );
+   if($^O eq 'darwin'){
+      $opts{'cdromdev=s'} = \$CDROMDEV
+   }
+
+   my ($emsg) = (undef);
+   unless(GetOptions(%opts)){
       $emsg = 'Invocation failure';
       goto jdocu
    }
@@ -277,39 +283,29 @@ Synopsis:
  $SELF -h|--help
  $SELF -g|--genre-list
  $SELF [-v|--verbose] [--musicdb=PATH] [--tmpdir=PATH]
-              [--cdrom=SPEC] [--cdromdev=DEVSPEC]
-              [-r|--rip-only] [-e|--encode-only=CD(DB)ID]
+              [--cdrom=SPEC] [-r|--rip-only] [-e|--encode-only=CD(DB)ID]
               [--mp3] [--mp3lo] [--aac] [--aaclo] [--ogg] [--ogglo]
 
- -h,--help       prints this help text and exits
+ -h,--help    prints this help text and exits
  -g,--genre-list  dumps out a list of all GENREs and exits
- -v,--verbose    mostly debug, prints a lot of status messages and does
+ -v,--verbose  mostly debug, prints a lot of status messages and does
               neither delete temporary files nor directory!
  --musicdb=PATH  specifies the path to the S-MusicBox database directory.
-              Default setting is the S_MUSICDB environment variable.
-              Currently "$MUSICDB"
- --tmpdir=PATH   the (top) temporary directory to use - defaults to the TMPDIR
-              environment variable.
-              Currently "$TMPDIR"
- --cdrom=SPEC [,--cdromdev=DEVSPEC]
-              set CDROM drive/device to be used.  SPEC is system-dependend
+              Default setting is the S_MUSICDB environment variable;
+              currently "$MUSICDB"
+ --tmpdir=PATH  the (top) temporary directory to use - defaults to the TMPDIR
+              environment variable; currently "$TMPDIR"
+ --cdrom=SPEC  set CDROM drive/device to be used.  SPEC is system-dependend
               and may be something like </dev/cdrom> or </dev/acd1c>.
-              Mac OS X only:
-               Only here --cdromdev maybe needed in addition, and the
-               SPEC variables are simple drivenumbers, like, e.g. 1!
-               --cdrom= is used for the drutil(1) '-drive' option,
-               --cdromdev= is for raw </dev/disk?> access.
-               Beware that these may not match, and also depend on usage
-               order of USB devices.
-               The default settings come from CDROM/CDROMDEV environment
- -r,--rip-only   exit after the data rip is completed (and see --encode-only)
+              The default setting comes from the CDROM environment variable
+ -r,--rip-only  exit after the data rip is completed (and see --encode-only)
  -e CDID,--encode-only=CDID
               resume a --rip-only session.   CDID is the CDDB ID of the
               CDROM, and has been printed out by --rip-only before ...
  --no-volume-normalize
               By default the average volume adjustment is calculated over
               all (selected) files and then used to normalize files.
-              If single files are ripped that may be counterproductive.
+              If single files are ripped that may be counterproductive
  --mp3=BOOL,--mp3lo=.., --aac=..,--aaclo=.., --ogg=..,--ogglo=..
               by default one adjusts the script header once for the
               requirements of a specific site, but these command line
@@ -317,6 +313,21 @@ Synopsis:
               be produced: MP3, MP4/AAC and OGG in high/low quality.
               Current settings: $MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO
 __EOT__
+
+   if($^O eq 'darwin'){
+      print STDERR <<__EOT__;
+MacOS only:
+ --cdromdev=DEVSPEC
+               --cdromdev maybe needed in addition, and the SPEC variables
+               are simple drivenumbers, like, e.g. 1!
+               --cdrom= is used for the drutil(1) '-drive' option,
+               --cdromdev= is for raw </dev/disk?> access.
+               Beware that these may not match, and also depend on usage
+               order of USB devices.  The default settings come from the
+               CDROMDEV environment variable
+__EOT__
+   }
+
    print STDERR "\n! $emsg\n" if defined $emsg;
    exit defined $emsg ? 1 : 0
 } # }}}
