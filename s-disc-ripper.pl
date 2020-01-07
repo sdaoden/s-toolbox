@@ -9,7 +9,7 @@ my $SELF = 's-disc-ripper.pl'; #@ part of S-MusicBox; handles CD ripping.
 #@ - if MP4/AAC is used: faac(1) (www.audiocoding.com)
 #@ - if Ogg/Vorbis is used: oggenc(1) (www.xiph.org)
 #@ - OPTIONAL: CDDB.pm (www.CPAN.org)
-my $VERSION = '0.5.1-dirty';
+my $VERSION = '0.5.2';
 my $COPYRIGHT =<<__EOT__;
 Copyright (c) 1998 - 2003, 2010 - 2014, 2016-2018
 Copyright (c) 2020 Steffen (Daode) Nurpmeso <steffen\@sdaoden.eu>.
