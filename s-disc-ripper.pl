@@ -374,7 +374,7 @@ sub finalize{
    unlink $CDInfo::DatFile, $MBDB::EditFile; # XXX
    foreach(@Title::List){
       next unless -f $_->{RAW_FILE};
-      die "Can't unlink $_->{RAW_FILE}: $!" unless unlink $_->{RAW_FILE}
+      die "Cannot unlink $_->{RAW_FILE}: $!" unless unlink $_->{RAW_FILE}
    }
    die "rmdir $WORK_DIR failed: $!" unless rmdir $WORK_DIR
 }
@@ -862,7 +862,7 @@ jOUTER:
    sub read_data{
       my $f = $DatFile;
       ::v("CDInfo::read_data($f)");
-      die "Cannot open $f: $!.\nCan't continue - remove $WORK_DIR and re-rip!"
+      die "Cannot open $f: $!.\nCannot continue - remove $WORK_DIR and re-rip!"
          unless open DAT, '<:encoding(UTF-8)', $f;
       my @lines = <DAT>;
       die "Cannot close $f: $!" unless close DAT;
@@ -889,7 +889,7 @@ jOUTER:
          my ($k, $v) = ($1, $2);
          if($k eq 'CDID'){
             if(defined $old_id && $v ne $old_id){
-               $emsg .= "Parsed CDID ($v) doesn't match;";
+               $emsg .= "Parsed CDID ($v) does not match;";
                next
             }
             $Id = $v
@@ -1951,7 +1951,7 @@ __EOT__
             : ('low', 'LO', '-V 7', $self->{lopath}));
       ::v("Creating MP3 lame(1) $s-quality encoder");
       ::utf8_echomode_on();
-      die "Can't open MP3$t: $!"
+      die "Cannot open MP3$t: $!"
             unless open(my $fd, '| lame --quiet -r -x -s 44.1 --bitwidth 16 ' .
                "--vbr-new $b -q 0 - - >> $f");
       ::utf8_echomode_off();
@@ -1993,7 +1993,7 @@ __EOT__
       # Tag size: 4 bytes as 4*7 bits
       {  my $l = length $tag;
          my $r;
-         # Don't use my own carry-flag beatin' version, but the
+         # Do not use my own carry-flag beatin' version, but the
          # MP3-Info.pm one ...
          #$r = $l     & 0x0000007F;
          #$r |= ($l << 1) & 0x00007F00;
