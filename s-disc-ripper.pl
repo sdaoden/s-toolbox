@@ -862,8 +862,9 @@ jREDO:
       my $cdtocr = shift;
       my ($sec_first, $sum);
       foreach(@$cdtocr){
-         my ($no, $min, $sec, $secfrac) = split /\s+/, $_, 4;
-         my $frame_off = (($min * 60 + $sec) * 75) + $secfrac;
+         # $frame is fraction in second
+         my ($no, $min, $sec, $frame) = split /\s+/, $_, 4;
+         my $frame_off = (($min * 60 + $sec) * 75) + $frame;
          my $sec_begin = int($frame_off / 75);
          $sec_first = $sec_begin unless defined $sec_first;
          # Track 999 was chosen for the lead-out information
@@ -1328,7 +1329,7 @@ __EOT__
       die "Error writing $df: $!"
             unless print DF "[CDDB]\n",
                 (! $CDInfo::IsFaked ? ''
-                 : "# (The [CDDB] entries were faked: offsets=seconds)\n"),
+                 : "# (The [CDDB] entries were faked: offsets=bytes)\n"),
                 "CDID = $CDInfo::Id\n",
                 "TRACK_OFFSETS = ", join(' ', @CDInfo::TrackOffsets),
                 "\nTOTAL_SECONDS = $CDInfo::TotalSeconds\n";
