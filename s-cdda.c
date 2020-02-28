@@ -1,6 +1,7 @@
 /*@ s-cdda: access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
  *@ Thanks to Thomas Schmitt (libburnia) for cdrom-cookbook.txt and cdtext.txt.
  *@ According to SCSI Multimedia Commands - 3 (MMC-3, Revision 10g).
+ *@ Compile: cc/c99/gcc/clang -O2 -o s-cdda s-cdda.c
  *
  * Copyright (c) 2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -20,12 +21,10 @@
 
 /* */
 #define a_VERSION "0.0.2"
-#define a_COPYRIGHT \
-   "Copyright (c) 2020 Steffen Nurpmeso <steffen@sdaoden.eu>\n\n"
+#define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* Maximum stack usage (in frames a a_MMC_FRAME_SIZE).
- * linux/drivers/cdrom/cdrom.c mmc_ioctl_cdrom_read_audio() limits this to
- * frames worth a second */
+ * linux/drivers/cdrom/cdrom.c mmc_ioctl_cdrom_read_audio() limit: 1sec */
 #define a_STACK_FRAMES_MAX 75
 
 /* -- >8 -- 8< -- */
@@ -38,7 +37,7 @@
 # undef su_OS_LINUX
 # define su_OS_LINUX 1
 #else
-# error TODO Not ported to this OS yet.
+# error TODO OS not supported
 #endif
 
 /* -- >8 -- 8< -- */
@@ -101,20 +100,20 @@ enum a_act_rawbuf{
    a__ACT_RAWBUF_MAX
 };
 
-/* Extending a_actions, all in 8-bit! */
+/* | a_actions == 8-bit! */
 enum a_flags{
-   a_F_NO_TOC_DUMP = 1u<<5, /* TOC only queried internally for info */
+   a_F_NO_TOC_DUMP = 1u<<5, /* TOC only for info */
    a_F_VERBOSE = 1u<<6,
    a_F_NO_CHECKS = 1u<<7
 };
 
-/* MMC-3: sizes, limits etc. */
+/* MMC-3: sizes, limits */
 enum a_mmc{
    a_MMC_TRACKS_MAX = 99,
    a_MMC_TRACK_FRAMES_MIN = 300,
    a_MMC_TRACK_LEADOUT = 0xAA,
 
-   /* 4 bytes/Sample * 44100 Samples/second = 176400 bytes/second.
+   /* 2 bytes/Sample * 2 channels * 44100 Samples/second = 176400 bytes/second.
     * 176400 bytes/second / 2352 bytes/frame = 75 frames/second */
    a_MMC_FRAME_SIZE = 2352,
    a_MMC_FRAMES_PER_SEC = 75,
@@ -134,7 +133,7 @@ enum a_mmc_tflags{
    a_MMC_TF_PREEMPHASIS = 0x01,
    a_MMC_TF_COPY_PERMIT = 0x02,
    a_MMC_TF_DATA_TRACK = 0x04, /* (changes meaning of other bits!) */
-   a_MMC_TF_CHANNELS_4 = 0x08
+   /*a_MMC_TF_CHANNELS_4 = 0x08 Four channels never became true */
 };
 
 enum a_mmc_cmdx{
@@ -241,8 +240,8 @@ struct a_mmc_cmd_x43_cdtext_resp{
    u8 xtension_tno;
    u8 seq;
    u8 dbchars_blocknum_charpos;
-   u8 text[12];
-   /* xxx CRC not tested (but "not mandatory for supporting CD-TEXT data") */
+   u8 text[a_CDTEXT_PACK_LEN_TEXTDAT];
+   /* xxx CRC not (+ "not mandatory for supporting CD-TEXT data") */
    u8 crc[2];
 };
 
@@ -269,14 +268,13 @@ struct a_data{
    u8 d_trackno_audio;
    /* Indices of only audio tracks */
    u8 d_track_audio[Z_ALIGN(a_MMC_TRACKS_MAX + 1)]; /* [0] = leadout */
-   /* ISRC may exist as duplicates in CD-TEXT.  As this is short living, do not
-    * care and try to merge: when dumping CD-TEXT, we fill in missing pieces as
-    * appropriate (but not vice versa) */
-   char d_mcn[Z_ALIGN( FIELD_SIZEOF(struct a_mmc_cmd_x42_mcn_resp,n1_13_nul))];
+   char d_mcn[Z_ALIGN(FIELD_SIZEOF(struct a_mmc_cmd_x42_mcn_resp,n1_13_nul))];
    char d_isrc[a_MMC_TRACKS_MAX + 1][Z_ALIGN(
          FIELD_SIZEOF(struct a_mmc_cmd_x42_isrc_resp,l1_12_nul))
-         ]; /* [0] = CD */
-   /* Note: CD-TEXT data is indexed according to CD-TEXT track information! */
+         ]; /* [0] = UPC/EAN of CD */
+   /* ISRC may also exist in CD-TEXT.  As this is not a library, be easy:
+    * no merging, fill missing pieces when dumping CD-TEXT.
+    * Note: CD-TEXT data is indexed according to CD-TEXT track information! */
    struct a_track d_track_data[a_MMC_TRACKS_MAX + 1]; /* [0] = leadout/CD */
    char *d_cdtext_text_data; /* Just a huge storage for that stuff */
    struct a_rawbuf d_rawbufs[a__ACT_RAWBUF_MAX];
@@ -332,7 +330,7 @@ main(int argc, char **argv){
          act |= a_F_NO_CHECKS;
       else if(!strcmp(*argv, "-v") || !strcmp(*argv, "--verbose"))
          act |= a_F_VERBOSE;
-      else if(!strcmp(*argv, "-d") || !strcmp(*argv, "--dev")){
+      else if(!strcmp(*argv, "-d") || !strcmp(*argv, "--device")){
          if(--argc == 1)
             goto jusage;
          d.d_dev = *++argv;
@@ -347,9 +345,9 @@ main(int argc, char **argv){
          act |= a_ACT_ISRC | a_F_NO_TOC_DUMP;
       else if(!strcmp(*argv, "-x") || !strcmp(*argv, "--cdtext"))
          act |= a_ACT_CDTEXT | a_F_NO_TOC_DUMP;
-      else if(!strcmp(*argv, "-a") || !strcmp(*argv, "--all")){
+      else if(!strcmp(*argv, "-a") || !strcmp(*argv, "--all"))
          act |= a_ACT_QUERY_MASK;
-      }else if(!strcmp(*argv, "-r") || !strcmp(*argv, "--read")){
+      else if(!strcmp(*argv, "-r") || !strcmp(*argv, "--read")){
          act &= ~a_ACT_MASK;
          act |= a_ACT_TOC | a_ACT_READ;
          if(--argc == 1)
@@ -401,36 +399,38 @@ jleave:
    return rv;
 
 jusage:
+   /* (ISO C89 string length limit) */
    puts(
       "s-cdda (" a_VERSION "): accessing audio CDs (via SCSI MMC-3 aware "
          "cdrom/drivers)\n"
-      a_COPYRIGHT
-      "Synopsis:\n"
-      "  s-cdda -h|--help  this help\n"
-      "  s-cdda [-nv] [-d|--dev DEV] [-t|--toc]\n"
-      "     Dump the table of (audio) contents\n"
-      "  s-cdda [-nv] [-d|--dev DEV] -m|--mcn\n"
-      "     Dump Media-Catalog-Number/European-Article-Number "
-         "if available/supported\n"
-      "  s-cdda [-nv] [-d|--dev DEV] -i|--isrc\n"
+      "\n"
+      "  s-cdda [-d DEV] [-nv] -a|--all\n"
+      "     All the queries\n"
+      "  s-cdda [-d DEV] [-nv] -i|--isrc\n"
       "     Dump International Standard Recording Code (ISRC), "
-         "if available/supported\n"
-      "  s-cdda [-nv] [-d|--dev DEV] -x|--cd-text\n"
+         "if available/supported");
+   puts(
+      "  s-cdda [-d DEV] [-nv] -m|--mcn\n"
+      "     Dump Media Catalog Number (MCN) if available/supported\n"
+      "  s-cdda [-d DEV] [-nv] [-t|--toc]\n"
+      "     Dump the table of (audio) contents\n"
+      "  s-cdda [-d DEV] [-nv] -x|--cd-text\n"
       "     Dump (subset of) CD-TEXT information, if available/supported\n"
-      "  s-cdda [-nv] [-d|--dev DEV] -a|--all\n"
-      "     All the queries from above\n"
-      "  s-cdda [-nv] [-d|--dev DEV] -r|--read NUM\n"
-      "     Dump audio of track NUMber to (non-terminal) standard output\n"
       "\n"
-      "-d|--dev DEV    Use CD-ROM DEVice; else $CDROM, else " a_CDROM "\n"
-      "-v|--verbose    Be more verbose (on standard error)\n"
+      "  s-cdda [-d DEV] [-v] -r|--read NUM\n"
+      "     Dump audio track NUMber "
+         "to (non-terminal) standard output\n");
+   puts(
+      "-d|--device DEV Use CD-ROM DEVice; else $CDROM; fallback " a_CDROM "\n"
       "-n|--no-checks  No sanity checks on CD data (\"pampers over errors\")\n"
+      "-v|--verbose    Be more verbose (on standard error)\n"
       "\n"
-      "Remarks: with multiple queries errors are ignored but for TOC.\n"
-      "-m and -i subject to HW quality: retry on error!  "
-         "Exit states from sysexits.h"
-      "\n! no option joining (\"-vt\"); untested: mixed mode, multisession"
-   );
+      "-[im] subject to HW/driver quality: retry on \"not-found\" error.  "
+         "With multiple\n"
+      "queries errors are ignored but for TOC.  Exit states from sysexits.h.\n"
+      "Bugs/Contact via " a_CONTACT
+      "\nRemarks: no option joining (\"-vt\");  "
+         "untested: mixed mode, multisession");
    goto jleave;
 }
 /* }}} */
@@ -456,14 +456,13 @@ a_open(struct a_data *dp){
    if((cp = dp->d_dev) == NIL && (cp = getenv("CDROM")) == NIL)
       cp = a_CDROM;
 
-   if((dp->d_fd = open(dp->d_dev = cp, O_RDONLY | O_NONBLOCK)) == -1){
+   if((dp->d_fd = open(dp->d_dev = cp, O_RDONLY | O_NONBLOCK)) != -1)
+      rv = EX_OK;
+   else{
       fprintf(stderr, "! Cannot open %s: %s\n", cp, strerror(errno));
       rv = EX_OSFILE;
-      goto jleave;
    }
 
-   rv = EX_OK;
-jleave:
    return rv;
 }
 
@@ -496,6 +495,7 @@ a_act(struct a_data *dp){
    rv = EX_OK;
    act = (dp->d_flags & a_ACT_QUERY_MASK);
    if(!(relax = (dp->d_flags & a_F_NO_CHECKS))){
+      /* With multiple queries, do not error out but for TOC failure */
       myact = act & (a_ACT_QUERY_MASK & ~a_ACT_TOC);
       for(len = 1u << 0; myact != 0; len <<= 1)
          if(myact & len){
@@ -526,7 +526,6 @@ a_act(struct a_data *dp){
                sizeof(struct a_mmc_cmd_x42_resp_data_head) +
                sizeof(struct a_mmc_cmd_x42_mcn_resp));
          mmcc.cmd[0] = a_MMC_CMD_x42_READ_SUBCHANNEL;
-         mmcc.cmd[1] = a_MMC_CMD_x_BIT_TIME_MSF; /* (Ignored) */
          mmcc.cmd[2] = a_MMC_CMD_x42_SUBQ;
          mmcc.cmd[3] = a_MMC_CMD_x42_PARAM_MCN;
       }else if(act & (myact = a_ACT_ISRC)){
@@ -535,7 +534,6 @@ a_act(struct a_data *dp){
                sizeof(struct a_mmc_cmd_x42_resp_data_head) +
                sizeof(struct a_mmc_cmd_x42_isrc_resp));
          mmcc.cmd[0] = a_MMC_CMD_x42_READ_SUBCHANNEL;
-         mmcc.cmd[1] = a_MMC_CMD_x_BIT_TIME_MSF; /* (Ignored) */
          mmcc.cmd[2] = a_MMC_CMD_x42_SUBQ;
          mmcc.cmd[3] = a_MMC_CMD_x42_PARAM_ISRC;
          if(isrcno == 0)
@@ -546,16 +544,15 @@ a_act(struct a_data *dp){
          rbp->rb_buflen = Z_ALIGN(sizeof(struct a_mmc_resp_head) +
                a_CDTEXT_LEN_MAX);
          mmcc.cmd[0] = a_MMC_CMD_x43_READ_TOC_PMA_ATIP;
-         mmcc.cmd[1] = a_MMC_CMD_x_BIT_TIME_MSF; /* (Ignored) */
          mmcc.cmd[2] = a_MMC_CMD_x43_FORMAT_CDTEXT;
       }else
          exit(42);
 
-      rbp->rb_buf = a_alloc(rbp->rb_buflen);
+      if(rbp->rb_buf == NIL)
+         rbp->rb_buf = a_alloc(rbp->rb_buflen);
       mmcc.cmd[7] = ((u16)rbp->rb_buflen >> 8) & 0xFF;
       mmcc.cmd[8] = (u16)rbp->rb_buflen & 0xFF;
 
-      /* We might want to ignore non-crucial errors */
       if((rv = a_os_mmc(dp, &mmcc, rbp)) != EX_OK){
          if(!relax || myact == a_ACT_TOC)
             break;
@@ -565,7 +562,7 @@ a_act(struct a_data *dp){
       }
 
       /* Response: length field not included in overall length;
-       * subtract the other two bytes of the shared response header */
+       * subtract rest of shared response header */
       len = rbp->rb_buf[0];
       len <<= 8;
       len |= rbp->rb_buf[1];
@@ -847,12 +844,10 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
    int rv;
 
    if(len > a_CDTEXT_LEN_MAX){
-      /* Should not fit there, so what is that? Just bail */
       emsg = "data buffer too large";
       goto jedat;
    }
-
-   /* xxx In fact we could very well test for >3*? */
+   /* xxx Could very well test for >3*? */
    if(len < sizeof(*crp) || len % sizeof(*crp)){
       emsg = "invalid buffer length";
       goto jedat;
@@ -860,12 +855,11 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
 
    crp = (struct a_mmc_cmd_x43_cdtext_resp*)buf;
 
-   /* Allocate buffers large enough to hold the maximum string length, and
-    * a work pool for the packets (just do it like that) */
+   /* Allocate buffers large enough to hold the maximum string length */
    len /= sizeof(*crp);
    dp->d_cdtext_text_data = tcp = a_alloc(len * (a_CDTEXT_PACK_LEN_TEXTDAT+1));
 
-   /* Update the CD-TEXT packets to our needs */
+   /* Update packets to our needs */
    for(crpx = crp, i = len; i > 0; ++crpx, --i){
       crpx->type = a_CDTEXT_PACK_T2IDX_RAW(crpx->type);
       /* Use p_crc[0] for "has this packet been seen yet" state machine! */
@@ -873,26 +867,24 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
    }
 
    /* Text crosses packet boundaries (let me dream of simple [TYPE[LEN]DATA]
-    * style blobs), use emsg as indication whether one is not satisfied yet */
+    * blobs), use cpcontig as indication whether one is not satisfied yet.
+    * XXX "Tab indicator"s untested; more sanity checks; no magic constants */
    cpcontig = cp_for_tab_ind = NIL;
    for(seq = 0, block = 0xFF; len > 0; ++seq, ++crp, --len){
-      /* When encountering a new block, scan forward for the three T_BLOCKINFO
-       * packs which must be contained therein in order to detect character set
-       * and language information */
+      /* On block boundaries, forward scan for the three T_BLOCKINFO packets */
       if(block != (j = (crp->dbchars_blocknum_charpos >> 4) & 0x07) ||
             seq != crp->seq){
-         /* XXX We should do more sanity checks */
          if(cpcontig != NIL){
             if(!(dp->d_flags & a_F_NO_CHECKS))
                goto jetxtopen;
             cpcontig = NIL;
          }
-         cp_for_tab_ind = NIL; /* XXX can TAB stuff cross blocks?? */
+         cp_for_tab_ind = NIL;
 
          if((block = j) >= a_CDTEXT_BLOCKS_MAX){
             emsg = "too many data blocks";
             fprintf(stderr, "! CD-TEXT: %s\n", emsg);
-            a_dump_hex(crp, a_CDTEXT_PACK_LEN);
+            a_dump_hex(crp, sizeof(*crp));
             if(!(dp->d_flags & a_F_NO_CHECKS))
                goto jedat;
             block = a_CDTEXT_BLOCKS_MAX;
@@ -929,7 +921,6 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
             }
          }
 
-         /* XXX more sanity checks */
          if(cdbi.bi_packs[a_CDTEXT_PACK_TYPES - 1] != 3 &&
                !(dp->d_flags & a_F_NO_CHECKS)){
             emsg = "block without valid block information encountered";
@@ -973,13 +964,12 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
       case a_CDTEXT_CHARSET_ASCII:
          break;
       default:
-         /* XXX ignoring unsupported encoding */
          if(dp->d_flags & a_F_VERBOSE){
             fprintf(stderr,
                "* CD-TEXT: ignoring packet in block with unsupported "
                   "character encoding %u\n",
                cdbi.bi_charcode);
-            a_dump_hex(crp, a_CDTEXT_PACK_LEN);
+            a_dump_hex(crp, sizeof(*crp));
          }
          continue;
       }
@@ -989,23 +979,21 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
       case a_CDTEXT_LANG_ENGLISH:
          break;
       default:
-         /* XXX ignoring unsupported language */
          if(dp->d_flags & a_F_VERBOSE){
             fprintf(stderr,
                "* CD-TEXT: ignoring packet in block with unsupported "
                   "language code %u\n",
                cdbi.bi_charcode);
-            a_dump_hex(crp, a_CDTEXT_PACK_LEN);
+            a_dump_hex(crp, sizeof(*crp));
          }
          continue;
       }
 
       if(crp->dbchars_blocknum_charpos & (1u << 7)){
-         /* xxx Now, that would be an error for ASCII/LATIN1? */
          if(dp->d_flags & a_F_VERBOSE){
             fprintf(stderr, "* CD-TEXT: ignoring packet with unsupported "
                "double byte characters\n");
-            a_dump_hex(crp, a_CDTEXT_PACK_LEN);
+            a_dump_hex(crp, sizeof(*crp));
          }
          continue;
       }
@@ -1014,7 +1002,7 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
           if(dp->d_flags & a_F_VERBOSE){
             fprintf(stderr, "* CD-TEXT: ignoring packet which announces "
                "extensions\n");
-            a_dump_hex(crp, a_CDTEXT_PACK_LEN);
+            a_dump_hex(crp, sizeof(*crp));
          }
          continue;
       }
@@ -1023,7 +1011,7 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
          fprintf(stderr, "* CD-TEXT: packet track=%u seq=%u type=0x%02X:\n",
             crp->xtension_tno & 0x7F, crp->seq,
             a_CDTEXT_PACK_IDX2T(crp->type));
-         a_dump_hex(crp, a_CDTEXT_PACK_LEN);
+         a_dump_hex(crp, sizeof(*crp));
       }
 
 jredo_packet:
@@ -1032,7 +1020,7 @@ jredo_packet:
       if(tno > a_MMC_TRACKS_MAX || tno > cdbi.bi_last_track){
          emsg = "invalid track number";
          fprintf(stderr, "! CD-TEXT: %s\n", emsg);
-         a_dump_hex(crp, a_CDTEXT_PACK_LEN);
+         a_dump_hex(crp, sizeof(*crp));
          if(!(dp->d_flags & a_F_NO_CHECKS))
             goto jedat;
          tno = cdbi.bi_last_track;
@@ -1043,7 +1031,7 @@ jredo_packet:
          if(cpcontig != NIL){
             emsg = "text unfinished, block boundary crossed";
             fprintf(stderr, "! CD-TEXT: %s\n", emsg);
-            a_dump_hex(crp, a_CDTEXT_PACK_LEN);
+            a_dump_hex(crp, sizeof(*crp));
             if(!(dp->d_flags & a_F_NO_CHECKS))
                goto jedat;
             cpcontig = NIL;
@@ -1070,7 +1058,7 @@ jredo_packet:
             if(cp != tcp){
                emsg = "text packet continuation out of sequence";
                fprintf(stderr, "! CD-TEXT: %s\n", emsg);
-               a_dump_hex(crp, a_CDTEXT_PACK_LEN);
+               a_dump_hex(crp, sizeof(*crp));
                if(!(dp->d_flags & a_F_NO_CHECKS))
                   goto jedat;
                *cpp = cp = tcp;
@@ -1081,10 +1069,10 @@ jredo_packet:
          i = 0;
          if(crp->crc[0]){
             while(crp->text[i] == '\0'){
-               if(++i >= a_CDTEXT_PACK_LEN_TEXTDAT){
+               if(++i >= FIELD_SIZEOF(struct a_mmc_cmd_x43_cdtext_resp,text)){
                   emsg = "text packet without text";
                   fprintf(stderr, "! CD-TEXT: %s\n", emsg);
-                  a_dump_hex(crp, a_CDTEXT_PACK_LEN);
+                  a_dump_hex(crp, sizeof(*crp));
                   if(!(dp->d_flags & a_F_NO_CHECKS))
                      goto jedat;
                   break;
@@ -1093,20 +1081,20 @@ jredo_packet:
          }
 
          while((*cp++ = (char)crp->text[i++]) != '\0' &&
-               i < FIELD_SIZEOF(struct a_mmc_cmd_x43_cdtext_resp, text))
+               i < FIELD_SIZEOF(struct a_mmc_cmd_x43_cdtext_resp,text))
             ;
          if(cp[-1] != '\0'){
-            *cp = '\0'; /* (For sanity checks around) */
+            *cp = '\0';
             cpcontig = cp;
          }else{
             cpcontig = NIL;
-            /* The "Tab indicator" is used for consecutive equal strings; it
-             * indicates that the last completed string shall be used */
+            /* "Tab indicator" is used for consecutive equal strings;
+             * it indicates last completed string is to be used */
             if(i == 2 && cp[-2] == '\x09'){
                if(cp_for_tab_ind == NIL){
-                  emsg = "invalid \"Tab indicator\" to repeat former text";
+                  emsg = "invalid \"Tab indicator\" for text repitition";
                   fprintf(stderr, "! CD-TEXT: %s\n", emsg);
-                  a_dump_hex(crp, a_CDTEXT_PACK_LEN);
+                  a_dump_hex(crp, sizeof(*crp));
                   if(!(dp->d_flags & a_F_NO_CHECKS))
                      goto jedat;
                   cp[-2] = '\0';
@@ -1117,11 +1105,11 @@ jredo_packet:
          }
          tcp = cp;
 
-         /* The payload can contain text for multiple tracks, and zero-filling
-          * seems to be used otherwise */
-         if(i < a_CDTEXT_PACK_LEN_TEXTDAT && crp->text[i] != '\0'){
+         /* Payload may be for multiple tracks; zero-filled otherwise(?) */
+         if(i < FIELD_SIZEOF(struct a_mmc_cmd_x43_cdtext_resp,text) &&
+               crp->text[i] != '\0'){
             memset(&crp->text[0], 0, i);
-            crp->crc[0] = TRU1;
+            crp->crc[0] = TRU1; /* Have seen it */
             crp->xtension_tno = ++tno;
             goto jredo_packet;
          }
@@ -1132,15 +1120,15 @@ jredo_packet:
          if(dp->d_flags & a_F_VERBOSE){
             fprintf(stderr, "* CD-TEXT: ignoring packet of type 0x%02X\n",
                a_CDTEXT_PACK_IDX2T(crp->type));
-            a_dump_hex(crp, a_CDTEXT_PACK_LEN);
+            a_dump_hex(crp, sizeof(*crp));
          }
          /* FALLTHRU */
       case a_CDTEXT_PACK_T2IDX(BLOCKINFO):
-         /* These were handled above already */
+         /* Handled above already */
          if(cpcontig != NIL){
             emsg = "text unfinished, block boundary crossed";
             fprintf(stderr, "! CD-TEXT: %s\n", emsg);
-            a_dump_hex(crp, a_CDTEXT_PACK_LEN);
+            a_dump_hex(crp, sizeof(*crp));
             if(!(dp->d_flags & a_F_NO_CHECKS))
                goto jedat;
             cpcontig = NIL;
@@ -1179,7 +1167,7 @@ a_dump_hex(void *vp, u32 len){
          fputs("  |", stderr);
          j = 3;
       }
-      if((b = buf[i]) >= 0x20 && b < 0x7F){ /* XXX ASCII magic */
+      if((b = buf[i]) >= 0x20 && b < 0x7F){ /* xxx ASCII magic */
          fputc(b, stderr);
          ++j;
       }else{
@@ -1203,10 +1191,9 @@ a_dump_toc(struct a_data *dp){
    for(i = 0; ++i <= dp->d_trackno_audio;){
       tp = &dp->d_track_data[dp->d_track_audio[i]];
       printf("track=%-2u t%u_msf=%02u:%02u.%02u t%u_lba=%-6d "
-            "t%u_channels=%u t%u_preemphasis=%u t%u_copy=%u\n",
+            "t%u_preemphasis=%u t%u_copy=%u\n",
          i, i, tp->t_minute, tp->t_second, tp->t_frame,
          i, tp->t_lba,
-         i, (tp->t_tflags & a_MMC_TF_CHANNELS_4 ? 4 : 2),
          i, (tp->t_tflags & a_MMC_TF_PREEMPHASIS),
          i, (tp->t_tflags & a_MMC_TF_COPY_PERMIT));
    }
@@ -1288,7 +1275,7 @@ a_dump_cdtext(struct a_data *dp){
       printf("#COMPOSER = %s\n", cp);
    }
 
-   /* Indexed in CD-TEXT order! */
+   /* Indexed in CD-TEXT order! xxx stop loop once all done */
    for(i = 1; i <= a_MMC_TRACKS_MAX; ++i){
       tp = &dp->d_track_data[i];
       for(any = FAL0, j = 0; j < a_CDTEXT_PACK_TYPES; ++j){
