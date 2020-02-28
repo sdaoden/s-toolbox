@@ -418,7 +418,7 @@ jusage:
       "     Dump (subset of) CD-TEXT information, if available/supported\n"
       "\n"
       "  s-cdda [-d DEV] [-v] -r|--read NUM\n"
-      "     Dump audio track NUMber "
+      "     Dump audio track NUMber in WAVE format "
          "to (non-terminal) standard output\n");
    puts(
       "-d|--device DEV Use CD-ROM DEVice; else $CDROM; fallback " a_CDROM "\n"
@@ -625,6 +625,26 @@ jtick:
 
 static int
 a_read(struct a_data *dp, u8 tno){
+   static char const wavhead[] =
+         /* Canonical WAVE format: RIFF header.. */
+         "RIFF" /* ChunkID */
+         "...." /* ChunkSize: 36 (in effect) + Subchunk2Size */
+         "WAVE" /* Format */
+         /* "WAVE" format: two subchunks: "fmt " and "data" */
+         "fmt " /* Subchunk1ID */
+         "\x10\x00\x00\x00" /* Subchunk1Size (PCM: 16) */
+         "\x01\x00" /* AudioFormat: 1 (linear, uncompressed) */
+         "\x02\x00" /* NumChannels: 2 (Stereo) */
+         "\x44\xAC\x00\x00" /* SampleRate: 44100 */
+         "\x10\xB1\x02\x00" /* ByteRate: 176400 bytes/second */
+         "\x04\x00" /* BlockAlign: NumChannels * BitsPerSample / 8: 4 */
+         "\x10\x00" /* BitsPerSample: 16 */
+         /* data subchunk */
+         "data" /* Subchunk2ID */
+         "....";  /* Subchunk2Size */
+
+   char wavh[44], *wavhp;
+   ssize_t x, w;
    int rv, lbas, lbae, len;
 
    if(isatty(STDOUT_FILENO)){
@@ -649,6 +669,25 @@ a_read(struct a_data *dp, u8 tno){
       fprintf(stderr, "* Reading track %u, LBA start=%d end=%d "
             "(%d frames, %d bytes)\n",
          tno, lbas, lbae, rv, len);
+
+   memcpy(wavh, wavhead, (x = sizeof(wavhead) -1));
+   rv = 36 + len;
+   wavh[7] = (char)((rv >> 24) & 0xFF);
+   wavh[6] = (char)((rv >> 16) & 0xFF);
+   wavh[5] = (char)((rv >> 8) & 0xFF);
+   wavh[4] = (char)(rv & 0xFF);
+   wavh[43] = (char)((len >> 24) & 0xFF);
+   wavh[42] = (char)((len >> 16) & 0xFF);
+   wavh[41] = (char)((len >> 8) & 0xFF);
+   wavh[40] = (char)(len & 0xFF);
+
+   for(wavhp = wavh; x > 0; wavhp += w, x -= w)
+      if((w = write(STDOUT_FILENO, wavhp, (size_t)x)) == -1){
+         fprintf(stderr, "! CD-TEXT:  writing WAV header: %s\n",
+            strerror(errno));
+         rv = EX_IOERR;
+         goto jleave;
+      }
 
    if((rv = a_os_read(dp, lbas, lbae)) == EX_OK)
       fprintf(stderr, "Read track %u, %d bytes)\n", tno, len);
