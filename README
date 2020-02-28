@@ -4,7 +4,7 @@ A repo of some small tools
 Somewhat useful:
 
 entropy-saver.c:
-   For my use cases i find it annoying that "entropy_avail" is not
+   Linux: for my use cases i find it annoying that "entropy_avail" is not
    incremented when i restore the saved random seed that machines have
    collected so hard.  This little program touches this count also.
 
@@ -51,6 +51,9 @@ quote-rndtrip.sh:
    Thanks to Robert Elz (kre).
 
    2019-05-27: ensure outer driver(s) do not leak variabes (Steven Penny)
+
+s-cdda.c (manual in s-cdda.1):
+   Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
 
 zte.sh:
    Control a ZTE modem (MF79 and many others according to web search)

@@ -1,0 +1,149 @@
+.\"@ s-cdda: access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
+.\"
+.\" Copyright (c) 2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+.\" SPDX-License-Identifier: ISC
+.\"
+.\" Permission to use, copy, modify, and/or distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.
+.Dd February 29, 2020
+.Dt S-CDDA 1
+.Os
+.Mx -enable
+.
+.
+.Sh NAME
+.Nm s-cdda
+.Nd access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks)
+.
+.
+.Sh SYNOPSIS
+.
+.Nm
+.Op Fl nv
+.Op Fl d Ar DEVICE
+.Fl a
+.Nm
+.Op Fl nv
+.Op Fl d Ar DEVICE
+.Fl i
+.Nm
+.Op Fl nv
+.Op Fl d Ar DEVICE
+.Fl m
+.Nm
+.Op Fl nv
+.Op Fl d Ar DEVICE
+.Op Fl t
+.Nm
+.Op Fl nv
+.Op Fl d Ar DEVICE
+.Fl x
+.Pp
+.Nm
+.Op Fl nv
+.Op Fl d Ar DEVICE
+.Fl x Ar NUMBER
+.
+.
+.Mx -toc -tree html pdf ps xhtml
+.
+.
+.Sh DESCRIPTION
+.
+.Nm
+is a simple tool to query information, like table-of-contents, from
+audio CD-ROMs.
+It can also be used to read audio tracks, and store them as WAVE audio
+files.
+.
+.
+.Ss "Options"
+.
+.Bl -tag -width ".It Fl BaNg"
+.Mx
+.It Fl a , Fl Fl all
+Perform all possible queries.
+.
+.Mx
+.It Fl d Ar DEVICE , Fl Fl device Ns =..
+Specify the CD-ROM
+.Ar DEVICE .
+If not given the environment variable
+.Ev CDROM
+is inspected, a system-dependent fallback value (like
+.Pa /dev/cdrom )
+is used as a fallback.
+.
+.Mx
+.It Fl i , Fl Fl isrc
+Query the International Standard Recording Code (ISRC) entries,
+if available on the CD-ROM and supported by the device.
+Quality of service: devices are known which do not find ISRC subchannel
+data, repeating the query may succeed.
+Is missing on many CD-ROMs.
+.
+.Mx
+.It Fl t , Fl Fl toc
+Query the table of contents.
+.
+.Mx
+.It Fl m , Fl Fl mcn
+Query the Media Catalog Number,
+if available on the CD-ROM and supported by the device.
+Quality of service: devices are known which do not find the MCN
+subchannel data, repeating the query may succeed.
+Is missing on many CD-ROMs.
+.
+.Mx
+.It Fl n , Fl Fl no-checks
+Do not perform sanity checks on data.
+May
+.Dq pamper
+over invalid data!
+.
+.Mx
+.It Fl r Ar NUMBER , Fl Fl read Ns =..
+Read the audio track
+.Ar NUMBER ,
+and write it in WAVE format to the standard output.
+It will refuse to write if standard output is a terminal.
+.
+.Mx
+.It Fl v , Fl Fl verbose
+Be more verbose, dump packets as they are encountered.
+.
+.Mx
+.It Fl x , Fl Fl cd-text
+Query CD-TEXT information,
+if available on the CD-ROM and supported by the device.
+Is missing on many CD-ROMs.
+This software only supports an english subset of CD-TEXT.
+.El
+.
+.Sh EXAMPLES
+.
+.Bd -literal -offset indent
+# Dump table of contents
+$ s-cdda
+# Ditto, show packet data
+$ s-cdda -v
+
+# Read track number 2 to track-2.wav
+$ s-cdda --read 2 > track-2.wav
+.Ed
+.
+.
+.Sh AUTHORS
+.
+.An Steffen Po Daode Pc Nurpmeso Aq steffen@sdaoden.eu
+.\" s-ts-mode
