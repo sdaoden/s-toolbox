@@ -52,7 +52,7 @@
 .Nm
 .Op Fl nv
 .Op Fl d Ar DEVICE
-.Fl x Ar NUMBER
+.Fl r Ar NUMBER
 .
 .
 .Mx -toc -tree html pdf ps xhtml
@@ -69,6 +69,12 @@ files.
 .
 .Ss "Options"
 .
+.Sy Remarks:
+short command line options cannot be joined, so for example
+.Ql s-cdda -nva
+must be written as
+.Ql s-cdda -n -v -a .
+.
 .Bl -tag -width ".It Fl BaNg"
 .Mx
 .It Fl a , Fl Fl all
@@ -80,7 +86,7 @@ Specify the CD-ROM
 .Ar DEVICE .
 If not given the environment variable
 .Ev CDROM
-is inspected, a system-dependent fallback value (like
+is inspected, a system-dependent value (like
 .Pa /dev/cdrom )
 is used as a fallback.
 .
@@ -88,20 +94,16 @@ is used as a fallback.
 .It Fl i , Fl Fl isrc
 Query the International Standard Recording Code (ISRC) entries,
 if available on the CD-ROM and supported by the device.
-Quality of service: devices are known which do not find ISRC subchannel
-data, repeating the query may succeed.
+Quality of service: devices are known which do not find ISRC
+subchannel data: repeating the query may succeed.
 Is missing on many CD-ROMs.
-.
-.Mx
-.It Fl t , Fl Fl toc
-Query the table of contents.
 .
 .Mx
 .It Fl m , Fl Fl mcn
 Query the Media Catalog Number,
-if available on the CD-ROM and supported by the device.
+if available on the CD-ROM, and supported by the device.
 Quality of service: devices are known which do not find the MCN
-subchannel data, repeating the query may succeed.
+subchannel data: repeating the query may succeed.
 Is missing on many CD-ROMs.
 .
 .Mx
@@ -119,13 +121,17 @@ and write it in WAVE format to the standard output.
 It will refuse to write if standard output is a terminal.
 .
 .Mx
+.It Fl t , Fl Fl toc
+Query the table of contents.
+.
+.Mx
 .It Fl v , Fl Fl verbose
 Be more verbose, dump packets as they are encountered.
 .
 .Mx
 .It Fl x , Fl Fl cd-text
 Query CD-TEXT information,
-if available on the CD-ROM and supported by the device.
+if available on the CD-ROM, and supported by the device.
 Is missing on many CD-ROMs.
 This software only supports an english subset of CD-TEXT.
 .El
