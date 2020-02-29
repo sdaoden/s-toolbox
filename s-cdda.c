@@ -1,7 +1,10 @@
 /*@ s-cdda: access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
+ *@ Developed in 2020 on then current operating-systems and hardware.
  *@ Thanks to Thomas Schmitt (libburnia) for cdrom-cookbook.txt and cdtext.txt.
  *@ According to SCSI Multimedia Commands - 3 (MMC-3, Revision 10g).
- *@ Compile: cc/c99/gcc/clang -O2 -o s-cdda s-cdda.c
+ *@ Compile:
+ *@ -   Linux: cc/c99/gcc/clang -O2 -o s-cdda s-cdda.c
+ *@ TODO de-preemphasis
  *
  * Copyright (c) 2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -1384,6 +1387,8 @@ a_os_mmc(struct a_data *dp, struct a_mmc_cmd *mmccp, struct a_rawbuf *rbp){
 
 static int
 a_os_read(struct a_data *dp, int lbas, int lbae){
+   /* Do not use MMC:"READ CD" Linux CDROMREADAUDIO to get all the known driver
+    * etc. quirks for free */
    u8 buf[a_STACK_FRAMES_MAX * a_MMC_FRAME_SIZE];
    struct cdrom_read_audio cdra;
    int i;

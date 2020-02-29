@@ -54,6 +54,7 @@ quote-rndtrip.sh:
 
 s-cdda.c (manual in s-cdda.1):
    Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
+   Developed in 2020 on then current operating-systems and hardware.
 
 zte.sh:
    Control a ZTE modem (MF79 and many others according to web search)
