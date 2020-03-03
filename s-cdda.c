@@ -23,12 +23,8 @@
  */
 
 /* */
-#define a_VERSION "0.0.2"
+#define a_VERSION "0.0.3"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
-
-/* Maximum stack usage (in frames a a_MMC_FRAME_SIZE).
- * linux/drivers/cdrom/cdrom.c mmc_ioctl_cdrom_read_audio() limit: 1sec */
-#define a_STACK_FRAMES_MAX 75
 
 /* -- >8 -- 8< -- */
 
@@ -59,7 +55,7 @@
 # include <linux/cdrom.h>
 # include <scsi/sg.h>
 # define a_CDROM "/dev/cdrom"
-#elif su_OS_FREEBSD
+# define a_CDROM_MMC_MAX_FRAMES_PER_SEC 50 /* XXX dev*/
 #endif
 
 /* SU compat */
@@ -82,6 +78,18 @@
 #define MAX(A,B) ((A) < (B) ? (B) : (A))
 #define MIN(A,B) ((A) < (B) ? (A) : (B))
 
+/* OS adjustment possibility: maximum number of frames we read in one go.
+ * And adjustment of this maximum in case of errors, before we retry.
+ * We stop retrying when MAXF is 1 (on entry).
+ * Whereas Linux limits this to frames worth 1sec in
+ * linux/drivers/cdrom/cdrom.c mmc_ioctl_cdrom_read_audio(),
+ * i was incapable to read this much from my drive: 52 here at most */
+#ifndef a_CDROM_MMC_MAX_FRAMES_PER_SEC
+# define a_CDROM_MMC_MAX_FRAMES_PER_SEC a_MMC_FRAMES_PER_SEC
+#endif
+#define a_CDROM_MMC_MAX_FRAMES_ADJUST(MAXF) \
+   do{ MAXF -= a_MMC_FRAMES_PER_SEC / 3; }while(0)
+
 enum a_actions{
    a_ACT_USAGE,
    a_ACT_TOC = 1u<<0,
@@ -98,6 +106,7 @@ enum a_actions{
 enum a_act_rawbuf{
    a_ACT_RAWBUF_TOC,
    a_ACT_RAWBUF_MCN,
+   a_ACT_RAWBUF_READ = a_ACT_RAWBUF_MCN,
    a_ACT_RAWBUF_ISRC,
    a_ACT_RAWBUF_CDTEXT,
    a__ACT_RAWBUF_MAX
@@ -135,7 +144,7 @@ enum a_mmc_tflags{
    a_MMC_TF_NONE,
    a_MMC_TF_PREEMPHASIS = 0x01,
    a_MMC_TF_COPY_PERMIT = 0x02,
-   a_MMC_TF_DATA_TRACK = 0x04, /* (changes meaning of other bits!) */
+   a_MMC_TF_DATA_TRACK = 0x04 /* (changes meaning of other bits!) */
    /*a_MMC_TF_CHANNELS_4 = 0x08 Four channels never became true */
 };
 
@@ -158,7 +167,11 @@ enum a_mmc_cmdx{
 #define a_MMC_CMD_x43_FULLTOC_RESP_POINT_IS_TRACK(X) \
          ((X) >= 0x01 && (X) <= 0x63)
 
-      a_MMC_CMD_x43_FORMAT_CDTEXT = 0x05
+      a_MMC_CMD_x43_FORMAT_CDTEXT = 0x05,
+
+   a_MMC_CMD_xBE_READ_CD = 0xBE,
+      a_MMC_CMD_xBE_SECTOR_TYPE_CDDA = 0x04,
+      a_MMC_CMD_xBE_USER_DATA_SELECTION = 0x10
 };
 
 enum a_cdtext{
@@ -200,7 +213,7 @@ enum a_cdtext{
 };
 
 struct a_mmc_cmd{
-   u8 cmd[10];
+   u8 cmd[12];
 };
 
 struct a_mmc_cmd_x42_resp_data_head{
@@ -305,10 +318,11 @@ static int a_dump_mcn(struct a_data *dp);
 static int a_dump_isrc(struct a_data *dp);
 static int a_dump_cdtext(struct a_data *dp);
 
-/* OS */
+/* OS; a_os_open() must return errno on failure */
+static int a_os_open(struct a_data *dp);
+static void a_os_close(struct a_data *dp);
 static int a_os_mmc(struct a_data *dp, struct a_mmc_cmd *mmccp,
       struct a_rawbuf *rbp);
-static int a_os_read(struct a_data *dp, int lbas, int lbae);
 
 /* MAIN {{{ */
 int
@@ -459,10 +473,11 @@ a_open(struct a_data *dp){
    if((cp = dp->d_dev) == NIL && (cp = getenv("CDROM")) == NIL)
       cp = a_CDROM;
 
-   if((dp->d_fd = open(dp->d_dev = cp, O_RDONLY | O_NONBLOCK)) != -1)
-      rv = EX_OK;
-   else{
-      fprintf(stderr, "! Cannot open %s: %s\n", cp, strerror(errno));
+   dp->d_dev = cp;
+   dp->d_fd = -1;
+
+   if((rv = a_os_open(dp)) != 0){
+      fprintf(stderr, "! Cannot open %s: %s\n", cp, strerror(rv));
       rv = EX_OSFILE;
    }
 
@@ -474,7 +489,9 @@ a_cleanup(struct a_data *dp){
    uz i;
    char *cp;
 
-   if(dp->d_dev != NIL && dp->d_fd != -1)
+   a_os_close(dp);
+
+   if(dp->d_fd != -1)
       close(dp->d_fd);
 
    if((cp = dp->d_cdtext_text_data) != NIL)
@@ -628,7 +645,7 @@ jtick:
 
 static int
 a_read(struct a_data *dp, u8 tno){
-   static char const wavhead[] =
+   static char const wavhead[44] =
          /* Canonical WAVE format: RIFF header.. */
          "RIFF" /* ChunkID */
          "...." /* ChunkSize: 36 (in effect) + Subchunk2Size */
@@ -644,24 +661,31 @@ a_read(struct a_data *dp, u8 tno){
          "\x10\x00" /* BitsPerSample: 16 */
          /* data subchunk */
          "data" /* Subchunk2ID */
-         "....";  /* Subchunk2Size */
+         "...."; /* Subchunk2Size */
 
-   char wavh[44], *wavhp;
+   struct a_mmc_cmd mmcc;
+   char wavh[sizeof wavhead], *cp;
    ssize_t x, w;
-   int rv, lbas, lbae, len;
+   struct a_rawbuf *rbp;
+   int rv, lbas, lbae, maxframes, len, i;
+   char const *emsg;
 
    if(isatty(STDOUT_FILENO)){
-      fprintf(stderr, "! Cannot dump to a terminal\n");
-      rv = EX_IOERR;
-      goto jleave;
+      emsg = "cannot dump to a terminal";
+      rv = EOPNOTSUPP;
+      goto jeno;
    }
 
    if(tno > dp->d_trackno_audio){
-      fprintf(stderr, "! Invalid track number: %u (of %u)\n",
-         tno, dp->d_trackno_audio);
-      rv = EX_DATAERR;
-      goto jleave;
+      emsg = "invalid track number";
+      rv = EINVAL;
+      goto jeno;
    }
+
+   rbp = &dp->d_rawbufs[a_ACT_RAWBUF_READ];
+   rbp->rb_buf = a_alloc(rbp->rb_buflen =
+         Z_ALIGN((maxframes = a_CDROM_MMC_MAX_FRAMES_PER_SEC) *
+            a_MMC_FRAME_SIZE));
 
    lbas = dp->d_track_data[tno].t_lba;
    lbae = dp->d_track_data[(tno == dp->d_trackno_end) ? 0 : ++tno].t_lba;
@@ -673,7 +697,8 @@ a_read(struct a_data *dp, u8 tno){
             "(%d frames, %d bytes)\n",
          tno, lbas, lbae, rv, len);
 
-   memcpy(wavh, wavhead, (x = sizeof(wavhead) -1));
+   /* The WAVE header */
+   memcpy(wavh, wavhead, (x = sizeof(wavhead)));
    rv = 36 + len;
    wavh[7] = (char)((rv >> 24) & 0xFF);
    wavh[6] = (char)((rv >> 16) & 0xFF);
@@ -684,19 +709,72 @@ a_read(struct a_data *dp, u8 tno){
    wavh[41] = (char)((len >> 8) & 0xFF);
    wavh[40] = (char)(len & 0xFF);
 
-   for(wavhp = wavh; x > 0; wavhp += w, x -= w)
-      if((w = write(STDOUT_FILENO, wavhp, (size_t)x)) == -1){
-         fprintf(stderr, "! CD-TEXT:  writing WAV header: %s\n",
-            strerror(errno));
-         rv = EX_IOERR;
-         goto jleave;
+   for(cp = wavh; x > 0; cp += w, x -= w)
+      if((w = write(STDOUT_FILENO, cp, (size_t)x)) == -1){
+         emsg = "writing WAVE header";
+         rv = errno;
+         goto jeno;
       }
 
-   if((rv = a_os_read(dp, lbas, lbae)) == EX_OK)
-      fprintf(stderr, "Read track %u, %d bytes)\n", tno, len);
+   /* The data */
+   while(lbas < lbae){
+      memset(&mmcc, 0, sizeof mmcc);
+      mmcc.cmd[0] = a_MMC_CMD_xBE_READ_CD;
+      mmcc.cmd[1] = a_MMC_CMD_xBE_SECTOR_TYPE_CDDA;
+      mmcc.cmd[2] = (u8)(lbas >> 24) & 0xFF;
+      mmcc.cmd[3] = (u8)(lbas >> 16) & 0xFF;
+      mmcc.cmd[4] = (u8)(lbas >>  8) & 0xFF;
+      mmcc.cmd[5] = (u8)(lbas & 0xFF);
+      i = lbae - lbas;
+      if(i > maxframes)
+         i = maxframes;
+      rbp->rb_buflen = (ui)i * a_MMC_FRAME_SIZE;
+      mmcc.cmd[6] = (u8)(i >> 16) & 0xFF;
+      mmcc.cmd[7] = (u8)(i >> 8) & 0xFF;
+      mmcc.cmd[8] = (u8)(i & 0xFF);
+      mmcc.cmd[9] = a_MMC_CMD_xBE_USER_DATA_SELECTION;
 
+      if(dp->d_flags & a_F_VERBOSE)
+         fprintf(stderr, "* reading %d frames at LBA %d\n", i, lbas);
+
+      if((rv = a_os_mmc(dp, &mmcc, rbp)) != EX_OK){
+         /* Maybe adjust maxframes and retry */
+         if(maxframes != 1){
+            a_CDROM_MMC_MAX_FRAMES_ADJUST(maxframes);
+            if(maxframes <= 0)
+               maxframes = 1;
+            if(dp->d_flags & a_F_VERBOSE)
+               fprintf(stderr,
+                  "* reducing maximum number of frames/read to %d\n",
+                  maxframes);
+            continue;
+         }
+         rv = errno;
+         emsg = "OS layer failure";
+         goto jeno;
+      }
+
+      lbas += i;
+
+      for(cp = (char*)rbp->rb_buf, i *= a_MMC_FRAME_SIZE; i > 0;){
+         w = write(STDOUT_FILENO, cp, (size_t)i);
+         if(w == -1){
+            emsg = "Writing audio data to standard output";
+            goto jeno;
+         }
+         cp += w;
+         i -= w;
+      }
+   }
+
+   fprintf(stderr, "Read track %u, %d bytes)\n", tno, len);
 jleave:
    return rv;
+
+jeno:
+   fprintf(stderr, "! %s: %s\n", emsg, strerror(rv));
+   rv = EX_IOERR;
+   goto jleave;
 }
 /* }}} */
 
@@ -1358,6 +1436,21 @@ a_dump_cdtext(struct a_data *dp){
 
 #if su_OS_LINUX /* {{{ */
 static int
+a_os_open(struct a_data *dp){
+   int rv;
+
+   rv = ((dp->d_fd = open(dp->d_dev, O_RDONLY | O_NONBLOCK)) == -1
+         ) ? errno : 0;
+
+   return rv;
+}
+
+static void
+a_os_close(struct a_data *dp){
+   (void)dp;
+}
+
+static int
 a_os_mmc(struct a_data *dp, struct a_mmc_cmd *mmccp, struct a_rawbuf *rbp){
    struct{
       struct cdrom_generic_command cgc;
@@ -1383,56 +1476,6 @@ a_os_mmc(struct a_data *dp, struct a_mmc_cmd *mmccp, struct a_rawbuf *rbp){
    }
 
    return rv;
-}
-
-static int
-a_os_read(struct a_data *dp, int lbas, int lbae){
-   /* Do not use MMC:"READ CD" Linux CDROMREADAUDIO to get all the known driver
-    * etc. quirks for free */
-   u8 buf[a_STACK_FRAMES_MAX * a_MMC_FRAME_SIZE];
-   struct cdrom_read_audio cdra;
-   int i;
-   char const *emsg;
-
-   while(lbas < lbae){
-      cdra.addr.lba = lbas;
-      cdra.addr_format = CDROM_LBA;
-      i = lbae - lbas;
-      if(i > a_STACK_FRAMES_MAX)
-         i = a_STACK_FRAMES_MAX;
-      cdra.nframes = i;
-      cdra.buf = buf;
-
-      if(dp->d_flags & a_F_VERBOSE)
-         fprintf(stderr, "* reading %d frames at LBA %d\n", i, lbas);
-
-      if(ioctl(dp->d_fd, CDROMREADAUDIO, &cdra) == -1){
-         emsg = "ioctl CDROMREADAUDIO";
-         goto jeno;
-      }
-      lbas += i;
-
-      for(i *= a_MMC_FRAME_SIZE; i > 0;){
-         ssize_t w;
-
-         w = write(STDOUT_FILENO, cdra.buf, (size_t)i);
-         if(w == -1){
-            emsg = "Writing audio data to standard output";
-            goto jeno;
-         }
-         cdra.buf += w;
-         i -= w;
-      }
-   }
-
-   i = EX_OK;
-jleave:
-   return i;
-
-jeno:
-   fprintf(stderr, "! %s: %s\n", emsg, strerror(errno));
-   i = EX_IOERR;
-   goto jleave;
 }
 #endif /* }}} su_OS_LINUX */
 
