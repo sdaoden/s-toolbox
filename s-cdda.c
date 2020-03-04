@@ -1409,7 +1409,8 @@ a_dump_cdtext(struct a_data *dp){
       any = TRU1;
       printf("#[CDDB]\n#MCN = %s\n", cp);
    }
-   if((cp = tp->t_cdtext_dat[a_CDTEXT_PACK_T2IDX(UPC_EAN_ISRC)]) != NIL){
+   if((cp = tp->t_cdtext_dat[a_CDTEXT_PACK_T2IDX(UPC_EAN_ISRC)]) != NIL &&
+         *cp != '\0'){
       if(!any)
          puts("#[CDDB]");
       any = TRU1;
@@ -1418,21 +1419,25 @@ a_dump_cdtext(struct a_data *dp){
 
    puts("#[ALBUM]");
    printf("#TRACKCOUNT = %u\n", dp->d_trackno_audio);
-   if((cp = tp->t_cdtext_dat[a_CDTEXT_PACK_T2IDX(TITLE)]) != NIL)
+   if((cp = tp->t_cdtext_dat[a_CDTEXT_PACK_T2IDX(TITLE)]) != NIL &&
+         *cp != '\0')
       printf("#TITLE = %s\n", cp);
 
    any = FAL0;
-   if((cp = tp->t_cdtext_dat[a_CDTEXT_PACK_T2IDX(ARTIST)]) != NIL){
+   if((cp = tp->t_cdtext_dat[a_CDTEXT_PACK_T2IDX(ARTIST)]) != NIL &&
+         *cp != '\0'){
       any = TRU1;
       printf("#[CAST]\n#ARTIST = %s\n", cp);
    }
-   if((cp = tp->t_cdtext_dat[a_CDTEXT_PACK_T2IDX(SONGWRITER)]) != NIL){
+   if((cp = tp->t_cdtext_dat[a_CDTEXT_PACK_T2IDX(SONGWRITER)]) != NIL &&
+         *cp != '\0'){
       if(!any)
          puts("#[CAST]");
       any = TRU1;
       printf("#SONGWRITER = %s\n", cp);
    }
-   if((cp = tp->t_cdtext_dat[a_CDTEXT_PACK_T2IDX(COMPOSER)]) != NIL){
+   if((cp = tp->t_cdtext_dat[a_CDTEXT_PACK_T2IDX(COMPOSER)]) != NIL &&
+         *cp != '\0'){
       if(!any)
          puts("#[CAST]");
       any = TRU1;
@@ -1448,7 +1453,7 @@ a_dump_cdtext(struct a_data *dp){
                *(cp = dp->d_isrc[dp->d_track_audio[i]]) == '\0')
             cp = NIL;
 
-         if(cp != NIL){
+         if(cp != NIL && *cp != '\0'){
             char const *pre;
 
             if(!any){
