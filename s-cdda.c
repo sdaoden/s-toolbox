@@ -68,17 +68,32 @@
 #include <unistd.h>
 
 #if su_OS_DRAGONFLY || su_OS_FREEBSD
+# include <sys/cdio.h>
 # include <camlib.h>
 # include <cam/scsi/scsi_message.h>
+# include <cam/scsi/scsi_pass.h>
+
 # define a_CDROM "/dev/cd0"
+# if su_OS_DRAGONFLY
+#  define a_CDROM_MMC_MAX_FRAMES_PER_SEC 50
+# else
+#  define a_CDROM_MMC_MAX_FRAMES_PER_SEC 25
+# endif
+
 #elif su_OS_LINUX
 # include <linux/cdrom.h>
 # include <scsi/sg.h>
+
 # define a_CDROM "/dev/cdrom"
-# define a_CDROM_MMC_MAX_FRAMES_PER_SEC 50 /* XXX dev*/
+# define a_CDROM_MMC_MAX_FRAMES_PER_SEC 50
+
 #elif su_OS_NETBSD || su_OS_OPENBSD
-# define a_CDROM "/dev/cd0c"
 # include <sys/scsiio.h>
+
+# define a_CDROM "/dev/cd0c"
+# if su_OS_OPENBSD
+#  define a_CDROM_MMC_MAX_FRAMES_PER_SEC 25
+# endif
 #endif
 
 /* SU compat */
@@ -1466,15 +1481,31 @@ a_dump_cdtext(struct a_data *dp){
 #if su_OS_DRAGONFLY || su_OS_FREEBSD /* {{{ */
 static int
 a_os_open(struct a_data *dp){
+   char buf[16 + DEV_IDLEN +1];
+   union ccb x;
    int rv;
 
    rv = 0;
 
-   if((dp->d_camdev = cam_open_device(dp->d_dev, O_RDONLY | O_NONBLOCK)
-         ) == NIL)
-      rv = errno;
+   if((dp->d_fd = open(dp->d_dev, O_RDONLY)) == -1)
+      goto jeno;
 
+   if(ioctl(dp->d_fd, CDIOCALLOW) == -1)
+      goto jeno;
+
+   if(ioctl(dp->d_fd, CAMGETPASSTHRU, &x) == -1)
+      goto jeno;
+
+   snprintf(buf, sizeof buf, "/dev/%s%u",
+      x.cgdl.periph_name, x.cgdl.unit_number);
+   if((dp->d_camdev = cam_open_pass(buf, O_RDWR, NIL)) == NIL)
+      goto jeno;
+
+jleave:
    return rv;
+jeno:
+   rv = errno;
+   goto jleave;
 }
 
 static void
