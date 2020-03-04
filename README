@@ -56,6 +56,9 @@ s-cdda.c (manual in s-cdda.1):
    Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
    Developed in 2020 on then current operating-systems and hardware.
 
+   2020-03-03: base even track reading upon SCSI MMC commands.
+               Also: port to FreeBSD, NetBSD, OpenBSD.
+
 zte.sh:
    Control a ZTE modem (MF79 and many others according to web search)
    from the command line.  Needs curl(1) and OpenSSL(1).

@@ -2,9 +2,10 @@
  *@ Developed in 2020 on then current operating-systems and hardware.
  *@ Thanks to Thomas Schmitt (libburnia) for cdrom-cookbook.txt and cdtext.txt.
  *@ According to SCSI Multimedia Commands - 3 (MMC-3, Revision 10g).
- *@ Compile:
- *@ -   Linux: cc/c99/gcc/clang -O2 -o s-cdda s-cdda.c
- *@ TODO de-preemphasis
+ *@ Compile (note: @CC are tags, not to be removed):
+ *@CC - DragonFlyBSD,FreeBSD: cc/c99/gcc/clang -O2 -o s-cdda s-cdda.c -lcam
+ *@CC - Linux,NetBSD,OpenBSD: cc/c99/gcc/clang -O2 -o s-cdda s-cdda.c
+ *@ TODO de-preemphasis, handling of SCSI sense states?
  *
  * Copyright (c) 2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -23,18 +24,33 @@
  */
 
 /* */
-#define a_VERSION "0.0.3"
+#define a_VERSION "0.0.4"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* -- >8 -- 8< -- */
 
-#define su_OS_LINUX 0
+#define su_OS_DRAGONFLY 0
 #define su_OS_FREEBSD 0
+#define su_OS_LINUX 0
+#define su_OS_NETBSD 0
+#define su_OS_OPENBSD 0
 
 #if 0
+#elif defined __DragonFly__
+# undef su_OS_DRAGONFLY
+# define su_OS_DRAGONFLY 1
+#elif defined __FreeBSD__
+# undef su_OS_FREEBSD
+# define su_OS_FREEBSD 1
 #elif defined __linux__ || defined __linux
 # undef su_OS_LINUX
 # define su_OS_LINUX 1
+#elif defined __NetBSD__
+# undef su_OS_NETBSD
+# define su_OS_NETBSD 1
+#elif defined __OpenBSD__
+# undef su_OS_OPENBSD
+# define su_OS_OPENBSD 1
 #else
 # error TODO OS not supported
 #endif
@@ -51,14 +67,24 @@
 #include <sysexits.h>
 #include <unistd.h>
 
-#if su_OS_LINUX
+#if su_OS_DRAGONFLY || su_OS_FREEBSD
+# include <camlib.h>
+# include <cam/scsi/scsi_message.h>
+# define a_CDROM "/dev/cd0"
+#elif su_OS_LINUX
 # include <linux/cdrom.h>
 # include <scsi/sg.h>
 # define a_CDROM "/dev/cdrom"
 # define a_CDROM_MMC_MAX_FRAMES_PER_SEC 50 /* XXX dev*/
+#elif su_OS_NETBSD || su_OS_OPENBSD
+# define a_CDROM "/dev/cd0c"
+# include <sys/scsiio.h>
 #endif
 
 /* SU compat */
+#undef NELEM
+#undef MAX
+#undef MIN
 #define FIELD_SIZEOF(T,F) sizeof(((T *)NIL)->F)
 #define NELEM(A) (sizeof(A) / sizeof((A)[0]))
 #define su_CONCAT(S1,S2) su__CONCAT_1(S1, S2)
@@ -277,6 +303,9 @@ struct a_rawbuf{
 
 struct a_data{
    char const *d_dev;
+#if su_OS_DRAGONFLY || su_OS_FREEBSD
+   struct cam_device *d_camdev;
+#endif
    int d_fd;
    u8 d_flags; /* a_actions | a_flags */
    u8 d_trackno_start;
@@ -1434,6 +1463,55 @@ a_dump_cdtext(struct a_data *dp){
 }
 /* }}} */
 
+#if su_OS_DRAGONFLY || su_OS_FREEBSD /* {{{ */
+static int
+a_os_open(struct a_data *dp){
+   int rv;
+
+   rv = 0;
+
+   if((dp->d_camdev = cam_open_device(dp->d_dev, O_RDONLY | O_NONBLOCK)
+         ) == NIL)
+      rv = errno;
+
+   return rv;
+}
+
+static void
+a_os_close(struct a_data *dp){
+   if(dp->d_camdev != NIL)
+      cam_close_device(dp->d_camdev);
+}
+
+static int
+a_os_mmc(struct a_data *dp, struct a_mmc_cmd *mmccp, struct a_rawbuf *rbp){
+   union ccb x;
+   int rv;
+
+   memset(&x, 0, sizeof x);
+   memcpy(x.csio.cdb_io.cdb_bytes, mmccp, sizeof *mmccp);
+   x.ccb_h.path_id = dp->d_camdev->path_id;
+   x.ccb_h.target_id = dp->d_camdev->target_id;
+   x.ccb_h.target_lun = dp->d_camdev->target_lun;
+
+   cam_fill_csio(&x.csio, 1, NIL,
+      (CAM_DIR_IN | CAM_DEV_QFRZDIS), MSG_SIMPLE_Q_TAG,
+      rbp->rb_buf, (ui)rbp->rb_buflen,
+      sizeof(x.csio.sense_data),
+      (mmccp->cmd[0] == a_MMC_CMD_xBE_READ_CD ? 12 : 10),
+     20u * 1000 /* Arbitrary */);
+
+   if(cam_send_ccb(dp->d_camdev, &x) == 0)
+      rv = EX_OK;
+   else{
+      fprintf(stderr, "! cam_send_ccb(): %s\n", strerror(errno));
+      rv = EX_IOERR;
+   }
+
+   return rv;
+}
+#endif /* }}} su_OS_DRAGONFLY || su_OS_FREEBSD */
+
 #if su_OS_LINUX /* {{{ */
 static int
 a_os_open(struct a_data *dp){
@@ -1479,7 +1557,45 @@ a_os_mmc(struct a_data *dp, struct a_mmc_cmd *mmccp, struct a_rawbuf *rbp){
 }
 #endif /* }}} su_OS_LINUX */
 
-#if su_OS_FREEBSD /* {{{ */
-#endif /* }}} su_OS_FREEBSD */
+#if su_OS_NETBSD || su_OS_OPENBSD /* {{{ */
+static int
+a_os_open(struct a_data *dp){
+   int rv;
+
+   rv = ((dp->d_fd = open(dp->d_dev, O_RDONLY | O_NONBLOCK)) == -1
+         ) ? errno : 0;
+
+   return rv;
+}
+
+static void
+a_os_close(struct a_data *dp){
+   (void)dp;
+}
+
+static int
+a_os_mmc(struct a_data *dp, struct a_mmc_cmd *mmccp, struct a_rawbuf *rbp){
+   scsireq_t x;
+   int rv;
+
+   memset(&x, 0, sizeof x);
+
+   memcpy(x.cmd, mmccp, sizeof *mmccp);
+   x.flags = SCCMD_READ;
+   x.timeout = 20u * 1000; /* Arbitrary */
+   x.cmdlen = sizeof *mmccp;
+   x.databuf = (caddr_t)rbp->rb_buf;
+   x.datalen = (ul)rbp->rb_buflen;
+
+   if(ioctl(dp->d_fd, SCIOCCOMMAND, &x) != -1)
+      rv = EX_OK;
+   else{
+      fprintf(stderr, "! ioctl SCIOCCOMMAND: %s\n", strerror(errno));
+      rv = EX_IOERR;
+   }
+
+   return rv;
+}
+#endif /* }}} su_OS_NETBSD || su_OS_OPENBSD */
 
 /* s-it-mode */
