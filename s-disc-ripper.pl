@@ -1,6 +1,7 @@
 #!/usr/bin/env perl
-require 5.008_001;
 my $SELF = 's-disc-ripper.pl'; #@ part of S-MusicBox; handles CD ripping.
+my $VERSION = '0.5.2';
+my $CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>';
 #@ Requirements:
 #@ - unless --no-volume-normalize is used: sox(1) (sox.sourceforge.net)
 #@   NOTE: sox(1) changed - see $NEW_SOX below
@@ -9,12 +10,11 @@ my $SELF = 's-disc-ripper.pl'; #@ part of S-MusicBox; handles CD ripping.
 #@ - if MP4/AAC is used: faac(1) (www.audiocoding.com)
 #@ - if Ogg/Vorbis is used: oggenc(1) (www.xiph.org)
 #@ - OPTIONAL: CDDB.pm (www.CPAN.org)
-my $VERSION = '0.5.2';
-my $COPYRIGHT =<<__EOT__;
-Copyright (c) 1998 - 2003, 2010 - 2014, 2016 - 2018
-Copyright (c) 2020 Steffen (Daode) Nurpmeso <steffen\@sdaoden.eu>.
-ISC license.
-__EOT__
+#@
+#@ Copyright (c) 1998 - 2003, 2010 - 2014, 2016 - 2018,
+#@               2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>
+#@ SPDX-License-Identifier: ISC
+#
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
 # copyright notice and this permission notice appear in all copies.
@@ -40,7 +40,7 @@ my ($MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO) = (0,0, 1,1, 1,0);
 # Dito: change the undef to '/Desired/Path'
 my $MUSICDB = defined $ENV{S_MUSICDB} ? $ENV{S_MUSICDB} : undef;
 my $CDROM = defined $ENV{CDROM} ? $ENV{CDROM} : undef;
-my $TMPDIR = (defined $ENV{TMPDIR} && -d $ENV{TMPDIR}) ? $ENV{TMPDIR} : undef;
+my $TMPDIR = (defined $ENV{TMPDIR} && -d $ENV{TMPDIR}) ? $ENV{TMPDIR} : '/tmp';
 
 my $CDROMDEV = (defined $ENV{CDROMDEV} ? $ENV{CDROMDEV} #: undef;
       : defined $CDROM ? $CDROM : undef);
@@ -49,6 +49,7 @@ my $LINUX_CDTOCOFFSET = 2;
 
 ## -- >8 -- 8< -- ##
 
+require 5.008_001;
 use diagnostics -verbose;
 use warnings;
 use strict;
@@ -115,10 +116,7 @@ my @Genres = (
    [ 28, 'Vocal' ]
 ); # }}}
 
-my $INTRO =<<__EOT__;
-$SELF (v$VERSION)
-$COPYRIGHT
-__EOT__
+my $INTRO = "$SELF (v$VERSION)";
 
 my ($RIP_ONLY, $ENC_ONLY, $NO_VOL_NORM, $VERBOSE) = (0, 0, 0, 0);
 my ($CLEANUP_OK, $WORK_DIR, $TARGET_DIR, %CDDB) = (0);
@@ -128,7 +126,7 @@ sub main_fun{ # {{{
    command_line();
 
    $SIG{INT} = sub {print STDERR "\nInterrupted ... bye\n"; exit 1};
-   print $INTRO, "Press <CNTRL-C> at any time to interrupt\n";
+   print $INTRO, "\nPress <CNTRL-C> at any time to interrupt\n";
 
    my ($info_ok, $needs_cddb) = (0, 1);
    # Unless we have seen --encode-only=ID
@@ -228,11 +226,11 @@ sub command_line{ # {{{
                printf("%3d %s\n", $_->[0], $_->[1]) foreach(@Genres);
                exit 0
                },
-         'musicdb=s' => \$MUSICDB,
-         'tmpdir=s' => \$TMPDIR,
-         'cdrom=s' => \$CDROM,
-         'r|rip-only' => \$RIP_ONLY,
+
+         'd|device=s' => \$CDROM,
          'e|encode-only=s' => \$ENC_ONLY,
+         'm|musicdb=s' => \$MUSICDB,
+         'r|rip-only' => \$RIP_ONLY,
          'no-volume-normalize' => \$NO_VOL_NORM,
          'mp3=i' => \$MP3HI, 'mp3lo=i' => \$MP3LO,
          'aac=i' => \$AACHI, 'aaclo=i' => \$AACLO,
@@ -289,72 +287,55 @@ sub command_line{ # {{{
    return;
 
 jdocu:
-   print STDERR <<__EOT__;
-${INTRO}${SELF} is the disc ripper of the S-MusicBox set of tools.
-It will rip discs, query CDDB servers and finally encode the raw data
-to MP3 and/or (MP4/)AAC and/or (Ogg )Vorbis (as desired).
-Setting the EDITOR environment gives more comfort ("$ENV{EDITOR}").
+   my $FH = defined $emsg ? *STDERR : *STDOUT;
 
-Synopsis:
- $SELF -h|--help
+   print $FH <<__EOT__;
+${INTRO}: integrate audio disc (tracks) in S-MusicBox DB
+
  $SELF -g|--genre-list
- $SELF [-v|--verbose] [--musicdb=PATH] [--tmpdir=PATH]
-              [--cdrom=SPEC] [-r|--rip-only] [-e|--encode-only=CD(DB)ID]
-              [--mp3] [--mp3lo] [--aac] [--aaclo] [--ogg] [--ogglo]
+      Dump list of all GENREs
+ $SELF [-v] [-d DEV] [[-r|--rip-only] | [-e|--encode-only CDID]]
+       [-m|--musicdb PATH] [--no-volume-normalize]
 
- -h,--help    prints this help text and exits
- -g,--genre-list  dumps out a list of all GENREs and exits
- -v,--verbose  mostly debug, prints a lot of status messages and does
-              neither delete temporary files nor directory!
- --musicdb=PATH  specifies the path to the S-MusicBox database directory.
-              Default setting is the S_MUSICDB environment variable;
-              currently "$MUSICDB"
- --tmpdir=PATH  the (top) temporary directory to use - defaults to the TMPDIR
-              environment variable; currently "$TMPDIR"
- --cdrom=SPEC  set CDROM drive/device to be used.  SPEC is system-dependend
-              and may be something like </dev/cdrom> or </dev/acd1c>.
-              The default setting comes from the CDROM environment variable
- -r,--rip-only  exit after the data rip is completed (and see --encode-only)
- -e CDID,--encode-only=CDID
-              resume a --rip-only session.   CDID is the CDDB ID of the
-              CDROM, and has been printed out by --rip-only before ...
- --no-volume-normalize
-              By default the average volume adjustment is calculated over
-              all (selected) files and then used to normalize files.
-              If single files are ripped that may be counterproductive
- --mp3=BOOL,--mp3lo=.., --aac=..,--aaclo=.., --ogg=..,--ogglo=..
-              by default one adjusts the script header once for the
-              requirements of a specific site, but these command line
-              options can also be used to define which output files shall
-              be produced: MP3, MP4/AAC and OGG in high/low quality.
-              Current settings: $MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO
+-d|--device DEV       Use CD-ROM DEVice; else \$CDROM; else s-cdda(1) fallback
+-e|--encode-only CDID Resume a --rip-only session, which echoed the CDID to use
+-m|--musicdb PATH     S-MusicBox DB directory; else \$S_MUSICDB ($MUSICDB)
+-r|--rip-only         Only rip data, then exit; resume with --encode-only
+--no-volume-normalize
+   Average volume adjustment is calculated over all (selected) files.
+   Often counterproductive if single files are ripped
+--mp3=BOOL,--mp3lo=.., --aac=..,--aaclo=.., --ogg=..,--ogglo=..
+   Define output to be produced: MP3, MP4/AAC and OGG in high/low quality.
+   Current settings: $MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO
+-v|--verbose         Be more verbose; does not delete temporary files!
+
+Honours \$TMPDIR.
+Bugs/Contact via $CONTACT
 __EOT__
 
    if($^O eq 'darwin'){
-      print STDERR <<__EOT__;
+      print $FH <<__EOT__;
 MacOS only:
- --cdromdev=DEVSPEC
-               --cdromdev maybe needed in addition, and the SPEC variables
-               are simple drivenumbers, like, e.g. 1!
-               --cdrom= is used for the drutil(1) '-drive' option,
-               --cdromdev= is for raw </dev/disk?> access.
-               Beware that these may not match, and also depend on usage
-               order of USB devices.  The default settings come from the
-               CDROMDEV environment variable
+--cdromdev SPEC
+   Maybe needed in addition to \$CDROM; here SPEC is a simple drive number,
+   for example 1.  Whereas --cdrom= is used for the drutil(1) '-drive' option,
+   --cdromdev= is for raw </dev/disk?> access.  Beware that these may not
+   match, and also depend on usage order of USB devices.  The default settings
+   come from the \$CDROMDEV environment variable
 __EOT__
    }elsif($^O eq 'linux'){
-      print STDERR <<__EOT__;
+      print $FH <<__EOT__;
 Linux only:
- --toc-via=cdparanoia|cd-info
-              Linux only: either $CDPARANOIA(1) or cd-info(1) are used to
-              print the table-of-content of an audio CD
- --toc-off=SECS
-              Linux only: if cdparanoia is used the MSF table seems to be
-              off by some (gap) seconds.  Defaults to 2
+--toc-via=cdparanoia|cd-info
+   Linux only: either $CDPARANOIA(1) or cd-info(1) are used to print the
+   table-of-content of an audio CD
+--toc-off=SECS
+   Linux only: if cdparanoia is used the MSF table seems to be off by some
+   (gap) seconds.  Defaults to 2
 __EOT__
    }
 
-   print STDERR "\n! $emsg\n" if defined $emsg;
+   print $FH "\n! $emsg\n" if defined $emsg;
    exit defined $emsg ? 1 : 0
 } # }}}
 
