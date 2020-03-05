@@ -3,9 +3,10 @@ my $SELF = 's-disc-ripper.pl'; #@ part of S-MusicBox; handles CD ripping.
 my $VERSION = '0.5.2';
 my $CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>';
 #@ Requirements:
+#@ - s-cdda for CD-ROM access (https://ftp.sdaoden.eu/s-cdda-latest.tar.gz).
+#@   P.S.: not on MacOS X/Darwin, but not tested there for many years
 #@ - unless --no-volume-normalize is used: sox(1) (sox.sourceforge.net)
 #@   NOTE: sox(1) changed - see $NEW_SOX below
-#@ - on Linux: cd-paranoia(1) for ripping and cd-info(1) for TOC info
 #@ - if MP3 is used: lame(1) (www.mp3dev.org)
 #@ - if MP4/AAC is used: faac(1) (www.audiocoding.com)
 #@ - if Ogg/Vorbis is used: oggenc(1) (www.xiph.org)
@@ -32,9 +33,6 @@ my $CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>';
 # (I guess this refers to post v14)
 my $NEW_SOX = 1;
 
-# cdparanoia(1) is no longer maintained, cd-paranoia(1) seems to be.
-my $CDPARANOIA = 'cd-paranoia';
-
 # May be changed for different site-global default settings
 my ($MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO) = (0,0, 1,1, 1,0);
 # Dito: change the undef to '/Desired/Path'
@@ -42,10 +40,9 @@ my $MUSICDB = defined $ENV{S_MUSICDB} ? $ENV{S_MUSICDB} : undef;
 my $CDROM = defined $ENV{CDROM} ? $ENV{CDROM} : undef;
 my $TMPDIR = (defined $ENV{TMPDIR} && -d $ENV{TMPDIR}) ? $ENV{TMPDIR} : '/tmp';
 
+# Only MacOS X
 my $CDROMDEV = (defined $ENV{CDROMDEV} ? $ENV{CDROMDEV} #: undef;
       : defined $CDROM ? $CDROM : undef);
-my $LINUX_CDTOCVIA = 'cd-info';
-my $LINUX_CDTOCOFFSET = 2;
 
 ## -- >8 -- 8< -- ##
 
@@ -161,20 +158,18 @@ __EOT__
    MBDB::init_paths();
 
    # Get the info right, and maybe the database
+   if(!$info_ok){
+      CDInfo::read_data();
+      $info_ok = -1
+   }
+   Title::create_that_many($CDInfo::TrackCount);
+
    if(-f $MBDB::FinalFile){
       die 'Database corrupted - remove TARGET and re-rip entire disc'
-            # Creates $Title::List etc. as approbiate
             unless MBDB::read_data();
-      ($info_ok, $needs_cddb) = (1, 0)
-   }else{
-      if($info_ok){
-         CDInfo::write_data()
-      }else{
-         # (Can only be --encode-only.. dies as approbiate...)
-         CDInfo::read_data();
-         $info_ok = 1
-      }
-      Title::create_that_many($CDInfo::TrackCount)
+      $needs_cddb = 0
+   }elsif($info_ok > 0){
+      CDInfo::write_data()
    }
 
    if(!$RIP_ONLY && $needs_cddb){
@@ -188,11 +183,18 @@ __EOT__
       Title::rip_all_selected();
       print "\nUse --encode-only=$CDInfo::Id to resume ...\n" if $RIP_ONLY
    }elsif($ENC_ONLY){
-      my @rawfl = glob "$WORK_DIR/*.raw";
-      die '--encode-only session on empty file list' if @rawfl == 0;
+      # XXX In this case we are responsible to detect whether we ripped WAVE
+      # XXX or RAW files, a.k.a. set $CDInfo::RawIsWAVE!  Yes, this is a hack
+      my @rawfl = glob "$WORK_DIR/*.wav";
+      if(@rawfl != 0){
+         $CDInfo::RawIsWAVE = 1
+      }else{
+         @rawfl = glob "$WORK_DIR/*.raw";
+         die '--encode-only session on empty file list' if @rawfl == 0
+      }
       foreach(sort @rawfl){
          die '--encode-only session: illegal filenames exist'
-               unless /(\d+).raw$/;
+               unless /(\d+).(raw|wav)$/;
          my $i = int $1;
          die "\
 --encode-only session: track $_ is unknown!
@@ -239,16 +241,6 @@ sub command_line{ # {{{
    );
    if($^O eq 'darwin'){
       $opts{'cdromdev=s'} = \$CDROMDEV
-   }elsif($^O eq 'linux'){
-      $opts{'toc-via=s'} = sub{
-            my ($on, $ov) = @_;
-            if($ov eq 'cdparanoia' || $ov eq 'cd-info'){
-               $LINUX_CDTOCVIA = $ov
-            }else{
-               die '--toc-via: either cdparanoia or cd-info'
-            }
-            };
-      $opts{'toc-offset=i'} = \$LINUX_CDTOCOFFSET
    }
 
    my ($emsg) = (undef);
@@ -290,12 +282,13 @@ jdocu:
    my $FH = defined $emsg ? *STDERR : *STDOUT;
 
    print $FH <<__EOT__;
-${INTRO}: integrate audio disc (tracks) in S-MusicBox DB
+${INTRO}: integrate audio disc (tracks) into S-MusicBox DB
 
  $SELF -g|--genre-list
       Dump list of all GENREs
- $SELF [-v] [-d DEV] [[-r|--rip-only] | [-e|--encode-only CDID]]
-       [-m|--musicdb PATH] [--no-volume-normalize]
+ $SELF [-v] [-d DEV] [-m|--musicdb PATH]
+      [[-r|--rip-only] | [-e|--encode-only CDID]]
+      [--no-volume-normalize] [--mp3=BOOL ..]
 
 -d|--device DEV       Use CD-ROM DEVice; else \$CDROM; else s-cdda(1) fallback
 -e|--encode-only CDID Resume a --rip-only session, which echoed the CDID to use
@@ -304,13 +297,12 @@ ${INTRO}: integrate audio disc (tracks) in S-MusicBox DB
 --no-volume-normalize
    Average volume adjustment is calculated over all (selected) files.
    Often counterproductive if single files are ripped
---mp3=BOOL,--mp3lo=.., --aac=..,--aaclo=.., --ogg=..,--ogglo=..
-   Define output to be produced: MP3, MP4/AAC and OGG in high/low quality.
-   Current settings: $MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO
+--mp3=BOOL,--mp3lo=BOOL (also: --aac(lo), --ogg(lo))
+   Specify output: MP3, MP4/AAC and OGG in high/low quality.
+   Defaults: $MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO
 -v|--verbose         Be more verbose; does not delete temporary files!
 
-Honours \$TMPDIR.
-Bugs/Contact via $CONTACT
+Honours \$TMPDIR.  Bugs/Contact via $CONTACT
 __EOT__
 
    if($^O eq 'darwin'){
@@ -318,20 +310,10 @@ __EOT__
 MacOS only:
 --cdromdev SPEC
    Maybe needed in addition to \$CDROM; here SPEC is a simple drive number,
-   for example 1.  Whereas --cdrom= is used for the drutil(1) '-drive' option,
+   for example 1.  Whereas --cdrom= is used for -drive option of drutil(1),
    --cdromdev= is for raw </dev/disk?> access.  Beware that these may not
    match, and also depend on usage order of USB devices.  The default settings
    come from the \$CDROMDEV environment variable
-__EOT__
-   }elsif($^O eq 'linux'){
-      print $FH <<__EOT__;
-Linux only:
---toc-via=cdparanoia|cd-info
-   Linux only: either $CDPARANOIA(1) or cd-info(1) are used to print the
-   table-of-content of an audio CD
---toc-off=SECS
-   Linux only: if cdparanoia is used the MSF table seems to be off by some
-   (gap) seconds.  Defaults to 2
 __EOT__
    }
 
@@ -409,8 +391,9 @@ sub utf8ify{
    # String comes from CDDB, may be latin1 or utf-8
    my $sr = shift;
    my ($s, $sc) = ($$sr);
-   eval {$s = Encode::decode_utf8($s, 1)};
-   eval {$s = Encode::encode_utf8($s)} if $@;
+   eval {$s = Encode::decode_utf8($s, 1 | Encode::LEAVE_SRC)};
+   #eval {$s = Encode::encode_utf8($s)} if $@; TODO hmm, in perl 5.28.2 this
+   # TODO does no longer work the way it did in the past??
    $$sr = $s
 }
 
@@ -496,21 +479,17 @@ sub cddb_query{ # {{{
    }
 
    print "\n";
-   if($CDInfo::IsFaked){
-      print "Creating CDDB entry fakes, 'cause CDDB-ID could not be queried\n";
-      return _fake();
-   }
    eval 'require CDDB';
    if($@){
-      print "Failed to load the CDDB.pm module!\n",
-        "  Maybe it is not installed?   Search the internet for CPAN,\n",
-        "  and install it via \"\$ cpan CDDB\"\n",
-        "  Confirm to use CDDB.pm, otherwise we create faked entries."
+      print "Failed to load the perl(1) CDDB.pm module!\n",
+         '  Is it installed?  Please search the internet, ',
+            "install via \"\$ cpan CDDB\".\n",
+         '  Confirm to use CDDB.pm, an empty template is used otherwise:'
    }else{
-      print 'Shall CDDB be contacted online (otherwise entries are faked)'
+      print 'Query CDDB online, an empty template is used otherwise:'
    }
    unless(user_confirm()){
-      print "  Creating entry fakes ...\n";
+      print "  Creating empty template ...\n";
       return _fake();
    }
 
@@ -629,54 +608,37 @@ jREDO:
 } # }}}
 
 {package CDInfo; # {{{
-   our $IsFaked = 0;
+   our $RawIsWAVE = 0;
    # Id field may also be set from command_line()
    # Mostly set by _calc_id() or parse() only (except Ripper)
-   our ($Id, $TotalSeconds, $TrackCount, $FileRipper, $FallbackTrackCount,
-      $DatFile);
+   our ($Id, $TotalSeconds, $TrackCount, $FileRipper, $DatFile);
    our @TrackOffsets = ();
    my $DevId;
+   my $Leadout = 0xAA;
 
    sub init_paths{
       $DatFile = "$WORK_DIR/cdinfo.dat"
    }
 
-   sub discover{ # {{{
+   sub discover{
       no strict 'refs';
       die "System $^O not supported" unless defined *{"CDInfo::_os_$^O"};
       print "\nCDInfo: assuming an Audio-CD is in the drive ...\n";
 
-      my $what = 'Calculated';
       my $i = &{"CDInfo::_os_$^O"}();
       if(defined $i){
          print "! Error: $i\n",
-            "  Unable to collect CD Table-Of-Contents info.\n",
+            "  Unable to collect CD Table-Of-Contents.\n",
             "  This may mean the Audio-CD was not yet fully loaded.\n",
-            "  It can also happen for copy-protection .. or whatever.\n",
-            "  Shall i continue?  I would collect track count info.\n",
-            "  Note: this may require a read of *all* the disc data!\n",
-            "  (I cannot calculate a CDDB-ID anyway - no CDDB query..\n",
-            "  But i can generate a reproducable disk-ID etc.)\n",
-            "  A simple restart should be tried once first.  Continue? ";
-         exit 1 unless ::user_confirm();
-
-         $what = 'Faked';
-         $IsFaked = 1;
-         die "Do not know how to query the track count otherwise - sorry!\n"
-               unless defined $FallbackTrackCount;
-         $i = &$FallbackTrackCount();
-         die "CDInfo: $i\n  Track count query failed, bailing out"
-               if defined $i;
-
-         $TrackCount = scalar @TrackOffsets;
-         $Id = sprintf("%02dx%08x", $TrackCount, $TotalSeconds)
+            "  It can also happen for copy-protection .. or whatever.\n";
+         exit 1
       }
 
-      print "  $what disc ID: $Id\n  ",
+      print "  Calculated CDDB disc ID: $Id\n  ",
          'Track offsets: ' . join(' ', @TrackOffsets),
          "\n  Total seconds: $TotalSeconds\n",
          "  Track count: $TrackCount\n"
-   } # }}}
+   }
 
    sub _os_darwin{ # {{{
       my $drive = defined $CDROM ? $CDROM : 1;
@@ -685,13 +647,52 @@ jREDO:
 
       $FileRipper = sub{
          my $title = shift;
-         my $sf = '/dev/disk' . $DevId . 's' . $title->{NUMBER};
-         return _unix_default_rip($sf, $title->{RAW_FILE})
-      };
-      $FallbackTrackCount = sub{
-         # It is a pity! Give MacOS X some time to reorder itself..
-         sleep 1;
-         return _unix_fallback_trackcount('/dev/disk')
+         my ($inf, $outf, $byteno, $blckno, $buf, $err) =
+               (undef, undef, undef, 0, 0, undef, undef);
+         $inf = '/dev/disk' . $DevId . 's' . $title->{NUMBER};
+         $outf = $title->{RAW_FILE};
+
+         return "cannot open for reading: $inf: $!"
+               unless open INFH, '<', $inf;
+         # (Yet-exists case handled by caller)
+         unless(open OUTFH, '>', $outf){
+            $err = $!;
+            close INFH;
+            return "cannot open for writing: $outf: $err"
+         }
+         unless(binmode(INFH) && binmode(OUTFH)){
+            close OUTFH;
+            close INFH;
+            return "failed to set binary mode for $inf and/or $outf"
+         }
+
+         while(1){
+            my $r = sysread INFH, $buf, 2352 * 20;
+            unless(defined $r){
+               $err = "I/O read failed: $!";
+               last
+            }
+            last if $r == 0;
+            $byteno += $r;
+            $blckno += $r / 2352;
+
+            for(my $o = 0;  $r > 0; ){
+               my $w = syswrite OUTFH, $buf, $r, $o;
+               unless(defined $w){
+                  $err = "I/O write failed: $!";
+                  goto jdarwin_rip_stop
+               }
+               $o += $w;
+               $r -= $w
+            }
+         }
+
+jdarwin_rip_stop:
+         close OUTFH; # XXX
+         close INFH; # XXX
+         return $err if defined $err;
+         print "    .. stored $blckno blocks ($byteno bytes)\n";
+         return undef
       };
 
       # Problem: this non-UNIX thing succeeds even without media...
@@ -707,7 +708,7 @@ jREDO:
          return "drive $drive: no lead-out information found"
                unless defined $l;
          if($l =~ /^\s*Lead-out:\s+(\d+):(\d+)\.(\d+)/){
-            $leadout = "999 $1 $2 $3";
+            $leadout = "$Leadout $1 $2 $3";
             last
          }
       }
@@ -728,114 +729,65 @@ jREDO:
       return undef
    } # }}}
 
-   sub _os_freebsd{ # TODO
-      my ($dev);
+   # OSs for s-cdda {{{
+   sub _os_dragonfly {return _os_via_scdda('DragonFly BSD')}
+   sub _os_freebsd {return _os_via_scdda('FreeBSD')}
+   sub _os_linux {return _os_via_scdda('Linux')}
+   sub _os_netbsd {return _os_via_scdda('NetBSD')}
+   sub _os_openbsd {return _os_via_scdda('OpenBSD')}
 
-      $dev = defined $CDROM ? $CDROM : '/dev/cdrom';
-      print "  FreeBSD: device $dev\n";
-      die "FreeBSD support in fact missing";
-   }
-   sub _os_netbsd{ # TODO
-      my ($dev);
+   sub _os_via_scdda{
+      $RawIsWAVE = 1;
 
-      $dev = defined $CDROM ? $CDROM : '/dev/cdrom';
-      print "  NetBSD: device $dev\n";
-      die "NetBSD support in fact missing";
-   }
+      my ($dev, $l, @res, @cdtoc, $li);
 
-   sub _os_linux{ # {{{
-      my ($dev,$l,@res,@cdtoc,$li);
-
-      $dev = defined $CDROM ? $CDROM : '/dev/cdrom';
-      print "  Linux: device $dev\n";
+      print '  ', shift, ': ';
+      if(defined $CDROM){
+         $dev = "--device $CDROM";
+         print "device $CDROM"
+      }else{
+         $dev = '';
+         print 'using S-cdda(1) default device'
+      }
+      print "\n";
 
       $FileRipper = sub{
          my $title = shift;
-         return undef if 0 == system("$CDPARANOIA --force-cdrom-device=$dev " .
-               '--output-raw-little-endian ' . $title->{NUMBER} . ' - > ' .
-               $title->{RAW_FILE});
+         return undef if 0 == system("s-cdda $dev --read " .
+            $title->{NUMBER} . ' > ' .  $title->{RAW_FILE});
          return "device $dev: cannot rip track $title->{NUMBER}: $?"
       };
 
-      if($LINUX_CDTOCVIA eq 'cdparanoia'){
-         $l = $CDPARANOIA . ' -Q --force-cdrom-device ' . $dev;
-         ::v("Invoking $l");
-         $l = `$l 2>&1`;
-         return "device $dev: failed reading TOC: $!" if $?;
-         @res = split "\n", $l;
+      $l = 's-cdda ' . $dev;
+      ::v("Invoking $l");
+      $l = `$l`;
+      return "$dev: failed reading TOC: $!" if $?;
+      @res = split "\n", $l;
 
-         for(;;){
-            return "device $dev: i do not understand TOC" unless @res;
-            $l = shift @res;
-            last if $l =~ /^=+$/
-         }
+      for($li = 0;; ++$li){
+         $l = shift @res;
+         last unless defined $l;
+         if($l =~ /^track=(\d+)\s+
+               t\d+_msf=(\d+):(\d+).(\d+)\s+
+               t\d+_lba=(\d+)\s+
+               .*$/x){
+            my ($tno, $mm, $ms, $mf, $lba) = ($1, $2, $3, $4, $5);
 
-         sub _toa{
-            my ($m, $s, $f) = (@_);
-            $s += $LINUX_CDTOCOFFSET;
-            if($s > 59){
-               $m += int($s / 60);
-               $s %= 60
-            }
-            "$m $s $f"
-         }
-
-         for($li = 0;; ++$li){
-            $l = shift @res;
-            last unless defined $l;
-            if($l =~ /^TOTAL\s+\d+\s+\[(\d+):(\d+)\.(\d+)\]/){
-               push @cdtoc, '999 ' . _toa($1, $2, $3);
+            if($tno == 0){
+               push @cdtoc, "$Leadout $mm $ms $mf";
                _calc_cdid(\@cdtoc);
                return undef
-            }elsif($l =~ /^\s*(\d+)\.\s+\d+\s+\[\d+:\d+\.\d+\]
-                  \s+\d+\s+\[(\d+):(\d+)\.(\d+)\]/x){
-               return "device $dev: corrupted TOC: $1 follows $li"
-                     unless $1 == $li + 1;
-               $cdtoc[$li] = "$1 " . _toa($2, $3, $4);
             }else{
-               last
+               return "device $dev: corrupted TOC: $tno follows $li"
+                  unless $tno == $li + 1;
+               $cdtoc[$li] = "$tno $mm $ms $mf"
             }
-         }
-      }elsif($LINUX_CDTOCVIA eq 'cd-info'){
-         $l = 'cd-info --no-cddb --no-device-info --no-vcd ' .
-               '--no-analyze --no-disc-mode --cdrom-device=' . $dev;
-         ::v("Invoking $l");
-         $l = `$l`;
-         return "device $dev: failed reading TOC: $!" if $?;
-         @res = split "\n", $l;
-
-         for(;;){
-            return "device $dev: i do not understand TOC" unless @res;
-            $l = shift @res;
-            last if $l =~ /^\s+#:\s+MSF\s+/
-         }
-
-         for($li = 0;; ++$li){
-            $l = shift @res;
-            last unless defined $l;
-            if($l =~ /^\s*\d+:\s+(\d+):(\d+):(\d+)\s+\d+\s+leadout\s+/){
-               push @cdtoc, "999 $1 $2 $3";
-               _calc_cdid(\@cdtoc);
-               return undef
-            }elsif($l =~ /^\s*(\d+):\s+(\d+):(\d+):(\d+)\s+/){
-               return "device $dev: corrupted TOC: $1 follows $li"
-               unless $1 == $li + 1;
-               $cdtoc[$li] = "$1 $2 $3 $4"
-            }else{
-               last
-            }
+         }else{
+            die "Invalid line: $l\n"
          }
       }
       return "device $dev: no valid track information found"
    } # }}}
-
-   sub _os_openbsd{ # TODO
-      my ($dev);
-
-      $dev = defined $CDROM ? $CDROM : '/dev/cdrom';
-      print "  OpenBSD: device $dev\n";
-      die "OpenBSD support in fact missing";
-   }
 
    # Calculated CD(DB)-Id and *set*CDInfo*fields*
    sub _calc_cdid{ # {{{
@@ -848,8 +800,7 @@ jREDO:
          my $frame_off = (($min * 60 + $sec) * 75) + $frame;
          my $sec_begin = int($frame_off / 75);
          $sec_first = $sec_begin unless defined $sec_first;
-         # Track 999 was chosen for the lead-out information
-         if($no == 999){
+         if($no == $Leadout){
             $TotalSeconds = $sec_begin;
             last
          }
@@ -861,87 +812,7 @@ jREDO:
             $sum % 255, $TotalSeconds - $sec_first, $TrackCount)
    } # }}}
 
-   sub _unix_default_rip{ # {{{
-      my ($byteno, $blckno, $buf, $err) = (0, 0, undef, undef);
-      my ($inf, $outf) = @_;
-      return "cannot open for reading: $inf: $!" unless open INFH, '<', $inf;
-      # (Yet-exists case handled by caller)
-      unless(open OUTFH, '>', $outf){
-         $err = $!;
-         close INFH;
-         return "cannot open for writing: $outf: $err"
-      }
-      unless(binmode(INFH) && binmode(OUTFH)){
-         close OUTFH;
-         close INFH;
-         return "failed to set binary mode for $inf and/or $outf"
-      }
-
-jOUTER:
-      while(1){
-         my $r = sysread INFH, $buf, 2352 * 20;
-         unless(defined $r){
-            $err = "I/O read failed: $!";
-            last
-         }
-         last if $r == 0;
-         $byteno += $r;
-         $blckno += $r / 2352;
-
-         for(my $o = 0;  $r > 0; ){
-            my $w = syswrite OUTFH, $buf, $r, $o;
-            unless(defined $w){
-               $err = "I/O write failed: $!";
-               last jOUTER
-            }
-            $o += $w;
-            $r -= $w
-         }
-      }
-
-      close OUTFH; # XXX
-      close INFH; # XXX
-      return $err if defined $err;
-      print "    .. stored $blckno blocks ($byteno bytes)\n";
-      return undef
-   } # }}}
-
-   sub _unix_fallback_trackcount{ # {{{ TODO macos only
-      my $diskdev = shift;
-      my $i = 0;
-      my $p = '/dev/disk' . $DevId . 's';
-      for(; my $j = $i + 1; $i = $j){
-         my $x = $p . $j;
-         last unless -e $x;
-
-         $| = 1; print "    checking $x ... "; $| = 0;
-         my $totlen = 0;
-         return "failed to check $x" unless open FH, '<', $x;
-         unless(binmode FH){
-            close FH;
-            return "failed to set binary mode for $x"
-         }
-         my $buf;
-         while(1){
-            my $bread = sysread FH, $buf, 2352 * 20;
-            unless(defined $bread){
-               close FH;
-               return "failed to read all data of $x"
-            }
-            last if $bread == 0;
-            $totlen += $bread
-         }
-         close FH; # XXX
-         push @TrackOffsets, $totlen;
-         $TotalSeconds += $totlen;
-         print "had $totlen bytes\n"
-      }
-      return "no such file: ${p}1.  Sure this is a CDROM?" unless $i != 0;
-      $TrackCount = $i;
-      return undef
-   } # }}}
-
-   # write_data, read_data, parse_data ($DatFile handling) {{{
+   # write_data, read_data ($DatFile handling) {{{
    sub write_data{
       my $f = $DatFile;
       ::v("CDInfo::write_data($f)");
@@ -950,7 +821,8 @@ jOUTER:
          "# Do not modify!   Or project needs to be re-ripped!!\n",
          "CDID = $Id\n",
          'TRACK_OFFSETS = ', join(' ', @TrackOffsets), "\n",
-         "TOTAL_SECONDS = $TotalSeconds\n";
+         "TOTAL_SECONDS = $TotalSeconds\n",
+         "RAW_IS_WAVE = 1\n";
       die "Cannot close $f: $!" unless close DAT
    }
 
@@ -961,20 +833,17 @@ jOUTER:
          unless open DAT, '<:encoding(UTF-8)', $f;
       my @lines = <DAT>;
       die "Cannot close $f: $!" unless close DAT;
-      parse_data(\@lines)
-   }
 
-   sub parse_data{
       # It may happen that this is called even though discover()
       # already queried the disc in the drive - nevertheless: resume!
       my $old_id = $Id;
       my $laref = shift;
-      ::v("CDInfo::parse_data()");
+      $RawIsWAVE = 0;
       $Id = $TotalSeconds = $TrackCount = undef;
       @TrackOffsets = ();
 
       my $emsg = undef;
-      foreach(@$laref){
+      foreach(@lines){
          chomp;
          next if /^\s*#/;
          unless(/^\s*(.+?)\s*=\s*(.+?)\s*$/){
@@ -997,6 +866,9 @@ jOUTER:
          }elsif($k eq 'TOTAL_SECONDS'){
             $emsg .= "invalid TOTAL_SECONDS: $v;" unless $v =~ /^(\d+)$/;
             $TotalSeconds = $1
+         }elsif($k eq 'RAW_IS_WAVE'){
+            $emsg .= "invalid RAW_IS_WAVE: $v;" unless $v =~ /^(\d)$/;
+            $RawIsWAVE = $1
          }else{
             $emsg .= "Invalid line: $_;"
          }
@@ -1064,7 +936,7 @@ jOUTER:
          NUMBER => $no,
          INDEX => $no - 1,
          NUMBER_STRING => $nos,
-         RAW_FILE => "$WORK_DIR/$nos.raw",
+         RAW_FILE => "$WORK_DIR/$nos" . ($CDInfo::RawIsWAVE ? '.wav' : '.raw'),
          TARGET_PLAIN => "$TARGET_DIR/$nos",
          IS_SELECTED => 0,
          TAG_INFO => Title::TagInfo->new()
@@ -1145,7 +1017,7 @@ jOUTER:
    sub read_data {return _read_data($FinalFile)}
 
    sub create_data{
-      my $ed = defined $ENV{EDITOR} ? $ENV{EDITOR} : '/usr/bin/vi';
+      my $ed = defined $ENV{VISUAL} ? $ENV{VISUAL} : '/usr/bin/vi';
       print "\nCreating S-MusicBox per-disc database\n";
       @SongAddons = (); $SortAddons = '';
       _create_addons();
@@ -1288,10 +1160,8 @@ jREDO:
    }
 
    sub _help_text{
-      my $adder = (! $CDInfo::IsFaked ? ''
-            : "\n# (Disc-Id and thus [CDDB] entries were faked)\n");
       return <<__EOT__
-# S-MusicBox database, CDDB info: $CDDB{GENRE}/$CDInfo::Id$adder
+# S-MusicBox database, CDDB info: $CDDB{GENRE}/$CDInfo::Id
 # This file is and used to be in UTF-8 encoding (codepage,charset) ONLY!
 # Syntax (processing is line based):
 # - Leading and trailing whitespace is ignored
@@ -1309,8 +1179,6 @@ __EOT__
       die "Cannot open $df: $!" unless open DF, '>:encoding(UTF-8)', $df;
       die "Error writing $df: $!"
             unless print DF "[CDDB]\n",
-                (! $CDInfo::IsFaked ? ''
-                 : "# (The [CDDB] entries were faked: offsets=bytes)\n"),
                 "CDID = $CDInfo::Id\n",
                 "TRACK_OFFSETS = ", join(' ', @CDInfo::TrackOffsets),
                 "\nTOTAL_SECONDS = $CDInfo::TotalSeconds\n";
@@ -1431,7 +1299,6 @@ jERROR:     $Error = 1;
       return 'CDDB requires CDID, TRACK_OFFSETS and TOTAL_SECONDS;'
             unless(defined $self->{CDID} && defined $self->{TRACK_OFFSETS} &&
                defined $self->{TOTAL_SECONDS});
-      CDInfo::parse_data($self->{_data});
       undef
    }
 } # }}}
@@ -1916,14 +1783,13 @@ __EOT__
       foreach my $t (@Title::List){
          next unless $t->{IS_SELECTED};
          my $f = $t->{RAW_FILE};
-         die "Cannot open SOX stat for $f: $!"
-               unless open SOX,
-                  ($NEW_SOX
-                   ? "sox -t raw -r 44100 -c 2 -b 16 -e signed-integer $f " .
-                     "-n stat -v 2>&1 |"
-                   : "sox -t raw -r 44100 -c 2 -w -s $f -e stat -v 2>&1 |");
+         my $cmd = 'sox ' . ($CDInfo::RawIsWAVE ? '-t wav'
+                  : '-t raw -r 44100 -c 2 ' .
+                     ($NEW_SOX ? "-b 16 -e signed-integer" : "-w -s")) .
+               " $f -n stat -v 2>&1 |";
+         die "Cannot open SOX stat for $f: $cmd: $!" unless open SOX, $cmd;
          my $avg = <SOX>;
-         die "Cannot close SOX stat for $f: $!" unless close SOX;
+         die "Cannot close SOX stat for $f: $cmd: $!" unless close SOX;
          chomp $avg;
 
          if($t->{INDEX} != 0 && $t->{INDEX} % 7 == 0){
@@ -1961,16 +1827,19 @@ __EOT__
       my @Coders;
 
       if(defined $VolNorm){
-         die "Cannot open RAW input sox(1) pipe: $!"
-               unless open RAW,
-                  "sox $VolNorm -t raw -r 44100 -c 2 " .
-                     ($NEW_SOX ? "-b 16 -e signed-integer" : "-w -s") .
-                     " " . $title->{RAW_FILE} . ' -t raw - |'
+         my $cmd = "sox $VolNorm " .
+               ($CDInfo::RawIsWAVE ? '-t wav'
+                : '-t raw -r 44100 -c 2 ' .
+                  ($NEW_SOX ? '-b 16 -e signed-integer' : '-w -s')) .
+               ' ' . $title->{RAW_FILE} .
+               ($CDInfo::RawIsWAVE ? ' -t wav ' : ' -t raw ') . '- |';
+         die "Cannot open RAW input sox(1) pipe: $cmd: $!"
+               unless open RAW, $cmd
       }else{
-         die "Cannot open RAW input file: $!"
+         die "Cannot open input file: $title->{RAW_FILE}: $!"
                unless open RAW, '<', $title->{RAW_FILE}
       }
-      die "binmode RAW input failed: $!" unless binmode RAW;
+      die "binmode $title->{RAW_FILE} failed: $!" unless binmode RAW;
 
       push @Coders, Enc::Coder::MP3->new($title) if $MP3HI || $MP3LO;
       push @Coders, Enc::Coder::AAC->new($title) if $AACHI || $AACLO;
@@ -2046,9 +1915,10 @@ __EOT__
             : ('low', 'LO', '-V 7', $self->{lopath}));
       ::v("Creating MP3 lame(1) $s-quality encoder");
       ::utf8_echomode_on();
-      die "Cannot open MP3$t: $!"
-            unless open(my $fd, '| lame --quiet -r -x -s 44.1 --bitwidth 16 ' .
-               "--vbr-new $b -q 0 - - >> $f");
+      my $cmd = '| lame --quiet ' .
+            ($CDInfo::RawIsWAVE ? '' : '-r -s 44.1 --bitwidth 16 ') .
+            "--vbr-new $b -q 0 - - >> $f";
+      die "Cannot open MP3$t: $cmd: $!" unless open(my $fd, $cmd);
       ::utf8_echomode_off();
       die "binmode error MP3$t: $!" unless binmode $fd;
       $self->{$ishi ? 'hif' : 'lof'} = $fd
@@ -2189,9 +2059,10 @@ __EOT__
             : ('low', 'LO', '-q 80', $self->{lopath}));
       ::v("Creating AAC faac(1) $s-quality encoder");
       ::utf8_echomode_on();
-      die "Cannot open AAC$t: $!"
-            unless open(my $fd, '| faac -XP --mpeg-vers 4 -w --tns ' .
-               "$b $self->{aactag} -o $f - >/dev/null 2>&1");
+      my $cmd = '| faac ' . ($CDInfo::RawIsWAVE ? '' : '-XP ') .
+            '--mpeg-vers 4 -w --tns ' .
+            "$b $self->{aactag} -o $f - >/dev/null 2>&1";
+      die "Cannot open AAC$t: $cmd: $!" unless open(my $fd, $cmd);
       ::utf8_echomode_off();
       die "binmode error AAC$t: $!" unless binmode $fd;
       $self->{$ishi ? 'hif' : 'lof'} = $fd
@@ -2244,10 +2115,11 @@ __EOT__
             : ('low', 'LO', '-q 3.8', $self->{lopath}));
       ::v("Creating OGG Vorbis oggenc(1) $s-quality encoder");
       ::utf8_echomode_on();
-      die "Cannot open OGG$t: $!"
-            unless open(my $fd, "| oggenc -Q -r $b $self->{oggtag} -o $f -");
+      my $cmd = '| oggenc ' . ($CDInfo::RawIsWAVE ? '' : '-r ') .
+            "-Q $b $self->{oggtag} -o $f -";
+      die "Cannot open OGG$t: $!" unless open(my $fd, $cmd);
       ::utf8_echomode_off();
-      die "binmode error AAC$t: $!" unless binmode $fd;
+      die "binmode error OGG$t: $!" unless binmode $fd;
       $self->{$ishi ? 'hif' : 'lof'} = $fd
    }
 
