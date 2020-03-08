@@ -7,11 +7,9 @@ entropy-saver.c:
    Linux: for my use cases i find it annoying that "entropy_avail" is not
    incremented when i restore the saved random seed that machines have
    collected so hard.  This little program touches this count also.
-
+   ...
    2019-01-21: Small fixes, and take care for EAGAIN (Bernd Petrovitsch).
    2019-01-24: use syslog(3) instead; also test EBUSY (Bernd Petrovitsch).
-   2019-01-25: add comment regarding interaction with haveged etc.
-   2019-05-30: jump more directly; add a XXX on file creation.
 
 fan-adaptive.sh:
    "Adaptive", more generic, and much more easily adaptable successor of
@@ -25,9 +23,8 @@ find-command.sh:
    which(1) is not standardized, and command(1) -v may return non-executable,
    so here is how it is possible to really find a usable executable file.
    Thanks to Robert Elz (kre).
-
+   ...
    2019-02-05: truly support presets again (e.g. "awk=nawk TESTFUN ...").
-   2019-03-07: fix brain damage.
 
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so
@@ -50,14 +47,15 @@ quote-rndtrip.sh:
    Round trip quote strings in POSIX (and elder) shell(s).
    Thanks to Robert Elz (kre).
 
-   2019-05-27: ensure outer driver(s) do not leak variabes (Steven Penny)
+   2019-05-27: ensure outer driver(s) do not leak variabes (Steven Penny).
 
-s-cdda.c (manual in s-cdda.1):
+s-cdda.c (manual in s-cdda.1) v0.0.5:
    Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
    Developed in 2020 on then current operating-systems and hardware.
 
    2020-03-03: base even track reading upon SCSI MMC commands.
-               Also: port to FreeBSD, NetBSD, OpenBSD.
+               And port to DragonFly BSD, FreeBSD, NetBSD, and OpenBSD.
+   2020-03-08, v0.0.5: a_read(): "fix" log message(s).
 
 zte.sh:
    Control a ZTE modem (MF79 and many others according to web search)
@@ -80,18 +78,11 @@ backup.sh:
    "send" in addition!
    ...
    2016-08-27: FIX faulty xarg/tar -c invocations (Ralph Corderoy)
-   ...
-   2019-04-14: change builtin path set, and $OUTPUT_DIR.
    2019-05-10: extend exclude glob.
 
 btrfs-snapshot.sh:
    Simple script to deal with BTRFS snapshots.
-
-   2019-04-25: rewritten to work with /root/$HOSTNAME/btrfs-snapshot
-               configuration files, and added some primitives.  Code neater.
-               E.g., "HOSTNAME=stickname btrfs-snapshot.sh sync-to-cwd /X".
-   2019-04-29: tweak latter: now "receive-ball" everywhere.
-               Also do not expand all the ball, but only dir to work with.
+   ...
    2019-09-29: allow directories as arguments to receive-ball.
 
 cdoc-freebsd.S:
@@ -103,16 +94,11 @@ cdoc-freebsd.S:
 gen-uushar-wrapper:
    Creates a shell archive similar to uushar as below, except that the
    archive (1) consists only of executable file members, and (2) will
-   be itself executable.  Run it (the generated shell archive script)
-   to invoke any of the programs contained therein.  On the first run,
-   the wrapper will create a hidden directory in your $TMPDIR to unpack
-   the archive members therein.  Run without arguments to show its
-   contents and the creation date.
-   It needs no manual, simply execute it and it will guide you through
-   the archive creation process.
-
-   Note that the uudecode(1) program must be capable of decoding to
-   /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
+   be itself executable.  Run the generated shell archive script to invoke
+   any of its programs.  Upon first invocation the wrapper creates a
+   hidden directory in $TMPDIR to unpack its members.
+   Without arguments it shows its contents and the creation date.
+   Simply execute it, it guides through the archive creation process.
    ...
    2016-01-05: port to FreeBSD: uudecode(1) does not honour /dev/stdout
                in-stream, so give -o command line option.
@@ -132,15 +118,13 @@ real-periodic.sh:
       #15 4 * * 6 root periodic weekly
       #30 5 1 * * root periodic monthly
    ...
-   2017-08-05: oh, fix the latter mess!  No more sleeps there, too?
 
 uushar (manual in uushar.1):
-   Writes a sh(1) shell script to the standard output which will
-   recreate the file hierarchy specified by the command line operands.
-   Directories will be recreated and must be specified before the files
-   they contain.  Compared to the well-known shar(1) program, uushar(1)
-   adds optional compression and an uuencode(1)/uudecode(1) binary
-   safe layer::
+   Writes a sh(1) shell script to standard output that recreates the file
+   hierarchy specified by the command line operands.  Directories will be
+   recreated and must be specified before the files they contain.
+   Compared to the well-known shar(1) program, uushar(1) adds optional
+   compression and an uuencode(1)/uudecode(1) binary safe layer::
 
       $ uushar [-(Z|z|J|j)] file ...
 
@@ -150,12 +134,6 @@ uushar (manual in uushar.1):
    implementation of uushar may be easily examined with the command::
 
       $ grep '^[^X#]' shar.file
-
-   Note that the uudecode(1) program must be capable of decoding to
-   /dev/stdout, i.e., it must be POSIX compliant (Issue 6 iirc).
    ...
-   2016-01-05: port to FreeBSD: uudecode(1) does not honour /dev/stdout
-               in-stream, so give -o command line option.
-               mdocmx(7)ified++ manual.
 
 # s-it-mode

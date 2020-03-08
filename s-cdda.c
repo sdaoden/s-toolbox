@@ -24,7 +24,7 @@
  */
 
 /* */
-#define a_VERSION "0.0.4"
+#define a_VERSION "0.0.5"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* -- >8 -- 8< -- */
