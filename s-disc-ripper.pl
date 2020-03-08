@@ -10,6 +10,7 @@ my $CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>';
 #@ - if MP3 is used: lame(1) (www.mp3dev.org)
 #@ - if MP4/AAC is used: faac(1) (www.audiocoding.com)
 #@ - if Ogg/Vorbis is used: oggenc(1) (www.xiph.org)
+#@ - if FLAC is used: flac(1) (www.xiph.org)
 #@ - OPTIONAL: CDDB.pm (www.CPAN.org)
 #@
 #@ Copyright (c) 1998 - 2003, 2010 - 2014, 2016 - 2018,
@@ -34,7 +35,7 @@ my $CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>';
 my $NEW_SOX = 1;
 
 # May be changed for different site-global default settings
-my ($MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO) = (0,0, 1,1, 1,0);
+my ($MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO, $FLAC) = (0,0, 1,1, 1,0, 0);
 # Dito: change the undef to '/Desired/Path'
 my $MUSICDB = defined $ENV{S_MUSICDB} ? $ENV{S_MUSICDB} : undef;
 my $CDROM = defined $ENV{CDROM} ? $ENV{CDROM} : undef;
@@ -237,6 +238,7 @@ sub command_line{ # {{{
          'mp3=i' => \$MP3HI, 'mp3lo=i' => \$MP3LO,
          'aac=i' => \$AACHI, 'aaclo=i' => \$AACLO,
          'ogg=i' => \$OGGHI, 'ogglo=i' => \$OGGLO,
+         'flac=i' => \$FLAC,
          'v|verbose' => \$VERBOSE
    );
    if($^O eq 'darwin'){
@@ -297,9 +299,9 @@ ${INTRO}: integrate audio disc (tracks) into S-MusicBox DB
 --no-volume-normalize
    Average volume adjustment is calculated over all (selected) files.
    Often counterproductive if single files are ripped
---mp3=BOOL,--mp3lo=BOOL (also: --aac(lo), --ogg(lo))
-   Specify output: MP3, MP4/AAC and OGG in high/low quality.
-   Defaults: $MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO
+--mp3=BOOL,--mp3lo=BOOL (also: --aac(lo), --ogg(lo), --flac)
+   Specify output: MP3, MP4/AAC and OGG in high/low quality, and FLAC.
+   Defaults: $MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO, $FLAC
 -v|--verbose         Be more verbose; does not delete temporary files!
 
 Honours \$TMPDIR.  Bugs/Contact via $CONTACT
@@ -1844,6 +1846,7 @@ __EOT__
       push @Coders, Enc::Coder::MP3->new($title) if $MP3HI || $MP3LO;
       push @Coders, Enc::Coder::AAC->new($title) if $AACHI || $AACLO;
       push @Coders, Enc::Coder::OGG->new($title) if $OGGHI || $OGGLO;
+      push @Coders, Enc::Coder::FLAC->new($title) if $FLAC;
 
       for(my $data;;){
          my $bytes = sysread RAW, $data, 1024 * 1000;
@@ -2149,6 +2152,61 @@ __EOT__
          $self->{oggtag} .=" --comment \"S-MUSICBOX:COMM=$i\""
       }
       ::v("OGGTag: $self->{oggtag}")
+   }
+} # }}}
+
+{package Enc::Coder::FLAC; # {{{
+   our @ISA = 'Enc::Coder';
+
+   sub new{
+      my ($self, $title) = @_;
+      $self = Enc::Coder::new($self, $title, 'FLAC', 'FLAC', 'flac');
+      $self = bless $self;
+      $self->_flac_comment($title);
+      $self->_open($title);
+      $self
+   }
+
+   sub _open{
+      my ($self, $title) = @_;
+      ::v("Creating FLAC encoder");
+      ::utf8_echomode_on();
+      my $cmd = '| flac ' .
+            ($CDInfo::RawIsWAVE ? ''
+             : '--endian=little --sign=signed --channels=2 ' .
+                  '--bps=16 --sample-rate=44100 ') .
+            "--silent -8 -e -M -p $self->{flactag} -o $self->{hipath} -";
+      die "Cannot open FLAC: $!" unless open(my $fd, $cmd);
+      ::utf8_echomode_off();
+      die "binmode error FLAC: $!" unless binmode $fd;
+      $self->{hif} = $fd
+   }
+
+   sub _flac_comment{
+      my ($self, $title) = @_;
+      my $ti = $title->{TAG_INFO};
+      my $i;
+      $self->{flactag} = '';
+      $i = $ti->{ARTIST};
+         $i =~ s/"/\\"/g;
+         $self->{flactag} .= "-T artist=\"$i\" ";
+      $i = $ti->{ALBUM};
+         $i =~ s/"/\\"/g;
+         $self->{flactag} .= "-T album=\"$i\" ";
+      $i = $ti->{TITLE};
+         $i =~ s/"/\\"/g;
+         $self->{flactag} .= "-T title=\"$i\" ";
+      $self->{flactag} .= "-T tracknumber=\"$ti->{TRACKNUM}\" "
+         . (defined $ti->{TPOS} ? "-T TPOS=$ti->{TPOS} " : '')
+         . "-T TRCK=$ti->{TRCK} "
+         . "-T genre=\"$ti->{GENRE}\" "
+         . (defined $ti->{YEAR} ? "-T date=\"$ti->{YEAR}\"" : '');
+      $i = $ti->{COMM};
+      if(defined $i){
+         $i =~ s/"/\\"/g;
+         $self->{flactag} .=" -T \"S-MUSICBOX:COMM=$i\""
+      }
+      ::v("FLACTag: $self->{flactag}")
    }
 } # }}}
 } # Enc::Coder
