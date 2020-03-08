@@ -732,7 +732,7 @@ a_read(struct a_data *dp, u8 tno){
             a_MMC_FRAME_SIZE));
 
    lbas = dp->d_track_data[tno].t_lba;
-   lbae = dp->d_track_data[(tno == dp->d_trackno_end) ? 0 : ++tno].t_lba;
+   lbae = dp->d_track_data[(tno == dp->d_trackno_end) ? 0 : tno + 1].t_lba;
    rv = lbae - lbas;
    len = rv * a_MMC_FRAME_SIZE;
 
