@@ -49,7 +49,7 @@ quote-rndtrip.sh:
 
    2019-05-27: ensure outer driver(s) do not leak variabes (Steven Penny).
 
-s-cdda.c (manual in s-cdda.1) v0.0.5:
+s-cdda.c (manual in s-cdda.1; s-cdda.makefile) v0.0.5:
    Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
    Developed in 2020 on then current operating-systems and hardware.
 
