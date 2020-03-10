@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd February 29, 2020
+.Dd March 10, 2020
 .Dt S-CDDA 1
 .Os
 .Mx -enable
@@ -29,8 +29,14 @@
 .Sh SYNOPSIS
 .
 .Nm
+.Fl h
+.Nm
+.Fl L
+.Pp
+.Nm
 .Op Fl nv
 .Op Fl d Ar DEVICE
+.Pf : Fl l Ar LANGUAGE :
 .Fl a
 .Nm
 .Op Fl nv
@@ -47,6 +53,7 @@
 .Nm
 .Op Fl nv
 .Op Fl d Ar DEVICE
+.Pf : Fl l Ar LANGUAGE :
 .Fl x
 .Pp
 .Nm
@@ -91,12 +98,26 @@ is inspected, a system-dependent value (like
 is used as a fallback.
 .
 .Mx
+.It Fl h , Fl Fl help
+Show a brief usage summary, then exit.
+.
+.Mx
 .It Fl i , Fl Fl isrc
 Query the International Standard Recording Code (ISRC) entries,
 if available on the CD-ROM and supported by the device.
 Quality of service: devices are known which do not find ISRC
 subchannel data: repeating the query may succeed.
 Is missing on many CD-ROMs.
+.
+.Mx
+.It Fl L , Fl Fl list-lang
+Show list of selectable CD-TEXT languages, then exit.
+.
+.Mx
+.It Fl l Ar LANGUAGE , Fl Fl lang Ar ..
+Add a language, case-insensitively, to the CD-TEXT filter.
+If used multiple times, earlier ones take precedence, the best
+fitting CD-TEXT entry will be used.
 .
 .Mx
 .It Fl m , Fl Fl mcn

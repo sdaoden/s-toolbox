@@ -2,9 +2,7 @@
  *@ Developed in 2020 on then current operating-systems and hardware.
  *@ Thanks to Thomas Schmitt (libburnia) for cdrom-cookbook.txt and cdtext.txt.
  *@ According to SCSI Multimedia Commands - 3 (MMC-3, Revision 10g).
- *@ Compile (note: @CC are tags, not to be removed):
- *@CC - DragonFlyBSD,FreeBSD: cc/c99/gcc/clang -O2 -o s-cdda s-cdda.c -lcam
- *@CC - Linux,NetBSD,OpenBSD: cc/c99/gcc/clang -O2 -o s-cdda s-cdda.c
+ *@ Use s-cdda.makefile for compilation: $ make -f s-cdda.makefile"
  *@ TODO de-preemphasis, handling of SCSI sense states?
  *
  * Copyright (c) 2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
@@ -64,6 +62,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sysexits.h>
 #include <unistd.h>
 
@@ -112,6 +111,7 @@
 #define u32 unsigned int
 #define u16 unsigned short
 #define u8 unsigned char
+#define U8_MAX 0xFFu
 #define boole u8
 #define FAL0 0
 #define TRU1 1
@@ -247,10 +247,7 @@ enum a_cdtext{
 #define a_CDTEXT_PACK_IDX2T(T) ((T) + 0x80)
 
    a_CDTEXT_CHARSET_LATIN1 = 0x00,
-   a_CDTEXT_CHARSET_ASCII = 0x01,
-
-   a_CDTEXT_LANG_NONE = 0x00,
-   a_CDTEXT_LANG_ENGLISH = 0x09
+   a_CDTEXT_CHARSET_ASCII = 0x01
 };
 
 struct a_mmc_cmd{
@@ -302,6 +299,11 @@ struct a_mmc_cmd_x43_cdtext_resp{
    u8 crc[2];
 };
 
+struct a_cdtext_lang{
+   u8 cdtl_code;
+   char cdtl_name[15];
+};
+
 struct a_track{
    u8 t_tflags;
    u8 t_minute; /* MSF style */
@@ -336,8 +338,116 @@ struct a_data{
     * no merging, fill missing pieces when dumping CD-TEXT.
     * Note: CD-TEXT data is indexed according to CD-TEXT track information! */
    struct a_track d_track_data[a_MMC_TRACKS_MAX + 1]; /* [0] = leadout/CD */
-   char *d_cdtext_text_data; /* Just a huge storage for that stuff */
+   struct a_cdtext_lang const *d_cdtext_lang[8]; /* Last is NIL */
+   char *d_cdtext_text_data; /* Just a huge storage for that stuff, iff any */
    struct a_rawbuf d_rawbufs[a__ACT_RAWBUF_MAX];
+};
+
+/* Must be alpha sorted ("sort -k 2") */
+static struct a_cdtext_lang const a_cdtext_langa[] = {
+   {0x00, "Unknown"}, /* Note: 0x00 assumed to be "Unknown" */
+   {0x01, "Albanian"},
+   {0x7f, "Amharic"},
+   {0x7e, "Arabic"},
+   {0x7d, "Armenian"},
+   {0x7c, "Assamese"},
+   {0x7b, "Azerbaijani"},
+   {0x7a, "Bambora"},
+   {0x0d, "Basque"},
+   {0x78, "Bengali"},
+   {0x79, "Bielorussian"},
+   {0x02, "Breton"},
+   {0x77, "Bulgarian"},
+   {0x76, "Burmese"},
+   {0x03, "Catalan"},
+   {0x75, "Chinese"},
+   {0x74, "Churash"},
+   {0x04, "Croatian"},
+   {0x06, "Czech"},
+   {0x07, "Danish"},
+   {0x73, "Dari"},
+   {0x1d, "Dutch"},
+   {0x09, "English"},
+   {0x0b, "Esperanto"},
+   {0x0c, "Estonian"},
+   {0x0e, "Faroese"},
+   {0x27, "Finnish"},
+   {0x2a, "Flemish"},
+   {0x0f, "French"},
+   {0x10, "Frisian"},
+   {0x72, "Fulani"},
+   {0x12, "Gaelic"},
+   {0x13, "Galician"},
+   {0x71, "Georgian"},
+   {0x08, "German"},
+   {0x70, "Greek"},
+   {0x6f, "Gujurati"},
+   {0x6e, "Gurani"},
+   {0x6d, "Hausa"},
+   {0x6c, "Hebrew"},
+   {0x6b, "Hindi"},
+   {0x1b, "Hungarian"},
+   {0x14, "Icelandic"},
+   {0x6a, "Indonesian"},
+   {0x11, "Irish"},
+   {0x15, "Italian"},
+   {0x69, "Japanese"},
+   {0x68, "Kannada"},
+   {0x67, "Kazakh"},
+   {0x66, "Khmer"},
+   {0x65, "Korean"},
+   {0x64, "Laotian"},
+   {0x16, "Lappish"},
+   {0x17, "Latin"},
+   {0x18, "Latvian"},
+   {0x1a, "Lithuanian"},
+   {0x19, "Luxembourgian\0"},
+   {0x63, "Macedonian"},
+   {0x62, "Malagasay"},
+   {0x61, "Malaysian"},
+   {0x1c, "Maltese"},
+   {0x5f, "Marathi"},
+   {0x60, "Moldavian"},
+   {0x5e, "Ndebele"},
+   {0x5d, "Nepali"},
+   {0x1e, "Norwegian"},
+   {0x1f, "Occitan"},
+   {0x5c, "Oriya"},
+   {0x5b, "Papamiento"},
+   {0x5a, "Persian"},
+   {0x20, "Polish"},
+   {0x21, "Portuguese"},
+   {0x59, "Punjabi"},
+   {0x58, "Pushtu"},
+   {0x57, "Quechua"},
+   {0x22, "Romanian"},
+   {0x23, "Romansh"},
+   {0x56, "Russian"},
+   {0x55, "Ruthenian"},
+   {0x24, "Serbian"},
+   {0x54, "Serbo-croat"},
+   {0x53, "Shona"},
+   {0x52, "Sinhalese"},
+   {0x25, "Slovak"},
+   {0x26, "Slovenian"},
+   {0x51, "Somali"},
+   {0x0a, "Spanish"},
+   {0x50, "Sranan Tongo"},
+   {0x4f, "Swahili"},
+   {0x28, "Swedish"},
+   {0x4e, "Tadzhik"},
+   {0x4d, "Tamil"},
+   {0x4c, "Tatar"},
+   {0x4b, "Telugu"},
+   {0x4a, "Thai"},
+   {0x29, "Turkish"},
+   {0x49, "Ukrainian"},
+   {0x48, "Urdu"},
+   {0x47, "Uzbek"},
+   {0x46, "Vietnamese"},
+   {0x2b, "Wallon"},
+   {0x05, "Welsh"},
+   {0x45, "Zulu"}
 };
 
 /**/
@@ -375,11 +485,12 @@ main(int argc, char **argv){
    char *ep;
    long int li;
    int rv;
-   u8 act;
+   u8 act, cdtext_lang_no, i;
 
    memset(&d, 0, sizeof d);
 
    act = a_ACT_USAGE;
+   cdtext_lang_no = 0;
    rv = EX_USAGE;
    UNINIT(li, 0);
 
@@ -387,10 +498,8 @@ main(int argc, char **argv){
    for(; argc > 1; --argc){
       ++argv;
 
-      if(!strcmp(*argv, "-n") || !strcmp(*argv, "--no-checks"))
-         act |= a_F_NO_CHECKS;
-      else if(!strcmp(*argv, "-v") || !strcmp(*argv, "--verbose"))
-         act |= a_F_VERBOSE;
+      if(!strcmp(*argv, "-a") || !strcmp(*argv, "--all"))
+         act |= a_ACT_QUERY_MASK;
       else if(!strcmp(*argv, "-d") || !strcmp(*argv, "--device")){
          if(--argc == 1)
             goto jusage;
@@ -398,16 +507,47 @@ main(int argc, char **argv){
       }else if(!strcmp(*argv, "-h") || !strcmp(*argv, "--help")){
          rv = EX_OK;
          goto jusage;
-      }else if(!strcmp(*argv, "-t") || !strcmp(*argv, "--toc"))
-         act |= a_ACT_TOC;
-      else if(!strcmp(*argv, "-m") || !strcmp(*argv, "--mcn"))
-         act |= a_ACT_MCN;
-      else if(!strcmp(*argv, "-i") || !strcmp(*argv, "--isrc"))
+      }else if(!strcmp(*argv, "-i") || !strcmp(*argv, "--isrc"))
          act |= a_ACT_ISRC | a_F_NO_TOC_DUMP;
-      else if(!strcmp(*argv, "-x") || !strcmp(*argv, "--cdtext"))
-         act |= a_ACT_CDTEXT | a_F_NO_TOC_DUMP;
-      else if(!strcmp(*argv, "-a") || !strcmp(*argv, "--all"))
-         act |= a_ACT_QUERY_MASK;
+      else if(!strcmp(*argv, "-L") || !strcmp(*argv, "--list-lang")){
+         /* Do not list Unused */
+         for(li = 0, i = 1; i < NELEM(a_cdtext_langa); ++i){
+            if(li + (long)FIELD_SIZEOF(struct a_cdtext_lang,cdtl_name) >= 75){
+               putchar('\n');
+               li = 0;
+            }
+            li += printf("%s ", a_cdtext_langa[i].cdtl_name);
+         }
+         if(li > 0)
+            putchar('\n');
+         rv = EX_OK;
+         goto jleave;
+      }else if(!strcmp(*argv, "-l") || !strcmp(*argv, "--lang")){
+         if(--argc == 1)
+            goto jusage;
+         ++argv;
+
+         if(cdtext_lang_no == NELEM(d.d_cdtext_lang) - 1){
+            fprintf(stderr, "! Maximum number of --lang'uages reached (%u)\n",
+               (ui)(NELEM(d.d_cdtext_lang) - 1));
+            goto jusage;
+         }
+
+         /* Do not search Unused */
+         for(i = 1;;){
+            if(!strcasecmp(*argv, a_cdtext_langa[i].cdtl_name)){
+               d.d_cdtext_lang[cdtext_lang_no++] = &a_cdtext_langa[i];
+               break;
+            }else if(++i == NELEM(a_cdtext_langa)){
+               fprintf(stderr,
+                  "! No such --lang'uage: %s (-L shows all)\n", *argv);
+               goto jusage;
+            }
+         }
+      }else if(!strcmp(*argv, "-m") || !strcmp(*argv, "--mcn"))
+         act |= a_ACT_MCN;
+      else if(!strcmp(*argv, "-n") || !strcmp(*argv, "--no-checks"))
+         act |= a_F_NO_CHECKS;
       else if(!strcmp(*argv, "-r") || !strcmp(*argv, "--read")){
          act &= ~a_ACT_MASK;
          act |= a_ACT_TOC | a_ACT_READ;
@@ -420,7 +560,13 @@ main(int argc, char **argv){
             fprintf(stderr, "! Invalid track number: %s\n", *argv);
             goto jusage;
          }
-      }else{
+      }else if(!strcmp(*argv, "-t") || !strcmp(*argv, "--toc"))
+         act |= a_ACT_TOC;
+      else if(!strcmp(*argv, "-v") || !strcmp(*argv, "--verbose"))
+         act |= a_F_VERBOSE;
+      else if(!strcmp(*argv, "-x") || !strcmp(*argv, "--cdtext"))
+         act |= a_ACT_CDTEXT | a_F_NO_TOC_DUMP;
+      else{
          fprintf(stderr, "! Unknown argument: %s\n", *argv);
          goto jusage;
       }
@@ -433,6 +579,12 @@ main(int argc, char **argv){
       act &= ~a_F_NO_TOC_DUMP;
    else if(act & a_F_NO_TOC_DUMP)
       act |= a_ACT_TOC;
+
+   if((act & a_ACT_CDTEXT) && cdtext_lang_no == 0){
+      fprintf(stderr, "! Need to choose a CD-TEXT language (-L for list)\n");
+      goto jusage;
+   }
+
    d.d_flags = act;
 
    /* */
@@ -464,9 +616,9 @@ jusage:
    puts(
       "s-cdda (" a_VERSION "): accessing audio CDs (via SCSI MMC-3 aware "
          "cdrom/drivers)\n"
+      "  s-cdda -h|--help | -L|--list-lang\n"
       "\n"
-      "  s-cdda [-d DEV] [-nv] -a|--all\n"
-      "     All the queries\n"
+      "  s-cdda [-d DEV] [-nv] :-l LANG: -a|--all\n"
       "  s-cdda [-d DEV] [-nv] -i|--isrc\n"
       "     Dump International Standard Recording Code (ISRC), "
          "if available/supported");
@@ -475,22 +627,24 @@ jusage:
       "     Dump Media Catalog Number (MCN) if available/supported\n"
       "  s-cdda [-d DEV] [-nv] [-t|--toc]\n"
       "     Dump the table of (audio) contents\n"
-      "  s-cdda [-d DEV] [-nv] -x|--cd-text\n"
-      "     Dump (subset of) CD-TEXT information, if available/supported\n"
+      "  s-cdda [-d DEV] [-nv] :-l LANG: -x|--cd-text\n"
+      "     Dump CD-TEXT information for LANGuage if available/supported\n"
       "\n"
       "  s-cdda [-d DEV] [-v] -r|--read NUM\n"
       "     Dump audio track NUMber in WAVE format "
          "to (non-terminal) standard output\n");
    puts(
-      "-d|--device DEV Use CD-ROM DEVice; else $CDROM; fallback " a_CDROM "\n"
+      "-d|--device DEV CD-ROM DEVice; else $CDROM; fallback " a_CDROM "\n"
+      "-l|--lang LANG  CD-TEXT LANGuage, case-insensitive; "
+         "multiple -l: priority order\n"
       "-n|--no-checks  No sanity checks on CD data (\"pampers over errors\")\n"
       "-v|--verbose    Be more verbose (on standard error)\n"
-      "\n"
-      "-[im] subject to HW/driver quality: retry on \"not-found\" error.  "
+      ". -[im] subject to HW/driver quality: retry on \"not-found\".  "
          "With multiple\n"
-      "queries errors are ignored but for TOC.  Exit states from sysexits.h.\n"
-      "Bugs/Contact via " a_CONTACT
-      "\nRemarks: no option joining (\"-vt\");  "
+      "  queries errors are ignored but for TOC.  "
+         "Exit states from sysexits.h.\n"
+      ". Bugs/Contact via " a_CONTACT
+      "\n. Remarks: no option joining (\"-vt\");  "
          "untested: mixed mode, multisession");
    goto jleave;
 }
@@ -1000,12 +1154,15 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
    };
 
    struct a_cdtext_block_info cdbi;
+   struct a_cdtext_lang const *cdtlp;
    char *tcp, *cp_for_tab_ind;
-   u8 seq, block, j, tno;
    u16 i;
    char const *emsg, *cpcontig;
    struct a_mmc_cmd_x43_cdtext_resp *crp, *crpx;
    int rv;
+   u8 cdtext_lang_have, seq, cdtext_langi, block, j, tno;
+
+   cdtext_lang_have = U8_MAX;
 
    if(len > a_CDTEXT_LEN_MAX){
       emsg = "data buffer too large";
@@ -1033,8 +1190,9 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
    /* Text crosses packet boundaries (let me dream of simple [TYPE[LEN]DATA]
     * blobs), use cpcontig as indication whether one is not satisfied yet.
     * XXX "Tab indicator"s untested; more sanity checks; no magic constants */
+   UNINIT(cdtlp, &a_cdtext_langa[0]);
    cpcontig = cp_for_tab_ind = NIL;
-   for(seq = 0, block = 0xFF; len > 0; ++seq, ++crp, --len){
+   for(cdtext_langi = seq = 0, block = U8_MAX; len > 0; ++seq, ++crp, --len){
       /* On block boundaries, forward scan for the three T_BLOCKINFO packets */
       if(block != (j = (crp->dbchars_blocknum_charpos >> 4) & 0x07) ||
             seq != crp->seq){
@@ -1091,7 +1249,45 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
             goto jedat;
          }
 
+         /* Language desired? */
+         for(j = 0;; ++j){
+            if((cdtlp = dp->d_cdtext_lang[j]) == NIL){
+               cdtext_langi = 0;
+               break;
+            }else if(cdtlp->cdtl_code == cdbi.bi_langcode[block]){
+               /* May have better one already!  Otherwise zero what we have */
+               if(j > cdtext_lang_have)
+                  cdtext_langi = 0;
+               else{
+                  /* Unless it continues an elder entry, reset data */
+                  if((cdtext_langi = j) != cdtext_lang_have){
+                     tcp = dp->d_cdtext_text_data;
+
+                     for(j = 0; j < NELEM(dp->d_track_data); ++j){/*XXX optim*/
+                        struct a_track *tp;
+
+                        tp = &dp->d_track_data[j];
+                        memset(&tp->t_cdtext_dat[0], 0,
+                           sizeof(tp->t_cdtext_dat));
+                     }
+                  }
+                  cdtext_lang_have = cdtext_langi;
+               }
+               break;
+            }
+         }
+
          if(dp->d_flags & a_F_VERBOSE){
+            /* Want to show lang name then */
+            for(j = 0;; ++j){
+               if(j == NELEM(a_cdtext_langa)){
+                  cdtlp = &a_cdtext_langa[0];
+                  break;
+               }else if((cdtlp = &a_cdtext_langa[j]
+                     )->cdtl_code == cdbi.bi_langcode[block])
+                  break;
+            }
+
             fprintf(stderr,
                "* CD-TEXT: INFO BLOCK %d: charcode=%u tracks=%u-%u "
                   "copyright=%u\n"
@@ -1138,16 +1334,11 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
          continue;
       }
 
-      switch(cdbi.bi_langcode[block]){
-      case a_CDTEXT_LANG_NONE:
-      case a_CDTEXT_LANG_ENGLISH:
-         break;
-      default:
+      if(cdtext_langi == 0){
          if(dp->d_flags & a_F_VERBOSE){
             fprintf(stderr,
-               "* CD-TEXT: ignoring packet in block with unsupported "
-                  "language code %u\n",
-               cdbi.bi_charcode);
+               "* CD-TEXT: ignoring packet in block with language 0x%02X/%s\n",
+               cdbi.bi_langcode[block], cdtlp->cdtl_name);
             a_dump_hex(crp, sizeof(*crp));
          }
          continue;
@@ -1172,9 +1363,10 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
       }
 
       if(dp->d_flags & a_F_VERBOSE){
-         fprintf(stderr, "* CD-TEXT: packet track=%u seq=%u type=0x%02X:\n",
-            crp->xtension_tno & 0x7F, crp->seq,
-            a_CDTEXT_PACK_IDX2T(crp->type));
+         fprintf(stderr,
+            "* CD-TEXT: packet track=%u seq=%u type=0x%02X, lang=%s:\n",
+            (crp->xtension_tno & 0x7F), crp->seq,
+            a_CDTEXT_PACK_IDX2T(crp->type), cdtlp->cdtl_name);
          a_dump_hex(crp, sizeof(*crp));
       }
 
@@ -1305,6 +1497,12 @@ jredo_packet:
 
    rv = EX_OK;
 jleave:
+   if((rv != EX_OK || cdtext_lang_have == U8_MAX) &&
+         dp->d_cdtext_text_data != NIL){
+      free(dp->d_cdtext_text_data);
+      dp->d_cdtext_text_data = NIL;
+   }
+
    return rv;
 
 jetxtopen:
@@ -1402,6 +1600,9 @@ a_dump_cdtext(struct a_data *dp){
    struct a_track *tp;
    u8 i, j;
 
+   if(dp->d_cdtext_text_data == NIL)
+      goto jleave;
+
    tp = &dp->d_track_data[0];
 
    any = FAL0;
@@ -1444,8 +1645,8 @@ a_dump_cdtext(struct a_data *dp){
       printf("#COMPOSER = %s\n", cp);
    }
 
-   /* Indexed in CD-TEXT order! xxx stop loop once all done */
-   for(i = 1; i <= a_MMC_TRACKS_MAX; ++i){
+   /* Indexed in CD-TEXT order! */
+   for(i = 1; i <= a_MMC_TRACKS_MAX; ++i){ /* XXX optimize */
       tp = &dp->d_track_data[i];
       for(any = FAL0, j = 0; j < a_CDTEXT_PACK_TYPES; ++j){
          if((cp = tp->t_cdtext_dat[j]) == NIL &&
@@ -1479,6 +1680,7 @@ a_dump_cdtext(struct a_data *dp){
       }
    }
 
+jleave:
    return ferror(stdout) ? EX_IOERR : EX_OK;
 }
 /* }}} */
