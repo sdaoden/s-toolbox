@@ -76,19 +76,13 @@ files.
 .
 .Ss "Options"
 .
-.Sy Remarks:
-short command line options cannot be joined, so for example
-.Ql s-cdda -nva
-must be written as
-.Ql s-cdda -n -v -a .
-.
 .Bl -tag -width ".It Fl BaNg"
 .Mx
-.It Fl a , Fl Fl all
+.It Fl a
 Perform all possible queries.
 .
 .Mx
-.It Fl d Ar DEVICE , Fl Fl device Ar ..
+.It Fl d Ar DEVICE
 Specify the CD-ROM
 .Ar DEVICE .
 If not given the environment variable
@@ -98,11 +92,11 @@ is inspected, a system-dependent value (like
 is used as a fallback.
 .
 .Mx
-.It Fl h , Fl Fl help
+.It Fl h
 Show a brief usage summary, then exit.
 .
 .Mx
-.It Fl i , Fl Fl isrc
+.It Fl i
 Query the International Standard Recording Code (ISRC) entries,
 if available on the CD-ROM and supported by the device.
 Quality of service: devices are known which do not find ISRC
@@ -110,17 +104,17 @@ subchannel data: repeating the query may succeed.
 Is missing on many CD-ROMs.
 .
 .Mx
-.It Fl L , Fl Fl list-lang
+.It Fl L
 Show list of selectable CD-TEXT languages, then exit.
 .
 .Mx
-.It Fl l Ar LANGUAGE , Fl Fl lang Ar ..
+.It Fl l Ar LANGUAGE
 Add a language, case-insensitively, to the CD-TEXT filter.
 If used multiple times, earlier ones take precedence, the best
 fitting CD-TEXT entry will be used.
 .
 .Mx
-.It Fl m , Fl Fl mcn
+.It Fl m
 Query the Media Catalog Number,
 if available on the CD-ROM, and supported by the device.
 Quality of service: devices are known which do not find the MCN
@@ -128,33 +122,33 @@ subchannel data: repeating the query may succeed.
 Is missing on many CD-ROMs.
 .
 .Mx
-.It Fl n , Fl Fl no-checks
+.It Fl n
 Do not perform sanity checks on data.
 May
 .Dq pamper
 over invalid data!
 .
 .Mx
-.It Fl r Ar NUMBER , Fl Fl read Ar ..
+.It Fl r Ar NUMBER
 Read the audio track
 .Ar NUMBER ,
 and write it in WAVE format to the standard output.
 It will refuse to write if standard output is a terminal.
 .
 .Mx
-.It Fl t , Fl Fl toc
+.It Fl t
 Query the table of contents.
 .
 .Mx
-.It Fl v , Fl Fl verbose
+.It Fl v
 Be more verbose, dump packets as they are encountered.
 .
 .Mx
-.It Fl x , Fl Fl cd-text
-Query CD-TEXT information,
-if available on the CD-ROM, and supported by the device.
+.It Fl x
+Collect CD-TEXT information of the desired
+.Fl l Ns
+anguage, if available on the CD-ROM, and supported by the device.
 Is missing on many CD-ROMs.
-This software only supports an english subset of CD-TEXT.
 .El
 .
 .Sh EXAMPLES

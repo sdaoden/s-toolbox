@@ -22,7 +22,7 @@
  */
 
 /* */
-#define a_VERSION "0.0.5"
+#define a_VERSION "0.8.0"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* -- >8 -- 8< -- */
@@ -59,6 +59,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -71,29 +72,36 @@
 # include <camlib.h>
 # include <cam/scsi/scsi_message.h>
 # include <cam/scsi/scsi_pass.h>
-
 # define a_CDROM "/dev/cd0"
 # if su_OS_DRAGONFLY
 #  define a_CDROM_MMC_MAX_FRAMES_PER_SEC 50
 # else
 #  define a_CDROM_MMC_MAX_FRAMES_PER_SEC 25
 # endif
-
 #elif su_OS_LINUX
 # include <linux/cdrom.h>
 # include <scsi/sg.h>
-
 # define a_CDROM "/dev/cdrom"
 # define a_CDROM_MMC_MAX_FRAMES_PER_SEC 50
-
 #elif su_OS_NETBSD || su_OS_OPENBSD
 # include <sys/scsiio.h>
-
 # define a_CDROM "/dev/cd0c"
 # if su_OS_OPENBSD
 #  define a_CDROM_MMC_MAX_FRAMES_PER_SEC 25
 # endif
 #endif
+
+/* OS adjustment possibility: maximum number of frames we read in one go.
+ * And adjustment of this maximum in case of errors, before we retry.
+ * We stop retrying when MAXF is 1 (on entry).
+ * Whereas Linux limits this to frames worth 1sec in
+ * linux/drivers/cdrom/cdrom.c mmc_ioctl_cdrom_read_audio(),
+ * i was incapable to read this much from my drive: 52 here at most */
+#ifndef a_CDROM_MMC_MAX_FRAMES_PER_SEC
+# define a_CDROM_MMC_MAX_FRAMES_PER_SEC a_MMC_FRAMES_PER_SEC
+#endif
+#define a_CDROM_MMC_MAX_FRAMES_ADJUST(MAXF) \
+   do{ MAXF -= a_MMC_FRAMES_PER_SEC / 3; }while(0)
 
 /* SU compat */
 #undef NELEM
@@ -119,18 +127,7 @@
 #define MAX(A,B) ((A) < (B) ? (B) : (A))
 #define MIN(A,B) ((A) < (B) ? (A) : (B))
 
-/* OS adjustment possibility: maximum number of frames we read in one go.
- * And adjustment of this maximum in case of errors, before we retry.
- * We stop retrying when MAXF is 1 (on entry).
- * Whereas Linux limits this to frames worth 1sec in
- * linux/drivers/cdrom/cdrom.c mmc_ioctl_cdrom_read_audio(),
- * i was incapable to read this much from my drive: 52 here at most */
-#ifndef a_CDROM_MMC_MAX_FRAMES_PER_SEC
-# define a_CDROM_MMC_MAX_FRAMES_PER_SEC a_MMC_FRAMES_PER_SEC
-#endif
-#define a_CDROM_MMC_MAX_FRAMES_ADJUST(MAXF) \
-   do{ MAXF -= a_MMC_FRAMES_PER_SEC / 3; }while(0)
-
+/* enums, types, rodata {{{ */
 enum a_actions{
    a_ACT_USAGE,
    a_ACT_TOC = 1u<<0,
@@ -449,6 +446,7 @@ static struct a_cdtext_lang const a_cdtext_langa[] = {
    {0x05, "Welsh"},
    {0x45, "Zulu"}
 };
+/* }}} */
 
 /**/
 static void *a_alloc(size_t len);
@@ -484,7 +482,7 @@ main(int argc, char **argv){
    struct a_data d;
    char *ep;
    long int li;
-   int rv;
+   int rv, opt;
    u8 act, cdtext_lang_no, i;
 
    memset(&d, 0, sizeof d);
@@ -494,22 +492,13 @@ main(int argc, char **argv){
    rv = EX_USAGE;
    UNINIT(li, 0);
 
-   /* (Very primitive arg parser) */
-   for(; argc > 1; --argc){
-      ++argv;
-
-      if(!strcmp(*argv, "-a") || !strcmp(*argv, "--all"))
-         act |= a_ACT_QUERY_MASK;
-      else if(!strcmp(*argv, "-d") || !strcmp(*argv, "--device")){
-         if(--argc == 1)
-            goto jusage;
-         d.d_dev = *++argv;
-      }else if(!strcmp(*argv, "-h") || !strcmp(*argv, "--help")){
-         rv = EX_OK;
-         goto jusage;
-      }else if(!strcmp(*argv, "-i") || !strcmp(*argv, "--isrc"))
-         act |= a_ACT_ISRC | a_F_NO_TOC_DUMP;
-      else if(!strcmp(*argv, "-L") || !strcmp(*argv, "--list-lang")){
+   while((opt = getopt(argc, argv, "ad:hiLl:mnr:tvx")) != -1){
+      switch(opt){
+      case 'a': act |= a_ACT_QUERY_MASK; break;
+      case 'd': d.d_dev = optarg; break;
+      case 'h': rv = EX_OK; goto jusage;
+      case 'i': act |= a_ACT_ISRC | a_F_NO_TOC_DUMP; break;
+      case 'L':
          /* Do not list Unused */
          for(li = 0, i = 1; i < NELEM(a_cdtext_langa); ++i){
             if(li + (long)FIELD_SIZEOF(struct a_cdtext_lang,cdtl_name) >= 75){
@@ -522,11 +511,7 @@ main(int argc, char **argv){
             putchar('\n');
          rv = EX_OK;
          goto jleave;
-      }else if(!strcmp(*argv, "-l") || !strcmp(*argv, "--lang")){
-         if(--argc == 1)
-            goto jusage;
-         ++argv;
-
+      case 'l':
          if(cdtext_lang_no == NELEM(d.d_cdtext_lang) - 1){
             fprintf(stderr, "! Maximum number of --lang'uages reached (%u)\n",
                (ui)(NELEM(d.d_cdtext_lang) - 1));
@@ -535,41 +520,38 @@ main(int argc, char **argv){
 
          /* Do not search Unused */
          for(i = 1;;){
-            if(!strcasecmp(*argv, a_cdtext_langa[i].cdtl_name)){
+            if(!strcasecmp(optarg, a_cdtext_langa[i].cdtl_name)){
                d.d_cdtext_lang[cdtext_lang_no++] = &a_cdtext_langa[i];
                break;
             }else if(++i == NELEM(a_cdtext_langa)){
                fprintf(stderr,
-                  "! No such --lang'uage: %s (-L shows all)\n", *argv);
+                  "! No such --lang'uage: %s (-L shows all)\n", optarg);
                goto jusage;
             }
          }
-      }else if(!strcmp(*argv, "-m") || !strcmp(*argv, "--mcn"))
-         act |= a_ACT_MCN;
-      else if(!strcmp(*argv, "-n") || !strcmp(*argv, "--no-checks"))
-         act |= a_F_NO_CHECKS;
-      else if(!strcmp(*argv, "-r") || !strcmp(*argv, "--read")){
+         break;
+      case 'm': act |= a_ACT_MCN; break;
+      case 'n': act |= a_F_NO_CHECKS; break;
+      case 'r':
          act &= ~a_ACT_MASK;
          act |= a_ACT_TOC | a_ACT_READ;
-         if(--argc == 1)
-            goto jusage;
-
          errno = 0;
-         li = strtol(*++argv, &ep, 0);
+         li = strtol(optarg, &ep, 0);
          if(li < 1 || li > a_MMC_TRACKS_MAX || *ep != '\0'){
-            fprintf(stderr, "! Invalid track number: %s\n", *argv);
+            fprintf(stderr, "! Invalid track number: %s\n", optarg);
             goto jusage;
          }
-      }else if(!strcmp(*argv, "-t") || !strcmp(*argv, "--toc"))
-         act |= a_ACT_TOC;
-      else if(!strcmp(*argv, "-v") || !strcmp(*argv, "--verbose"))
-         act |= a_F_VERBOSE;
-      else if(!strcmp(*argv, "-x") || !strcmp(*argv, "--cdtext"))
-         act |= a_ACT_CDTEXT | a_F_NO_TOC_DUMP;
-      else{
-         fprintf(stderr, "! Unknown argument: %s\n", *argv);
-         goto jusage;
+         break;
+      case 't': act |= a_ACT_TOC; break;
+      case 'v': act |= a_F_VERBOSE; break;
+      case 'x': act |= a_ACT_CDTEXT | a_F_NO_TOC_DUMP; break;
+      case '?': goto jusage;
       }
+   }
+
+   if(argv[optind] != NIL){
+      fprintf(stderr, "! Surplus command line arguments\n");
+      goto jusage;
    }
 
    /* Polish flags */
@@ -613,39 +595,42 @@ jleave:
 
 jusage:
    /* (ISO C89 string length limit) */
-   puts(
+   fputs(
       "s-cdda (" a_VERSION "): accessing audio CDs (via SCSI MMC-3 aware "
          "cdrom/drivers)\n"
-      "  s-cdda -h|--help | -L|--list-lang\n"
       "\n"
-      "  s-cdda [-d DEV] [-nv] :-l LANG: -a|--all\n"
-      "  s-cdda [-d DEV] [-nv] -i|--isrc\n"
+      "  s-cdda -h | -L\n"
+      "\n"
+      "  s-cdda [-d DEV] [-nv] :-l LANG: -a\n"
+      "  s-cdda [-d DEV] [-nv] -i\n"
       "     Dump International Standard Recording Code (ISRC), "
-         "if available/supported");
-   puts(
-      "  s-cdda [-d DEV] [-nv] -m|--mcn\n"
+         "if available/supported\n",
+      (rv == EX_OK ? stdout : stderr));
+   fputs(
+      "  s-cdda [-d DEV] [-nv] -m\n"
       "     Dump Media Catalog Number (MCN) if available/supported\n"
-      "  s-cdda [-d DEV] [-nv] [-t|--toc]\n"
-      "     Dump the table of (audio) contents\n"
-      "  s-cdda [-d DEV] [-nv] :-l LANG: -x|--cd-text\n"
-      "     Dump CD-TEXT information for LANGuage if available/supported\n"
+      "  s-cdda [-d DEV] [-nv] [-t]\n"
+      "     Dump the table of (audio) contents (TOC)\n"
+      "  s-cdda [-d DEV] [-nv] :-l LANG: -x\n"
+      "     Dump CD-TEXT information for LANGuage (-L: list) "
+         "if available/supported\n"
       "\n"
-      "  s-cdda [-d DEV] [-v] -r|--read NUM\n"
+      "  s-cdda [-d DEV] [-v] -r NUM\n"
       "     Dump audio track NUMber in WAVE format "
-         "to (non-terminal) standard output\n");
-   puts(
-      "-d|--device DEV CD-ROM DEVice; else $CDROM; fallback " a_CDROM "\n"
-      "-l|--lang LANG  CD-TEXT LANGuage, case-insensitive; "
+         "to (non-terminal) standard output\n",
+      (rv == EX_OK ? stdout : stderr));
+   fputs(
+      "\n"
+      "-d DEV   CD-ROM DEVice; else $CDROM; fallback " a_CDROM "\n"
+      "-l LANG  CD-TEXT LANGuage, case-insensitive; "
          "multiple -l: priority order\n"
-      "-n|--no-checks  No sanity checks on CD data (\"pampers over errors\")\n"
-      "-v|--verbose    Be more verbose (on standard error)\n"
+      "-n       No sanity checks on CD data (\"pampers over errors\")\n"
+      "-v       Be more verbose (on standard error)\n"
       ". -[im] subject to HW/driver quality: retry on \"not-found\".  "
          "With multiple\n"
-      "  queries errors are ignored but for TOC.  "
-         "Exit states from sysexits.h.\n"
-      ". Bugs/Contact via " a_CONTACT
-      "\n. Remarks: no option joining (\"-vt\");  "
-         "untested: mixed mode, multisession");
+      "  queries errors are ignored but for TOC.  sysexits.h exit states.\n"
+      ". Bugs/Contact via " a_CONTACT "\n",
+      (rv == EX_OK ? stdout : stderr));
    goto jleave;
 }
 /* }}} */

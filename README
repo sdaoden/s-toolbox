@@ -49,13 +49,14 @@ quote-rndtrip.sh:
 
    2019-05-27: ensure outer driver(s) do not leak variabes (Steven Penny).
 
-s-cdda.c (manual in s-cdda.1; s-cdda.makefile) v0.0.5:
+s-cdda.c (manual in s-cdda.1; s-cdda.makefile) v0.8.0:
    Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
    Developed in 2020 on then current operating-systems and hardware.
 
    2020-03-03: base even track reading upon SCSI MMC commands.
                And port to DragonFly BSD, FreeBSD, NetBSD, and OpenBSD.
-   2020-03-08, v0.0.5: a_read(): "fix" log message(s).
+   2020-03-10: add CD-TEXT language selection support, drop long options,
+               use regular getopt.h parser.  Fix manual installation path.
 
 zte.sh:
    Control a ZTE modem (MF79 and many others according to web search)
