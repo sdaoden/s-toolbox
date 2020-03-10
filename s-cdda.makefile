@@ -3,7 +3,7 @@
 PREFIX = /usr/local
 DESTDIR =
 BINDIR = $(DESTDIR)$(PREFIX)/bin
-MANDIR = $(DESTDIR)$(PREFIX)/share/man1
+MANDIR = $(DESTDIR)$(PREFIX)/share/man/man1
 TARGET = s-cdda
 
 CC = cc
