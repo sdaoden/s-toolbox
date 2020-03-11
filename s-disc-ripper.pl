@@ -355,7 +355,7 @@ __EOT__
 sub parse_formats{
    my ($v) = @_;
 
-   while($v =~ /^,?(\w+)(,.*)?$/){
+   while($v =~ /^,?\s*(\w+)\s*(,.*)?$/){
       my $i = lc $1;
       $v = defined $2 ? $2 : '';
       die "Unknown audio encoding format: $i" unless exists $FORMATS{$i};
