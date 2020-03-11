@@ -186,13 +186,8 @@ __EOT__
    }elsif($ENC_ONLY){
       # XXX In this case we are responsible to detect whether we ripped WAVE
       # XXX or RAW files, a.k.a. set $CDInfo::RawIsWAVE!  Yes, this is a hack
-      my @rawfl = glob "$WORK_DIR/*.wav";
-      if(@rawfl != 0){
-         $CDInfo::RawIsWAVE = 1
-      }else{
-         @rawfl = glob "$WORK_DIR/*.raw";
-         die '--encode-only session on empty file list' if @rawfl == 0
-      }
+      my @rawfl = glob("$WORK_DIR/*." . ($CDInfo::RawIsWAVE ? 'wav' : 'raw'));
+      die '--encode-only session on empty file list' if @rawfl == 0;
       foreach(sort @rawfl){
          die '--encode-only session: illegal filenames exist'
                unless /(\d+).(raw|wav)$/;
@@ -840,14 +835,14 @@ jdarwin_rip_stop:
       # already queried the disc in the drive - nevertheless: resume!
       my $old_id = $Id;
       my $laref = shift;
-      $RawIsWAVE = 0;
-      $Id = $TotalSeconds = $TrackCount = undef;
+      $RawIsWAVE = $Id = $TotalSeconds = undef;
       @TrackOffsets = ();
 
-      my $emsg = undef;
+      my $emsg;
       foreach(@lines){
          chomp;
          next if /^\s*#/;
+         next if /^\s*$/;
          unless(/^\s*(.+?)\s*=\s*(.+?)\s*$/){
             $emsg .= "Invalid line $_;";
             next
@@ -881,6 +876,7 @@ jdarwin_rip_stop:
       $TrackCount = scalar @TrackOffsets;
       $emsg .= 'corrupted: no TRACK_OFFSETS seen;'
             unless $TrackCount > 0;
+      $emsg .= 'corrupted: no RAW_IS_WAVE seen;' unless defined $RawIsWAVE;
       if(@Title::List > 0){
          $emsg .= 'corrupted: TRACK_OFFSETS invalid;'
                if $TrackCount != @Title::List
