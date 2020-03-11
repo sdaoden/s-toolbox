@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-my $SELF = 's-disc-ripper.pl'; #@ part of S-MusicBox; handles CD ripping.
+my $SELF = 's-disc-ripper.pl'; #@ part of S-Music; handles CD ripping.
 my $VERSION = '0.5.2';
 my $CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>';
 #@ Requirements:
@@ -29,15 +29,13 @@ my $CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>';
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-# New sox(1) with '-e signed-integer' instead of -s, '-b 16' instead of -w
-# and -n (null device) instead of -e (to stop input file processing)
-# (I guess this refers to post v14)
+# New sox(1) (i guess this means post v14) with '-e signed-integer' instead of
+# -s, '-b 16' instead of -w and -n (null device) instead of -e (to stop input
+# file processing)
 my $NEW_SOX = 1;
 
-# May be changed for different site-global default settings
-my ($MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO, $FLAC) = (0,0, 1,1, 1,0, 0);
 # Dito: change the undef to '/Desired/Path'
-my $MUSICDB = defined $ENV{S_MUSICDB} ? $ENV{S_MUSICDB} : undef;
+my $MUSIC_DB = defined $ENV{S_MUSIC_DB} ? $ENV{S_MUSIC_DB} : undef;
 my $CDROM = defined $ENV{CDROM} ? $ENV{CDROM} : undef;
 my $TMPDIR = (defined $ENV{TMPDIR} && -d $ENV{TMPDIR}) ? $ENV{TMPDIR} : '/tmp';
 
@@ -116,6 +114,15 @@ my @Genres = (
 
 my $INTRO = "$SELF (v$VERSION): integrate audio disc (tracks) into S-Music DB";
 
+# -f|--formats or $S_MUSIC_FORMATS
+my %FORMATS = (
+      mp3 => undef, mp3lo => undef,
+      aac => undef, aaclo => undef,
+      ogg => undef, ogglo => undef,
+      flac => undef
+      );
+my $FORMATS_CNT = 0;
+
 my ($RIP_ONLY, $ENC_ONLY, $NO_VOL_NORM, $VERBOSE) = (0, 0, 0, 0);
 my ($CLEANUP_OK, $WORK_DIR, $TARGET_DIR, %CDDB) = (0);
 
@@ -152,7 +159,7 @@ __EOT__
    }
 
    $WORK_DIR = "$TMPDIR/s-disc-ripper.$CDInfo::Id";
-   $TARGET_DIR = "$MUSICDB/disc.${CDInfo::Id}-";
+   $TARGET_DIR = "$MUSIC_DB/disc.${CDInfo::Id}-";
    if(-d "${TARGET_DIR}1"){
       $TARGET_DIR = quick_and_dirty_dir_selector()
    }else{
@@ -234,7 +241,8 @@ It does not seem to belong to this disc, you need to re-rip it."
 
 END {finalize() if $CLEANUP_OK}
 
-sub command_line{ # {{{
+# command_line + support {{{
+sub command_line{
    Getopt::Long::Configure('bundling');
    my %opts = (
          'h|help|?' => sub {goto jdocu},
@@ -245,13 +253,10 @@ sub command_line{ # {{{
 
          'd|device=s' => \$CDROM,
          'e|encode-only=s' => \$ENC_ONLY,
-         'm|musicdb=s' => \$MUSICDB,
+         'f|formats=s' => sub {parse_formats($_[1])},
+         'm|music-db=s' => \$MUSIC_DB,
          'r|rip-only' => \$RIP_ONLY,
          'no-volume-normalize' => \$NO_VOL_NORM,
-         'mp3=i' => \$MP3HI, 'mp3lo=i' => \$MP3LO,
-         'aac=i' => \$AACHI, 'aaclo=i' => \$AACLO,
-         'ogg=i' => \$OGGHI, 'ogglo=i' => \$OGGLO,
-         'flac=i' => \$FLAC,
          'v|verbose' => \$VERBOSE
    );
    if($^O eq 'darwin'){
@@ -278,9 +283,17 @@ sub command_line{ # {{{
    }
 
    unless($RIP_ONLY){
-      $MUSICDB = glob $MUSICDB if defined $MUSICDB;
-      unless(defined $MUSICDB && -d $MUSICDB && -w _){
-         $emsg = "S-MusicBox DB directory not accessible";
+      $MUSIC_DB = glob $MUSIC_DB if defined $MUSIC_DB;
+      unless(defined $MUSIC_DB && -d $MUSIC_DB && -w _){
+         $emsg = '-m / $S_MUSIC_DB directory not accessible';
+         goto jdocu
+      }
+
+      if($FORMATS_CNT == 0 && defined(my $v = $ENV{S_MUSIC_FORMATS})){
+         parse_formats($v)
+      }
+      unless($FORMATS_CNT > 0){
+         $emsg = 'No audio formats given via -f or $S_MUSIC_FORMATS';
          goto jdocu
       }
    }
@@ -297,24 +310,27 @@ jdocu:
    my $FH = defined $emsg ? *STDERR : *STDOUT;
 
    print $FH <<__EOT__;
-${INTRO}: integrate audio disc (tracks) into S-MusicBox DB
+${INTRO}
 
- $SELF -g|--genre-list
-      Dump list of all GENREs
- $SELF [-v] [-d DEV] [-m|--musicdb PATH]
-      [[-r|--rip-only] | [-e|--encode-only CDID]]
-      [--no-volume-normalize] [--mp3=BOOL ..]
+ $SELF -h|--help | -g|--genre-list
+
+ $SELF [-v] [-d DEV] -r|--rip-only
+   Only rip audio tracks from CD-ROM
+ $SELF [-v] [-m|--music-db PATH] [-f|--formats ..]
+      [--no-volume-normalize] -e|--encode-only CDID
+   Only encode a --rip-only session
+
+ $SELF [-v] [-d DEV] [-m|--music-db PATH] [-f|--formats ..]
+      [--no-volume-normalize]
+   Do the entire processing
 
 -d|--device DEV       Use CD-ROM DEVice; else \$CDROM; else s-cdda(1) fallback
 -e|--encode-only CDID Resume a --rip-only session, which echoed the CDID to use
--m|--musicdb PATH     S-MusicBox DB directory; else \$S_MUSICDB ($MUSICDB)
+-f|--formats LIST     Comma-separated list of audio target formats (mp3,mp3lo,
+                      aac,aaclo,ogg,ogglo,flac); else \$S_MUSIC_FORMATS
+-m|--music-db PATH    S-Music DB directory; else \$S_MUSIC_DB
 -r|--rip-only         Only rip data, then exit; resume with --encode-only
---no-volume-normalize
-   Average volume adjustment is calculated over all (selected) files.
-   Often counterproductive if single files are ripped
---mp3=BOOL,--mp3lo=BOOL (also: --aac(lo), --ogg(lo), --flac)
-   Specify output: MP3, MP4/AAC and OGG in high/low quality, and FLAC.
-   Defaults: $MP3HI,$MP3LO, $AACHI,$AACLO, $OGGHI,$OGGLO, $FLAC
+--no-volume-normalize Do not apply volume normalization
 -v|--verbose         Be more verbose; does not delete temporary files!
 
 Honours \$TMPDIR.  Bugs/Contact via $CONTACT
@@ -334,7 +350,20 @@ __EOT__
 
    print $FH "\n! $emsg\n" if defined $emsg;
    exit defined $emsg ? 1 : 0
-} # }}}
+}
+
+sub parse_formats{
+   my ($v) = @_;
+
+   while($v =~ /^,?(\w+)(,.*)?$/){
+      my $i = lc $1;
+      $v = defined $2 ? $2 : '';
+      die "Unknown audio encoding format: $i" unless exists $FORMATS{$i};
+      $FORMATS{$i} = 1;
+      ++$FORMATS_CNT
+   }
+}
+# }}}
 
 # v, genre, genre_id, finalize, user_confirm, utf8ify {{{
 sub v{
@@ -1038,7 +1067,7 @@ jdarwin_rip_stop:
 
    sub create_data{
       my $ed = defined $ENV{VISUAL} ? $ENV{VISUAL} : '/usr/bin/vi';
-      print "\nCreating S-MusicBox per-disc database\n";
+      print "\nCreating S-Music per-disc database\n";
       @SongAddons = (); $SortAddons = '';
       _create_addons();
 
@@ -1181,7 +1210,7 @@ jREDO:
 
    sub _help_text{
       return <<__EOT__
-# S-MusicBox database, CDDB info: $CDDB{GENRE}/$CDInfo::Id
+# S-Music database, CDDB info: $CDDB{GENRE}/$CDInfo::Id
 # This file is and used to be in UTF-8 encoding (codepage,charset) ONLY!
 # Syntax (processing is line based):
 # - Leading and trailing whitespace is ignored
@@ -1467,7 +1496,7 @@ __EOT__
 #  part of the ALBUM TITLE (Vivaldi: Le quattro stagioni - "La Primavera")
 #  if there were any COMPOSER(s) in global [CAST], or part of the TRACK
 #  TITLE (The Killing Joke: Pssyche) otherwise ([GROUP]/[TRACK]);
-#  the S-MusicBox interface always uses the complete database entry, say.
+#  the S-Music interface always uses the complete database entry, say.
 __EOT__
    }
    sub is_key_supported{
@@ -1861,10 +1890,13 @@ __EOT__
       }
       die "binmode $title->{RAW_FILE} failed: $!" unless binmode RAW;
 
-      push @Coders, Enc::Coder::MP3->new($title) if $MP3HI || $MP3LO;
-      push @Coders, Enc::Coder::AAC->new($title) if $AACHI || $AACLO;
-      push @Coders, Enc::Coder::OGG->new($title) if $OGGHI || $OGGLO;
-      push @Coders, Enc::Coder::FLAC->new($title) if $FLAC;
+      push @Coders, Enc::Coder::MP3->new($title)
+         if $FORMATS{mp3} || $FORMATS{mp3lo};
+      push @Coders, Enc::Coder::AAC->new($title)
+         if $FORMATS{aac} || $FORMATS{aaclo};
+      push @Coders, Enc::Coder::OGG->new($title)
+         if $FORMATS{ogg} || $FORMATS{ogglo};
+      push @Coders, Enc::Coder::FLAC->new($title) if $FORMATS{flac};
 
       for(my $data;;){
          my $bytes = sysread RAW, $data, 1024 * 1000;
@@ -1924,8 +1956,8 @@ __EOT__
       $self = Enc::Coder::new($self, $title, 'MP3', 'MP3LO', 'mp3');
       $self = bless $self;
       $self->_mp3tag_file($title);
-      $self->_open($title, 1) if $MP3HI;
-      $self->_open($title, 0) if $MP3LO;
+      $self->_open($title, 1) if $FORMATS{mp3};
+      $self->_open($title, 0) if $FORMATS{mp3lo};
       $self
    }
 
@@ -1964,7 +1996,7 @@ __EOT__
       $tag .= _mp3_frame('TYER', $ti->{YEAR}, 'NUM') if defined $ti->{YEAR};
       $ti = $ti->{COMM};
       if(defined $ti){
-         $ti = "engS-MUSICBOX:COMM\x00$ti";
+         $ti = "engS-MUSIC:COMM\x00$ti";
          $tag .= _mp3_frame('COMM', $ti, 'UNI');
       }
 
@@ -1995,10 +2027,10 @@ __EOT__
       for(my $i = 0; $i < 2; ++$i){
          my $f;
          if($i == 0){
-            next if $MP3HI == 0;
+            next unless defined $FORMATS{mp3};
             $f = $self->{hipath}
          }else{
-            next if $MP3LO == 0;
+            next unless defined $FORMATS{mp3lo};
             $f = $self->{lopath}
          }
          die "Cannot open $f: $!" unless open F, '>', $f;
@@ -2068,8 +2100,8 @@ __EOT__
       $self = Enc::Coder::new($self, $title, 'AAC', 'AACLO', 'mp4');
       $self = bless $self;
       $self->_faac_comment($title);
-      $self->_open($title, 1) if $AACHI;
-      $self->_open($title, 0) if $AACLO;
+      $self->_open($title, 1) if $FORMATS{aac};
+      $self->_open($title, 0) if $FORMATS{aaclo};
       $self
    }
 
@@ -2110,7 +2142,7 @@ __EOT__
       $i = $ti->{COMM};
       if(defined $i){
          $i =~ s/"/\\"/g;
-         $self->{aactag} .=" --comment \"S-MUSICBOX:COMM=$i\""
+         $self->{aactag} .=" --comment \"S-MUSIC:COMM=$i\""
       }
       ::v("AACTag: $self->{aactag}")
    }
@@ -2124,8 +2156,8 @@ __EOT__
       $self = Enc::Coder::new($self, $title, 'OGG', 'OGGLO', 'ogg');
       $self = bless $self;
       $self->_oggenc_comment($title);
-      $self->_open($title, 1) if $OGGHI;
-      $self->_open($title, 0) if $OGGLO;
+      $self->_open($title, 1) if $FORMATS{ogg};
+      $self->_open($title, 0) if $FORMATS{ogglo};
       $self
    }
 
@@ -2167,7 +2199,7 @@ __EOT__
       $i = $ti->{COMM};
       if(defined $i){
          $i =~ s/"/\\"/g;
-         $self->{oggtag} .=" --comment \"S-MUSICBOX:COMM=$i\""
+         $self->{oggtag} .=" --comment \"S-MUSIC:COMM=$i\""
       }
       ::v("OGGTag: $self->{oggtag}")
    }
@@ -2222,7 +2254,7 @@ __EOT__
       $i = $ti->{COMM};
       if(defined $i){
          $i =~ s/"/\\"/g;
-         $self->{flactag} .=" -T \"S-MUSICBOX:COMM=$i\""
+         $self->{flactag} .=" -T \"S-MUSIC:COMM=$i\""
       }
       ::v("FLACTag: $self->{flactag}")
    }
