@@ -114,12 +114,30 @@ my @Genres = (
    [ 28, 'Vocal' ]
 ); # }}}
 
-my $INTRO = "$SELF (v$VERSION)";
+my $INTRO = "$SELF (v$VERSION): integrate audio disc (tracks) into S-Music DB";
 
 my ($RIP_ONLY, $ENC_ONLY, $NO_VOL_NORM, $VERBOSE) = (0, 0, 0, 0);
 my ($CLEANUP_OK, $WORK_DIR, $TARGET_DIR, %CDDB) = (0);
 
 sub main_fun{ # {{{
+   # Don't check for the 'a' and 'A' subflags of -C, but only I/O related ones
+   if(!(${^UNICODE} & 0x5FF) && ${^UTF8LOCALE}){
+      print STDERR <<__EOT__;
+WARNING WARNING WARNING
+  Perl detected an UTF-8 (Unicode) locale, but it does NOT use UTF-8 I/O!
+  It is very likely that this does not produce the results you desire!
+  You should either invoke perl(1) with the -C command line option, or
+  set a PERL5OPT environment variable, e.g., in a POSIX/Bourne/Korn shell:
+
+    EITHER: \$ perl -C $SELF
+    OR    : \$ PERL5OPT=-C; export PERL5OPT
+    (OR   : \$ PERL5OPT=-C $SELF)
+
+  Please read the perlrun(1) manual page for more on this topic.
+WARNING WARNING WARNING
+__EOT__
+   }
+
    # Also verifies we have valid (DB,TMP..) paths
    command_line();
 
@@ -386,11 +404,15 @@ sub user_confirm{
 
 sub utf8ify{
    # String comes from CDDB, may be latin1 or utf-8
-   my $sr = shift;
-   my ($s, $sc) = ($$sr);
-   eval {$s = Encode::decode_utf8($s, 1 | Encode::LEAVE_SRC)};
-   #eval {$s = Encode::encode_utf8($s)} if $@; TODO hmm, in perl 5.28.2 this
-   # TODO does no longer work the way it did in the past??
+   my ($sr, $s, $s1);
+   $sr = shift;
+   Encode::_utf8_off($s = $$sr);
+   $s1 = $s;
+   eval {Encode::from_to($s1, "UTF-8", "UTF-8", Encode::FB_CROAK)};
+   if(length($@) != 0){
+      Encode::from_to($s, "LATIN1", "UTF-8", 0)
+   }
+   Encode::_utf8_on($s);
    $$sr = $s
 }
 
