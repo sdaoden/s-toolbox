@@ -245,6 +245,8 @@ END {finalize() if $CLEANUP_OK}
 sub command_line{
    Getopt::Long::Configure('bundling');
    my %opts = (
+         'db-upgrade' => \&db_upgrade,
+
          'h|help|?' => sub {goto jdocu},
          'g|genre-list' => sub{
                printf("%3d %s\n", $_->[0], $_->[1]) foreach(@Genres);
@@ -312,7 +314,7 @@ jdocu:
    print $FH <<__EOT__;
 ${INTRO}
 
- $SELF -h|--help | -g|--genre-list
+ $SELF -h|--help  |  -g|--genre-list  |  --db-upgrade :DIR:
 
  $SELF [-v] [-d DEV] -r|--rip-only
    Only rip audio tracks from CD-ROM
@@ -325,6 +327,7 @@ ${INTRO}
    Do the entire processing
 
 -d|--device DEV       Use CD-ROM DEVice; else \$CDROM; else s-cdda(1) fallback
+--db-upgrade :DIR:    Convert and move v1 musicbox.dat to v2 music.db in DIRs
 -e|--encode-only CDID Resume a --rip-only session, which echoed the CDID to use
 -f|--formats LIST     Comma-separated list of audio target formats (mp3,mp3lo,
                       aac,aaclo,ogg,ogglo,flac); else \$S_MUSIC_FORMATS
@@ -454,8 +457,57 @@ sub utf8_echomode_off{
 }
 # }}}
 
+sub db_upgrade{ # {{{
+   while(@ARGV){
+      my $d = shift @ARGV;
+      die "No such directory: $d\n" unless -d $d;
+      unless(-f "$d/musicbox.dat"){
+         print STDERR "No musicbox.dat, skipping $d\n";
+         next
+      }
+
+      v("DB-upgrading $d");
+      die "Cannot create $d/music.db: $!" unless
+         open N, '>:encoding(UTF-8)', "$d/music.db";
+      die "Cannot read $d/musicbox.dat: $!" unless
+         open O, '<:encoding(UTF-8)', "$d/musicbox.dat";
+
+      for(my $hot = 0; <O>;){
+         chomp;
+         next unless /^\s*(.+)\s*$/;
+         my $l = $1;
+         if($l =~ /^\[CDDB\]$/){
+            $hot = 1
+         }elsif($hot){
+            if($l =~ /^\[.+\]$/){
+               $hot = 0
+            }else{
+               if($l =~ /^TRACK_OFFSETS\s*=(.*)$/){
+                  my @lbas = split ' ', $1; # req. special split behaviour
+                  $l = 'TRACKS_LBA =';
+                  foreach my $e (@lbas){
+                     $e -= 150;
+                     die "Invalid CDDB/FreeDB TRACK_OFFSETS in $d/musicbox.dat"
+                        if $e < 0;
+                     $l .= ' ' . $e
+                  }
+               }
+            }
+         }
+         die "Output error for $d/music.db: $!" unless print N $l, "\n"
+      }
+
+      close O;
+      close N;
+
+      warn "Cannot unlink/remove $d/musicbox.dat: $!"
+         unless unlink "$d/musicbox.dat"
+   }
+   exit 0
+} # }}}
+
 sub quick_and_dirty_dir_selector{ # {{{
-   my @dlist = glob "${TARGET_DIR}*/musicbox.dat";
+   my @dlist = glob "${TARGET_DIR}*/music.db";
    return "${TARGET_DIR}1" if @dlist == 0;
    print <<__EOT__;
 
@@ -469,7 +521,7 @@ __EOT__
    my ($i, $usr);
    for($i = 1; $i <= @dlist; ++$i){
       my $d = "${TARGET_DIR}$i";
-      my $f = "$d/musicbox.dat";
+      my $f = "$d/music.db";
       unless(open F, '<:encoding(UTF-8)', $f){
          print "  [] Skipping due to failed open: $f\n";
          next
@@ -544,7 +596,7 @@ sub cddb_query{ # {{{
    print "  Starting CDDB query for $CDInfo::Id\n";
    my $cddb = new CDDB;
    die "Cannot create CDDB object: $!" unless defined $cddb;
-   my @discs = $cddb->get_discs($CDInfo::Id, \@CDInfo::TrackOffsets,
+   my @discs = $cddb->get_discs($CDInfo::Id, \@CDInfo::TracksLBA,
          $CDInfo::TotalSeconds);
 
    if(@discs == 0){
@@ -660,7 +712,7 @@ jREDO:
    # Id field may also be set from command_line()
    # Mostly set by _calc_id() or parse() only (except Ripper)
    our ($Id, $TotalSeconds, $TrackCount, $FileRipper, $DatFile);
-   our @TrackOffsets = ();
+   our @TracksLBA = ();
    my $DevId;
    my $Leadout = 0xAA;
 
@@ -683,7 +735,7 @@ jREDO:
       }
 
       print "  Calculated CDDB disc ID: $Id\n  ",
-         'Track offsets: ' . join(' ', @TrackOffsets),
+         'Track L(ogical)B(lock)A(ddressing): ' . join(' ', @TracksLBA),
          "\n  Total seconds: $TotalSeconds\n",
          "  Track count: $TrackCount\n"
    }
@@ -843,7 +895,7 @@ jdarwin_rip_stop:
       my $cdtocr = shift;
       my ($sec_first, $sum);
       foreach(@$cdtocr){
-         # $frame is fraction in second
+         # MSF - minute, second, 1/75 second=frame (RedBook standard)
          my ($no, $min, $sec, $frame) = split /\s+/, $_, 4;
          my $frame_off = (($min * 60 + $sec) * 75) + $frame;
          my $sec_begin = int($frame_off / 75);
@@ -853,9 +905,11 @@ jdarwin_rip_stop:
             last
          }
          map {$sum += $_} split //, $sec_begin;
-         push @TrackOffsets, $frame_off
+         # CDDB/FreeDB calculation actually uses "wrong" numbers, correct
+         # according to SCSI MMC-3 standard, Table 333 - LBA to MSF translation
+         push @TracksLBA, ($frame_off - (2 * 75))
       }
-      $TrackCount = scalar @TrackOffsets;
+      $TrackCount = scalar @TracksLBA;
       $Id = sprintf("%02x%04x%02x",
             $sum % 255, $TotalSeconds - $sec_first, $TrackCount)
    } # }}}
@@ -868,7 +922,7 @@ jdarwin_rip_stop:
       print DAT "# $SELF CDDB info for project $Id\n",
          "# Do not modify!   Or project needs to be re-ripped!!\n",
          "CDID = $Id\n",
-         'TRACK_OFFSETS = ', join(' ', @TrackOffsets), "\n",
+         'TRACKS_LBA = ', join(' ', @TracksLBA), "\n",
          "TOTAL_SECONDS = $TotalSeconds\n",
          "RAW_IS_WAVE = 1\n";
       die "Cannot close $f: $!" unless close DAT
@@ -887,7 +941,7 @@ jdarwin_rip_stop:
       my $old_id = $Id;
       my $laref = shift;
       $RawIsWAVE = $Id = $TotalSeconds = undef;
-      @TrackOffsets = ();
+      @TracksLBA = ();
 
       my $emsg;
       foreach(@lines){
@@ -905,12 +959,12 @@ jdarwin_rip_stop:
                next
             }
             $Id = $v
-         }elsif($k eq 'TRACK_OFFSETS'){
-            if(@TrackOffsets){
-               $emsg .= 'TRACK_OFFSETS yet seen;';
+         }elsif($k eq 'TRACKS_LBA'){
+            if(@TracksLBA){
+               $emsg .= 'TRACKS_LBA yet seen;';
                next
             }
-            @TrackOffsets = split(/\s+/, $v)
+            @TracksLBA = split(/\s+/, $v)
          }elsif($k eq 'TOTAL_SECONDS'){
             $emsg .= "invalid TOTAL_SECONDS: $v;" unless $v =~ /^(\d+)$/;
             $TotalSeconds = $1
@@ -924,18 +978,18 @@ jdarwin_rip_stop:
       $emsg .= 'corrupted: no CDID seen;' unless defined $Id;
       $emsg .= 'corrupted: no TOTAL_SECONDS seen;'
             unless defined $TotalSeconds;
-      $TrackCount = scalar @TrackOffsets;
-      $emsg .= 'corrupted: no TRACK_OFFSETS seen;'
+      $TrackCount = scalar @TracksLBA;
+      $emsg .= 'corrupted: no TRACKS_LBA seen;'
             unless $TrackCount > 0;
       $emsg .= 'corrupted: no RAW_IS_WAVE seen;' unless defined $RawIsWAVE;
       if(@Title::List > 0){
-         $emsg .= 'corrupted: TRACK_OFFSETS invalid;'
+         $emsg .= 'corrupted: TRACKS_LBA invalid;'
                if $TrackCount != @Title::List
       }
       die "CDInfo: $emsg" if defined $emsg;
 
       print "\nResumed (parsed) CDInfo: disc: $Id\n  ",
-         'Track offsets: ' . join(' ', @TrackOffsets),
+         'Track offsets: ' . join(' ', @TracksLBA),
          "\n  Total seconds: $TotalSeconds\n",
          "  Track count: $TrackCount\n";
       Title::create_that_many($TrackCount)
@@ -1054,7 +1108,7 @@ jdarwin_rip_stop:
 
    sub init_paths{
       $EditFile = "$WORK_DIR/template.dat";
-      $FinalFile = "$TARGET_DIR/musicbox.dat"
+      $FinalFile = "$TARGET_DIR/music.db"
    }
 
    sub _reset_data{
@@ -1155,7 +1209,7 @@ jREDO:
    sub _write_editable{
       my $dataref = shift;
       my $df = $EditFile;
-      ::v("Writing editable MusicBox data file as $df");
+      ::v("Writing editable S-Music database file as $df");
       die "Cannot open $df: $!" unless open DF, '>:encoding(UTF-8)', $df;
       if(@$dataref > 0){
          die "Error writing $df: $!"
@@ -1224,12 +1278,12 @@ __EOT__
 
    sub _write_final{
       my $df = $FinalFile;
-      ::v("Creating final MusicBox data file as $df");
+      ::v("Creating final S-Music database file as $df");
       die "Cannot open $df: $!" unless open DF, '>:encoding(UTF-8)', $df;
       die "Error writing $df: $!"
             unless print DF "[CDDB]\n",
                 "CDID = $CDInfo::Id\n",
-                "TRACK_OFFSETS = ", join(' ', @CDInfo::TrackOffsets),
+                "TRACKS_LBA = ", join(' ', @CDInfo::TracksLBA),
                 "\nTOTAL_SECONDS = $CDInfo::TotalSeconds\n";
       foreach(@Data){
          die "Error writing $df: $!" unless print DF $_, "\n"
@@ -1310,7 +1364,7 @@ jERROR:     $Error = 1;
 
 {package MBDB::CDDB; # {{{
    sub is_key_supported{
-      $_[0] eq 'CDID' || $_[0] eq 'TRACK_OFFSETS' || $_[0] eq 'TOTAL_SECONDS'
+      $_[0] eq 'CDID' || $_[0] eq 'TRACKS_LBA' || $_[0] eq 'TOTAL_SECONDS'
    }
 
    sub new{
@@ -1324,7 +1378,7 @@ jERROR:     $Error = 1;
       my @dat;
       my $self = {
          objectname => 'CDDB',
-         CDID => undef, TRACK_OFFSETS => undef,
+         CDID => undef, TRACKS_LBA => undef,
          TOTAL_SECONDS => undef, _data => \@dat
       };
       $self = bless $self, $class;
@@ -1345,8 +1399,8 @@ jERROR:     $Error = 1;
    sub finalize{
       my $self = shift;
       ::v("MBDB::$self->{objectname}: finalizing..");
-      return 'CDDB requires CDID, TRACK_OFFSETS and TOTAL_SECONDS;'
-            unless(defined $self->{CDID} && defined $self->{TRACK_OFFSETS} &&
+      return 'CDDB requires CDID, TRACKS_LBA and TOTAL_SECONDS;'
+            unless(defined $self->{CDID} && defined $self->{TRACKS_LBA} &&
                defined $self->{TOTAL_SECONDS});
       undef
    }
