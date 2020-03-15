@@ -171,11 +171,31 @@ enum a_mmc{
    a_MMC_MSF_OFFSET = 2 * a_MMC_FRAMES_PER_SEC,
    a_MMC_MSF_LARGE_M = 90,
    a_MMC_MSF_LARGE_OFFSET = -450150
-#define a_MMC_MSF_TO_LBA(M,S,F) \
-      ((int)(((u32)(M) * 60  + (S)) * a_MMC_FRAMES_PER_SEC  + (u32)(F)) - \
-         ((u32)(M) < a_MMC_MSF_LARGE_M ? a_MMC_MSF_OFFSET \
-            : a_MMC_MSF_LARGE_OFFSET))
 };
+
+#define a_MMC_MSF_TO_LBA(M,S,F,LBA) \
+do{\
+   (LBA) = ((int)(((u32)(M)*60 + (S))*a_MMC_FRAMES_PER_SEC + (u32)(F)) - \
+         ((u32)(M) < a_MMC_MSF_LARGE_M ? a_MMC_MSF_OFFSET \
+            : a_MMC_MSF_LARGE_OFFSET));\
+}while(0)
+
+#define a_MMC_LBA_TO_MSF(LBA,M,S,F) \
+do{\
+   int a__lba = (LBA), a__m, a__s, a__f;\
+   if(a__lba >= -150 && a__lba <= 404849)\
+      a__lba += a_MMC_MSF_OFFSET;\
+   else \
+      a__lba += -a_MMC_MSF_LARGE_OFFSET;\
+   a__m = a__lba / 60 / a_MMC_FRAMES_PER_SEC;\
+   (M) = (u8)a__m;\
+   a__m *= 60 * a_MMC_FRAMES_PER_SEC;\
+   a__s = (a__lba - a__m) / a_MMC_FRAMES_PER_SEC;\
+   (S) = (u8)a__s;\
+   a__s *= a_MMC_FRAMES_PER_SEC;\
+   a__f = a__lba - a__m - a__s;\
+   (F) = (u8)a__f;\
+}while(0)
 
 /* MMC-3: Sub-channel Control Field: audio track flags */
 enum a_mmc_tflags{
@@ -326,7 +346,7 @@ struct a_data{
    u8 d_trackno_end;
    u8 d_trackno_audio;
    /* Indices of only audio tracks */
-   u8 d_track_audio[Z_ALIGN(a_MMC_TRACKS_MAX + 1)]; /* [0] = leadout */
+   u8 d_track_audio[Z_ALIGN(a_MMC_TRACKS_MAX + 1)]; /* [0] = unused */
    char d_mcn[Z_ALIGN(FIELD_SIZEOF(struct a_mmc_cmd_x42_mcn_resp,n1_13_nul))];
    char d_isrc[a_MMC_TRACKS_MAX + 1][Z_ALIGN(
          FIELD_SIZEOF(struct a_mmc_cmd_x42_isrc_resp,l1_12_nul))
@@ -1020,7 +1040,7 @@ jset:
       tp->t_minute = ftrp->pmin;
       tp->t_second = ftrp->psec;
       tp->t_frame = ftrp->pframe;
-      tp->t_lba = a_MMC_MSF_TO_LBA(tp->t_minute, tp->t_second, tp->t_frame);
+      a_MMC_MSF_TO_LBA(tp->t_minute, tp->t_second, tp->t_frame, tp->t_lba);
 
       if(ftrp->point != 0 && !(tp->t_tflags & a_MMC_TF_DATA_TRACK))
          dp->d_track_audio[++taudio] = ftrp->point;
@@ -1043,10 +1063,10 @@ jset:
          goto jleave;
    }
 
-   if(taudio == 0){
+   /*if(taudio == 0){
       fprintf(stderr, "! No audio tracks found\n");
       rv = EX_NOINPUT;
-   }else if(!had_leadout){
+   }else*/ if(!had_leadout){
       fprintf(stderr, "! No lead-out session data reported\n");
       rv = EX_DATAERR;
    }else{
@@ -1176,8 +1196,9 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
     * blobs), use cpcontig as indication whether one is not satisfied yet.
     * XXX "Tab indicator"s untested; more sanity checks; no magic constants */
    UNINIT(cdtlp, &a_cdtext_langa[0]);
+   UNINIT(cdtext_langi, U8_MAX);
    cpcontig = cp_for_tab_ind = NIL;
-   for(cdtext_langi = seq = 0, block = U8_MAX; len > 0; ++seq, ++crp, --len){
+   for(seq = 0, block = U8_MAX; len > 0; ++seq, ++crp, --len){
       /* On block boundaries, forward scan for the three T_BLOCKINFO packets */
       if(block != (j = (crp->dbchars_blocknum_charpos >> 4) & 0x07) ||
             seq != crp->seq){
@@ -1237,12 +1258,12 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
          /* Language desired? */
          for(j = 0;; ++j){
             if((cdtlp = dp->d_cdtext_lang[j]) == NIL){
-               cdtext_langi = 0;
+               cdtext_langi = U8_MAX;
                break;
             }else if(cdtlp->cdtl_code == cdbi.bi_langcode[block]){
                /* May have better one already!  Otherwise zero what we have */
                if(j > cdtext_lang_have)
-                  cdtext_langi = 0;
+                  cdtext_langi = U8_MAX;
                else{
                   /* Unless it continues an elder entry, reset data */
                   if((cdtext_langi = j) != cdtext_lang_have){
@@ -1319,7 +1340,7 @@ a_parse_cdtext(struct a_data *dp, u8 *buf, u16 len){ /* {{{ */
          continue;
       }
 
-      if(cdtext_langi == 0){
+      if(cdtext_langi == U8_MAX){
          if(dp->d_flags & a_F_VERBOSE){
             fprintf(stderr,
                "* CD-TEXT: ignoring packet in block with language 0x%02X/%s\n",
@@ -1535,26 +1556,74 @@ a_dump_toc(struct a_data *dp){
    struct a_track *tp;
    u8 i;
 
-   for(i = 0; ++i <= dp->d_trackno_audio;){
-      tp = &dp->d_track_data[dp->d_track_audio[i]];
-      printf("track=%-2u t%u_msf=%02u:%02u.%02u t%u_lba=%-6d "
-            "t%u_preemphasis=%u t%u_copy=%u\n",
-         i, i, tp->t_minute, tp->t_second, tp->t_frame,
-         i, tp->t_lba,
-         i, (tp->t_tflags & a_MMC_TF_PREEMPHASIS),
-         i, (tp->t_tflags & a_MMC_TF_COPY_PERMIT));
+   /* All audio tracks */
+   if(dp->d_trackno_audio > 0){
+      u8 m, s, f;
+      int lba;
+
+      for(i = 0; ++i <= dp->d_trackno_audio;){
+         tp = &dp->d_track_data[dp->d_track_audio[i]];
+         printf("t=%-2u t%u_msf=%02u:%02u.%02u t%u_lba=%-6d "
+               "t%u_preemphasis=%u t%u_copy=%u\n",
+            i, i, tp->t_minute, tp->t_second, tp->t_frame,
+            i, tp->t_lba,
+            i, (tp->t_tflags & a_MMC_TF_PREEMPHASIS),
+            i, (tp->t_tflags & a_MMC_TF_COPY_PERMIT));
+      }
+
+      if(dp->d_track_audio[--i] == dp->d_trackno_end){
+         tp = &dp->d_track_data[0];
+         m = tp->t_minute;
+         s = tp->t_second;
+         f = tp->t_frame;
+         lba = tp->t_lba;
+      }else{
+         /* The last audio track is not the last track of the CD.
+          * cdda2wav(1) says:
+          *    The Table of Contents needs to be corrected if we have
+          *    a CD-Extra. In this case all audio tracks are followed by a data
+          *    track (in the second session).  Unlike for single session CDs
+          *    the end of the last audio track cannot be set to the start of
+          *    the following track, since the lead-out and lead-in would then
+          *    errenously be part of the audio track. This would lead to read
+          *    errors when trying to read into the lead-out area.  So the
+          *    length of the last track in case of Cd-Extra has to be fixed.
+          * Follow MusicBrainz calculation, since that is what we want to be
+          * compatible with.  It is also found in cdtext.txt:
+          *    (Next writeable address typically is lead-out + 11400 after the
+          *    first session, lead-out + 6900 after further sessions.) */
+         tp = &dp->d_track_data[dp->d_track_audio[i] + 1];
+         lba = tp->t_lba - 11400;
+         a_MMC_LBA_TO_MSF(lba, m, s, f);
+      }
+
+      printf("t=0  t0_msf=%02u:%02u.%02u t0_lba=%-6d track_count=%u\n",
+         m, s, f, lba, dp->d_trackno_audio);
    }
 
-   tp = &dp->d_track_data[dp->d_track_audio[0]];
-   printf("track=0  t0_msf=%02u:%02u.%02u t0_lba=%-6d track_count=%u\n",
-      tp->t_minute, tp->t_second, tp->t_frame, tp->t_lba, dp->d_trackno_audio);
+   /* _All_ tracks */
+   for(i = dp->d_trackno_start; i <= dp->d_trackno_end; ++i){
+      tp = &dp->d_track_data[i];
+      printf("x=%-2u x%u_msf=%02u:%02u.%02u x%u_lba=%-6d x%u_audio=%d\n",
+         i, i, tp->t_minute, tp->t_second, tp->t_frame,
+         i, tp->t_lba,
+         i, !(tp->t_tflags & a_MMC_TF_DATA_TRACK));
+   }
+
+   tp = &dp->d_track_data[0];
+   printf(
+      "x=0  x0_msf=%02u:%02u.%02u x0_lba=%-6d x0_count=%u\n"
+      "x0_track_first=%02u x0_track_last=%02u\n",
+      tp->t_minute, tp->t_second, tp->t_frame, tp->t_lba,
+      dp->d_trackno_end - dp->d_trackno_start + 1,
+      dp->d_trackno_start, dp->d_trackno_end);
 
    return ferror(stdout) ? EX_IOERR : EX_OK;
 }
 
 static int
 a_dump_mcn(struct a_data *dp){
-   printf("mcn=%s\n", dp->d_mcn);
+   printf("t0_mcn=%s\n", dp->d_mcn);
 
    return ferror(stdout) ? EX_IOERR : EX_OK;
 }
