@@ -3,7 +3,7 @@
  *@ Thanks to Thomas Schmitt (libburnia) for cdrom-cookbook.txt and cdtext.txt.
  *@ According to SCSI Multimedia Commands - 3 (MMC-3, Revision 10g).
  *@ Use s-cdda.makefile for compilation: $ make -f s-cdda.makefile"
- *@ TODO de-preemphasis, handling of SCSI sense states?
+ *@ TODO de-preemphasis, handling of SCSI sense states? It is half assed.
  *
  * Copyright (c) 2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -22,7 +22,7 @@
  */
 
 /* */
-#define a_VERSION "0.8.1"
+#define a_VERSION "0.8.2"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* -- >8 -- 8< -- */
@@ -1597,8 +1597,11 @@ a_dump_toc(struct a_data *dp){
          a_MMC_LBA_TO_MSF(lba, m, s, f);
       }
 
-      printf("t=0  t0_msf=%02u:%02u.%02u t0_lba=%-6d track_count=%u\n",
-         m, s, f, lba, dp->d_trackno_audio);
+      printf(
+         "t=0  t0_msf=%02u:%02u.%02u t0_lba=%-6d\n"
+         "t0_count=%u t0_track_first=%-2u t0_track_last=%-2u\n",
+         m, s, f, lba, dp->d_trackno_audio,
+         dp->d_track_audio[1], dp->d_track_audio[i]);
    }
 
    /* _All_ tracks */
@@ -1612,8 +1615,8 @@ a_dump_toc(struct a_data *dp){
 
    tp = &dp->d_track_data[0];
    printf(
-      "x=0  x0_msf=%02u:%02u.%02u x0_lba=%-6d x0_count=%u\n"
-      "x0_track_first=%02u x0_track_last=%02u\n",
+      "x=0  x0_msf=%02u:%02u.%02u x0_lba=%-6d\n"
+      "x0_count=%u x0_track_first=%-2u x0_track_last=%-2u\n",
       tp->t_minute, tp->t_second, tp->t_frame, tp->t_lba,
       dp->d_trackno_end - dp->d_trackno_start + 1,
       dp->d_trackno_start, dp->d_trackno_end);
