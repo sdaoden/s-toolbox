@@ -843,7 +843,7 @@ jdarwin_rip_stop:
 
       print '  ', shift, ': ';
       if(defined $CDROM){
-         $dev = "--device $CDROM";
+         $dev = "-d $CDROM";
          print "device $CDROM"
       }else{
          $dev = '';
@@ -853,12 +853,12 @@ jdarwin_rip_stop:
 
       $FileRipper = sub{
          my $title = shift;
-         return undef if 0 == system("s-cdda $dev --read " .
-            $title->{NUMBER} . ' > ' .  $title->{RAW_FILE});
+         return undef if 0 == system("s-cdda $dev " . ($VERBOSE ? '-v ' : '') .
+            '-r ' .  $title->{NUMBER} . ' > ' .  $title->{RAW_FILE});
          return "device $dev: cannot rip track $title->{NUMBER}: $?"
       };
 
-      $l = 's-cdda ' . $dev;
+      $l = 's-cdda ' . $dev . ($VERBOSE ? ' -v' : '');
       ::v("Invoking $l");
       $l = `$l`;
       return "$dev: failed reading TOC: $!" if $?;
@@ -867,7 +867,7 @@ jdarwin_rip_stop:
       for($li = 0;; ++$li){
          $l = shift @res;
          last unless defined $l;
-         if($l =~ /^track=(\d+)\s+
+         if($l =~ /^t=(\d+)\s+
                t\d+_msf=(\d+):(\d+).(\d+)\s+
                t\d+_lba=(\d+)\s+
                .*$/x){
@@ -882,6 +882,15 @@ jdarwin_rip_stop:
                   unless $tno == $li + 1;
                $cdtoc[$li] = "$tno $mm $ms $mf"
             }
+         }elsif($l =~ /^t0_count=(\d+)\s+
+               t0_track_first=(\d+)\s+
+               t0_track_last=(\d+)\s+
+               .*$/x){
+         }elsif($l =~ /^x=(\d+)\s+.*$/){
+         }elsif($l =~ /^x0_count=(\d+)\s+
+               x0_track_first=(\d+)\s+
+               x0_track_last=(\d+)\s+
+               .*$/x){
          }else{
             die "Invalid line: $l\n"
          }
@@ -960,11 +969,9 @@ jdarwin_rip_stop:
             }
             $Id = $v
          }elsif($k eq 'TRACKS_LBA'){
-            if(@TracksLBA){
-               $emsg .= 'TRACKS_LBA yet seen;';
-               next
-            }
-            @TracksLBA = split(/\s+/, $v)
+            my @x = split(/\s+/, $v);
+            @TracksLBA = map {return () unless /^(\d+)$/; $_} @x;
+            $emsg .= "invalid TRACKS_LBA entries: $v" if @x != @TracksLBA
          }elsif($k eq 'TOTAL_SECONDS'){
             $emsg .= "invalid TOTAL_SECONDS: $v;" unless $v =~ /^(\d+)$/;
             $TotalSeconds = $1
