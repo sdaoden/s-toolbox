@@ -596,8 +596,9 @@ sub cddb_query{ # {{{
    print "  Starting CDDB query for $CDInfo::Id\n";
    my $cddb = new CDDB;
    die "Cannot create CDDB object: $!" unless defined $cddb;
-   my @discs = $cddb->get_discs($CDInfo::Id, \@CDInfo::TracksLBA,
-         $CDInfo::TotalSeconds);
+   my @toc = map {$_ + 150} @CDInfo::TracksLBA;
+   pop @toc;
+   my @discs = $cddb->get_discs($CDInfo::Id, \@toc, $CDInfo::TotalSeconds);
 
    if(@discs == 0){
       print "! CDDB did not match, i will create entry fakes!\n",
@@ -711,7 +712,8 @@ jREDO:
    our $RawIsWAVE = 0;
    # Id field may also be set from command_line()
    # Mostly set by _calc_id() or parse() only (except Ripper)
-   our ($Id, $TotalSeconds, $TrackCount, $FileRipper, $DatFile);
+   our ($Id, $TotalSeconds, $TrackCount, $TrackFirst, $TrackLast,
+      $FileRipper, $DatFile);
    our @TracksLBA = ();
    my $DevId;
    my $Leadout = 0xAA;
@@ -722,28 +724,28 @@ jREDO:
 
    sub discover{
       no strict 'refs';
-      die "System $^O not supported" unless defined *{"CDInfo::_os_$^O"};
+      die "! System $^O not supported" unless defined *{"CDInfo::_os_$^O"};
       print "\nCDInfo: assuming an Audio-CD is in the drive ...\n";
 
       my $i = &{"CDInfo::_os_$^O"}();
       if(defined $i){
-         print "! Error: $i\n",
-            "  Unable to collect CD Table-Of-Contents.\n",
-            "  This may mean the Audio-CD was not yet fully loaded.\n",
-            "  It can also happen for copy-protection .. or whatever.\n";
+         print $i,
+            "! Unable to collect CD Table-Of-Contents\n",
+            "! This may mean the Audio-CD was not yet fully loaded\n",
+            "! It can also happen for copy-protection .. or whatever\n";
          exit 1
       }
 
       print "  Calculated CDDB disc ID: $Id\n  ",
          'Track L(ogical)B(lock)A(ddressing): ' . join(' ', @TracksLBA),
-         "\n  Total seconds: $TotalSeconds\n",
-         "  Track count: $TrackCount\n"
+         "\n  Track count: $TrackCount\n"
    }
 
    sub _os_darwin{ # {{{
       my $drive = defined $CDROM ? $CDROM : 1;
       $DevId = defined $CDROMDEV ? $CDROMDEV : $drive;
       print "  Darwin/Mac OS X: drive $drive and /dev/disk$DevId\n";
+      print "  !! WARNING: Darwin/MAC OS X not tested for a long time!\n";
 
       $FileRipper = sub{
          my $title = shift;
@@ -752,24 +754,24 @@ jREDO:
          $inf = '/dev/disk' . $DevId . 's' . $title->{NUMBER};
          $outf = $title->{RAW_FILE};
 
-         return "cannot open for reading: $inf: $!"
+         return "! Cannot open for reading: $inf: $!\n"
                unless open INFH, '<', $inf;
          # (Yet-exists case handled by caller)
          unless(open OUTFH, '>', $outf){
             $err = $!;
             close INFH;
-            return "cannot open for writing: $outf: $err"
+            return "! Cannot open for writing: $outf: $err\n"
          }
          unless(binmode(INFH) && binmode(OUTFH)){
             close OUTFH;
             close INFH;
-            return "failed to set binary mode for $inf and/or $outf"
+            return "! Failed to set binary mode for $inf and/or $outf\n"
          }
 
          while(1){
             my $r = sysread INFH, $buf, 2352 * 20;
             unless(defined $r){
-               $err = "I/O read failed: $!";
+               $err = "! I/O read failed: $!\n";
                last
             }
             last if $r == 0;
@@ -779,7 +781,7 @@ jREDO:
             for(my $o = 0;  $r > 0; ){
                my $w = syswrite OUTFH, $buf, $r, $o;
                unless(defined $w){
-                  $err = "I/O write failed: $!";
+                  $err = "! I/O write failed: $!\n";
                   goto jdarwin_rip_stop
                }
                $o += $w;
@@ -799,15 +801,17 @@ jdarwin_rip_stop:
       ::v("Invoking drutil(1) -drive $drive toc");
       sleep 1;
       my $l = `drutil -drive $drive toc`;
-      return "drive $drive: failed reading TOC: $!" if $?;
+      return "! Drive $drive: failed reading TOC: $!\n" if $?;
       my @res = split "\n", $l;
 
-      my (@cdtoc, $leadout);
+      my (@cdtoc, $leadout, $leadout_lba);
+      ($TrackFirst, $TrackLast) = (0xFF, 0x00);
       for(;;){
          $l = shift @res;
-         return "drive $drive: no lead-out information found"
+         return "! Drive $drive: no lead-out information found\n"
                unless defined $l;
          if($l =~ /^\s*Lead-out:\s+(\d+):(\d+)\.(\d+)/){
+            $leadout_lba = ((($1 * 60 + $2) * 75) + $3) - 150;
             $leadout = "$Leadout $1 $2 $3";
             last
          }
@@ -818,12 +822,19 @@ jdarwin_rip_stop:
          last unless $l =~ /^\s*Session\s+\d+,\s+Track\s+(\d+):
             \s+(\d+):(\d+)\.(\d+)
             .*/x;
-         return "drive $drive: corrupted TOC: $1 follows $li"
+         return "! Drive $drive: corrupted TOC: $1 follows $li\n"
                unless $1 == $li + 1;
-         $cdtoc[$li] = "$1 $2 $3 $4"
+         $TrackFirst = $1 if $1 < $TrackFirst;
+         $TrackLast= $1 if $1 > $TrackLast;
+         push @cdtoc, "$1 $2 $3 $4";
+         push @TracksLBA, ((($2 * 60 + $3) * 75) + $4) - 150
       }
-      return "drive $drive: no track information found" unless @cdtoc > 0;
+      return "! Drive $drive: no track information found\n" unless @cdtoc > 0;
       push @cdtoc, $leadout;
+      push @TracksLBA, $leadout_lba;
+
+      my $emsg = _check_cddb_state('');
+      return $emsg if length $emsg;
 
       _calc_cdid(\@cdtoc);
       return undef
@@ -839,7 +850,7 @@ jdarwin_rip_stop:
    sub _os_via_scdda{
       $RawIsWAVE = 1;
 
-      my ($dev, $l, @res, @cdtoc, $li);
+      my ($dev, $l, @res, @cdtoc);
 
       print '  ', shift, ': ';
       if(defined $CDROM){
@@ -855,7 +866,7 @@ jdarwin_rip_stop:
          my $title = shift;
          return undef if 0 == system("s-cdda $dev " . ($VERBOSE ? '-v ' : '') .
             '-r ' .  $title->{NUMBER} . ' > ' .  $title->{RAW_FILE});
-         return "device $dev: cannot rip track $title->{NUMBER}: $?"
+         return "! Device $dev: cannot rip track $title->{NUMBER}: $?\n"
       };
 
       $l = 's-cdda ' . $dev . ($VERBOSE ? ' -v' : '');
@@ -864,7 +875,8 @@ jdarwin_rip_stop:
       return "$dev: failed reading TOC: $!" if $?;
       @res = split "\n", $l;
 
-      for($li = 0;; ++$li){
+      my ($emsg, $had_leadout) = ('', 0);
+      for(;;){
          $l = shift @res;
          last unless defined $l;
          if($l =~ /^t=(\d+)\s+
@@ -873,29 +885,38 @@ jdarwin_rip_stop:
                .*$/x){
             my ($tno, $mm, $ms, $mf, $lba) = ($1, $2, $3, $4, $5);
 
-            if($tno == 0){
-               push @cdtoc, "$Leadout $mm $ms $mf";
-               _calc_cdid(\@cdtoc);
-               return undef
-            }else{
-               return "device $dev: corrupted TOC: $tno follows $li"
-                  unless $tno == $li + 1;
-               $cdtoc[$li] = "$tno $mm $ms $mf"
+            $emsg .= "! Corrupted: lead-out not last entry\n" if $had_leadout;
+            if($tno < 1){
+               $emsg .= "! Corrupted: invalid track number: $tno\n";
+               next
             }
+            $cdtoc[$tno - 1] = "$tno $mm $ms $mf";
+            $TracksLBA[$tno - 1] = $lba
+         }elsif($l =~ /^t=0\s+t0_msf=(\d+):(\d+).(\d+)\s+t0_lba=(\d+)$/){
+            my ($mm, $ms, $mf, $lba) = ($1, $2, $3, $4);
+
+            $had_leadout = 1;
+            push @cdtoc, "$Leadout $mm $ms $mf";
+            push @TracksLBA, $lba
          }elsif($l =~ /^t0_count=(\d+)\s+
                t0_track_first=(\d+)\s+
-               t0_track_last=(\d+)\s+
-               .*$/x){
+               t0_track_last=(\d+)/x){
+            ($TrackCount, $TrackFirst, $TrackLast) = ($1, $2, $3)
          }elsif($l =~ /^x=(\d+)\s+.*$/){
          }elsif($l =~ /^x0_count=(\d+)\s+
                x0_track_first=(\d+)\s+
-               x0_track_last=(\d+)\s+
+               x0_track_last=(\d+)
                .*$/x){
          }else{
-            die "Invalid line: $l\n"
+            #$emsg .= "! Invalid line: $l\n"
          }
       }
-      return "device $dev: no valid track information found"
+      $emsg .= "! No Lead-out information encountered\n" unless $had_leadout;
+      $emsg = _check_cddb_state($emsg);
+      return $emsg if length $emsg;
+
+      _calc_cdid(\@cdtoc);
+      return undef
    } # }}}
 
    # Calculated CD(DB)-Id and *set*CDInfo*fields*
@@ -905,6 +926,9 @@ jdarwin_rip_stop:
       my ($sec_first, $sum);
       foreach(@$cdtocr){
          # MSF - minute, second, 1/75 second=frame (RedBook standard)
+         # CDDB/FreeDB calculation actually uses "wrong" numbers in that it
+         # adds the 2 seconds offset (see SCSI MMC-3 standard, Table 333 - LBA
+         # to MSF translation)
          my ($no, $min, $sec, $frame) = split /\s+/, $_, 4;
          my $frame_off = (($min * 60 + $sec) * 75) + $frame;
          my $sec_begin = int($frame_off / 75);
@@ -914,11 +938,7 @@ jdarwin_rip_stop:
             last
          }
          map {$sum += $_} split //, $sec_begin;
-         # CDDB/FreeDB calculation actually uses "wrong" numbers, correct
-         # according to SCSI MMC-3 standard, Table 333 - LBA to MSF translation
-         push @TracksLBA, ($frame_off - (2 * 75))
       }
-      $TrackCount = scalar @TracksLBA;
       $Id = sprintf("%02x%04x%02x",
             $sum % 255, $TotalSeconds - $sec_first, $TrackCount)
    } # }}}
@@ -932,6 +952,8 @@ jdarwin_rip_stop:
          "# Do not modify!   Or project needs to be re-ripped!!\n",
          "CDID = $Id\n",
          'TRACKS_LBA = ', join(' ', @TracksLBA), "\n",
+         "TRACK_FIRST = $TrackFirst\n",
+         "TRACK_LAST = $TrackLast\n",
          "TOTAL_SECONDS = $TotalSeconds\n",
          "RAW_IS_WAVE = 1\n";
       die "Cannot close $f: $!" unless close DAT
@@ -947,59 +969,72 @@ jdarwin_rip_stop:
 
       # It may happen that this is called even though discover()
       # already queried the disc in the drive - nevertheless: resume!
-      my $old_id = $Id;
-      my $laref = shift;
-      $RawIsWAVE = $Id = $TotalSeconds = undef;
+      my ($old_id, $laref) = ($Id, shift);
+      $RawIsWAVE = $TotalSeconds = $Id =
+         $TrackCount = $TrackFirst = $TrackLast = undef;
       @TracksLBA = ();
 
-      my $emsg;
+      my $emsg = '';
       foreach(@lines){
          chomp;
          next if /^\s*#/;
          next if /^\s*$/;
          unless(/^\s*(.+?)\s*=\s*(.+?)\s*$/){
-            $emsg .= "Invalid line $_;";
+            $emsg .= "! Invalid line $_\n";
             next
          }
          my ($k, $v) = ($1, $2);
          if($k eq 'CDID'){
             if(defined $old_id && $v ne $old_id){
-               $emsg .= "Parsed CDID ($v) does not match;";
+               $emsg .= "! Parsed CDID ($v) does not match\n";
                next
             }
             $Id = $v
          }elsif($k eq 'TRACKS_LBA'){
             my @x = split(/\s+/, $v);
             @TracksLBA = map {return () unless /^(\d+)$/; $_} @x;
-            $emsg .= "invalid TRACKS_LBA entries: $v" if @x != @TracksLBA
+            $emsg .= "! Invalid TRACKS_LBA entries: $v\n" if @x != @TracksLBA;
+            $TrackCount = @TracksLBA - 1
          }elsif($k eq 'TOTAL_SECONDS'){
-            $emsg .= "invalid TOTAL_SECONDS: $v;" unless $v =~ /^(\d+)$/;
+            $emsg .= "! Invalid TOTAL_SECONDS: $v\n" unless $v =~ /^(\d+)$/;
             $TotalSeconds = $1
+         }elsif($k eq 'TRACK_FIRST'){
+            $emsg .= "! Invalid TRACK_FIRST: $v\n" unless $v =~ /^(\d+)$/;
+            $TrackFirst = $1
+         }elsif($k eq 'TRACK_LAST'){
+            $emsg .= "! Invalid TRACK_LAST: $v\n" unless $v =~ /^(\d+)$/;
+            $TrackLast = $1
          }elsif($k eq 'RAW_IS_WAVE'){
-            $emsg .= "invalid RAW_IS_WAVE: $v;" unless $v =~ /^(\d)$/;
+            $emsg .= "! Invalid RAW_IS_WAVE: $v\n" unless $v =~ /^(\d)$/;
             $RawIsWAVE = $1
          }else{
-            $emsg .= "Invalid line: $_;"
+            $emsg .= "! Invalid line: $_\n"
          }
       }
-      $emsg .= 'corrupted: no CDID seen;' unless defined $Id;
-      $emsg .= 'corrupted: no TOTAL_SECONDS seen;'
+      $emsg .= "! Corrupted: no CDID seen\n" unless defined $Id;
+      $emsg .= "! Corrupted: no TOTAL_SECONDS seen\n"
             unless defined $TotalSeconds;
-      $TrackCount = scalar @TracksLBA;
-      $emsg .= 'corrupted: no TRACKS_LBA seen;'
-            unless $TrackCount > 0;
-      $emsg .= 'corrupted: no RAW_IS_WAVE seen;' unless defined $RawIsWAVE;
-      if(@Title::List > 0){
-         $emsg .= 'corrupted: TRACKS_LBA invalid;'
-               if $TrackCount != @Title::List
-      }
-      die "CDInfo: $emsg" if defined $emsg;
+      $emsg = _check_cddb_state($emsg);
+      die "CDInfo: $emsg" if length $emsg;
 
       print "\nResumed (parsed) CDInfo: disc: $Id\n  ",
          'Track offsets: ' . join(' ', @TracksLBA),
          "\n  Total seconds: $TotalSeconds\n",
          "  Track count: $TrackCount\n";
-      Title::create_that_many($TrackCount)
+   }
+
+   sub _check_cddb_state{
+      my ($emsg) = @_;
+      $emsg .= "! Corrupted: no TRACK_COUNT seen\n" unless defined $TrackCount;
+      $emsg .= "! Corrupted: no TRACK_FIRST seen\n" unless defined $TrackFirst;
+      $emsg .= "! Corrupted: no TRACK_LAST seen\n" unless defined $TrackLast;
+      $emsg .= "! Corrupted: no TRACKS_LBA seen\n" unless $TrackCount > 0;
+      $emsg .= "! Corrupted: no RAW_IS_WAVE seen\n" unless defined $RawIsWAVE;
+      if(@Title::List > 0){
+         $emsg .= "! Corrupted: TRACKS_LBA invalid\n"
+            if $TrackCount != @Title::List
+      }
+      return $emsg
    }
    # }}}
 } # }}}
@@ -1010,7 +1045,7 @@ jdarwin_rip_stop:
    our @List;
 
    sub create_that_many{
-      return if @List != 0;
+      die 'Title::create_that_many: impl error' if @List != 0;
       my $no = shift;
       for(my $i = 1; $i <= $no; ++$i){
          Title->new($i)
@@ -1029,8 +1064,8 @@ jdarwin_rip_stop:
          print "  Rip track $t->{NUMBER} -> $t->{RAW_FILE}\n";
          my $emsg = &$CDInfo::FileRipper($t);
          if(defined $emsg){
-            print "! Error occurred: $emsg\n",
-               "! Shall i deselect the track (else quit)?";
+            print $emsg,
+               "!  Shall i deselect the track (else quit)?";
             exit 5 unless ::user_confirm();
             $t->{IS_SELECTED} = 0;
             unlink $t->{RAW_FILE} if -f $t->{RAW_FILE}
@@ -1290,8 +1325,10 @@ __EOT__
       die "Error writing $df: $!"
             unless print DF "[CDDB]\n",
                 "CDID = $CDInfo::Id\n",
-                "TRACKS_LBA = ", join(' ', @CDInfo::TracksLBA),
-                "\nTOTAL_SECONDS = $CDInfo::TotalSeconds\n";
+                "TRACKS_LBA = ", join(' ', @CDInfo::TracksLBA), "\n",
+                "TRACK_FIRST = $CDInfo::TrackFirst\n",
+                "TRACK_LAST = $CDInfo::TrackLast\n",
+                "TOTAL_SECONDS = $CDInfo::TotalSeconds\n";
       foreach(@Data){
          die "Error writing $df: $!" unless print DF $_, "\n"
       }
@@ -1371,7 +1408,9 @@ jERROR:     $Error = 1;
 
 {package MBDB::CDDB; # {{{
    sub is_key_supported{
-      $_[0] eq 'CDID' || $_[0] eq 'TRACKS_LBA' || $_[0] eq 'TOTAL_SECONDS'
+      $_[0] eq 'CDID' || $_[0] eq 'TRACKS_LBA' ||
+         $_[0] eq 'TRACK_FIRST' || $_[0] eq 'TRACK_LAST' ||
+         $_[0] eq 'TOTAL_SECONDS'
    }
 
    sub new{
@@ -1386,6 +1425,7 @@ jERROR:     $Error = 1;
       my $self = {
          objectname => 'CDDB',
          CDID => undef, TRACKS_LBA => undef,
+         TRACK_FIRST => undef, TRACK_LAST => undef,
          TOTAL_SECONDS => undef, _data => \@dat
       };
       $self = bless $self, $class;
@@ -1406,8 +1446,10 @@ jERROR:     $Error = 1;
    sub finalize{
       my $self = shift;
       ::v("MBDB::$self->{objectname}: finalizing..");
-      return 'CDDB requires CDID, TRACKS_LBA and TOTAL_SECONDS;'
+      return 'CDDB requires CDID, TRACKS_LBA, TRACK_FIRST, TRACK_LAST ' .
+               'and TOTAL_SECONDS;'
             unless(defined $self->{CDID} && defined $self->{TRACKS_LBA} &&
+               defined $self->{TRACK_FIRST} && defined $self->{TRACK_LAST} &&
                defined $self->{TOTAL_SECONDS});
       undef
    }
