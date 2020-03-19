@@ -50,6 +50,7 @@ use diagnostics -verbose;
 use warnings;
 use strict;
 
+use Digest;
 use Encode;
 use Getopt::Long;
 
@@ -153,13 +154,13 @@ __EOT__
 
    my ($info_ok, $needs_cddb) = (0, 1);
    # Unless we have seen --encode-only=ID
-   unless(defined $CDInfo::Id){
+   unless(defined $CDInfo::CDId){
       CDInfo::discover();
       $info_ok = 1
    }
 
-   $WORK_DIR = "$TMPDIR/s-disc-ripper.$CDInfo::Id";
-   $TARGET_DIR = "$MUSIC_DB/disc.${CDInfo::Id}-";
+   $WORK_DIR = "$TMPDIR/s-disc-ripper.$CDInfo::CDId";
+   $TARGET_DIR = "$MUSIC_DB/disc.${CDInfo::CDId}-";
    if(-d "${TARGET_DIR}1"){
       $TARGET_DIR = quick_and_dirty_dir_selector()
    }else{
@@ -207,7 +208,7 @@ __EOT__
    if($RIP_ONLY || !$ENC_ONLY){
       user_tracks();
       Title::rip_all_selected();
-      print "\nUse --encode-only=$CDInfo::Id to resume ...\n" if $RIP_ONLY
+      print "\nUse --encode-only=$CDInfo::CDId to resume ...\n" if $RIP_ONLY
    }elsif($ENC_ONLY){
       # XXX In this case we are responsible to detect whether we ripped WAVE
       # XXX or RAW files, a.k.a. set $CDInfo::RawIsWAVE!  Yes, this is a hack
@@ -280,7 +281,7 @@ sub command_line{
          $emsg = "$ENC_ONLY is not a valid CD(DB)ID";
          goto jdocu
       }
-      $CDInfo::Id = lc $ENC_ONLY;
+      $CDInfo::CDId = lc $ENC_ONLY;
       $ENC_ONLY = 1
    }
 
@@ -593,12 +594,12 @@ sub cddb_query{ # {{{
       return _fake();
    }
 
-   print "  Starting CDDB query for $CDInfo::Id\n";
+   print "  Starting CDDB query for $CDInfo::CDId\n";
    my $cddb = new CDDB;
    die "Cannot create CDDB object: $!" unless defined $cddb;
    my @toc = map {$_ + 150} @CDInfo::TracksLBA;
    pop @toc;
-   my @discs = $cddb->get_discs($CDInfo::Id, \@toc, $CDInfo::TotalSeconds);
+   my @discs = $cddb->get_discs($CDInfo::CDId, \@toc, $CDInfo::TotalSeconds);
 
    if(@discs == 0){
       print "! CDDB did not match, i will create entry fakes!\n",
@@ -631,8 +632,8 @@ jREDO:
    }
    $usr = $discs[--$usr];
 
-   print "\nStarting CDDB detail read for $usr->[0]/$CDInfo::Id\n";
-   $dinf = $cddb->get_disc_details($usr->[0], $CDInfo::Id);
+   print "\nStarting CDDB detail read for $usr->[0]/$CDInfo::CDId\n";
+   $dinf = $cddb->get_disc_details($usr->[0], $CDInfo::CDId);
    die 'CDDB failed to return disc details' unless defined $dinf;
 
    # Prepare TAG as UTF-8 (CDDB entries may be ISO-8859-1 or UTF-8)
@@ -665,7 +666,7 @@ jREDO:
       ::utf8ify(\$_)
    }
 
-   print "  CDDB disc info for CD(DB)ID=$CDInfo::Id\n",
+   print "  CDDB disc info for CD(DB)ID=$CDInfo::CDId\n",
       "  (NOTE: terminal may not be able to display charset):\n",
       "    Genre=$CDDB{GENRE}, Year=$CDDB{YEAR}\n",
       "    Artist=$CDDB{ARTIST}\n",
@@ -677,7 +678,7 @@ jREDO:
 } # }}}
 
 sub user_tracks{ # {{{
-   print "\nDisc $CDInfo::Id contains $CDInfo::TrackCount songs - ",
+   print "\nDisc $CDInfo::CDId contains $CDInfo::TrackCount songs - ",
       'shall all be ripped?';
    if(user_confirm()){
       print "  Whee - all songs will be ripped!\n";
@@ -712,7 +713,8 @@ jREDO:
    our $RawIsWAVE = 0;
    # Id field may also be set from command_line()
    # Mostly set by _calc_id() or parse() only (except Ripper)
-   our ($Id, $TotalSeconds, $TrackCount, $TrackFirst, $TrackLast,
+   our ($CDId, $MBrainzDiscId, $TotalSeconds,
+      $TrackCount, $TrackFirst, $TrackLast,
       $FileRipper, $DatFile);
    our @TracksLBA = ();
    my $DevId;
@@ -736,9 +738,10 @@ jREDO:
          exit 1
       }
 
-      print "  Calculated CDDB disc ID: $Id\n  ",
-         'Track L(ogical)B(lock)A(ddressing): ' . join(' ', @TracksLBA),
-         "\n  Track count: $TrackCount\n"
+      print "  CD(DB) ID: $CDId  |  MusicBrainz Disc ID: ",
+         $MBrainzDiscId, "\n  ",
+         'Track L(ogical)B(lock)A(ddressing)s: ' . join(' ', @TracksLBA),
+         "\n  Track: count $TrackCount, first $TrackFirst, last $TrackLast\n"
    }
 
    sub _os_darwin{ # {{{
@@ -916,10 +919,11 @@ jdarwin_rip_stop:
       return $emsg if length $emsg;
 
       _calc_cdid(\@cdtoc);
+      _calc_mb_discid(\@cdtoc);
       return undef
    } # }}}
 
-   # Calculated CD(DB)-Id and *set*CDInfo*fields*
+   # Calculated CD(DB)-Id and *set*CDInfo*fields*, ditto MusicBrainz Disc ID
    sub _calc_cdid{ # {{{
       # This is a stripped down version of CDDB.pm::calculate_id()
       my $cdtocr = shift;
@@ -939,8 +943,28 @@ jdarwin_rip_stop:
          }
          map {$sum += $_} split //, $sec_begin;
       }
-      $Id = sprintf("%02x%04x%02x",
+      $CDId = sprintf("%02x%04x%02x",
             $sum % 255, $TotalSeconds - $sec_first, $TrackCount)
+   }
+
+   sub _calc_mb_discid{
+      my $cdtocr = shift;
+
+      my $d = Digest->new("SHA-1");
+      $d->add(sprintf '%02X', $TrackFirst);
+      $d->add(sprintf '%02X', $TrackLast);
+
+      my $i = @TracksLBA;
+      $d->add(sprintf '%08X', $TracksLBA[--$i] + 150);
+      for(my $j = 0; $j < $i; ++$j){
+         $d->add(sprintf '%08X', $TracksLBA[$j] + 150)
+      }
+      for(++$i; $i < 100; ++$i){
+         $d->add('00000000')
+      }
+      $d = $d->b64digest();
+      $d =~ tr[/+=][_.-];
+      $MBrainzDiscId = $d . '-'
    } # }}}
 
    # write_data, read_data ($DatFile handling) {{{
@@ -948,9 +972,10 @@ jdarwin_rip_stop:
       my $f = $DatFile;
       ::v("CDInfo::write_data($f)");
       die "Cannot open $f: $!" unless open DAT, '>:encoding(UTF-8)', $f;
-      print DAT "# $SELF CDDB info for project $Id\n",
+      print DAT "# $SELF CDDB info for project $CDId\n",
          "# Do not modify!   Or project needs to be re-ripped!!\n",
-         "CDID = $Id\n",
+         "CDID = $CDId\n",
+         "MBRAINZ_DISC_ID = $MBrainzDiscId\n",
          'TRACKS_LBA = ', join(' ', @TracksLBA), "\n",
          "TRACK_FIRST = $TrackFirst\n",
          "TRACK_LAST = $TrackLast\n",
@@ -969,8 +994,8 @@ jdarwin_rip_stop:
 
       # It may happen that this is called even though discover()
       # already queried the disc in the drive - nevertheless: resume!
-      my ($old_id, $laref) = ($Id, shift);
-      $RawIsWAVE = $TotalSeconds = $Id =
+      my ($old_id, $laref) = ($CDId, shift);
+      $RawIsWAVE = $TotalSeconds = $CDId = $MBrainzDiscId =
          $TrackCount = $TrackFirst = $TrackLast = undef;
       @TracksLBA = ();
 
@@ -989,7 +1014,12 @@ jdarwin_rip_stop:
                $emsg .= "! Parsed CDID ($v) does not match\n";
                next
             }
-            $Id = $v
+            $emsg .= "! Invalid CDID: $v\n" unless $v =~ /^([[:xdigit:]]+)$/;
+            $CDId = $v
+         }elsif($k eq 'MBRAINZ_DISC_ID'){
+            $emsg .= "! Invalid MBRAINZ_DISC_ID: $v\n"
+                  unless $v =~ /^([[:alnum:]_.-]+)$/;
+            $MBrainzDiscId = $v
          }elsif($k eq 'TRACKS_LBA'){
             my @x = split(/\s+/, $v);
             @TracksLBA = map {return () unless /^(\d+)$/; $_} @x;
@@ -1011,16 +1041,18 @@ jdarwin_rip_stop:
             $emsg .= "! Invalid line: $_\n"
          }
       }
-      $emsg .= "! Corrupted: no CDID seen\n" unless defined $Id;
+      $emsg .= "! Corrupted: no CDID seen\n" unless defined $CDId;
+      $emsg .= "! Corrupted: no MBRAINZ_DISC_ID seen\n"
+            unless defined $MBrainzDiscId;
       $emsg .= "! Corrupted: no TOTAL_SECONDS seen\n"
             unless defined $TotalSeconds;
       $emsg = _check_cddb_state($emsg);
       die "CDInfo: $emsg" if length $emsg;
 
-      print "\nResumed (parsed) CDInfo: disc: $Id\n  ",
-         'Track offsets: ' . join(' ', @TracksLBA),
-         "\n  Total seconds: $TotalSeconds\n",
-         "  Track count: $TrackCount\n";
+      print "  CD(DB) ID: $CDId  |  MusicBrainz Disc ID: ",
+         $MBrainzDiscId, "\n  ",
+         'Track L(ogical)B(lock)A(ddressing)s: ' . join(' ', @TracksLBA),
+         "\n  Track: count $TrackCount, first $TrackFirst, last $TrackLast\n"
    }
 
    sub _check_cddb_state{
@@ -1306,7 +1338,7 @@ jREDO:
 
    sub _help_text{
       return <<__EOT__
-# S-Music database, CDDB info: $CDDB{GENRE}/$CDInfo::Id
+# S-Music database, CDDB info: $CDDB{GENRE}/$CDInfo::CDId
 # This file is and used to be in UTF-8 encoding (codepage,charset) ONLY!
 # Syntax (processing is line based):
 # - Leading and trailing whitespace is ignored
@@ -1324,11 +1356,11 @@ __EOT__
       die "Cannot open $df: $!" unless open DF, '>:encoding(UTF-8)', $df;
       die "Error writing $df: $!"
             unless print DF "[CDDB]\n",
-                "CDID = $CDInfo::Id\n",
+                "CDID = $CDInfo::CDId\n",
+                "MBRAINZ_DISC_ID = $CDInfo::MBrainzDiscId\n",
                 "TRACKS_LBA = ", join(' ', @CDInfo::TracksLBA), "\n",
                 "TRACK_FIRST = $CDInfo::TrackFirst\n",
-                "TRACK_LAST = $CDInfo::TrackLast\n",
-                "TOTAL_SECONDS = $CDInfo::TotalSeconds\n";
+                "TRACK_LAST = $CDInfo::TrackLast\n";
       foreach(@Data){
          die "Error writing $df: $!" unless print DF $_, "\n"
       }
@@ -1408,9 +1440,9 @@ jERROR:     $Error = 1;
 
 {package MBDB::CDDB; # {{{
    sub is_key_supported{
-      $_[0] eq 'CDID' || $_[0] eq 'TRACKS_LBA' ||
-         $_[0] eq 'TRACK_FIRST' || $_[0] eq 'TRACK_LAST' ||
-         $_[0] eq 'TOTAL_SECONDS'
+      $_[0] eq 'CDID' || $_[0] eq 'MBRAINZ_DISC_ID' ||
+         $_[0] eq 'TRACKS_LBA' ||
+         $_[0] eq 'TRACK_FIRST' || $_[0] eq 'TRACK_LAST'
    }
 
    sub new{
@@ -1424,9 +1456,10 @@ jERROR:     $Error = 1;
       my @dat;
       my $self = {
          objectname => 'CDDB',
-         CDID => undef, TRACKS_LBA => undef,
+         CDID => undef, MBRAINZ_DISC_ID => undef,
+         TRACKS_LBA => undef,
          TRACK_FIRST => undef, TRACK_LAST => undef,
-         TOTAL_SECONDS => undef, _data => \@dat
+         _data => \@dat
       };
       $self = bless $self, $class;
       $MBDB::CDDB = $self
@@ -1446,11 +1479,11 @@ jERROR:     $Error = 1;
    sub finalize{
       my $self = shift;
       ::v("MBDB::$self->{objectname}: finalizing..");
-      return 'CDDB requires CDID, TRACKS_LBA, TRACK_FIRST, TRACK_LAST ' .
-               'and TOTAL_SECONDS;'
-            unless(defined $self->{CDID} && defined $self->{TRACKS_LBA} &&
-               defined $self->{TRACK_FIRST} && defined $self->{TRACK_LAST} &&
-               defined $self->{TOTAL_SECONDS});
+      return 'CDDB requires CDID, MBRAINZ_DISC_ID, ' .
+               'TRACKS_LBA, TRACK_FIRST and TRACK_LAST;'
+            unless(defined $self->{CDID} && defined $self->{MBRAINZ_DISC_ID} &&
+               defined $self->{TRACKS_LBA} &&
+               defined $self->{TRACK_FIRST} && defined $self->{TRACK_LAST});
       undef
    }
 } # }}}
