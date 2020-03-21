@@ -948,16 +948,17 @@ jdarwin_rip_stop:
    }
 
    sub _calc_mb_discid{
+      # Note: directly called from ::db_upgrade(): ensure var init ok
       my $cdtocr = shift;
 
       my $d = Digest->new("SHA-1");
       $d->add(sprintf '%02X', $TrackFirst);
       $d->add(sprintf '%02X', $TrackLast);
 
-      my $i = @TracksLBA;
-      $d->add(sprintf '%08X', $TracksLBA[--$i] + 150);
+      my $i = @$cdtocr;
+      $d->add(sprintf '%08X', @$cdtocr[--$i] + 150);
       for(my $j = 0; $j < $i; ++$j){
-         $d->add(sprintf '%08X', $TracksLBA[$j] + 150)
+         $d->add(sprintf '%08X', @$cdtocr[$j] + 150)
       }
       for(++$i; $i < 100; ++$i){
          $d->add('00000000')
