@@ -115,20 +115,11 @@ my @Genres = (
 
 my $INTRO = "$SELF (v$VERSION): integrate audio disc (tracks) into S-Music DB";
 
-# -f|--formats or $S_MUSIC_FORMATS
-my %FORMATS = (
-      mp3 => undef, mp3lo => undef,
-      aac => undef, aaclo => undef,
-      ogg => undef, ogglo => undef,
-      flac => undef
-      );
-my $FORMATS_CNT = 0;
-
 my ($RIP_ONLY, $ENC_ONLY, $NO_VOL_NORM, $VERBOSE) = (0, 0, 0, 0);
 my ($CLEANUP_OK, $WORK_DIR, $TARGET_DIR, %CDDB) = (0);
 
 sub main_fun{ # {{{
-   # Don't check for the 'a' and 'A' subflags of -C, but only I/O related ones
+   # Do not check for the 'a' and 'A' subflags of -C, but only I/O related ones
    if(!(${^UNICODE} & 0x5FF) && ${^UTF8LOCALE}){
       print STDERR <<__EOT__;
 WARNING WARNING WARNING
@@ -292,10 +283,10 @@ sub command_line{
          goto jdocu
       }
 
-      if($FORMATS_CNT == 0 && defined(my $v = $ENV{S_MUSIC_FORMATS})){
+      if(!Enc::format_has_any() && defined(my $v = $ENV{S_MUSIC_FORMATS})){
          parse_formats($v)
       }
-      unless($FORMATS_CNT > 0){
+      unless(Enc::format_has_any()){
          $emsg = 'No audio formats given via -f or $S_MUSIC_FORMATS';
          goto jdocu
       }
@@ -312,6 +303,8 @@ sub command_line{
 jdocu:
    my $FH = defined $emsg ? *STDERR : *STDOUT;
 
+   my $flr = Enc::format_list();
+   $flr = join ',', @$flr;
    print $FH <<__EOT__;
 ${INTRO}
 
@@ -330,8 +323,8 @@ ${INTRO}
 -d|--device DEV       Use CD-ROM DEVice; else \$CDROM; else s-cdda(1) fallback
 --db-upgrade :DIR:    Convert and move v1 musicbox.dat to v2 music.db in DIRs
 -e|--encode-only CDID Resume a --rip-only session, which echoed the CDID to use
--f|--formats LIST     Comma-separated list of audio target formats (mp3,mp3lo,
-                      aac,aaclo,ogg,ogglo,flac); else \$S_MUSIC_FORMATS
+-f|--formats LIST     Comma-separated list of audio target formats, else
+                      \$S_MUSIC_FORMATS ($flr)
 -m|--music-db PATH    S-Music DB directory; else \$S_MUSIC_DB
 -r|--rip-only         Only rip data, then exit; resume with --encode-only
 --no-volume-normalize Do not apply volume normalization
@@ -360,11 +353,8 @@ sub parse_formats{
    my ($v) = @_;
 
    while($v =~ /^,?\s*(\w+)\s*(,.*)?$/){
-      my $i = lc $1;
       $v = defined $2 ? $2 : '';
-      die "Unknown audio encoding format: $i" unless exists $FORMATS{$i};
-      $FORMATS{$i} = 1;
-      ++$FORMATS_CNT
+      die "Unknown audio encoding format: $1" unless Enc::format_add($1)
    }
 }
 # }}}
@@ -1956,7 +1946,35 @@ __EOT__
 
 {package Enc;
    # vars,funs # {{{
-   my $VolNorm;
+   my (@FormatList,%UserFormats,$VolNorm);
+
+   sub format_has_any{
+      scalar keys %UserFormats
+   }
+
+   sub format_list{
+      no strict 'refs';
+      if(@FormatList == 0){
+         foreach(keys %{*{"Enc::Coder::"}}){
+            if(exists &{"Enc::Coder::${_}new"}){
+               push @FormatList, $1 if /^(\w+)/
+            }
+         }
+      }
+      \@FormatList
+   }
+
+   sub format_add{
+      my ($f) = @_;
+      $f = uc $f;
+      foreach(@{format_list()}){
+         if($f eq $_){
+            $UserFormats{$f} = 1;
+            return 1
+         }
+      }
+      return 0
+   }
 
    sub calculate_volume_normalize{ # {{{
       $VolNorm = undef;
@@ -2027,13 +2045,10 @@ __EOT__
       }
       die "binmode $title->{RAW_FILE} failed: $!" unless binmode RAW;
 
-      push @Coders, Enc::Coder::MP3->new($title)
-         if $FORMATS{mp3} || $FORMATS{mp3lo};
-      push @Coders, Enc::Coder::AAC->new($title)
-         if $FORMATS{aac} || $FORMATS{aaclo};
-      push @Coders, Enc::Coder::OGG->new($title)
-         if $FORMATS{ogg} || $FORMATS{ogglo};
-      push @Coders, Enc::Coder::FLAC->new($title) if $FORMATS{flac};
+      foreach(keys %UserFormats){
+         no strict 'refs';
+         push @Coders, &{"Enc::Coder::${_}::new"}($title);
+      }
 
       for(my $data;;){
          my $bytes = sysread RAW, $data, 1024 * 1000;
@@ -2047,77 +2062,28 @@ __EOT__
    }
    # }}}
 
-{package Enc::Coder;
-   # Super funs # {{{
-   sub new{
-      my ($self, $title, $hiname, $loname, $ext) = @_;
-      my $p = $title->{TARGET_PLAIN};
-      $self = {
-         hiname => $hiname, hif => undef, hipath => $p . '.' . $ext,
-         loname => $loname, lof => undef, lopath => $p . '.lo.' . $ext
-      };
-      bless $self
-   }
+{package Enc::Helper;
 
-   sub write{
-      my ($self, $data) = @_;
+{package Enc::Helper::MP3; # {{{
+   sub create_fd{
+      my ($title, $path, $myid, $quali) = @_;
 
-      if($self->{hif}){
-         die "Write error $self->{hiname}: $!"
-               unless print {$self->{hif}} $data
-      }
-      if($self->{lof}){
-         die "Write error $self->{loname}: $!"
-               unless print {$self->{lof}} $data
-      }
-      $self
-   }
+      _tag_file($path, $title);
 
-   sub del{
-      my ($self) = @_;
-      if($self->{hif}){
-         die "Close error $self->{hiname}: $!" unless close $self->{hif}
-      }
-      if($self->{lof}){
-         die "Close error $self->{loname}: $!" unless close $self->{lof}
-      }
-      $self
-   }
-   # }}}
-
-{package Enc::Coder::MP3; # {{{
-   our @ISA = 'Enc::Coder';
-
-   sub new{
-      my ($self, $title) = @_;
-      $self = Enc::Coder::new($self, $title, 'MP3', 'MP3LO', 'mp3');
-      $self = bless $self;
-      $self->_mp3tag_file($title);
-      $self->_open($title, 1) if $FORMATS{mp3};
-      $self->_open($title, 0) if $FORMATS{mp3lo};
-      $self
-   }
-
-   sub _open{
-      my ($self, $title, $ishi) = @_;
-      my ($s, $t, $b, $f) = ($ishi
-            ? ('high', ' (high)', '-V 0', $self->{hipath})
-            : ('low', 'LO', '-V 7', $self->{lopath}));
-      ::v("Creating MP3 lame(1) $s-quality encoder");
+      ::v("Creating MP3 lame(1) $myid-quality encoder");
       ::utf8_echomode_on();
       my $cmd = '| lame --quiet ' .
             ($CDInfo::RawIsWAVE ? '' : '-r -s 44.1 --bitwidth 16 ') .
-            "--vbr-new $b -q 0 - - >> $f";
-      die "Cannot open MP3$t: $cmd: $!" unless open(my $fd, $cmd);
+            "--vbr-new $quali -q 0 - - >> $path";
+      die "Cannot open MP3 $myid: $cmd: $!" unless open(my $fd, $cmd);
       ::utf8_echomode_off();
-      die "binmode error MP3$t: $!" unless binmode $fd;
-      $self->{$ishi ? 'hif' : 'lof'} = $fd
+      die "binmode error MP3$myid: $!" unless binmode $fd;
+      $fd
    }
 
-   # MP3 tag stuff {{{
-   sub _mp3tag_file{
+   sub _tag_file{
       # Stuff in (parens) refers ID3 tag version 2.3.0, www.id3.org.
-      my ($self, $title) = @_;
+      my ($path, $title) = @_;
       my $ti = $title->{TAG_INFO};
       ::v("Creating MP3 tag file headers");
 
@@ -2134,7 +2100,7 @@ __EOT__
       $ti = $ti->{COMM};
       if(defined $ti){
          $ti = "engS-MUSIC:COMM\x00$ti";
-         $tag .= _mp3_frame('COMM', $ti, 'UNI');
+         $tag .= _mp3_frame('COMM', $ti, 'UNI')
       }
 
       # (5.) Apply unsynchronization to all frames
@@ -2161,20 +2127,10 @@ __EOT__
          $header .= pack('N', $r)
       }
 
-      for(my $i = 0; $i < 2; ++$i){
-         my $f;
-         if($i == 0){
-            next unless defined $FORMATS{mp3};
-            $f = $self->{hipath}
-         }else{
-            next unless defined $FORMATS{mp3lo};
-            $f = $self->{lopath}
-         }
-         die "Cannot open $f: $!" unless open F, '>', $f;
-         die "binmode $f failed: $!" unless binmode F;
-         die "Error writing $f: $!" unless print F $header, $tag;
-         die "Cannot close $f: $!" unless close F
-      }
+      die "Cannot open $path: $!" unless open F, '>', $path;
+      die "binmode $path failed: $!" unless binmode F;
+      die "Error writing $path: $!" unless print F $header, $tag;
+      die "Cannot close $path: $!" unless close F
    }
 
    sub _mp3_frame{
@@ -2226,108 +2182,80 @@ __EOT__
          return "\x00"
       }
    }
-   # }}}
-} # }}}
+} # }}} Enc::Helper::MP3
 
-{package Enc::Coder::AAC; # {{{
-   our @ISA = 'Enc::Coder';
+{package Enc::Helper::AAC; # {{{
+   sub create_fd{
+      my ($title, $path, $myid, $quali) = @_;
 
-   sub new{
-      my ($self, $title) = @_;
-      $self = Enc::Coder::new($self, $title, 'AAC', 'AACLO', 'mp4');
-      $self = bless $self;
-      $self->_faac_comment($title);
-      $self->_open($title, 1) if $FORMATS{aac};
-      $self->_open($title, 0) if $FORMATS{aaclo};
-      $self
-   }
+      my $comm = _create_comment($title);
 
-   sub _open{
-      my ($self, $title, $ishi) = @_;
-      my ($s, $t, $b, $f) = ($ishi
-            ? ('high', ' (high)', '-q 300', $self->{hipath})
-            : ('low', 'LO', '-q 80', $self->{lopath}));
-      ::v("Creating AAC faac(1) $s-quality encoder");
+      ::v("Creating AAC faac(1) $myid-quality encoder");
       ::utf8_echomode_on();
       my $cmd = '| faac ' . ($CDInfo::RawIsWAVE ? '' : '-XP ') .
             '--mpeg-vers 4 -w --tns ' .
-            "$b $self->{aactag} -o $f - >/dev/null 2>&1";
-      die "Cannot open AAC$t: $cmd: $!" unless open(my $fd, $cmd);
+            "$quali $comm -o $path - >/dev/null 2>&1";
+      die "Cannot open AAC $myid: $cmd: $!" unless open(my $fd, $cmd);
       ::utf8_echomode_off();
-      die "binmode error AAC$t: $!" unless binmode $fd;
-      $self->{$ishi ? 'hif' : 'lof'} = $fd
+      die "binmode error AAC$myid: $!" unless binmode $fd;
+      $fd
    }
 
-    sub _faac_comment{
-      my ($self, $title) = @_;
-      my $ti = $title->{TAG_INFO};
-      my $i;
-      $self->{aactag} = '';
+   sub _create_comment{
+      my ($title) = @_;
+      my ($ti, $res, $i) = ($title->{TAG_INFO}, '', undef);
       $i = $ti->{ARTIST};
          $i =~ s/"/\\"/g;
-         $self->{aactag} .= "--artist \"$i\" ";
+         $res .= "--artist \"$i\" ";
       $i = $ti->{ALBUM};
          $i =~ s/"/\\"/g;
-         $self->{aactag} .= "--album \"$i\" ";
+         $res .= "--album \"$i\" ";
       $i = $ti->{TITLE};
          $i =~ s/"/\\"/g;
-         $self->{aactag} .= "--title \"$i\" ";
-      $self->{aactag} .= "--track \"$ti->{TRCK}\" "
+         $res .= "--title \"$i\" ";
+      $res .= "--track \"$ti->{TRCK}\" "
          . (defined $ti->{TPOS} ? "--disc \"$ti->{TPOS}\" " :'')
          . "--genre '$ti->{GENRE}' "
          . (defined $ti->{YEAR} ? "--year \"$ti->{YEAR}\"" :'');
       $i = $ti->{COMM};
       if(defined $i){
          $i =~ s/"/\\"/g;
-         $self->{aactag} .=" --comment \"S-MUSIC:COMM=$i\""
+         $res .=" --comment \"S-MUSIC:COMM=$i\""
       }
-      ::v("AACTag: $self->{aactag}")
+      ::v("AACTag: $res");
+      $res
    }
-} # }}}
+} # }}} Enc::Helper::AAC
 
-{package Enc::Coder::OGG; # {{{
-   our @ISA = 'Enc::Coder';
+{package Enc::Helper::OGG; # {{{
+   sub create_fd{
+      my ($title, $path, $myid, $quali) = @_;
 
-   sub new{
-      my ($self, $title) = @_;
-      $self = Enc::Coder::new($self, $title, 'OGG', 'OGGLO', 'ogg');
-      $self = bless $self;
-      $self->_oggenc_comment($title);
-      $self->_open($title, 1) if $FORMATS{ogg};
-      $self->_open($title, 0) if $FORMATS{ogglo};
-      $self
-   }
+      my $comm = _create_comment($title);
 
-   sub _open{
-      my ($self, $title, $ishi) = @_;
-      my ($s, $t, $b, $f) = ($ishi
-            ? ('high', ' (high)', '-q 8.5', $self->{hipath})
-            : ('low', 'LO', '-q 3.8', $self->{lopath}));
-      ::v("Creating OGG Vorbis oggenc(1) $s-quality encoder");
+      ::v("Creating OGG ogg123(1) $myid-quality encoder");
       ::utf8_echomode_on();
       my $cmd = '| oggenc ' . ($CDInfo::RawIsWAVE ? '' : '-r ') .
-            "-Q $b $self->{oggtag} -o $f -";
-      die "Cannot open OGG$t: $!" unless open(my $fd, $cmd);
+            "-Q $quali $comm -o $path -";
+      die "Cannot open OGG $myid: $cmd: $!" unless open(my $fd, $cmd);
       ::utf8_echomode_off();
-      die "binmode error OGG$t: $!" unless binmode $fd;
-      $self->{$ishi ? 'hif' : 'lof'} = $fd
+      die "binmode error OGG$myid: $!" unless binmode $fd;
+      $fd
    }
 
-   sub _oggenc_comment{
-      my ($self, $title) = @_;
-      my $ti = $title->{TAG_INFO};
-      my $i;
-      $self->{oggtag} = '';
+   sub _create_comment{
+      my ($title) = @_;
+      my ($ti, $res, $i) = ($title->{TAG_INFO}, '', undef);
       $i = $ti->{ARTIST};
          $i =~ s/"/\\"/g;
-         $self->{oggtag} .= "--artist \"$i\" ";
+         $res .= "--artist \"$i\" ";
       $i = $ti->{ALBUM};
          $i =~ s/"/\\"/g;
-         $self->{oggtag} .= "--album \"$i\" ";
+         $res .= "--album \"$i\" ";
       $i = $ti->{TITLE};
          $i =~ s/"/\\"/g;
-         $self->{oggtag} .= "--title \"$i\" ";
-      $self->{oggtag} .= "--tracknum \"$ti->{TRACKNUM}\" "
+         $res .= "--title \"$i\" ";
+      $res .= "--tracknum \"$ti->{TRACKNUM}\" "
          . (defined $ti->{TPOS}
             ? "--comment=\"TPOS=$ti->{TPOS}\" " : '')
          . "--comment=\"TRCK=$ti->{TRCK}\" "
@@ -2336,54 +2264,45 @@ __EOT__
       $i = $ti->{COMM};
       if(defined $i){
          $i =~ s/"/\\"/g;
-         $self->{oggtag} .=" --comment \"S-MUSIC:COMM=$i\""
+         $res .=" --comment \"S-MUSIC:COMM=$i\""
       }
-      ::v("OGGTag: $self->{oggtag}")
+      ::v("OGGTag: $res");
+      $res
    }
-} # }}}
+} # }}} Enc::Helper::OGG
 
-{package Enc::Coder::FLAC; # {{{
-   our @ISA = 'Enc::Coder';
+{package Enc::Helper::FLAC; # {{{
+   sub create_fd{
+      my ($title, $path) = @_;
 
-   sub new{
-      my ($self, $title) = @_;
-      $self = Enc::Coder::new($self, $title, 'FLAC', 'FLAC', 'flac');
-      $self = bless $self;
-      $self->_flac_comment($title);
-      $self->_open($title);
-      $self
-   }
+      my $comm = _create_comment($title);
 
-   sub _open{
-      my ($self, $title) = @_;
-      ::v("Creating FLAC encoder");
+      ::v("Creating FLAC flac(1) encoder");
       ::utf8_echomode_on();
       my $cmd = '| flac ' .
             ($CDInfo::RawIsWAVE ? ''
              : '--endian=little --sign=signed --channels=2 ' .
                   '--bps=16 --sample-rate=44100 ') .
-            "--silent -8 -e -M -p $self->{flactag} -o $self->{hipath} -";
-      die "Cannot open FLAC: $!" unless open(my $fd, $cmd);
+            "--silent -8 -e -M -p $comm -o $path -";
+      die "Cannot open FLACC $cmd: $!" unless open(my $fd, $cmd);
       ::utf8_echomode_off();
       die "binmode error FLAC: $!" unless binmode $fd;
-      $self->{hif} = $fd
+      $fd
    }
 
-   sub _flac_comment{
-      my ($self, $title) = @_;
-      my $ti = $title->{TAG_INFO};
-      my $i;
-      $self->{flactag} = '';
+   sub _create_comment{
+      my ($title) = @_;
+      my ($ti, $res, $i) = ($title->{TAG_INFO}, '', undef);
       $i = $ti->{ARTIST};
          $i =~ s/"/\\"/g;
-         $self->{flactag} .= "-T artist=\"$i\" ";
+         $res .= "-T artist=\"$i\" ";
       $i = $ti->{ALBUM};
          $i =~ s/"/\\"/g;
-         $self->{flactag} .= "-T album=\"$i\" ";
+         $res .= "-T album=\"$i\" ";
       $i = $ti->{TITLE};
          $i =~ s/"/\\"/g;
-         $self->{flactag} .= "-T title=\"$i\" ";
-      $self->{flactag} .= "-T tracknumber=\"$ti->{TRACKNUM}\" "
+         $res .= "-T title=\"$i\" ";
+      $res .= "-T tracknumber=\"$ti->{TRACKNUM}\" "
          . (defined $ti->{TPOS} ? "-T TPOS=$ti->{TPOS} " : '')
          . "-T TRCK=$ti->{TRCK} "
          . "-T genre=\"$ti->{GENRE}\" "
@@ -2391,11 +2310,140 @@ __EOT__
       $i = $ti->{COMM};
       if(defined $i){
          $i =~ s/"/\\"/g;
-         $self->{flactag} .=" -T \"S-MUSIC:COMM=$i\""
+         $res .=" -T \"S-MUSIC:COMM=$i\""
       }
-      ::v("FLACTag: $self->{flactag}")
+      ::v("FLACTag: $res");
+      $res
    }
-} # }}}
+} # }}} Enc::Helper::FLAC
+} # Enc::Helper
+
+{package Enc::Coder;
+   our @ISA = 'Enc';
+
+   # Super funs # {{{
+   sub new{
+      my ($title, $name, $ext) = @_;
+      my $self = scalar caller;
+      $self = {name => $name, fd => undef,
+            path => $title->{TARGET_PLAIN} . '.' . $ext};
+      bless $self
+   }
+
+   sub write{
+      my ($self, $data) = @_;
+      if($self->{fd}){
+         die "Write error $self->{name}: $!" unless print {$self->{fd}} $data
+      }
+      $self
+   }
+
+   sub del{
+      my ($self) = @_;
+      if($self->{fd}){
+         die "Close error $self->{name}: $!" unless close $self->{fd}
+      }
+      $self
+   }
+   # }}}
+
+# MP3 {{{
+{package Enc::Coder::MP3;
+   our @ISA = 'Enc::Coder';
+
+   sub new{
+      my ($title) = @_;
+      my $self = Enc::Coder::new($title, 'MP3', 'mp3');
+      $self = bless $self;
+      $self->{fd} = Enc::Helper::MP3::create_fd($title, $self->{path},
+            'high', '-V 0');
+      $self
+   }
+}
+
+{package Enc::Coder::MP3LO;
+   our @ISA = 'Enc::Coder';
+
+   sub new{
+      my ($title) = @_;
+      my $self = Enc::Coder::new($title, 'MP3LO', 'lo.mp3');
+      $self = bless $self;
+      $self->{fd} = Enc::Helper::MP3::create_fd($title, $self->{path},
+            'low', '-V 7');
+      $self
+   }
+}
+# }}}
+
+# AAC {{{
+{package Enc::Coder::AAC;
+   our @ISA = 'Enc::Coder';
+
+   sub new{
+      my ($title) = @_;
+      my $self = Enc::Coder::new($title, 'AAC', 'mp4');
+      $self = bless $self;
+      $self->{fd} = Enc::Helper::AAC::create_fd($title, $self->{path},
+            'high', '-q 300');
+      $self
+   }
+}
+
+{package Enc::Coder::AACLO;
+   our @ISA = 'Enc::Coder';
+
+   sub new{
+      my ($title) = @_;
+      my $self = Enc::Coder::new($title, 'AACLO', 'lo.mp4');
+      $self = bless $self;
+      $self->{fd} = Enc::Helper::AAC::create_fd($title, $self->{path},
+            'low', '-q 80');
+      $self
+   }
+}
+# }}}
+
+# {{{ OGG
+{package Enc::Coder::OGG;
+   our @ISA = 'Enc::Coder';
+
+   sub new{
+      my ($title) = @_;
+      my $self = Enc::Coder::new($title, 'OGG', 'ogg');
+      $self = bless $self;
+      $self->{fd} = Enc::Helper::OGG::create_fd($title, $self->{path},
+            'high', '-q 8.5');
+      $self
+   }
+}
+
+{package Enc::Coder::OGGLO;
+   our @ISA = 'Enc::Coder';
+
+   sub new{
+      my ($title) = @_;
+      my $self = Enc::Coder::new($title, 'OGGLO', 'lo.ogg');
+      $self = bless $self;
+      $self->{fd} = Enc::Helper::OGG::create_fd($title, $self->{path},
+            'high', '-q 3.8');
+      $self
+   }
+}
+# }}}
+
+# FLAC {{{
+{package Enc::Coder::FLAC;
+   our @ISA = 'Enc::Coder';
+
+   sub new{
+      my ($title) = @_;
+      my $self = Enc::Coder::new($title, 'FLAC', 'flac');
+      $self = bless $self;
+      $self->{fd} = Enc::Helper::FLAC::create_fd($title, $self->{path});
+      $self
+   }
+}
+# }}}
 } # Enc::Coder
 } # Enc
 
