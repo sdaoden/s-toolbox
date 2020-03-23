@@ -2104,11 +2104,11 @@ sub utf8_echomode_off{
       $tag .= _mp3_frame('TRCK', $ti->{TRCK});
       $tag .= _mp3_frame('TPOS', $ti->{TPOS}) if defined $ti->{TPOS};
       $tag .= _mp3_frame('TCON', '(' . $ti->{GENREID} . ')' . $ti->{GENRE});
-      $tag .= _mp3_frame('TYER', $ti->{YEAR}, 'NUM') if defined $ti->{YEAR};
+      $tag .= _mp3_frame('TYER', $ti->{YEAR}) if defined $ti->{YEAR};
       $ti = $ti->{COMM};
       if(defined $ti){
          $ti = "engS-MUSIC:COMM\x00$ti";
-         $tag .= _mp3_frame('COMM', $ti, 'UNI')
+         $tag .= _mp3_frame('COMM', $ti)
       }
 
       # (5.) Apply unsynchronization to all frames
@@ -2145,21 +2145,9 @@ sub utf8_echomode_off{
       my ($fid, $ftxt) = @_;
       ::v("  MP3 frame: $fid: $ftxt") unless $fid eq 'COMM';
       my ($len, $txtenc);
-      # Numerical strings etc. always latin-1
-      if(@_ > 2){
-         my $add = $_[2];
-         if($add eq 'NUM'){
-            $len = length($ftxt);
-            $txtenc = "\x00"
-         }else{ #if ($add eq 'UNI')\{
-            $txtenc = _mp3_string(1, \$ftxt, \$len)
-         }
-      }else{
-         $txtenc = _mp3_string(0, \$ftxt, \$len)
-      }
+      $txtenc = _mp3_string(\$ftxt, \$len);
       # (3.3) Frame header
       # [ID=4 chars;] Size=4 bytes=size - header (10); Flags=2 bytes
-      ++$len; # $txtenc
       $fid .= pack('CCCCCC',
             ($len & 0xFF000000) >> 24,
             ($len & 0x00FF0000) >> 16,
@@ -2173,20 +2161,16 @@ sub utf8_echomode_off{
    }
 
    sub _mp3_string{
-      my ($force_uni, $txtr, $lenr) = @_;
+      my ($txtr, $lenr) = @_;
       my $i = $$txtr;
-      my $isuni;
-      unless($force_uni){ eval{
-         $isuni = Encode::from_to($i, 'utf-8', 'iso-8859-1', 1)
-      }}
-      if($force_uni || $@ || !defined $isuni){
-         Encode::from_to($$txtr, 'utf-8', 'utf-16');
-         $$lenr = bytes::length($$txtr);
+      my $isascii;
+      eval {$isascii = Encode::decode('ascii', $i, 1)};
+      if($@ || !defined $isascii){
+         $$txtr = Encode::encode('utf-16', $$txtr);
+         $$lenr = bytes::length($$txtr) +2;
          return "\x01"
       }else{
-         $$txtr = $i;
-         #$$lenr = length($$txtr);
-         $$lenr = $isuni;
+         $$lenr = length($$txtr) +1;
          return "\x00"
       }
    }
