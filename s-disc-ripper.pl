@@ -439,13 +439,6 @@ sub utf8ify{
    $$sr = $s
 }
 
-sub utf8_echomode_on{
-   binmode STDOUT, ':encoding(utf8)'
-}
-
-sub utf8_echomode_off{
-   binmode STDOUT, ':pop'
-}
 # }}}
 
 sub db_upgrade{ # {{{
@@ -2064,6 +2057,21 @@ __EOT__
 
 {package Enc::Helper;
 
+# We have to solve problems with strings.
+# We use :encoding to ensure our I/O layer is UTF-8, but that does not help for
+# the command line of the audio encode applications we start, since our
+# carefully prepared UTF-8 strings will then be converted according to the Perl
+# I/O layer for STDOUT!  Thus we need to enwrap the open() calls that start the
+# audio encoders in utf8_echomode_on() and utf8_echomode_off() calls!
+
+sub utf8_echomode_on{
+   binmode STDOUT, ':encoding(utf8)'
+}
+
+sub utf8_echomode_off{
+   binmode STDOUT, ':pop'
+}
+
 {package Enc::Helper::MP3; # {{{
    sub create_fd{
       my ($title, $path, $myid, $quali) = @_;
@@ -2071,12 +2079,12 @@ __EOT__
       _tag_file($path, $title);
 
       ::v("Creating MP3 lame(1) $myid-quality encoder");
-      ::utf8_echomode_on();
+      Enc::Helper::utf8_echomode_on();
       my $cmd = '| lame --quiet ' .
             ($CDInfo::RawIsWAVE ? '' : '-r -s 44.1 --bitwidth 16 ') .
             "--vbr-new $quali -q 0 - - >> $path";
       die "Cannot open MP3 $myid: $cmd: $!" unless open(my $fd, $cmd);
-      ::utf8_echomode_off();
+      Enc::Helper::utf8_echomode_off();
       die "binmode error MP3$myid: $!" unless binmode $fd;
       $fd
    }
@@ -2191,12 +2199,12 @@ __EOT__
       my $comm = _create_comment($title);
 
       ::v("Creating AAC faac(1) $myid-quality encoder");
-      ::utf8_echomode_on();
+      Enc::Helper::utf8_echomode_on();
       my $cmd = '| faac ' . ($CDInfo::RawIsWAVE ? '' : '-XP ') .
             '--mpeg-vers 4 -w --tns ' .
             "$quali $comm -o $path - >/dev/null 2>&1";
       die "Cannot open AAC $myid: $cmd: $!" unless open(my $fd, $cmd);
-      ::utf8_echomode_off();
+      Enc::Helper::utf8_echomode_off();
       die "binmode error AAC$myid: $!" unless binmode $fd;
       $fd
    }
@@ -2234,11 +2242,11 @@ __EOT__
       my $comm = _create_comment($title);
 
       ::v("Creating OGG ogg123(1) $myid-quality encoder");
-      ::utf8_echomode_on();
+      Enc::Helper::utf8_echomode_on();
       my $cmd = '| oggenc ' . ($CDInfo::RawIsWAVE ? '' : '-r ') .
             "-Q $quali $comm -o $path -";
       die "Cannot open OGG $myid: $cmd: $!" unless open(my $fd, $cmd);
-      ::utf8_echomode_off();
+      Enc::Helper::utf8_echomode_off();
       die "binmode error OGG$myid: $!" unless binmode $fd;
       $fd
    }
@@ -2278,14 +2286,14 @@ __EOT__
       my $comm = _create_comment($title);
 
       ::v("Creating FLAC flac(1) encoder");
-      ::utf8_echomode_on();
+      Enc::Helper::utf8_echomode_on();
       my $cmd = '| flac ' .
             ($CDInfo::RawIsWAVE ? ''
              : '--endian=little --sign=signed --channels=2 ' .
                   '--bps=16 --sample-rate=44100 ') .
             "--silent -8 -e -M -p $comm -o $path -";
       die "Cannot open FLACC $cmd: $!" unless open(my $fd, $cmd);
-      ::utf8_echomode_off();
+      Enc::Helper::utf8_echomode_off();
       die "binmode error FLAC: $!" unless binmode $fd;
       $fd
    }
