@@ -359,7 +359,7 @@ sub parse_formats{
 }
 # }}}
 
-# v, genre, genre_id, finalize, user_confirm, utf8ify {{{
+# v, genre, genre_id, finalize, user_confirm {{{
 sub v{
    return unless $VERBOSE > 0;
    print STDOUT '-V  ', shift, "\n";
@@ -415,30 +415,6 @@ sub user_confirm{
    chomp $u;
    ($u =~ /n/i) ? 0 : 1
 }
-
-# We have to solve two problems with strings.
-# First of all, strings that come from CDDB may be either in UTF-8 or LATIN1
-# encoding, so ensure they are UTF-8 via utf8ify()
-# Second, we use :encoding to ensure our I/O layer is UTF-8, but that does not
-# help for the command line of the audio encode applications we start, since
-# our carefully prepared UTF-8 strings will then be converted according to the
-# Perl I/O layer for STDOUT!  Thus we need to enwrap the open() calls that
-# start the audio encoders in utf_echomode_on() and utf_echomode_off() calls!
-
-sub utf8ify{
-   # String comes from CDDB, may be latin1 or utf-8
-   my ($sr, $s, $s1);
-   $sr = shift;
-   Encode::_utf8_off($s = $$sr);
-   $s1 = $s;
-   eval {Encode::from_to($s1, "UTF-8", "UTF-8", Encode::FB_CROAK)};
-   if(length($@) != 0){
-      Encode::from_to($s, "LATIN1", "UTF-8", 0)
-   }
-   Encode::_utf8_on($s);
-   $$sr = $s
-}
-
 # }}}
 
 sub db_upgrade{ # {{{
@@ -593,6 +569,8 @@ sub cddb_query{ # {{{
 
    my ($usr, $dinf);
 jAREDO:
+   print "  (NOTE: terminal may not be able to display charset!)\n";
+
    $usr = 1;
    foreach(@discs){
       my ($genre, undef, $title) = @$_; # (cddb_id)
@@ -636,21 +614,19 @@ jREDO:
          $alb = substr $aa, ++$i
       }
       $art =~ s/^\s*(.*?)\s*$/$1/;
-      ::utf8ify(\$art);
-      $CDDB{ARTIST} = $art;
+      $CDDB{ARTIST} = cddb_utf8ify($art);
       $alb =~ s/^\s*(.*?)\s*$/$1/;
-      ::utf8ify(\$alb);
-      $CDDB{ALBUM} = $alb
+      $CDDB{ALBUM} = cddb_utf8ify($alb)
    }
    $CDDB{YEAR} = defined $dinf->{dyear} ? $dinf->{dyear} : '';
    $CDDB{TITLES} = $dinf->{ttitles};
    foreach(@{$dinf->{ttitles}}){
       s/^\s*(.*?)\s*$/$1/;
-      ::utf8ify(\$_)
+      ::cddb_utf8ify(\$_)
    }
 
    print "  CDDB disc info for CD(DB)ID=$CDInfo::CDId\n",
-      "  (NOTE: terminal may not be able to display charset):\n",
+      "  (Again: terminal may not be able to display charset):\n",
       "    Genre=$CDDB{GENRE}, Year=$CDDB{YEAR}\n",
       "    Artist=$CDDB{ARTIST}\n",
       "    Album=$CDDB{ALBUM}\n",
@@ -658,6 +634,21 @@ jREDO:
       join("\n     ", @{$CDDB{TITLES}}),
       "\n  Is this *really* the desired CD? ";
    goto jAREDO unless user_confirm()
+}
+
+sub cddb_utf8ify{
+   # String comes from CDDB, may be latin1 or utf-8
+   my ($ins) = @_;
+   my ($ous, $isutf8);
+   $ous = $ins;
+   eval {$isutf8 = Encode::decode('utf-8', $ins, 1)};
+   if($@ || !defined $isutf8){
+      Encode::from_to($ous, 'latin1', 'utf-8')
+   }else{
+      #Encode::from_to($ous, 'utf-8', 'utf-8')
+   }
+   Encode::_utf8_on($ous);
+   $ous
 } # }}}
 
 sub user_tracks{ # {{{
@@ -1205,7 +1196,7 @@ jREDO:
       @SongAddons = (); $SortAddons = '';
 
       print "  Once again - please verify the content:\n",
-         "  (NOTE: terminal may not be able to display charset):\n";
+         "  (Again: terminal may not be able to display charset):\n";
       print "    $_\n" foreach (@Data);
       print "  Is this data *really* OK? ";
       goto jREDO unless ::user_confirm();
@@ -2170,6 +2161,7 @@ sub utf8_echomode_off{
          $$lenr = bytes::length($$txtr) +2;
          return "\x01"
       }else{
+         Encode::from_to($$txtr, 'utf-8', 'ascii');
          $$lenr = length($$txtr) +1;
          return "\x00"
       }
