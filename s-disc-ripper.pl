@@ -237,8 +237,6 @@ END {finalize() if $CLEANUP_OK}
 sub command_line{
    Getopt::Long::Configure('bundling');
    my %opts = (
-         'db-upgrade' => \&db_upgrade,
-
          'h|help|?' => sub {goto jdocu},
          'g|genre-list' => sub{
                printf("%3d %s\n", $_->[0], $_->[1]) foreach(@Genres);
@@ -308,7 +306,7 @@ jdocu:
    print $FH <<__EOT__;
 ${INTRO}
 
- $SELF -h|--help  |  -g|--genre-list  |  --db-upgrade :DIR:
+ $SELF -h|--help  |  -g|--genre-list
 
  $SELF [-v] [-d DEV] -r|--rip-only
    Only rip audio tracks from CD-ROM
@@ -321,7 +319,6 @@ ${INTRO}
    Do the entire processing
 
 -d|--device DEV       Use CD-ROM DEVice; else \$CDROM; else s-cdda(1) fallback
---db-upgrade :DIR:    Convert and move v1 musicbox.dat to v2 music.db in DIRs
 -e|--encode-only CDID Resume a --rip-only session, which echoed the CDID to use
 -f|--formats LIST     Comma-separated list of audio target formats, else
                       \$S_MUSIC_FORMATS ($flr)
@@ -416,83 +413,6 @@ sub user_confirm{
    ($u =~ /n/i) ? 0 : 1
 }
 # }}}
-
-sub db_upgrade{ # {{{
-   while(@ARGV){
-      my $d = shift @ARGV;
-      die "No such directory: $d\n" unless -d $d;
-      unless(-f "$d/musicbox.dat"){
-         print STDERR "No musicbox.dat, skipping $d\n";
-         next
-      }
-
-      v("DB-upgrading $d");
-      die "Cannot create $d/music.db: $!" unless
-         open N, '>:encoding(UTF-8)', "$d/music.db";
-      die "Cannot read $d/musicbox.dat: $!" unless
-         open O, '<:encoding(UTF-8)', "$d/musicbox.dat";
-
-      my ($lba_line, $total_secs, $do_unlink) = (undef, undef, 0);
-      my @lbas;
-      for(my $hot = 0; <O>;){
-         chomp;
-         next unless /^\s*(.+)\s*$/;
-         my $l = $1;
-         if($l =~ /^\[CDDB\]$/){
-            $hot = 1
-         }elsif($hot){
-            if($l =~ /^\[.+\]$/){
-               $hot = 0;
-
-               die 'Invalid DB, missing TRACK_OFFSETS: ', "$d/musicbox.dat\n"
-                  unless defined $lba_line;
-               die 'Invalid DB, missing TOTAL_SECONDS: ', "$d/musicbox.dat\n"
-                  unless defined $total_secs;
-
-               $CDInfo::TrackFirst = 1;
-               $CDInfo::TrackLast = @lbas;
-               $total_secs = '?NO-LEAD-OUT?';
-               push @lbas, $total_secs;
-               $lba_line .= ' ' . $total_secs;
-
-               #CDInfo::_calc_mb_discid(\@lbas);
-               #$do_unlink = 1;
-               die "Output error for $d/music.db: $!"
-                  unless print N
-                     #"MBRAINZ_DISC_ID = $CDInfo::MBrainzDiscId\n",
-                     "$lba_line\n",
-                     '# DB-upgrade: FIRST_TRACK and LAST_TRACK are "guessed"',
-                     "\nTRACK_FIRST = 1\nTRACK_LAST = $CDInfo::TrackLast\n"
-            }else{
-               if($l =~ /^TRACK_OFFSETS\s*=(.*)$/){
-                  @lbas = split ' ', $1; # req. special split behaviour
-                  $l = 'TRACKS_LBA =';
-                  foreach my $e (@lbas){
-                     die "Invalid CDDB/FreeDB TRACK_OFFSETS in $d/musicbox.dat"
-                        if $e !~ /^\d+$/ || ($e -= 150) < 0;
-                     $l .= ' ' . $e
-                  }
-                  $lba_line = $l;
-                  next
-               }elsif($l =~ /^TOTAL_SECONDS\s*=\s*(.*)\s*$/){
-                  $total_secs = $1;
-                  die "Invalid CDDB/FreeDB TOTAL_SECONDS in $d/musicbox.dat"
-                     if $total_secs !~ /^\d+$/;
-                  next
-               }
-            }
-         }
-         die "Output error for $d/music.db: $!" unless print N $l, "\n"
-      }
-
-      close O;
-      close N;
-
-      warn "Cannot unlink/remove $d/musicbox.dat: $!"
-         unless !$do_unlink || unlink "$d/musicbox.dat"
-   }
-   exit 0
-} # }}}
 
 sub quick_and_dirty_dir_selector{ # {{{
    my @dlist = glob "${TARGET_DIR}*/music.db";
@@ -950,7 +870,6 @@ jdarwin_rip_stop:
    }
 
    sub _calc_mb_discid{
-      # Note: directly called from ::db_upgrade(): ensure var init ok
       my $cdtocr = shift;
 
       my $d = Digest->new("SHA-1");
