@@ -1994,21 +1994,16 @@ __EOT__
    # }}}
 
 {package Enc::Helper;
-
-# We have to solve problems with strings.
-# We use :encoding to ensure our I/O layer is UTF-8, but that does not help for
-# the command line of the audio encode applications we start, since our
-# carefully prepared UTF-8 strings will then be converted according to the Perl
-# I/O layer for STDOUT!  Thus we need to enwrap the open() calls that start the
-# audio encoders in utf8_echomode_on() and utf8_echomode_off() calls!
-
-sub utf8_echomode_on{
-   binmode STDOUT, ':encoding(utf8)'
-}
-
-sub utf8_echomode_off{
-   binmode STDOUT, ':pop'
-}
+   # We have to solve problems with strings.
+   # We use :encoding to ensure our I/O layer is UTF-8, but that does not help
+   # for the command line of the audio encode applications we start, since our
+   # carefully prepared UTF-8 strings will then be converted according to the
+   # Perl I/O layer for STDOUT!  Thus we need to enwrap the open() calls that
+   # start the audio encoders in utf8_echomode_on() and utf8_echomode_off()
+   # calls!  I have forgotten who gave this working solution on a perl IRC
+   # channel which i entered via browser on 2013-05-06, i apologise: thank you!
+   sub utf8_echomode_on {binmode STDOUT, ':encoding(utf8)'}
+   sub utf8_echomode_off {binmode STDOUT, ':pop'}
 
 {package Enc::Helper::MP3; # {{{
    sub create_fd{
