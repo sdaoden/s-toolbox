@@ -523,6 +523,21 @@ jREDO:
 } # }}}
 
 sub cddb_query{ # {{{
+   sub _utf8ify{
+      # String comes from CDDB, may be latin1 or utf-8
+      my ($ins) = @_;
+      my ($ous, $isutf8);
+      $ous = $ins;
+      eval {$isutf8 = Encode::decode('utf-8', $ins, 1)};
+      if($@ || !defined $isutf8){
+         Encode::from_to($ous, 'latin1', 'utf-8')
+      }else{
+         #Encode::from_to($ous, 'utf-8', 'utf-8')
+      }
+      Encode::_utf8_on($ous);
+      $ous
+   }
+
    sub _fake{
       %CDDB = ();
       $CDDB{GENRE} = genre('Humour');
@@ -614,15 +629,15 @@ jREDO:
          $alb = substr $aa, ++$i
       }
       $art =~ s/^\s*(.*?)\s*$/$1/;
-      $CDDB{ARTIST} = cddb_utf8ify($art);
+      $CDDB{ARTIST} = _utf8ify($art);
       $alb =~ s/^\s*(.*?)\s*$/$1/;
-      $CDDB{ALBUM} = cddb_utf8ify($alb)
+      $CDDB{ALBUM} = _utf8ify($alb)
    }
    $CDDB{YEAR} = defined $dinf->{dyear} ? $dinf->{dyear} : '';
    $CDDB{TITLES} = $dinf->{ttitles};
    foreach(@{$dinf->{ttitles}}){
       s/^\s*(.*?)\s*$/$1/;
-      ::cddb_utf8ify(\$_)
+      _utf8ify(\$_)
    }
 
    print "  CDDB disc info for CD(DB)ID=$CDInfo::CDId\n",
@@ -634,21 +649,6 @@ jREDO:
       join("\n     ", @{$CDDB{TITLES}}),
       "\n  Is this *really* the desired CD? ";
    goto jAREDO unless user_confirm()
-}
-
-sub cddb_utf8ify{
-   # String comes from CDDB, may be latin1 or utf-8
-   my ($ins) = @_;
-   my ($ous, $isutf8);
-   $ous = $ins;
-   eval {$isutf8 = Encode::decode('utf-8', $ins, 1)};
-   if($@ || !defined $isutf8){
-      Encode::from_to($ous, 'latin1', 'utf-8')
-   }else{
-      #Encode::from_to($ous, 'utf-8', 'utf-8')
-   }
-   Encode::_utf8_on($ous);
-   $ous
 } # }}}
 
 sub user_tracks{ # {{{
