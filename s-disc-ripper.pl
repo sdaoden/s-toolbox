@@ -432,6 +432,8 @@ sub db_upgrade{ # {{{
       die "Cannot read $d/musicbox.dat: $!" unless
          open O, '<:encoding(UTF-8)', "$d/musicbox.dat";
 
+      my ($lba_line, $total_secs, $do_unlink) = (undef, undef, 0);
+      my @lbas;
       for(my $hot = 0; <O>;){
          chomp;
          next unless /^\s*(.+)\s*$/;
@@ -440,17 +442,43 @@ sub db_upgrade{ # {{{
             $hot = 1
          }elsif($hot){
             if($l =~ /^\[.+\]$/){
-               $hot = 0
+               $hot = 0;
+
+               die 'Invalid DB, missing TRACK_OFFSETS: ', "$d/musicbox.dat\n"
+                  unless defined $lba_line;
+               die 'Invalid DB, missing TOTAL_SECONDS: ', "$d/musicbox.dat\n"
+                  unless defined $total_secs;
+
+               $CDInfo::TrackFirst = 1;
+               $CDInfo::TrackLast = @lbas;
+               $total_secs = '?NO-LEAD-OUT?';
+               push @lbas, $total_secs;
+               $lba_line .= ' ' . $total_secs;
+
+               #CDInfo::_calc_mb_discid(\@lbas);
+               #$do_unlink = 1;
+               die "Output error for $d/music.db: $!"
+                  unless print N
+                     #"MBRAINZ_DISC_ID = $CDInfo::MBrainzDiscId\n",
+                     "$lba_line\n",
+                     '# DB-upgrade: FIRST_TRACK and LAST_TRACK are "guessed"',
+                     "\nTRACK_FIRST = 1\nTRACK_LAST = $CDInfo::TrackLast\n"
             }else{
                if($l =~ /^TRACK_OFFSETS\s*=(.*)$/){
-                  my @lbas = split ' ', $1; # req. special split behaviour
+                  @lbas = split ' ', $1; # req. special split behaviour
                   $l = 'TRACKS_LBA =';
                   foreach my $e (@lbas){
-                     $e -= 150;
                      die "Invalid CDDB/FreeDB TRACK_OFFSETS in $d/musicbox.dat"
-                        if $e < 0;
+                        if $e !~ /^\d+$/ || ($e -= 150) < 0;
                      $l .= ' ' . $e
                   }
+                  $lba_line = $l;
+                  next
+               }elsif($l =~ /^TOTAL_SECONDS\s*=\s*(.*)\s*$/){
+                  $total_secs = $1;
+                  die "Invalid CDDB/FreeDB TOTAL_SECONDS in $d/musicbox.dat"
+                     if $total_secs !~ /^\d+$/;
+                  next
                }
             }
          }
@@ -461,7 +489,7 @@ sub db_upgrade{ # {{{
       close N;
 
       warn "Cannot unlink/remove $d/musicbox.dat: $!"
-         unless unlink "$d/musicbox.dat"
+         unless !$do_unlink || unlink "$d/musicbox.dat"
    }
    exit 0
 } # }}}
