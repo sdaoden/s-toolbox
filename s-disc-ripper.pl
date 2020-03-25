@@ -1266,8 +1266,8 @@ jREDO:
 # - Leading and trailing whitespace is ignored
 # - Empty lines are ignored
 # - Lines starting with # are comments and discarded
-# - [GROUPNAME] on a line of its own begins a group
-# - And there are 'KEY = VALUE' lines - surrounding whitespace is trimmed away
+# - [GROUPNAME] on a line of its own switches a configuration group
+# - And there are 'KEY = VALUE' lines - surrounding whitespace is removed
 # - Definition ORDER IS IMPORTANT!
 __EOT__
    }
@@ -1414,10 +1414,10 @@ jERROR:     $Error = 1;
    sub help_text{
       return <<__EOT__
 # [ALBUMSET]: TITLE, SET_COUNT
-#  If a multi-CD-Set is ripped each CD gets its own database file, say;
-#  ALBUMSET and the SET_PART field of ALBUM are how to group 'em
-#  nevertheless: repeat the same ALBUMSET and adjust the SET_PART field.
-#  (No GENRE etc.: all that is in ALBUM only ... as you can see)
+#  If a multi-CD-Set is ripped each CD gets its own database file,
+#  ALBUMSET and the SET_PART field of ALBUM can be used to indicate that.
+#  Repeat the same ALBUMSET and adjust the SET_PART field.
+#  (No GENRE etc.: all that is in ALBUM only ... as can be seen)
 __EOT__
    }
    sub is_key_supported{
@@ -1464,15 +1464,16 @@ __EOT__
       return <<__EOT__
 # [ALBUM]: TITLE, TRACK_COUNT, (SET_PART, YEAR, GENRE, GAPLESS, COMPILATION,
 #  MCN, UPC_EAN)
-#  If the album is part of an ALBUMSET TITLE may only be 'CD 1' - it is
+#  If the album is part of an ALBUMSET TITLE may only be 'CD 1' -- it is
 #  required nevertheless even though it could be deduced automatically
-#  from the ALBUMSET's TITLE and the ALBUM's SET_PART - sorry!
-#  I.e. SET_PART is required, then, and the two TITLEs are *concatenated*.
-#  GENRE is one of the widely (un)known ID3 genres.
+#  from the ALBUMSET's TITLE and the ALBUM's SET_PART: sorry for that!
+#  I.e., SET_PART is required, then, and the two TITLEs of the ALBUMSET and
+#  the ALBUM together form the actual album title used in encoded files.
+#  GENRE is one of the ID3 genres (s-disc-ripper --genre-list to see them).
 #  GAPLESS states wether there shall be no silence in between tracks,
-#  and COMPILATION wether this is a compilation of various-artists or so.
+#  and COMPILATION wether this is a compilation of various-artists, or so.
 #  MCN is the Media Catalog Number, and UPC_EAN is the Universal Product
-#  Number alias European Article Number.
+#  Number alias European Article Number (bar code).
 __EOT__
    }
    sub is_key_supported{
@@ -1553,21 +1554,22 @@ __EOT__
 #  Cast information not only applies to the ([ALBUMSET] and) [ALBUM],
 #  but also to all following tracks; thus, if any [GROUP] or [TRACK] is to
 #  be defined which shall not inherit the [CAST] fields, they need to be
-#  defined first!
+#  defined before it!
+#
 #  SORT fields are special in that they *always* apply globally; whereas
 #  the other fields should be real names ("Wolfgang Amadeus Mozart") these
 #  specify how sorting is to be applied ("Mozart, Wolfgang Amadeus"),
 #  followed by the normal real name in parenthesis, e.g.:
 #     SORT = Hope, Daniel (Daniel Hope)
+#
 #  For classical music the orchestra should be the ARTIST.
 #  SOLOIST should include the instrument in parenthesis (Midori (violin)).
 #  The difference between COMPOSER and SONGWRITER is only noticeable for
 #  output file formats which do not support a COMPOSER information frame:
 #  whereas the SONGWRITER is simply discarded then, the COMPOSER becomes
 #  part of the ALBUM TITLE (Vivaldi: Le quattro stagioni - "La Primavera")
-#  if there were any COMPOSER(s) in global [CAST], or part of the TRACK
-#  TITLE (The Killing Joke: Pssyche) otherwise ([GROUP]/[TRACK]);
-#  the S-Music interface always uses the complete database entry, say.
+#  if there were any COMPOSER(s) in the global [CAST], or part of the
+#  TRACK TITLE (The Killing Joke: Pssyche) otherwise ([GROUP]/[TRACK]).
 __EOT__
    }
    sub is_key_supported{
@@ -1650,14 +1652,14 @@ __EOT__
    sub help_text{
       return <<__EOT__
 # [GROUP]: LABEL, (YEAR, GENRE, GAPLESS, COMPILATION, [CAST]-fields)
-#  Grouping information applies to all following tracks until the next
-#  [GROUP]; TRACKs which do not apply to any GROUP must thus be defined
-#  first!
-#  GENRE is one of the widely (un)known ID3 genres.
+#  Grouping information applies to all the following tracks until the next
+#  [GROUP] is seen; TRACKs which do not apply to any GROUP must thus be defined
+#  before any [GROUP].
+#  GENRE is one of the ID3 genres (s-disc-ripper --genre-list to see them).
 #  GAPLESS states wether there shall be no silence in between tracks,
-#  and COMPILATION wether this is a compilation of various-artists or so.
-#  CAST-fields may be used to *append* to global [CAST] fields; to specify
-#  CAST fields exclusively, place the GROUP before the global [CAST].
+#  and COMPILATION wether this is a compilation of various-artists, or so.
+#  CAST-fields may be used to *append* to global [CAST] fields -- to specify
+#  CAST fields exclusively, place the GROUP before the global [CAST]!
 __EOT__
    }
    sub is_key_supported{
@@ -1718,11 +1720,11 @@ __EOT__
    sub help_text{
       return <<__EOT__
 # [TRACK]: NUMBER, TITLE, (YEAR, GENRE, COMMENT, ISRC, [CAST]-fields)
-#  GENRE is one of the widely (un)known ID3 genres.
+#  GENRE is one of the ID3 genres (s-disc-ripper --genre-list to see them).
 #  ISRC is the Internation Standard Recording Code.
-#  CAST-fields may be used to *append* to global [CAST] (and those of the
-#  [GROUP], if any) fields; to specify CAST fields exclusively, place the
-#  TRACK before the global [CAST].
+#  CAST-fields may be used to *append* to global [CAST] (and those of an
+#  active [GROUP], if there is one) fields; to specify CAST fields exclusively,
+#  place the TRACK before the global [CAST] as well as any [GROUP].
 #  Note: all TRACKs need an ARTIST in the end, from whatever CAST it is
 #  inherited.
 __EOT__
