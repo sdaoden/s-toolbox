@@ -993,8 +993,7 @@ jdarwin_rip_stop:
    # }}}
 } # }}}
 
-# Title represents - a track
-{package Title; # {{{
+{package Title; # {{{ A single track
    # Title::vars,funs {{{
    our @List;
 
@@ -1088,13 +1087,12 @@ jdarwin_rip_stop:
 } # }}}
 } # }}}
 
-# MBDB - MusicBox (per-disc) database handling.
-# This is small minded and a dead end street for all the data - but that is
-# really sufficient here,
-# because if the database has been falsely edited the user must correct it!
-# At least a super-object based approach should have been used though.
-# All strings come in as UTF-8 and remain unmodified
-{package MBDB; # {{{
+{package MBDB; # {{{ MusicBox database handling
+   # At least a super-object based approach should have been used.
+   # All strings come in as UTF-8 and remain unmodified.
+   # RECORDINGS is an alternative to CDDB/ALBUMSET/ALBUM, it is not tracked
+   # here since we care about CD-ROMs; it is otherwise identical.
+
    # MBDB::vars,funs # {{{
    our ($EditFile, $FinalFile,
       $CDDB, $AlbumSet, $Album, $Cast, $Group, # [GROUP] objects
@@ -1217,12 +1215,12 @@ jREDO:
       die "Error writing $df: $!"
             unless print DF _help_text(), "\n",
                MBDB::ALBUMSET::help_text(),
-               "#[ALBUMSET]\n#TITLE = \n#SETCOUNT = 2\n",
+               "#[ALBUMSET]\n#TITLE = \n#SET_COUNT = 2\n",
                "\n",
                MBDB::ALBUM::help_text(),
-               "[ALBUM]\n#SETPART = 1\n",
+               "[ALBUM]\n#SET_PART = 1\n",
                "TITLE = $CDDB{ALBUM}\n",
-               "TRACKCOUNT = ", scalar @$cddbt, "\n",
+               "TRACK_COUNT = ", scalar @$cddbt, "\n",
                ((length($CDDB{YEAR}) > 0) ? "YEAR = $CDDB{YEAR}" : '#YEAR = '),
                "\nGENRE = $CDDB{GENRE}\n",
                "#GAPLESS = 0\n#COMPILATION = 0\n",
@@ -1413,15 +1411,15 @@ jERROR:     $Error = 1;
 {package MBDB::ALBUMSET; # {{{
    sub help_text{
       return <<__EOT__
-# [ALBUMSET]: TITLE, SETCOUNT
+# [ALBUMSET]: TITLE, SET_COUNT
 #  If a multi-CD-Set is ripped each CD gets its own database file, say;
-#  ALBUMSET and the SETPART field of ALBUM are how to group 'em
-#  nevertheless: repeat the same ALBUMSET and adjust the SETPART field.
+#  ALBUMSET and the SET_PART field of ALBUM are how to group 'em
+#  nevertheless: repeat the same ALBUMSET and adjust the SET_PART field.
 #  (No GENRE etc.: all that is in ALBUM only ... as you can see)
 __EOT__
    }
    sub is_key_supported{
-      $_[0] eq 'TITLE' || $_[0] eq 'SETCOUNT'
+      $_[0] eq 'TITLE' || $_[0] eq 'SET_COUNT'
    }
 
    sub new{
@@ -1434,7 +1432,7 @@ __EOT__
       push(@MBDB::Data, '[ALBUMSET]');
       my $self = {
          objectname => 'ALBUMSET',
-         TITLE => undef, SETCOUNT => undef
+         TITLE => undef, SET_COUNT => undef
       };
       $self = bless $self, $class;
       $MBDB::AlbumSet = $self
@@ -1453,8 +1451,8 @@ __EOT__
       my $self = shift;
       ::v("MBDB::$self->{objectname}: finalizing..");
       my $emsg = undef;
-      $emsg .= 'ALBUMSET requires TITLE and SETCOUNT;'
-            unless defined $self->{TITLE} && defined $self->{SETCOUNT};
+      $emsg .= 'ALBUMSET requires TITLE and SET_COUNT;'
+            unless defined $self->{TITLE} && defined $self->{SET_COUNT};
       $emsg
    }
 } # }}}
@@ -1462,11 +1460,11 @@ __EOT__
 {package MBDB::ALBUM; # {{{
    sub help_text{
       return <<__EOT__
-# [ALBUM]: TITLE, TRACKCOUNT, (SETPART, YEAR, GENRE, GAPLESS, COMPILATION)
+# [ALBUM]: TITLE, TRACK_COUNT, (SET_PART, YEAR, GENRE, GAPLESS, COMPILATION)
 #  If the album is part of an ALBUMSET TITLE may only be 'CD 1' - it is
 #  required nevertheless even though it could be deduced automatically
-#  from the ALBUMSET's TITLE and the ALBUM's SETPART - sorry!
-#  I.e. SETPART is required, then, and the two TITLEs are *concatenated*.
+#  from the ALBUMSET's TITLE and the ALBUM's SET_PART - sorry!
+#  I.e. SET_PART is required, then, and the two TITLEs are *concatenated*.
 #  GENRE is one of the widely (un)known ID3 genres.
 #  GAPLESS states wether there shall be no silence in between tracks,
 #  and COMPILATION wether this is a compilation of various-artists or so.
@@ -1475,8 +1473,8 @@ __EOT__
    sub is_key_supported{
       my $k = shift;
       ($k eq 'TITLE' ||
-         $k eq 'TRACKCOUNT' ||
-         $k eq 'SETPART' || $k eq 'YEAR' || $k eq 'GENRE' ||
+         $k eq 'TRACK_COUNT' ||
+         $k eq 'SET_PART' || $k eq 'YEAR' || $k eq 'GENRE' ||
          $k eq 'GAPLESS' || $k eq 'COMPILATION')
    }
 
@@ -1490,8 +1488,8 @@ __EOT__
       push(@MBDB::Data, '[ALBUM]');
       my $self = {
          objectname => 'ALBUM',
-         TITLE => undef, TRACKCOUNT => undef,
-         SETPART => undef, YEAR => undef, GENRE => undef,
+         TITLE => undef, TRACK_COUNT => undef,
+         SET_PART => undef, YEAR => undef, GENRE => undef,
          GAPLESS => 0, COMPILATION => 0
       };
       $self = bless $self, $class;
@@ -1503,17 +1501,19 @@ __EOT__
       ::v("MBDB::$self->{objectname}::set_tuple($k=$v)");
       return "$self->{objectname}: $k not supported"
             unless is_key_supported($k);
-      if($k eq 'SETPART'){
-         return 'ALBUM: SETPART without ALBUMSET'
+      if($k eq 'SET_PART'){
+         return 'ALBUM: SET_PART without ALBUMSET'
                unless defined $MBDB::AlbumSet;
-         return "ALBUM: SETPART $v not a number" unless $v =~ /^\d+$/;
-         return 'ALBUM: SETPART value larger than SETCOUNT'
-               if int $v > int $MBDB::AlbumSet->{SETCOUNT}
+         return "ALBUM: SET_PART $v not a number" unless $v =~ /^\d+$/;
+         return 'ALBUM: SET_PART value larger than SET_COUNT'
+               if int $v > int $MBDB::AlbumSet->{SET_COUNT}
       }elsif($k eq 'GENRE'){
          my $g = ::genre($v);
          return "ALBUM: $v not a valid GENRE (try --genre-list)"
                unless defined $g;
          $v = $g
+      }elsif($k eq 'TRACK_COUNT'){
+         return "ALBUM: TRACK_COUNT $v not a number" unless $v =~ /^\d+$/;
       }
       $self->{$k} = $v;
       push @MBDB::Data, "$k = $v";
@@ -1524,10 +1524,10 @@ __EOT__
       ::v("MBDB::$self->{objectname}: finalizing..");
       my $emsg = undef;
       $emsg .= 'ALBUM requires TITLE;' unless defined $self->{TITLE};
-      $emsg .= 'ALBUM requires TRACKCOUNT;'
-            unless defined $self->{TRACKCOUNT};
-      $emsg .= 'ALBUM requires SETPART if ALBUMSET defined;'
-            if defined $MBDB::AlbumSet && !defined $self->{SETPART};
+      $emsg .= 'ALBUM requires TRACK_COUNT;'
+            unless defined $self->{TRACK_COUNT};
+      $emsg .= 'ALBUM requires SET_PART if ALBUMSET defined;'
+            if defined $MBDB::AlbumSet && !defined $self->{SET_PART};
       $emsg
    }
 } # }}}
@@ -1840,11 +1840,11 @@ __EOT__
       # TRCK,--track: TRCK; --tracknum: TRACKNUM
       $tir->{TRCK} =
       $tir->{TRACKNUM} = $self->{NUMBER};
-      $tir->{TRCK} .= "/$MBDB::Album->{TRACKCOUNT}";
+      $tir->{TRCK} .= "/$MBDB::Album->{TRACK_COUNT}";
 
       # TPOS,--disc - MAYBE UNDEF
       $tir->{TPOS} = (defined $MBDB::AlbumSet
-            ? ($MBDB::Album->{SETPART} . '/' .  $MBDB::AlbumSet->{SETCOUNT})
+            ? ($MBDB::Album->{SET_PART} . '/' .  $MBDB::AlbumSet->{SET_COUNT})
             : undef);
 
       # TYER,--year,--date: YEAR - MAYBE UNDEF
