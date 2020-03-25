@@ -1082,6 +1082,8 @@ jdarwin_rip_stop:
       $self->{GENREID} =
       # COMM,--comment,--comment - MAYBE UNDEF
       $self->{COMM} = undef;
+      # TSRC,(comment for others) - ISRC code, MAYBE UNDEF
+      $self->{TSRC} = undef;
       return $self
    }
 } # }}}
@@ -1323,7 +1325,7 @@ __EOT__
                goto jERROR
             }
             $entry = &$sym($class, \$emsg);
-         }elsif($line =~ /^(.*?)\s*=\s*(.*)$/){
+         }elsif($line =~ /^(.*?)\s*=\s*(.*)\s*$/){
             my ($k, $v) = ($1, $2);
             unless(defined $entry){
                $emsg = "KEY=VALUE line without group: <$k=$v>";
@@ -1460,7 +1462,8 @@ __EOT__
 {package MBDB::ALBUM; # {{{
    sub help_text{
       return <<__EOT__
-# [ALBUM]: TITLE, TRACK_COUNT, (SET_PART, YEAR, GENRE, GAPLESS, COMPILATION)
+# [ALBUM]: TITLE, TRACK_COUNT, (SET_PART, YEAR, GENRE, GAPLESS, COMPILATION,
+#  MCN, UPC_EAN)
 #  If the album is part of an ALBUMSET TITLE may only be 'CD 1' - it is
 #  required nevertheless even though it could be deduced automatically
 #  from the ALBUMSET's TITLE and the ALBUM's SET_PART - sorry!
@@ -1468,6 +1471,8 @@ __EOT__
 #  GENRE is one of the widely (un)known ID3 genres.
 #  GAPLESS states wether there shall be no silence in between tracks,
 #  and COMPILATION wether this is a compilation of various-artists or so.
+#  MCN is the Media Catalog Number, and UPC_EAN is the Universal Product
+#  Number alias European Article Number.
 __EOT__
    }
    sub is_key_supported{
@@ -1475,7 +1480,8 @@ __EOT__
       ($k eq 'TITLE' ||
          $k eq 'TRACK_COUNT' ||
          $k eq 'SET_PART' || $k eq 'YEAR' || $k eq 'GENRE' ||
-         $k eq 'GAPLESS' || $k eq 'COMPILATION')
+         $k eq 'GAPLESS' || $k eq 'COMPILATION' ||
+         $k eq 'MCN' || $k eq 'UPC_EAN')
    }
 
    sub new{
@@ -1490,7 +1496,8 @@ __EOT__
          objectname => 'ALBUM',
          TITLE => undef, TRACK_COUNT => undef,
          SET_PART => undef, YEAR => undef, GENRE => undef,
-         GAPLESS => 0, COMPILATION => 0
+         GAPLESS => 0, COMPILATION => 0,
+         MCN => undef, UPC_EAN => undef
       };
       $self = bless $self, $class;
       $MBDB::Album = $self
@@ -1513,7 +1520,13 @@ __EOT__
                unless defined $g;
          $v = $g
       }elsif($k eq 'TRACK_COUNT'){
-         return "ALBUM: TRACK_COUNT $v not a number" unless $v =~ /^\d+$/;
+         return "ALBUM: TRACK_COUNT $v not a number" unless $v =~ /^\d+$/
+      }elsif($k eq 'MCN'){
+         return "ALBUM: invalid MCN: $v" unless length($v) == 13
+      }elsif($k eq 'UPC_EAN'){
+         my $i = length $v;
+         return "ALBUM: invalid UPC_EAN: $v" unless $i >= 8 && $i <= 13 &&
+               $v =~ /^[[:digit:]]+$/
       }
       $self->{$k} = $v;
       push @MBDB::Data, "$k = $v";
@@ -1704,8 +1717,9 @@ __EOT__
 {package MBDB::TRACK; # {{{
    sub help_text{
       return <<__EOT__
-# [TRACK]: NUMBER, TITLE, (YEAR, GENRE, COMMENT, [CAST]-fields)
+# [TRACK]: NUMBER, TITLE, (YEAR, GENRE, COMMENT, ISRC, [CAST]-fields)
 #  GENRE is one of the widely (un)known ID3 genres.
+#  ISRC is the Internation Standard Recording Code.
 #  CAST-fields may be used to *append* to global [CAST] (and those of the
 #  [GROUP], if any) fields; to specify CAST fields exclusively, place the
 #  TRACK before the global [CAST].
@@ -1754,6 +1768,12 @@ __EOT__
                if int($v) <= 0 || int($v) > $CDInfo::TrackCount;
          $emsg = "TRACK: NUMBER $v yet defined"
                if $Title::List[$v - 1]->{TAG_INFO}->{IS_SET}
+      }elsif($k eq 'ISRC'){
+         return "TRACK: invalid ISRC: $v" unless length($v) == 12 &&
+               $v =~ /^[[:upper:]]{2}
+                     [[:alnum:]]{3}
+                     [[:digit:]]{2}
+                     [[:digit:]]{5}$/x
       }
       if(exists $self->{$k}){
          $self->{$k} = $v;
@@ -1869,8 +1889,25 @@ __EOT__
             ? $CDDB{GENRE} : ::genre('Humour'))))));
       $tir->{GENREID} = ::genre_id($tir->{GENRE});
 
-      # COMM,--comment,--comment - MAYBE UNDEF
-      $tir->{COMM} = $self->{COMMENT}
+      # COMM,--comment,--comment - MAYBE UNDEF; place MCN, UPC/EAN, ISRC here
+      $i = '';
+      if(defined $self->{ISRC}){
+         $tir->{TSRC} = self->{ISRC};
+         $i .= "ISRC=$self->{ISRC}"
+      }
+      if(defined $MBDB::Album->{MCN}){
+         $i .= '; ' if length $i > 0;
+         $i .= "MCN=$MBDB::Album->{MCN}"
+      }
+      if(defined $MBDB::Album->{UPC_EAN}){
+         $i .= '; ' if length $i > 0;
+         $i .= "UPC/EAN=$MBDB::Album->{UPC_EAN}"
+      }
+      if(defined $self->{COMMENT}){
+         $i .= '; ' if length $i > 0;
+         $i .= $self->{COMMENT}
+      }
+      $tir->{COMM} = $i if length $i > 0
    } # }}}
 } # }}}
 } # }}}
@@ -2038,6 +2075,7 @@ __EOT__
       $tag .= _mp3_frame('TPOS', $ti->{TPOS}) if defined $ti->{TPOS};
       $tag .= _mp3_frame('TCON', '(' . $ti->{GENREID} . ')' . $ti->{GENRE});
       $tag .= _mp3_frame('TYER', $ti->{YEAR}) if defined $ti->{YEAR};
+      $tag .= _mp3_frame('TSRC', $ti->{TSRC});
       $ti = $ti->{COMM};
       if(defined $ti){
          $ti = "engS-MUSIC:COMM\x00$ti";
