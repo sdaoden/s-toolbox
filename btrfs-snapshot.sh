@@ -27,14 +27,16 @@
 #@
 #@ - "receive-ball" receives one or multiple $BALLS, which must have been
 #@   created by "create-ball", and merges them in snapshots/.
+#@   The ball(s) is/are expanded in the root of the target first!
 #@   A ball can also be split(1)ted up into subfiles, for example to store it
 #@   on a VFAT partition: if a BALL is a directory we will join all files via
 #@   a cat(1) * glob, and expand the output behind a pipe instead.
-#@      i=`basename "$1" .tar.gz`
+#@      i=${1%%.*}
 #@      mkdir "$i".split || exit 7
 #@      cd "$i".split
 #@      < "$1" split -a 4 -b 2000000000 -d - || exit 8
 #@      cd ..
+#@    ->
 #@      btrfs-snapshot.sh receive-ball "$i".split
 #@
 #@ - "clone-to-cwd" and "sync-to-cwd" need one existing snapshot (series),
@@ -48,7 +50,7 @@
 #@   setting other values for $THEVOL, $DIRS and $ACCUDIR does not suffice.
 #@   (Maybe $UNPRIVU and $UNPRIVG may need a hand, too.)
 #
-# 2018 - 2019 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+# 2018 - 2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain
 
 : ${HOSTNAME:=`hostname`}
@@ -376,9 +378,11 @@ clone_to_cwd() {
       done
    fi
 
+   deldirs=
    for d in $DIRS; do
       target="$CLONEDIR"/snapshots/"$d"
       if [ -d "$CLONEDIR/$d" ] && [ -d "$target" ]; then :; else
+         [ -d "$CLONEDIR/$d" ] && deldirs="$deldirs \"$CLONEDIR/$d\""
          echo '== Skipping non-existing snapshots/'$d
          continue
       fi
@@ -426,6 +430,10 @@ clone_to_cwd() {
          '('cd "$CLONEDIR"/snapshots/"$d" '&&' btrfs receive .')'
       ) || exit $?
    done
+
+   if [ -n "$deldirs" ]; then
+      echo '== The following snapshots have no upstream: '$deldirs
+   fi
 }
 
 mytee() {
