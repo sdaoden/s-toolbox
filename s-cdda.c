@@ -85,8 +85,10 @@
 # define a_CDROM_MMC_MAX_FRAMES_PER_SEC 50
 #elif su_OS_NETBSD || su_OS_OPENBSD
 # include <sys/scsiio.h>
-# define a_CDROM "/dev/cd0c"
-# if su_OS_OPENBSD
+# if su_OS_NETBSD
+#  define a_CDROM "/dev/cd0a"
+# elif su_OS_OPENBSD
+#  define a_CDROM "/dev/cd0c"
 #  define a_CDROM_MMC_MAX_FRAMES_PER_SEC 25
 # endif
 #endif
