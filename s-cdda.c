@@ -621,28 +621,27 @@ jusage:
       "s-cdda (" a_VERSION "): accessing audio CDs (via SCSI MMC-3 aware "
          "cdrom/drivers)\n"
       "\n"
-      "  s-cdda -h | -L\n"
-      "\n"
       "  s-cdda [-d DEV] [-nv] :-l LANG: -a\n"
+      "     All the queries\n"
       "  s-cdda [-d DEV] [-nv] -i\n"
       "     Dump International Standard Recording Code (ISRC), "
-         "if available/supported\n",
-      (rv == EX_OK ? stdout : stderr));
-   fputs(
+         "if available/supported\n"
       "  s-cdda [-d DEV] [-nv] -m\n"
       "     Dump Media Catalog Number (MCN) if available/supported\n"
+      , (rv == EX_OK ? stdout : stderr));
+   fputs(
       "  s-cdda [-d DEV] [-nv] [-t]\n"
       "     Dump the table of (audio) contents (TOC)\n"
       "  s-cdda [-d DEV] [-nv] :-l LANG: -x\n"
-      "     Dump CD-TEXT information for LANGuage (-L: list) "
+      "     Dump CD-TEXT information for LANGuage (-L for list) "
          "if available/supported\n"
       "\n"
       "  s-cdda [-d DEV] [-v] -r NUM\n"
       "     Dump audio track NUMber in WAVE format "
-         "to (non-terminal) standard output\n",
-      (rv == EX_OK ? stdout : stderr));
-   fputs(
+         "to (non-terminal) standard output\n"
       "\n"
+      , (rv == EX_OK ? stdout : stderr));
+   fputs(
       "-d DEV   CD-ROM DEVice; else $CDROM; fallback " a_CDROM "\n"
       "-l LANG  CD-TEXT LANGuage, case-insensitive; "
          "multiple -l: priority order\n"
@@ -651,6 +650,7 @@ jusage:
       ". -[im] subject to HW/driver quality: retry on \"not-found\".  "
          "With multiple\n"
       "  queries errors are ignored but for TOC.  sysexits.h exit states.\n"
+      ". s-cdda -h: this help, s-cdda -L: CD-TEXT languages\n"
       ". Bugs/Contact via " a_CONTACT "\n",
       (rv == EX_OK ? stdout : stderr));
    goto jleave;
