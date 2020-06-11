@@ -2083,6 +2083,7 @@ __EOT__
       my $k = shift;
       ($k eq 'NUMBER' || $k eq 'TITLE' ||
          $k eq 'YEAR' || $k eq 'GENRE' || $k eq 'COMMENT' ||
+         $k eq 'ISRC' ||
          MBDB::CAST::is_key_supported($k))
    }
 
@@ -2115,7 +2116,7 @@ __EOT__
       my $self = {
             objectname => 'TRACK',
             NUMBER => undef, TITLE => undef,
-            YEAR => undef, GENRE => undef, COMMENT =>undef,
+            YEAR => undef, GENRE => undef, COMMENT => undef, ISRC => undef,
             group => $MBDB::DB->{Group},
             cast => MBDB::CAST::new_state_clone('TRACK'),
             _imag_TITLE => undef
@@ -2205,6 +2206,8 @@ __EOT__
                if defined $self->{GENRE};
          $rv .= "${pre}COMMENT = " . $self->{COMMENT} . "\n"
                if defined $self->{COMMENT};
+         $rv .= "${pre}ISRC = " . $self->{ISRC} . "\n"
+               if defined $self->{ISRC};
          $rv .= $self->{cast}->db_dump_core($hr, $pre);
          $rv
       }
