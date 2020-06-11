@@ -514,6 +514,7 @@ jREDO:
       $FileReader, $DatFile);
    our @TracksLBA = ();
    our @TracksISRC = ();
+   our @CDText = ();
    my $DevId;
    my $Leadout = 0xAA;
 
@@ -715,9 +716,9 @@ jdarwin_read_stop:
                x0_track_first=(\d+)\s+
                x0_track_last=(\d+)
                .*$/x){
-         }
-         # TODO CD-TEXT
-         else{
+         }elsif($l =~ /^#/){
+            push @CDText, $l
+         }else{
             #$emsg .= "! Invalid line: $l\n"
          }
       }
@@ -779,7 +780,8 @@ jdarwin_read_stop:
       my $f = $DatFile;
       ::v("CDInfo::write_data($f)");
       die "Cannot open $f: $!" unless open DAT, '>:encoding(UTF-8)', $f;
-      print DAT "# $SELF CDDB info for project $CDId\n",
+      die "Error writing $f: $!"
+         unless print DAT "# $SELF CDDB info for project $CDId\n",
          "# Do not modify!   Or project needs to be re-created!!\n",
          "CDID = $CDId\n",
          "MBRAINZ_DISC_ID = $MBrainzDiscId\n",
@@ -787,6 +789,10 @@ jdarwin_read_stop:
          "TRACK_FIRST = $TrackFirst\n",
          "TRACK_LAST = $TrackLast\n",
          "RAW_IS_WAVE = 1\n";
+      if(@CDText > 0){
+         die "Error writing $f: $!"
+            unless print DAT "# CDTEXT-START\n", join("\n", @CDText)
+      }
       die "Cannot close $f: $!" unless close DAT
    }
 
@@ -804,18 +810,29 @@ jdarwin_read_stop:
       my ($old_id, $laref) = ($CDId, shift);
       $RawIsWAVE = $ReadFileExt = $CDId = $MBrainzDiscId =
             $TrackCount = $TrackFirst = $TrackLast = undef;
-      @TracksLBA = @TracksISRC = ();
+      @TracksLBA = @TracksISRC = @CDText = ();
 
-      my $emsg = '';
+      my ($emsg, $cdtext) = ('', 0);
       foreach(@lines){
          chomp;
-         next if /^\s*#/;
+
+         if(/^\s*#/){
+            if(!$cdtext){
+               $cdtext = 1 if /CDTEXT-START/;
+            }else{
+               push @CDText, $_
+            }
+            next
+         }
+
          next if /^\s*$/;
+
          unless(/^\s*(.+?)\s*=\s*(.+?)\s*$/){
             $emsg .= "! Invalid line $_\n";
             next
          }
          my ($k, $v) = ($1, $2);
+
          if($k eq 'CDID'){
             if(defined $old_id && $v ne $old_id){
                $emsg .= "! Parsed CDID ($v) does not match\n";
@@ -875,9 +892,9 @@ jdarwin_read_stop:
 {package CDInfo::DataSource; # {{{
    sub query_all{
       CDInfo::DataSource::Dummy::new()->create_db();
-
-#FIXME
-
+      if(@CDInfo::CDText > 0){
+         CDInfo::DataSource::CDText::new()->create_db();
+      }
    }
 
    # Super funs # {{{
@@ -925,6 +942,24 @@ __EOT__
       MBDB::db_slurp('Dummy', \@data)
    }
 } # }}} CDInfo::DataSource::Dummy
+
+{package CDInfo::DataSource::CDText; # {{{
+   our @ISA = 'CDInfo::DataSource';
+
+   sub new{
+      my $self = CDInfo::DataSource::new('CDText');
+      $self = bless $self;
+      #$self
+   }
+
+   sub create_db{
+      my @data;
+      foreach(@CDInfo::CDText){
+         push @data, substr($_, 1)
+      }
+      MBDB::db_slurp('CDText', \@data)
+   }
+} # }}} CDInfo::DataSource::CDText
 } # }}} CDInfo::DataSource
 } # }}} CDInfo
 
