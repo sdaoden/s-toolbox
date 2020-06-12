@@ -2,7 +2,7 @@
  *@ Developed in 2020 on then current operating-systems and hardware.
  *@ Thanks to Thomas Schmitt (libburnia) for cdrom-cookbook.txt and cdtext.txt.
  *@ According to SCSI Multimedia Commands - 3 (MMC-3, Revision 10g).
- *@ Use s-cdda.makefile for compilation: $ make -f s-cdda.makefile"
+ *@ Use s-cdda.makefile for compilation: $ make -f s-cdda.makefile
  *@ TODO de-preemphasis, handling of SCSI sense states? It is half assed.
  *
  * Copyright (c) 2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
@@ -22,7 +22,7 @@
  */
 
 /* */
-#define a_VERSION "0.8.2"
+#define a_VERSION "0.8.3"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* -- >8 -- 8< -- */
@@ -1664,24 +1664,16 @@ a_dump_cdtext(struct a_data *dp){
 
    tp = &dp->d_track_data[0];
 
-   any = FAL0;
-   if(*(cp = dp->d_mcn) != '\0'){
-      any = TRU1;
-      printf("#[CDDB]\n#MCN = %s\n", cp);
-   }
-   if((cp = tp->t_cdtext_dat[a_CDTEXT_PACK_T2IDX(UPC_EAN_ISRC)]) != NIL &&
-         *cp != '\0'){
-      if(!any)
-         puts("#[CDDB]");
-      any = TRU1;
-      printf("#UPC_EAN = %s\n", cp);
-   }
-
    puts("#[ALBUM]");
-   printf("#TRACKCOUNT = %u\n", dp->d_trackno_audio);
+   printf("#TRACK_COUNT = %u\n", dp->d_trackno_audio);
    if((cp = tp->t_cdtext_dat[a_CDTEXT_PACK_T2IDX(TITLE)]) != NIL &&
          *cp != '\0')
       printf("#TITLE = %s\n", cp);
+   if(*(cp = dp->d_mcn) != '\0')
+      printf("#MCN = %s\n", cp);
+   if((cp = tp->t_cdtext_dat[a_CDTEXT_PACK_T2IDX(UPC_EAN_ISRC)]) != NIL &&
+         *cp != '\0')
+      printf("#UPC_EAN = %s\n", cp);
 
    any = FAL0;
    if((cp = tp->t_cdtext_dat[a_CDTEXT_PACK_T2IDX(ARTIST)]) != NIL &&
