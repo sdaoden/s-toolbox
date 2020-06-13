@@ -12,7 +12,7 @@ my $ABSTRACT = 'Read and encode audio CDs, integrated in S-Music DB.';
 #@ - if MP4/AAC is used: faac(1) (www.audiocoding.com)
 #@ - if Ogg/Vorbis is used: oggenc(1) (www.xiph.org)
 #@ - if FLAC is used: flac(1) (www.xiph.org)
-#@ - FIXME OPUS support
+#@ - if OPUS is used: opusenc (see Vorbis TODO untested!)
 #
 # Copyright (c) 1998 - 2003, 2010 - 2014, 2016 - 2018,
 #               2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
@@ -322,8 +322,8 @@ $SELF ($VERSION): $ABSTRACT
 
 -d|--device DEV       Use CD-ROM DEVice; else \$CDROM; else s-cdda(1) fallback
 -e|--encode-only CDID Resume --read-only session; it echoed the CDID to use
--f|--formats LIST     Comma-separated list of audio target formats, else
-                      \$S_MUSIC_FORMATS ($flr)
+-f|--formats LIST     Comma-separated audio format list; else \$S_MUSIC_FORMATS
+                      ($flr)
 -m|--music-db PATH    S-Music DB directory; else \$S_MUSIC_DB
 -r|--read-only        Only read data, then exit; resume with --encode-only
 --no-volume-normalize Do not apply volume normalization
@@ -2699,6 +2699,51 @@ __EOT__
    }
 } # }}} Enc::Helper::OGG
 
+{package Enc::Helper::OPUS; # {{{
+   sub create_fd{
+      my ($title, $path, $myid, $quali) = @_;
+
+      my $comm = _create_comment($title);
+
+      ::v("Creating OPUS opusenc(1) $myid-quality encoder");
+      Enc::Helper::utf8_echomode_on();
+      my $cmd = '| opusenc ' . ($CDInfo::RawIsWAVE ? ''
+            : '--raw --raw-rate=44100 ') .
+            "--bitrate $quali $comm -o $path -";
+      die "Cannot open OPUS $myid: $cmd: $!" unless open(my $fd, $cmd);
+      Enc::Helper::utf8_echomode_off();
+      die "binmode error OPUS$myid: $!" unless binmode $fd;
+      $fd
+   }
+
+   sub _create_comment{
+      my ($title) = @_;
+      my ($ti, $res, $i) = ($title->{TAG_INFO}, '', undef);
+      $i = $ti->{ARTIST};
+         $i =~ s/"/\\"/g;
+         $res .= "--artist \"$i\" ";
+      $i = $ti->{ALBUM};
+         $i =~ s/"/\\"/g;
+         $res .= "--album \"$i\" ";
+      $i = $ti->{TITLE};
+         $i =~ s/"/\\"/g;
+         $res .= "--title \"$i\" ";
+      $res .= "--tracknumber \"$ti->{TRACKNUM}\" "
+            . (defined $ti->{TPOS}
+               ? "--comment=\"TPOS=$ti->{TPOS}\" " : '')
+            . "--comment=\"TRCK=$ti->{TRCK}\" "
+            . "--genre \"$ti->{GENRE}\" "
+            . (defined $ti->{YEAR} ? "--date \"$ti->{YEAR}\"" :'');
+      $i = $ti->{COMM};
+      if(defined $i){
+         $i =~ s/"/\\"/g;
+         $res .=" --comment \"S-MUSIC:COMM=$i\""
+      }
+      ::v("OPUSTag: $res");
+      $res
+   }
+} # }}} Enc::Helper::OPUS
+
 {package Enc::Helper::FLAC; # {{{
    sub create_fd{
       my ($title, $path) = @_;
@@ -2854,6 +2899,34 @@ __EOT__
       $self = bless $self;
       $self->{fd} = Enc::Helper::OGG::create_fd($title, $self->{path},
             'low', '-q 3.8');
+      $self
+   }
+}
+# }}}
+
+# {{{ OPUS
+{package Enc::Coder::OPUS;
+   our @ISA = 'Enc::Coder';
+
+   sub new{
+      my ($title) = @_;
+      my $self = Enc::Coder::new($title, 'OPUS', 'opus');
+      $self = bless $self;
+      $self->{fd} = Enc::Helper::OPUS::create_fd($title, $self->{path},
+            'high', '96');
+      $self
+   }
+}
+
+{package Enc::Coder::OPUSLO;
+   our @ISA = 'Enc::Coder';
+
+   sub new{
+      my ($title) = @_;
+      my $self = Enc::Coder::new($title, 'OPUSLO', 'lo.opus');
+      $self = bless $self;
+      $self->{fd} = Enc::Helper::OPUS::create_fd($title, $self->{path},
+            'low', '24');
       $self
    }
 }
