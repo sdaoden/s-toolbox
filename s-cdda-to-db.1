@@ -1,0 +1,220 @@
+.\"@ s-cdda-to-db: Read and encode audio CDs, integrated in S-Music DB.
+.\"
+.\" Copyright (c) 1998 - 2003, 2010 - 2014, 2016 - 2018,
+.\"               2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+.\" SPDX-License-Identifier: ISC
+.\"
+.\" Permission to use, copy, modify, and/or distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.
+.Dd June 12, 2020
+.Dt S-CDDA-TO-DB 1
+.Os
+.Mx -enable
+.
+.
+.Sh NAME
+.Nm s-cdda-to-db
+.Nd read and encode audio CDs, integrated in S-Music DB
+.
+.
+.Sh SYNOPSIS
+.
+.Nm
+.Fl h
+.Nm
+.Fl g
+.Pp
+.Nm
+.Op Fl v
+.Op Fl d Ar DEVICE
+.Op Fl f Ar FORMATS
+.Op Fl m Ar PATH
+.Op Fl Fl no-volume-normalize
+.Pp
+.Nm
+.Op Fl v
+.Op Fl d Ar DEVICE
+.Fl r
+.Nm
+.Op Fl v
+.Op Fl d Ar DEVICE
+.Op Fl f Ar FORMATS
+.Op Fl m Ar PATH
+.Op Fl Fl no-volume-normalize
+.Fl e Ar CDID
+.
+.
+.Mx -toc -tree html pdf ps xhtml
+.
+.
+.Sh DESCRIPTION
+.
+.Nm
+queries the content and data of audio CDs through
+.Xr s-cdda 1 ,
+collects informations, like the name of the artist, album, song titles,
+etc., of desired audio tracks, also over the world wide web if possible,
+and integrates encoded variants of the audio tracks as well as a human
+readable database file in a per-CD directory under a directory tree.
+Multiple audio encoding formats are supported, and as much of the
+collected information as possible is also stored in the encoded files
+itself.
+The user will be asked to edit collected informations, and will be given
+documentation for the rather sophisticated (classical music aware)
+database layout while doing so.
+.
+.
+.Ss "Options"
+.
+.
+.Bl -tag -width ".It Fl BaNg"
+.Mx
+.It Fl d Ar DEVICE
+Specify the CD-ROM
+.Ar DEVICE .
+If not given the environment variable
+.Ev CDROM
+is inspected.
+This is used by
+.Xr s-cdda 1 ,
+please see there for more.
+.
+.Mx
+.It Fl e Ar CDID
+Only resume a
+.Fl r
+read-only session; the
+.Ar CDID
+was echoed by it.
+.
+.Mx
+.It Fl f Ar FORMATS
+The list of target audio encoding formats, as a comma-separated list.
+If not given the environment variable
+.Ev S_MUSIC_FORMATS
+is used, and please see there (below) for more.
+.
+.Mx
+.It Fl g
+Only show a (the well-known MP3 info) music genre list, then exit.
+.
+.Mx
+.It Fl h
+Show a brief usage summary, then exit.
+.
+.Mx
+.It Fl m Ar PATH
+The top directory of the S-Music DB.
+If not given the environment variable
+.Ev S_MUSIC_DB
+is used, please see there for more.
+.
+.Mx
+.It Fl Fl no-volume-normalize
+By default time and frequency domain statistical informations over all
+(selected) CD audio tracks is collected, then the volume is raised by
+the minimum applicable value that does not cause clipping in any of the
+chosen tracks.
+Normalization can be undesireable if a CD is not encoded in one go.
+Remarks: without this option the program
+.Xr sox 1
+is required.
+.
+.Mx
+.It Fl r
+Only select and read tracks from an audio CD to a temporary working
+directory, echo the CD identity string, then exit.
+Such a session can be resumed via
+.Fl e .
+.
+.Mx
+.It Fl v
+Be more verbose.
+.El
+.
+.
+.Pp
+The default mode of operation (without any of
+.Fl e , g , h , r )
+is to read and encode an audio CD.
+.
+.
+.Sh ENVIRONMENT
+.
+.Bl -tag -width ".It Fl BaNg"
+.Mx
+.It Ev CDROM
+Path name to the CDROM device, if not specified via
+.Fl d .
+.
+.Mx
+.It Ev EDITOR
+Used if
+.Ev VISUAL
+is not set (see there).
+.
+.Mx
+.It Ev S_MUSIC_DB
+The top directory of the S-Music DB, that is, where the per-CD directory
+is to be created.
+.
+.Mx
+.It Ev S_MUSIC_FORMATS
+A comma-separated list of case-insensitive target audio encoding
+formats, for example
+.Ql aac,aaclo,ogg :
+here high quality AAC (MP4) and OGG output formats as well as low
+quality AAC output has been chosen, which means that each audio input
+track will be encoded to three different output files (in parallel).
+The full list of audio formats and quality levels can be seen in the
+.Fl h
+output, note, however, that the actual encoding software still has to
+be installed separately.
+(The script header of
+.Nm
+can be inspected to see which tools are needed for which format, unless
+implicitly clear through the chosen formats; and see
+.Sx "SEE ALSO"
+below.)
+.
+.Mx
+.It Ev TMPDIR
+This variable defines the directory where the temporary working
+directory shall be created under.
+If this is not set
+.Pa /tmp
+will be used.
+.
+.Mx
+.It Ev VISUAL
+The pathname of the text editor to use for editing purposes.
+.Ev EDITOR
+will be tried if this is not set.
+.El
+.
+.
+.Sh "SEE ALSO"
+.
+.Xr faac 1 ,
+.Xr flac 1 ,
+.Xr lame 1 ,
+.Xr oggenc 1 ,
+.Xr opusenc 1 ,
+.Xr s-cdda 1 ,
+.Xr sox 1
+.
+.
+.Sh AUTHORS
+.
+.An Steffen Nurpmeso Aq steffen@sdaoden.eu
+.\" s-ts-mode
