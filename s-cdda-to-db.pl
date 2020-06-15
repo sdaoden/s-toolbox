@@ -1004,7 +1004,7 @@ __EOT__
             NUMBER => $no,
             INDEX => $no - 1,
             NUMBER_STRING => $nos,
-            RAW_FILE => "$WORK_DIR/$nos" . $CDInfo::ReadFileExt,
+            RAW_FILE => "$WORK_DIR/$nos." . $CDInfo::ReadFileExt,
             TARGET_PLAIN => "$TARGET_DIR/$nos",
             IS_SELECTED => 0,
             TAG_INFO => Title::TagInfo->new()
@@ -1184,7 +1184,7 @@ jREDO:
       die "Cannot close $df: $!" unless close DF;
 
       $DB = undef if $is_final;
-      _db_slurp($df, ($is_final ? (DB_SLURP_IS_FINAL |
+      _db_slurp('USER', ($is_final ? (DB_SLURP_IS_FINAL |
             DB_SLURP_REMOVE_ON_ERROR) : DB_SLURP_NONE), \@dat)
    }
 
@@ -1386,7 +1386,8 @@ __EOT__
          for(; defined $xs; $xs = $xs->{_last_db}){
             $hr->{comment} = "# $xs->{source}: "
                   if ($hr->{flags} & DB_DUMP_HAVE_CAST);
-            $o->db_dump($hr) if defined($o = $xs->{Cast})
+            $o = $xs->{Cast};
+            $o->db_dump($hr) if defined $o
          }
          $hr->{comment} = '#';
          $xs = $self;
@@ -1490,6 +1491,7 @@ __EOT__
          $pre = $hr->{comment} . $pre
             unless ($hr->{flags} & MBDB::DB_DUMP_FINAL);
 
+         # This "cannot become corrupted by user edits", so just dump
          return <<__EOT__
 ${pre}[CDDB]
 ${pre}CDID = $self->{CDID}
@@ -1576,11 +1578,10 @@ __EOT__
             $rv .= "${pre}[ALBUMSET]\n"
          }
 
-         $rv .= <<__EOT__;
-${pre}TITLE = $self->{TITLE}
-${pre}SET_COUNT = $self->{SET_COUNT}
-__EOT__
-
+         $rv .= "${pre}TITLE = " . $self->{TITLE} . "\n"
+               if defined $self->{TITLE};
+         $rv .= "${pre}SET_COUNT = " . $self->{SET_COUNT} . "\n"
+               if defined $self->{SET_COUNT};
          $rv
       }
 
@@ -1700,10 +1701,10 @@ __EOT__
             $rv .= "${pre}[ALBUM]\n"
          }
 
-         $rv .= <<__EOT__;
-${pre}TITLE = $self->{TITLE}
-${pre}TRACK_COUNT = $self->{TRACK_COUNT}
-__EOT__
+         $rv .= "${pre}TITLE = " . $self->{TITLE} . "\n"
+               if defined $self->{TITLE};
+         $rv .= "${pre}TRACK_COUNT = " . $self->{TRACK_COUNT} . "\n"
+               if defined $self->{TRACK_COUNT};
          $rv .= "${pre}SET_PART = " . $self->{SET_PART} . "\n"
                if defined $self->{SET_PART};
          $rv .= "${pre}YEAR = " . $self->{YEAR} . "\n"
@@ -1860,7 +1861,7 @@ __EOT__
          unless is_key_supported($k);
       if($k ne 'SORT'){
          push @{$self->{$k}}, $v;
-         $v = $1 if ($k eq 'SOLIST' && $v =~ /^(.*)\(.*\)$/);
+         $v = $1 if ($k eq 'SOLOIST' && $v =~ /^\s*(.*?)\s*\(.*\)$/);
          $self->_add_imag_sort($v)
       }else{
          push @{$MBDB::DB->{Sort}}, $v
@@ -1944,18 +1945,18 @@ __EOT__
       }
 
       for($i = $self->{_parent_soloists}; $i < @{$self->{SOLOIST}}; ++$i){
-         $rv .= "${pre}SOLOIST = " . ${$self->{SOLOIST}}->[$i] . "\n"
+         $rv .= "${pre}SOLOIST = " . $self->{SOLOIST}->[$i] . "\n"
       }
       for($i = $self->{_parent_conductors}; $i < @{$self->{CONDUCTOR}};
             ++$i){
-         $rv .= "${pre}CONDUCTOR = " . ${$self->{CONDUCTOR}}->[$i] . "\n"
+         $rv .= "${pre}CONDUCTOR = " . $self->{CONDUCTOR}->[$i] . "\n"
       }
       for($i = $self->{_parent_composers}; $i < @{$self->{COMPOSER}}; ++$i){
-         $rv .= "${pre}COMPOSER = " . ${$self->{COMPOSER}}->[$i] . "\n"
+         $rv .= "${pre}COMPOSER = " . $self->{COMPOSER}->[$i] . "\n"
       }
       for($i = $self->{_parent_songwriters}; $i < @{$self->{SONGWRITER}};
             ++$i){
-         $rv .= "${pre}SONGWRITER = " . ${$self->{SONGWRITER}}->[$i] . "\n"
+         $rv .= "${pre}SONGWRITER = " . $self->{SONGWRITER}->[$i] . "\n"
       }
 
       unless(defined $self->{parent}){
@@ -2017,6 +2018,8 @@ __EOT__
 #  Grouping information can optionally be used, and applies to all the
 #  following tracks until the next [GROUP] is seen; TRACKs which do not apply
 #  to any GROUP must thus be defined before any [GROUP].
+#  LABEL is not optional but can be empty; it is used to subdivide classical
+#  music, for example: LABEL = Water Music Suite No. 1 in F major.
 #  GENRE is one of the ID3 genres ($SELF --genre-list to see them).
 #  GAPLESS states wether there shall be no silence in between tracks,
 #  and COMPILATION wether this is a compilation of various-artists, or so.
@@ -2094,8 +2097,8 @@ __EOT__
             $rv .= "${pre}[GROUP]\n"
          }
 
-         $rv .= "${pre}LABEL = $self->{LABEL}\n";
-
+         $rv .= "${pre}LABEL = $self->{LABEL}\n"
+               if defined $self->{LABEL};
          $rv .= "${pre}YEAR = " . $self->{YEAR} . "\n"
                if defined $self->{YEAR};
          $rv .= "${pre}GENRE = " . $self->{GENRE} . "\n"
@@ -2232,8 +2235,10 @@ __EOT__
             $rv .= "${pre}[TRACK]\n"
          }
 
-         $rv .= "${pre}NUMBER = $self->{NUMBER}\n";
-         $rv .= "${pre}TITLE = $self->{TITLE}\n";
+         $rv .= "${pre}NUMBER = $self->{NUMBER}\n"
+               if defined $self->{NUMBER};
+         $rv .= "${pre}TITLE = $self->{TITLE}\n"
+               if defined $self->{TITLE};
          $rv .= " # SUGGESTION:\n #${pre}TITLE = $self->{_imag_TITLE}\n"
                if defined $self->{_imag_TITLE};
 
