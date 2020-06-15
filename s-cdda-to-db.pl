@@ -675,7 +675,8 @@ jdarwin_read_stop:
       ::v("Invoking $l");
 
       $l = `$l`;
-      return "$dev: failed reading TOC: $!" if $?;
+      $dev .= length $dev ? ': f' : 'F';
+      return "! ${dev}ailed reading TOC: $?/$!\n" if $?;
       @res = split "\n", $l;
 
       my ($emsg, $had_leadout) = ('', 0);
@@ -1107,7 +1108,7 @@ __EOT__
    }
 
    sub db_create{
-      print "Creating audio disc database description\n";
+      print "\nCreating audio disc database description\n";
 
       my ($iterno, $orig_db) = (0, $DB);
 jREDO:
@@ -1363,7 +1364,8 @@ __EOT__
       for(; defined $xs; $xs = $xs->{_last_db}){
          $hr->{comment} = "# $xs->{source}: "
                if ($hr->{flags} & DB_DUMP_HAVE_ALBUM);
-         $xs->{Album}->db_dump($hr)
+         $o = $xs->{Album};
+         $o->db_dump($hr) if defined $o
       }
       die 'I/O error'
          unless ($hr->{flags} & DB_DUMP_FINAL) ||
