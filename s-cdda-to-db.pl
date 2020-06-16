@@ -1173,7 +1173,11 @@ jREDO:
          $DB->{_last_db} = undef;
          $DB->db_dump(\%flagh)
       }
-      die "Cannot close $df: $!" unless close DF
+      die "Cannot close $df: $!" unless close DF;
+
+      # TODO Ugly, but we need to reread the DB now, in order to read it with
+      # TODO DB_SLURP_IS_FINAL set; shortcoming of 2020 rewrite
+      die "Cannot reread $df: $!" unless _db_read($df, 1)
    }
 
    sub _db_read{
@@ -1283,7 +1287,8 @@ jERROR:  if(defined $emsg){
          Cast => undef, # Global Cast
          Group => undef, # Currently active [group], inherited by Track::s
          Tracks => [],
-         # For the final DB: order of Cast, Group(s) and tracks matter
+         # Used for the final (user) DBonly: the order of CAST, GROUP(s) and
+         # TRACK(s) matter
          CGTAllocList => []
       };
       $self->{Tracks}->[$CDInfo::TrackCount - 1] = undef;
@@ -1375,39 +1380,51 @@ __EOT__
       $xs = $self;
 
       # In final mode we simply walk the alloc list now
-      if($hr->{flags} & DB_DUMP_FINAL){
-         # If we do not need to take care for definition order: now!
-         MBDB::CAST::db_dump_sort($hr) unless defined $self->{Cast};
 
+      if($hr->{flags} & DB_DUMP_FINAL){
+         # And if we do not need to take care for definition order: put sort
+         MBDB::CAST::db_dump_sort($hr) unless defined $self->{Cast};
          $_->db_dump($hr) foreach @{$self->{CGTAllocList}}
       }else{
-         # CAST
-         MBDB::CAST::db_dump_doc($hr);
-         for(; defined $xs; $xs = $xs->{_last_db}){
-            $hr->{comment} = "# $xs->{source}: "
-                  if ($hr->{flags} & DB_DUMP_HAVE_CAST);
-            $o = $xs->{Cast};
-            $o->db_dump($hr) if defined $o
-         }
-         $hr->{comment} = '#';
-         $xs = $self;
-         MBDB::CAST::db_dump_sort($hr)
-            unless ($hr->{flags} & DB_DUMP_HAVE_CAST);
-         die 'I/O error'
-            unless ($hr->{flags} & DB_DUMP_FINAL) ||
-               !($hr->{flags} & DB_DUMP_HAVE_CAST) ||
-               print {$hr->{fh}} "${pre}\n";
+         # Otherwise we need to dance over the alloc list and then dump what
+         # the user did not include in the edit thereafter
+         my ($have_cast, $have_group, $have_track, @tracks) = (0, 0);
+         $tracks[$CDInfo::TrackCount - 1] = undef;
 
-         # GROUP: if we are creating an edit template hint the user
-         # TODO Königsdisziplin: automatically create [GROUP] objects
-         # TODO while iterating over [TRACK]s, as possible.
-         MBDB::GROUP::db_dump_doc($hr);
+         sub __cast{
+            my ($hr, $pre, $xs, $have_castr) = @_;
+            MBDB::CAST::db_dump_doc($hr) if !$$have_castr; # always..
+            $$have_castr = 1;
 
-         # TRACKs
-         MBDB::TRACK::db_dump_doc($hr);
-         for($i = 0; $i < $CDInfo::TrackCount; $xs = $self, ++$i){
             for(; defined $xs; $xs = $xs->{_last_db}){
-               if(defined($o = $xs->{Tracks}->[$i])){
+               $hr->{comment} = "# $xs->{source}: "
+                     if ($hr->{flags} & DB_DUMP_HAVE_CAST);
+               my $o = $xs->{Cast};
+               $o->db_dump($hr) if defined $o
+            }
+            $hr->{comment} = '#';
+            die 'I/O error'
+               unless ($hr->{flags} & DB_DUMP_FINAL) ||
+                  !($hr->{flags} & DB_DUMP_HAVE_CAST) ||
+                  print {$hr->{fh}} "${pre}\n"
+         }
+
+         sub __group{
+            my ($hr, $pre, $xs, $have_groupr, $ent) = @_;
+            MBDB::GROUP::db_dump_doc($hr) if !$$have_groupr;
+            $$have_groupr = 1;
+
+            $ent->db_dump($hr);
+            die 'I/O error' unless print {$hr->{fh}} "${pre}\n"
+         }
+
+         sub __track{
+            my ($hr, $pre, $xs, $have_trackr, $trackno) = @_;
+            MBDB::TRACK::db_dump_doc($hr) if !$$have_trackr;
+            $$have_trackr = 1;
+
+            for(; defined $xs; $xs = $xs->{_last_db}){
+               if(defined(my $o = $xs->{Tracks}->[$trackno])){
                   $hr->{comment} = "# $xs->{source}: "
                         if ($hr->{flags} & DB_DUMP_HAVE_TRACK);
                   $o->db_dump($hr)
@@ -1415,9 +1432,45 @@ __EOT__
             }
             $hr->{comment} = '#';
             die 'I/O error'
-               unless !($hr->{flags} & DB_DUMP_HAVE_TRACK) || # but 1+
+               unless !($hr->{flags} & DB_DUMP_HAVE_TRACK) ||
                   print {$hr->{fh}} "${pre}\n";
             $hr->{flags} &= ~DB_DUMP_HAVE_TRACK
+         }
+
+         # If there is no CAST at all, dump doc and sort first
+         for(;; $xs = $xs->{_last_db}){
+            last if defined $xs->{Cast};
+            unless(defined $xs->{_last_db}){
+               MBDB::CAST::db_dump_doc($hr);
+               MBDB::CAST::db_dump_sort($hr);
+               last
+            }
+         }
+         $xs = $self;
+
+         # Ditto, GROUP
+         for(;; $xs = $xs->{_last_db}){
+            last if defined $xs->{Group};
+            unless(defined $xs->{_last_db}){
+               MBDB::GROUP::db_dump_doc($hr);
+               last
+            }
+         }
+         $xs = $self;
+
+         foreach my $ent (@{$self->{CGTAllocList}}){
+            if($ent->{objectname} eq 'CAST'){
+               __cast($hr, $pre, $xs, \$have_cast)
+            }elsif($ent->{objectname} eq 'GROUP'){
+               __group($hr, $pre, $xs, \$have_group, $ent)
+            }else{#if($ent->{objectname} eq 'TRACK')
+               $tracks[$ent->{NUMBER} - 1] = $ent;
+               __track($hr, $pre, $xs, \$have_track, $ent->{NUMBER} - 1)
+            }
+         }
+
+         for($i = 0; $i < @tracks; ++$i){
+            __track($hr, $xs, \$have_track, $i) unless defined $tracks[$i]
          }
       }
    }
@@ -1817,9 +1870,10 @@ __EOT__
             };
       $self = bless $self, $class;
 
-      push @{$MBDB::DB->{CGTAllocList}}, $self;
-      $MBDB::DB->{Cast} = $self unless defined $parent;
-
+      unless(defined $parent){
+         push @{$MBDB::DB->{CGTAllocList}}, $self;
+         $MBDB::DB->{Cast} = $self
+      }
       $self
    }
 
@@ -2319,8 +2373,9 @@ __EOT__
             if $c->parent_composers() > 0;
 
       # TIT1/TIT2,--title,--title - TIT1 MAYBE UNDEF
-      $tir->{TIT1} = (defined $MBDB::DB->{Group} ? $MBDB::DB->{Group}->{LABEL}
-            : undef);
+      $tir->{TIT1} = ((defined $MBDB::DB->{Group} &&
+               length($MBDB::DB->{Group}->{LABEL}) > 0)
+            ? $MBDB::DB->{Group}->{LABEL} : undef);
       $tir->{TIT2} = $self->{TITLE};
       $tir->{TITLE} = (defined $tir->{TIT1}
             ? "$tir->{TIT1} - $tir->{TIT2}" : $tir->{TIT2});
@@ -2415,12 +2470,13 @@ __EOT__
    sub calculate_volume_normalize{ # {{{
       $VolNorm = undef;
       my $nope = shift;
+
       if($nope){
-         print "\nVolume normalization has been turned off\n";
+         print "Volume normalization has been turned off\n";
          return
       }
 
-      print "\nCalculating average volume normalization over all tracks:\n  ";
+      print "Calculating average volume normalization over all tracks:\n  ";
       foreach my $t (@Title::List){
          next unless $t->{IS_SELECTED};
 
@@ -2444,16 +2500,16 @@ __EOT__
       }
 
       if(!defined $VolNorm || ($VolNorm >= 0.98 && $VolNorm <= 1.05)){
-         print "\n  Volume normalization fuzzy/redundant, turned off\n";
+         print "\n  Volume normalization fuzzy/redundant, turned off\n\n";
          $VolNorm = undef
       }else{
-         print "\n  Volume amplitude will be changed by: $VolNorm\n";
+         print "\n  Volume amplitude will be changed by: $VolNorm\n\n";
          $VolNorm = "-v $VolNorm" # (For sox(1))
       }
    } # }}}
 
    sub encode_selected{
-      print "\nEncoding selected tracks:\n";
+      print "Encoding selected tracks:\n";
       foreach my $t (@Title::List){
          unless($t->{IS_SELECTED}){
             ::v("  Skipping $t->{NUMBER}: not selected");
