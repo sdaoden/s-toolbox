@@ -728,7 +728,7 @@ jdarwin_read_stop:
       return $emsg if length $emsg;
 
       _calc_cdid(\@cdtoc);
-      _calc_mb_discid(\@cdtoc);
+      _calc_mb_discid();
       return undef
    } # }}}
 
@@ -757,16 +757,14 @@ jdarwin_read_stop:
    }
 
    sub _calc_mb_discid{
-      my $cdtocr = shift;
-
       my $d = Digest->new("SHA-1");
       $d->add(sprintf '%02X', $TrackFirst);
       $d->add(sprintf '%02X', $TrackLast);
 
-      my $i = @$cdtocr;
-      $d->add(sprintf '%08X', @$cdtocr[--$i] + 150);
+      my $i = @TracksLBA;
+      $d->add(sprintf '%08X', $TracksLBA[--$i] + 150);
       for(my $j = 0; $j < $i; ++$j){
-         $d->add(sprintf '%08X', @$cdtocr[$j] + 150)
+         $d->add(sprintf '%08X', $TracksLBA[$j] + 150)
       }
       for(++$i; $i < 100; ++$i){
          $d->add('00000000')
