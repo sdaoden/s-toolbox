@@ -169,7 +169,6 @@ __EOT__
 S_MUSIC_DB target: $TARGET_DIR
 WORKing directory: $WORK_DIR
 (In worst-case error situations it may be necessary to remove those manually.)
-
 __EOT__
    die 'Non-existent session cannot be resumed via --encode-only'
       if $ENC_ONLY && ! -d $WORK_DIR;
@@ -1553,7 +1552,7 @@ jREDO:
    }
 
    sub db_create{
-      print "Creating audio disc database description\n";
+      print "\nCreating audio disc database description\n";
 
       my ($iterno, $orig_db) = (0, $DB);
 jREDO:
@@ -1595,7 +1594,7 @@ jREDO:
          goto jREDO
       }
 
-      print "\n  ..but, once again - please verify the content\n",
+      print "\n..but, once again - please verify the content\n",
          "  (Terminal may not be able to display all characters):\n";
       {
          my %flagh = (flags => MBDB::DB_DUMP_FINAL, db => $DB, fh => *STDOUT,
@@ -1632,7 +1631,11 @@ jREDO:
       my @dat = <DF>;
       die "Cannot close $df: $!" unless close DF;
 
-      $DB = undef if $is_final;
+      if($is_final){
+         $DB = undef
+      }else{
+         $DB->{Sort} = undef
+      }
       _db_slurp('USER', ($is_final ? (DB_SLURP_IS_FINAL |
             DB_SLURP_REMOVE_ON_ERROR) : DB_SLURP_NONE), \@dat)
    }
@@ -1768,7 +1771,7 @@ jERROR:  if(defined $emsg){
       # In here we handle comment, the comment prefix
       # db_dump()s will die() on any error
       my ($self, $hr) = @_;
-      my ($pre, $xs, $o, $i);
+      my ($pre, $orig_db, $xs, $o, $i);
 
       $pre = $hr->{prefix};
       $pre = '' if $pre =~ /^\s+$/;
@@ -1788,6 +1791,7 @@ jERROR:  if(defined $emsg){
 __EOT__
       }
 
+      $orig_db = $hr->{db};
       $xs = $self;
 
       MBDB::CDDB::db_dump_doc($hr);
@@ -1800,8 +1804,11 @@ __EOT__
       for(; defined $xs; $xs = $xs->{_last_db}){
          $hr->{comment} = "# $xs->{source}: "
                if ($hr->{flags} & DB_DUMP_HAVE_ALBUMSET);
-         $o = $xs->{AlbumSet};
-         $o->db_dump($hr) if defined $o
+         if(defined($o = $xs->{AlbumSet})){
+            $hr->{db} = $xs;
+            $o->db_dump($hr);
+            $hr->{db} = $orig_db;
+         }
       }
       die 'I/O error'
          unless ($hr->{flags} & DB_DUMP_FINAL) ||
@@ -1814,8 +1821,11 @@ __EOT__
       for(; defined $xs; $xs = $xs->{_last_db}){
          $hr->{comment} = "# $xs->{source}: "
                if ($hr->{flags} & DB_DUMP_HAVE_ALBUM);
-         $o = $xs->{Album};
-         $o->db_dump($hr) if defined $o
+         if(defined($o = $xs->{Album})){
+            $hr->{db} = $xs;
+            $o->db_dump($hr);
+            $hr->{db} = $orig_db;
+         }
       }
       die 'I/O error'
          unless ($hr->{flags} & DB_DUMP_FINAL) ||
@@ -1841,11 +1851,15 @@ __EOT__
             MBDB::CAST::db_dump_doc($hr) if !$$have_castr; # always..
             $$have_castr = 1;
 
+            my $orig_db = $xs;
             for(; defined $xs; $xs = $xs->{_last_db}){
                $hr->{comment} = "# $xs->{source}: "
                      if ($hr->{flags} & DB_DUMP_HAVE_CAST);
-               my $o = $xs->{Cast};
-               $o->db_dump($hr) if defined $o
+               if(defined(my $o = $xs->{Cast})){
+                  $hr->{db} = $xs;
+                  $o->db_dump($hr);
+                  $hr->{db} = $orig_db;
+               }
             }
             $hr->{comment} = '#';
             die 'I/O error'
@@ -1868,11 +1882,14 @@ __EOT__
             MBDB::TRACK::db_dump_doc($hr) if !$$have_trackr;
             $$have_trackr = 1;
 
+            my $orig_db = $xs;
             for(; defined $xs; $xs = $xs->{_last_db}){
                if(defined(my $o = $xs->{Tracks}->[$trackno])){
                   $hr->{comment} = "# $xs->{source}: "
                         if ($hr->{flags} & DB_DUMP_HAVE_TRACK);
-                  $o->db_dump($hr)
+                  $hr->{db} = $xs;
+                  $o->db_dump($hr);
+                  $hr->{db} = $orig_db;
                }
             }
             $hr->{comment} = '#';
@@ -2362,10 +2379,16 @@ __EOT__
       return "$self->{objectname}: $k not supported"
          unless is_key_supported($k);
       if($k ne 'SORT'){
+         foreach my $e (@{$MBDB::DB->{$k}}){
+            return undef $e eq $v
+         }
          push @{$self->{$k}}, $v;
          $v = $1 if ($k eq 'SOLOIST' && $v =~ /^\s*(.*?)\s*\(.*\)$/);
          $self->_add_imag_sort($v)
       }else{
+         foreach my $e (@{$MBDB::DB->{Sort}}){
+            return undef if $e eq $v
+         }
          push @{$MBDB::DB->{Sort}}, $v
       }
       undef
@@ -2414,7 +2437,7 @@ __EOT__
 
       my $emsg = undef;
       if(defined $self->{parent} && $self->{parent} eq 'TRACK' &&
-            @{$self->{ARTIST}} == 0){
+            @{$self->{ARTIST}} == 0 && @{$self->{SOLOIST}} == 0){
          $emsg .= 'TRACK requires at least one ARTIST;'
       }
       $emsg
@@ -2461,13 +2484,13 @@ __EOT__
          $rv .= "${pre}SONGWRITER = " . $self->{SONGWRITER}->[$i] . "\n"
       }
 
-      unless(defined $self->{parent}){
+      unless(defined $self->{parent} || $hr->{db}->{source} eq 'Dummy'){
          foreach(@{$hr->{db}->{Sort}}){
             $rv .= "${pre}SORT = " . $_ . "\n"
          }
       }
 
-      if($ised){
+      if($ised && $hr->{db}->{source} ne 'Dummy'){
          $rv .= " # SUGGESTION:\n #${pre} SORT = " . $_ . "\n"
                foreach (@{$self->{_imag_SORT}})
       }
@@ -2799,14 +2822,14 @@ __EOT__
 
       $i = -1;
       foreach(@{$c->{SOLOIST}}){
-         $s .= ', ' if ++$i > 0 || $x;
+         $s = ", $s" if ++$i > 0 || $x;
          $x = 0;
-         $s .= $_
+         $s = "$_$s"
       }
       foreach(@{$c->{CONDUCTOR}}){
-         $s .= ', ' if ++$i > 0 || $x;
+         $s = ", $s" if ++$i > 0 || $x;
          $x = 0;
-         $s .= $_
+         $s = "$_$s"
       }
 
       $tir->{TPE1} =
