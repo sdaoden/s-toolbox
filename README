@@ -72,6 +72,7 @@ s-cdda-to-db.pl (manual in s-cdda-to-db.1) v0.6.0:
 
    2020-06-13: taken over from former musicbox.git repository.
    2020-06-16: Hunt bugs in this 2020 rewrite.
+   2020-06-20: add MusicBrainz CD information support.
 
 zte.sh:
    Control a ZTE modem (MF79 and many others according to web search)

@@ -33,6 +33,10 @@ my $ABSTRACT = 'Read and encode audio CDs, integrated in S-Music DB.';
 my $VERSION = '0.6.0';
 my $CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>';
 
+# MusicBrainz Web-Service; we use TLS if possible
+my $MBRAINZ_URL = '://musicbrainz.org/ws/2';
+my $MBRAINZ_AGENT = $SELF.'/'.$VERSION.' (https://www.sdaoden.eu/code.html)';
+
 # New sox(1) (i guess this means post v14) with '-e signed-integer' instead of
 # -s, '-b 16' instead of -w and -n (null device) instead of -e (to stop input
 # file processing)
@@ -195,7 +199,7 @@ __EOT__
    }
 
    if(!$READ_ONLY && $needs_cddb){
-      CDInfo::DataSource::query_all();
+      CDInfo::InfoSource::query_all();
       MBDB::db_create()
    }
 
@@ -888,11 +892,14 @@ jdarwin_read_stop:
    }
    # }}}
 
-{package CDInfo::DataSource; # {{{
+{package CDInfo::InfoSource; # {{{
    sub query_all{
-      CDInfo::DataSource::Dummy::new()->create_db();
+      CDInfo::InfoSource::Dummy::new()->create_db();
       if(@CDInfo::CDText > 0){
-         CDInfo::DataSource::CDText::new()->create_db();
+         CDInfo::InfoSource::CDText::new()->create_db()
+      }
+      if(defined $CDInfo::MBrainzDiscId){
+         CDInfo::InfoSource::MusicBrainz::new()->create_db()
       }
    }
 
@@ -905,16 +912,17 @@ jdarwin_read_stop:
    }
    # }}}
 
-{package CDInfo::DataSource::Dummy; # {{{
-   our @ISA = 'CDInfo::DataSource';
+{package CDInfo::InfoSource::Dummy; # {{{
+   our @ISA = 'CDInfo::InfoSource';
 
    sub new{
-      my $self = CDInfo::DataSource::new('Dummy');
+      my $self = CDInfo::InfoSource::new('Dummy');
       $self = bless $self;
       #$self
    }
 
    sub create_db{
+      my $self = $_[0];
       my @data = split "\n", <<__EOT__;
 [CDDB]
 CDID = $CDInfo::CDId
@@ -940,26 +948,465 @@ __EOT__
 
       MBDB::db_slurp('Dummy', \@data)
    }
-} # }}} CDInfo::DataSource::Dummy
+} # }}} CDInfo::InfoSource::Dummy
 
-{package CDInfo::DataSource::CDText; # {{{
-   our @ISA = 'CDInfo::DataSource';
+{package CDInfo::InfoSource::CDText; # {{{
+   our @ISA = 'CDInfo::InfoSource';
 
    sub new{
-      my $self = CDInfo::DataSource::new('CDText');
+      my $self = CDInfo::InfoSource::new('CDText');
       $self = bless $self;
       #$self
    }
 
    sub create_db{
+      my $self = $_[0];
       my @data;
       foreach(@CDInfo::CDText){
          push @data, substr($_, 1)
       }
       MBDB::db_slurp('CDText', \@data)
    }
-} # }}} CDInfo::DataSource::CDText
-} # }}} CDInfo::DataSource
+} # }}} CDInfo::InfoSource::CDText
+
+{package CDInfo::InfoSource::MusicBrainz; # {{{
+   our @ISA = 'CDInfo::InfoSource';
+
+   sub new{
+      my $self = CDInfo::InfoSource::new('MusicBrainz');
+      $self = bless $self;
+      #$self
+   }
+
+   sub create_db{ # {{{
+      my $self = $_[0];
+
+      eval{
+         require HTTP::Tiny;
+         require XML::Parser
+      };
+      if($@){
+         print
+            "! Failed loading HTTP::Tiny and/or XML::Parser perl module(s).\n",
+            "!   We could use the MusicBrainz CD information Web-Service.\n",
+            "!   Are they installed?  (Install them via CPAN?)\n",
+            '!   Confirm to again try to use them, otherwise we skip this: ';
+         return unless user_confirm();
+         return $self->create_db()
+      }
+
+      print
+         "\nShall i try to contact the MusicBrainz Web-Service in order to\n",
+         '  collect more data of the audio CD? ';
+      return unless ::user_confirm();
+
+      $self->{_protocol} = ($self->{_use_ssl} = HTTP::Tiny::can_ssl())
+            ? 'https' : 'http';
+      $self->{_headers} = {
+            'Accept' => 'application/xml',
+            'Content-Type' => 'application/xml'
+         };
+
+      my $res = $self->_http_request('/discid/' . $CDInfo::MBrainzDiscId .
+            '?inc=artist-credits+recordings');
+      unless(defined $res &&
+            CDInfo::InfoSource::MusicBrainz::XEN::slurp_xml(\$res) > 0 &&
+            defined($res = $self->_xml_vaporise())){
+         print '! Continue without MusicBrainz data? ';
+         exit 5 unless ::user_confirm();
+         return
+      }
+
+      # Turn it into something our DB can swallow
+      $res = $$res;
+      my @data;
+
+      push @data, '[ALBUM]';
+      push @data, 'TITLE = ' . $res->{_title};
+      push @data, 'TRACK_COUNT = ' . $CDInfo::TrackCount;
+      push @data, 'MBRAINZ_ID = ' . $res->{_id};
+      push @data, 'YEAR = ' . $res->{_date} if defined $res->{_date};
+
+      if(@{$res->{_cast}} > 0){
+         push @data, '[CAST]';
+         foreach my $ar (@{$res->{_cast}}){
+            push @data, $ar->[0] . ' = ' . $ar->[1]
+         }
+      }
+
+      foreach my $ar (@{$res->{_tracks}}){
+         push @data, '[TRACK]';
+         push @data, 'NUMBER = ' . $ar->{_number};
+         push @data, 'TITLE = ' . $ar->{_title};
+         push @data, 'YEAR = ' . $ar->{_date} if defined $ar->{_date};
+         push @data, 'MBRAINZ_ID = ' . $ar->{_id} if defined $ar->{_id};
+         foreach my $ar2 (@{$ar->{_cast}}){
+            push @data, $ar2->[0] . ' = ' . $ar2->[1]
+         }
+         push @data, 'COMMENT = ' . $ar->{_comment} if defined $ar->{_comment}
+      }
+
+      MBDB::db_slurp('MusicBrainz', \@data)
+   } # }}}
+
+   sub _http_request{ # {{{
+      my ($self, $req) = @_;
+
+      my $httpt = HTTP::Tiny->new(
+            agent => $MBRAINZ_AGENT,
+            default_headers => $self->{_headers},
+            verify_SSL => $self->{_use_ssl}
+            );
+
+      my $url = $self->{_protocol} . $MBRAINZ_URL . $req;
+      my $response = $httpt->get($url);
+
+      unless($response->{success}){
+         print "! MusicBrainz query not successful:\n",
+            "!  Status $response->{status}, reason $response->{reason}\n";
+         return undef
+      }
+      unless(length $response->{content}){
+         print "! MusicBrainz query returned empty result\n";
+         return undef
+      }
+      return $response->{content}
+   } # }}}
+
+   sub _xml_vaporise{ # {{{
+      my $self = $_[0];
+      my (@resa, $sectors);
+
+      # XEN has vaporised the result to only Id-matching discs, there still
+      # could be duplicates however, so apply more tests
+      # xxx Validity tests seem strange though
+      $sectors = $CDInfo::TracksLBA[$CDInfo::TrackCount] + 150;
+
+jOUT: foreach my $d (@CDInfo::InfoSource::MusicBrainz::XEN::POI){
+         foreach my $c (@{$d->{children}}){
+            if($c->{name} eq 'sectors'){
+               # <sectors> -> leadout
+               next jOUT if $c->{data} + 0 != $sectors
+            }elsif($c->{name} eq 'offset-list'){
+               # List of track numbers and bent LBA offsets
+               next jOUT unless exists $c->{attrs}{count} &&
+                  $c->{attrs}{count} + 0 == $CDInfo::TrackCount;
+
+               foreach my $cc (@{$c->{children}}){
+                  next jOUT unless defined $cc->{data};
+                  next jOUT unless exists $cc->{attrs}{position};
+                  my $i = $cc->{attrs}{position} + 0;
+                  next jOUT unless $i > 0 && $i <= $CDInfo::TrackCount;
+                  --$i;
+                  next jOUT unless $cc->{data} - 150 == $CDInfo::TracksLBA[$i];
+               }
+            }
+         }
+
+         # Then check whether we have all the data to use this entry, for that
+         # go up first to find a <track-list>, then to its actual <release>..
+         my ($p, $tl) = ($d->{parent}, undef);
+         die 'IMPLERR' unless $p->{name} eq 'disc-list';
+         for(;; $p = $p->{parent}){
+            next jOUT unless defined $p;
+            if($p->{name} eq 'medium'){
+               foreach my $c (@{$p->{children}}){
+                  if($c->{name} eq 'track-list'){
+                     next jOUT unless exists $c->{attrs}{count} &&
+                        $c->{attrs}{count} + 0 == $CDInfo::TrackCount;
+                     $tl = $c;
+                     last
+                  }
+               }
+            }elsif($p->{name} eq 'release'){
+               last
+            }
+         }
+         next jOUT unless exists $p->{attrs}{id};
+         next jOUT unless defined $tl;
+
+         # ..and find the data we are interested in.  Now that s...s
+         $d->{_id} = $p->{attrs}{id};
+         $d->{_barcode} = $d->{_country} = $d->{_date} = $d->{_title} = undef;
+         $d->{_cast} = [];
+         $d->{_tracks} = [];
+         @{$d->{_tracks}}[$CDInfo::TrackCount - 1] = undef;
+
+         foreach my $c (@{$p->{children}}){
+            if($c->{name} eq 'artist-credit'){
+               $self->__xml_artist_credit(undef, \$d, $c)
+            #}elsif($c->{name} eq 'asin'){
+            #   $d->{_asin} $c->{data} if defined $c->{data}
+            }elsif($c->{name} eq 'barcode'){
+               $d->{_barcode} = $c->{data} if defined $c->{data}
+            }elsif($c->{name} eq 'country'){
+               $d->{_country} = $c->{data} if defined $c->{data}
+            }elsif($c->{name} eq 'date'){
+               $d->{_date} = $1 if defined $c->{data} &&
+                     $c->{data} =~ /^\s*(\d{4})(?:-.+)?$/
+            }elsif($c->{name} eq 'title'){
+               $d->{_title} = $c->{data} if defined $c->{data}
+            }
+         }
+         next jOUT unless $self->__xml_track_list(\$d, $tl) != 0;
+
+         push @resa, $d
+      }
+
+      return undef if @resa == 0;
+      return undef if @resa > 1 && $self->__xml_choose(\@resa) == 0;
+      \$resa[0]
+   } # }}}
+
+   sub __xml_artist_credit{ # {{{
+      my ($self, $outerdr, $dr, $c) = @_;
+
+      foreach my $cc (@{$c->{children}}){
+         next unless $cc->{name} eq 'name-credit';
+         foreach my $ccc (@{$cc->{children}}){
+            if($ccc->{name} eq 'artist'){
+               next unless $ccc->{attrs}{type};
+
+               my $i = lc $ccc->{attrs}{type};
+               my ($t, $pn, $n, $s, $w) =
+                     ('ARTIST', undef, undef, undef, undef);
+
+               foreach my $cccc (@{$ccc->{children}}){
+                  next unless defined $cccc->{data} &&
+                     length $cccc->{data} > 0;
+
+                  if($cccc->{name} eq 'name'){
+                     $pn = $n = $cccc->{data}
+                  }elsif($cccc->{name} eq 'sort-name'){
+                     $s = $cccc->{data}
+                  }elsif($cccc->{name} eq 'disambiguation'){
+                     my $j = $cccc->{data};
+                     next unless defined $j;
+                     $j = lc $j;
+                     if($j eq 'conductor'){
+                        $t = 'CONDUCTOR'
+                     }elsif($j =~ 'composer'){
+                        $t = 'COMPOSER'
+                     }elsif($i eq 'person' && $j =~ /^\s*\w+\s*$/){
+                        $w = $cccc->{data};
+                        $t = 'SOLOIST'
+                     }elsif($$dr->{name} eq 'track'){
+                        $$dr->{_comment} = "Artist: $cccc->{data}"
+                     }
+                  }
+               }
+               next unless defined $n;
+               $t = 'ARTIST' if $i eq 'orchestra';
+
+               # But do not duplicate data (TODO should be DB thing)
+               $n = "$n ($w)" if defined $w;
+               if(defined $outerdr){
+                  foreach(@{$$outerdr->{_cast}}){
+                     if($_->[0] eq $t && $_->[1] eq $n){
+                        $n = undef;
+                        last
+                     }
+                  }
+               }
+               push @{$$dr->{_cast}}, [$t, $n] if defined $n;
+
+               if(defined $s){
+                  if(defined $outerdr){
+                     foreach(@{$$outerdr->{_cast}}){
+                        if($_->[0] eq 'SORT' && $_->[1] eq $s){
+                           $s = undef;
+                           last
+                        }
+                     }
+                  }
+                  push @{$$dr->{_cast}}, ['SORT', "$s ($pn)"]
+                     if defined $s && defined $pn && $pn ne $s
+               }
+            }
+         }
+      }
+   } # }}}
+
+   sub __xml_track_list{ # {{{
+      my ($self, $dr, $tl) = @_;
+
+      foreach my $t (@{$tl->{children}}){
+         my $have_rec = 0;
+         foreach my $c (@{$t->{children}}){
+            # TODO MusicBrainz per-track DATE (year)?
+            if($c->{name} eq 'position'){
+               my $i = $c->{data};
+               return 0 unless defined $i &&
+                  $i > 0 && $i <= $CDInfo::TrackCount;
+               $t->{_number} = $i;
+               $$dr->{_tracks}->[--$i] = $t
+            }elsif($c->{name} eq 'recording'){
+               $have_rec = 1;
+               # Use <recording> as <track> ID, what we want
+               return 0 unless exists $c->{attrs}{id};
+               $t->{_id} = $c->{attrs}{id};
+
+               foreach my $cc (@{$c->{children}}){
+                  if($cc->{name} eq 'title'){
+                     $have_rec = 2;
+                     $t->{_title} = $cc->{data} if defined $cc->{data}
+                  }elsif($cc->{name} eq 'artist-credit'){
+                     $self->__xml_artist_credit($dr, \$t, $cc)
+                 }
+               }
+            }
+         }
+         return 0 unless $have_rec == 2;
+      }
+      1
+   } # }}}
+
+   sub __xml_choose{ # {{{
+      # We have multiple <release> entries which match exactly.
+      my ($self, $resar) = @_;
+
+      print "\nMusicBrainz returned multiple possible matches.\n";
+      print "  (NOTE: terminal may not be able to display charset!)\n";
+
+      my $usr = 1;
+      foreach(@$resar){
+         my ($i, $j);
+
+         $i = $_->{_title};
+         $i = 'Title=?' unless defined $i;
+         $j = ' (';
+         foreach(@{$_->{_cast}}){
+            next if $_->[0] eq 'SORT';
+            $i .= $j . $_->[1];
+            $j = ', '
+         }
+         if(defined $_->{_country}){
+            $i .= $j . 'Country=' . $_->{_country};
+            $j = ', '
+         }
+         if(defined $_->{_date}){
+            $i .= $j . 'Year=' . $_->{_date};
+            $j = ', '
+         }
+         if(defined $_->{_barcode}){
+            $i .= $j . 'Barcode=' . $_->{_barcode};
+            $j = ', '
+         }
+         $i .= $j . 'MusicBrainz-ID=' . $_->{_id};
+         $i .= ')';
+
+         print "  [$usr] $i\n";
+         ++$usr
+      }
+      print "  [0] None of those\n";
+
+jREDO:
+      print "  Please choose the number to use: ";
+      $usr = <STDIN>;
+      chomp $usr;
+      unless($usr =~ /\d+/ && ($usr = int $usr) >= 0 && $usr <= @$resar){
+         print "!   Invalid input\n";
+         goto jREDO
+      }
+
+      return 0 if $usr == 0;
+      $usr = $resar->[$usr - 1];
+      @$resar = ($usr);
+      1
+   } # }}}
+
+{package CDInfo::InfoSource::MusicBrainz::XEN; # {{{
+   # XML Element Node
+   our ($Root, $Curr, @POI);
+
+   sub slurp_xml{
+      my ($dr) = @_;
+
+      sub __start{
+         shift @_;
+         my $n = shift @_;
+         CDInfo::InfoSource::MusicBrainz::XEN->new($n, \@_)
+      }
+      sub __char{
+         return unless defined $Curr; # always..
+         my $s = $1 if $_[1] =~ /^\s*(.*)\s*$/;
+         $Curr->{data} .= $s if length $s
+      }
+      sub __end{
+         $Curr->closed() if defined $Curr
+      }
+
+      $Root = $Curr = undef;
+      @POI = ();
+
+      my $p = XML::Parser->new(Handlers => {Start=>\&__start, Char=>\&__char,
+            End=>\&__end});
+      eval {$p->parse($$dr)};
+      if($@){
+         $p = $1 if $@ =~ /^\s*(.*)\s*$/g;
+         print "! MusicBrainz data XML content error:\n!  $p\n";
+         return 0
+      }
+      return 1
+   }
+
+   sub new{
+      my ($self, $name, $atts) = ($_[0], lc $_[1], $_[2]);
+      $self = {
+            name => $name,
+            parent => $Curr,
+            children => [],
+            attrs => {},
+            data => undef
+            };
+      $self = bless $self;
+
+      $Root = $self unless defined $Root;
+      $self->{parent} = $Curr;
+      push @{$Curr->{children}}, $self if defined $Curr;
+      $Curr = $self;
+
+      if(defined $atts){
+         while(@$atts >= 2){
+            $self->{attrs}{$atts->[0]} = $atts->[1];
+            shift @$atts;
+            shift @$atts
+         }
+      }
+
+      push @POI, $self if
+         $name eq 'disc' &&
+         defined $atts && defined $self->{parent} &&
+         $self->{parent}->{name} eq 'disc-list' &&
+         $self->{attrs}->{id} eq $CDInfo::MBrainzDiscId;
+
+      $self
+   }
+
+   sub closed{
+      my $self = $_[0];
+      $Curr = $self->{parent};
+      $self
+   }
+
+   #sub dump_root{
+   #   sub __dive{
+   #      my ($n,$pre) = @_;
+   #      print "${pre}$n->{name}:\n";
+   #      my @ka = keys %{$n->{attrs}};
+   #      if(@ka > 0){
+   #         foreach my $k (@ka){
+   #            print "${pre}  <$k> => <$n->{attrs}{$k}>\n";
+   #         }
+   #      }
+   #      print "${pre}* <$n->{data}>\n" if defined $n->{data};
+   #      __dive($_, $pre.'  ') foreach @{$n->{children}};
+   #   }
+   #   __dive($Root, '');
+   #}
+} # }}} CDInfo::InfoSource::MusicBrainz::XEN
+} # }}} CDInfo::InfoSource::MusicBrainz
+} # }}} CDInfo::InfoSource
 } # }}} CDInfo
 
 {package Title; # {{{ A single track to read / encode
@@ -1650,7 +2097,7 @@ __EOT__
          $k eq 'TRACK_COUNT' ||
          $k eq 'SET_PART' || $k eq 'YEAR' || $k eq 'GENRE' ||
          $k eq 'GAPLESS' || $k eq 'COMPILATION' ||
-         $k eq 'MCN' || $k eq 'UPC_EAN')
+         $k eq 'MCN' || $k eq 'UPC_EAN' || $k eq 'MBRAINZ_ID')
    }
 
    sub db_dump_doc{
@@ -1659,7 +2106,7 @@ __EOT__
       if($hr->{flags} & MBDB::DB_DUMP_DOC){
          die 'I/O error' unless print {$hr->{fh}} <<__EOT__
 # [ALBUM]: TITLE, TRACK_COUNT, (SET_PART, YEAR, GENRE, GAPLESS, COMPILATION,
-#  MCN, UPC_EAN)
+#  MCN, UPC_EAN, MBRAINZ_ID)
 #  If the album is part of an ALBUMSET TITLE may only be 'CD 1' -- it is
 #  required nevertheless even though it could be deduced automatically
 #  from the ALBUMSET's TITLE and the ALBUM's SET_PART: sorry for that!
@@ -1669,7 +2116,8 @@ __EOT__
 #  GAPLESS (if 1) states wether there is no silence in between tracks, and
 #  COMPILATION (if 1) wether this is a compilation of various-artists etc.
 #  MCN is the Media Catalog Number, and UPC_EAN is the Universal Product
-#  Number alias European Article Number (bar code).
+#  Number alias European Article Number (bar code).  MBRAINZ_ID is the
+#  MusicBrainz "MBID" of the medium.
 
 __EOT__
       }
@@ -1687,7 +2135,7 @@ __EOT__
             TITLE => undef, TRACK_COUNT => undef,
             SET_PART => undef, YEAR => undef, GENRE => undef,
             GAPLESS => 0, COMPILATION => 0,
-            MCN => undef, UPC_EAN => undef
+            MCN => undef, UPC_EAN => undef, MBRAINZ_ID => undef
             };
       $self = bless $self, $class;
       $MBDB::DB->{Album} = $self
@@ -1770,6 +2218,8 @@ __EOT__
                if defined $self->{MCN};
          $rv .= "${pre}UPC_EAN = " . $self->{UPC_EAN} . "\n"
                if defined $self->{UPC_EAN};
+         $rv .= "${pre}MBRAINZ_ID = " . $self->{MBRAINZ_ID} . "\n"
+               if defined $self->{MBRAINZ_ID};
          $rv
       }
 
@@ -2178,7 +2628,7 @@ __EOT__
       my $k = shift;
       ($k eq 'NUMBER' || $k eq 'TITLE' ||
          $k eq 'YEAR' || $k eq 'GENRE' || $k eq 'COMMENT' ||
-         $k eq 'ISRC' ||
+         $k eq 'ISRC' || $k eq 'MBRAINZ_ID' ||
          MBDB::CAST::is_key_supported($k))
    }
 
@@ -2187,9 +2637,11 @@ __EOT__
 
       if($hr->{flags} & MBDB::DB_DUMP_DOC){
          die 'I/O error' unless print {$hr->{fh}} <<__EOT__
-# [TRACK]: NUMBER, TITLE, (YEAR, GENRE, COMMENT, ISRC, [CAST]-fields)
+# [TRACK]: NUMBER, TITLE, (YEAR, GENRE, COMMENT, ISRC, MBRAINZ_ID, and
+#  all [CAST]-fields)
 #  GENRE is one of the ID3 genres ($SELF --genre-list to see them).
 #  ISRC is the International Standard Recording Code.
+#  MBRAINZ_ID is the MusicBrainz "MBID" of the track.
 #  CAST-fields may be used to *append* to global [CAST] (and those of an
 #  active [GROUP], if there is one) fields; to specify CAST fields exclusively,
 #  place the TRACK before the global [CAST] as well as any [GROUP].
@@ -2212,6 +2664,7 @@ __EOT__
             objectname => 'TRACK',
             NUMBER => undef, TITLE => undef,
             YEAR => undef, GENRE => undef, COMMENT => undef, ISRC => undef,
+            MBRAINZ_ID => undef,
             group => $MBDB::DB->{Group},
             cast => MBDB::CAST::new_state_clone('TRACK'),
             _imag_TITLE => undef
@@ -2301,11 +2754,13 @@ __EOT__
                if defined $self->{YEAR};
          $rv .= "${pre}GENRE = " . $self->{GENRE} . "\n"
                if defined $self->{GENRE};
+         $rv .= $self->{cast}->db_dump_core($hr, $pre);
          $rv .= "${pre}COMMENT = " . $self->{COMMENT} . "\n"
                if defined $self->{COMMENT};
          $rv .= "${pre}ISRC = " . $self->{ISRC} . "\n"
                if defined $self->{ISRC};
-         $rv .= $self->{cast}->db_dump_core($hr, $pre);
+         $rv .= "${pre}MBRAINZ_ID = " . $self->{MBRAINZ_ID} . "\n"
+               if defined $self->{MBRAINZ_ID};
          $rv
       }
 
@@ -2436,6 +2891,10 @@ __EOT__
       if(defined $MBDB::DB->{Album}->{UPC_EAN}){
          $i .= '; ' if length $i > 0;
          $i .= "UPC/EAN=$MBDB::DB->{Album}->{UPC_EAN}"
+      }
+      if(defined $self->{MBRAINZ_ID}){
+         $i .= '; ' if length $i > 0;
+         $i .= "MBRAINZ_ID=$self->{MBRAINZ_ID}"
       }
       if(defined $self->{COMMENT}){
          $i .= '; ' if length $i > 0;
