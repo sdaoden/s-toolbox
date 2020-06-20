@@ -1106,7 +1106,7 @@ __EOT__
    }
 
    sub db_create{
-      print "\nCreating audio disc database description\n";
+      print "Creating audio disc database description\n";
 
       my ($iterno, $orig_db) = (0, $DB);
 jREDO:
@@ -2041,9 +2041,12 @@ __EOT__
 
    sub _add_imag_sort{
       my ($self, $sort) = @_;
-      if($sort =~ /^The/i && $sort !~ /^the the$/i){ # The The, The
+      if($sort =~ /^The\s+/i && $sort !~ /^the the$/i){ # The The, The
          $sort =~ /^the\s+(.+)\s*$/i;
          $sort = "$1, The (The $1)"
+      }elsif($sort =~ /^((?:dj|dr)\.?)\s+/i){
+         $sort =~ /^((?:dj|dr)\.?)\s+(.+)\s*$/i;
+         $sort = "$2, $1 ($1 $2)"
       }elsif($sort =~ /^\s*(\S+)\s+(.+)\s*$/){
          $sort = "$2, $1 ($1 $2)"
       }else{
@@ -2066,7 +2069,7 @@ __EOT__
 
       if($hr->{flags} & MBDB::DB_DUMP_DOC){
          die 'I/O error' unless print {$hr->{fh}} <<__EOT__
-# [GROUP]: LABEL, (YEAR, GENRE, GAPLESS, COMPILATION, [CAST]-fields)
+# [GROUP]: LABEL, (YEAR, GENRE, GAPLESS, COMPILATION, and all [CAST]-fields)
 #  Grouping information can optionally be used, and applies to all the
 #  following tracks until the next [GROUP] is seen; TRACKs which do not apply
 #  to any GROUP must thus be defined before any [GROUP].
@@ -2318,18 +2321,27 @@ __EOT__
       # reach into internals of the other, anyway; since TagInfo stuff is also
       # "known" by encoders, keep the DB contents internal to the DB at least
       my $self = $_[0];
-      my ($c, $composers, $i, $s, $x);
+      my ($c, $composers, $i, $s, $x, $various);
       my $tir = $Title::List[$self->{NUMBER} - 1]->{TAG_INFO};
       $tir->{IS_SET} = 1;
 
       # TPE1/TCOM,--artist,--artist - TCOM MAYBE UNDEF
       $c = $self->{cast};
-      ($composers, $i, $s, $x) = (undef, -1, '', 0);
+      ($composers, $i, $s, $x, $various) = (undef, -1, '', 0, undef);
       foreach(@{$c->{ARTIST}}){
+         if($_ =~ /^\s*(various\s+artists|diverse)\s*$/){
+            $various = $_;
+            next;
+         }
          $s .= '/' if ++$i > 0;
          $s .= $_
       }
       $x = ($i >= 0);
+      if(!$x && defined $various){
+         $s = $various;
+         $x = 1;
+      }
+
       $i = -1;
       foreach(@{$c->{SOLOIST}}){
          $s .= ', ' if ++$i > 0 || $x;
@@ -2341,6 +2353,7 @@ __EOT__
          $x = 0;
          $s .= $_
       }
+
       $tir->{TPE1} =
       $tir->{ARTIST} = $s;
 
@@ -3008,6 +3021,6 @@ __EOT__
 } # }}} Enc::Coder
 } # }}} Enc
 
-{package main; main_fun()}
+{package main; exit main_fun()}
 
 # s-it-mode
