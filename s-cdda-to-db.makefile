@@ -1,26 +1,20 @@
-#@ Makefile for S-cdda(1).
+#@ Makefile for S-cdda-to-db(1).
 
 PREFIX = /usr/local
 DESTDIR =
 BINDIR = $(DESTDIR)$(PREFIX)/bin
 MANDIR = $(DESTDIR)$(PREFIX)/share/man/man1
-TARGET = s-cdda
+TARGET = s-cdda-to-db
 
-CC = cc
-CFLAGS = -O2
-LDFLAGS = \
-	`os=\`uname -s|tr [[:upper:]] [[:lower:]]\`;\
-	if [ $$os = freebsd ] || [ $$os = dragonfly ]; then \
-		printf -- -lcam;\
-	fi`
 INSTALL = install
+CP = cp
 RM = rm
 
 .PHONY: all clean distclean install uninstall
 all: $(TARGET)
 
-$(TARGET): s-cdda.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $(@) $(?)
+$(TARGET): s-cdda-to-db.pl
+	$(CP) -f $(?) $(@)
 
 clean:
 	$(RM) -f $(TARGET)
