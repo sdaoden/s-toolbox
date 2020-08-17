@@ -2,42 +2,42 @@
 #@ Create BTRFS filesystem snapshots, send them to a ball, trim them down.
 #@ The configuration is read from /root/$HOSTNAME/btrfs-snapshot.
 #@ TODO (Instead) We should offer command line arguments, to a config file
-#@ TODO and/or to set the vars directly: THEVOL,DIRS,ACCUDIR,DOZST,UNPRIV*.
+#@ TODO and/or to set the vars directly: THEVOL,DIRS,ACCUDIR.
 #@
+#@ Synopsis: btrfs-snapshot.sh create-dir-tree
 #@ Synopsis: btrfs-snapshot.sh create|trim|setmounts
-#@ Synopsis: btrfs-snapshot.sh create-ball
-#@ Synopsis: btrfs-snapshot.sh receive-ball [:BALL:]
+#@ Synopsis: btrfs-snapshot.sh create-balls
+#@ Synopsis: btrfs-snapshot.sh receive-balls [:BALL:]
 #@ Synopsis: btrfs-snapshot.sh clone-to-cwd|sync-to-cwd
 #@
 #@ This script assumes a BTRFS master volume under which some subvolumes exist
 #@ as mount points, and a snapshots/ at the first level under which all those
 #@ subvolumes are mirrored.  Otherwise the_worker() must be adjusted.
 #@
-#@ - "create" creates some BTRFS snapshots,
+#@ - "create-dir-tree" reads /root/$HOSTNAME/btrfs-snapshot and creates all
+#@   $DIRS and their snapshot mirrors, as necessary.
+#@   It does not remove surplus directories.
+#@   Any further synchronization can then be performed via
+#@      cd WHEREVER && btrfs-snapshot.sh sync-to-cwd
+#@   (assuming that /root/$HOSTNAME/btrfs-snapshot describes the template).
+#@
+#@ - "create" creates snapshots/ of all $DIRS.
 #@
 #@ - "trim" deletes all but the last snaphost of each folder under snapshots/.
 #@
 #@ - "setmounts" throws away the $DIRS subvolumes, and recreates them from the
 #@   latest corresponding entry from snapshots/.
 #@
-#@ - "create-ball" sends the (differences to the last) snaphot to
-#@   $ACCUDIR/btrfs-snaps/, creates a(n optionally zstd(1) compressed) tarball
-#@   of these sent streams of differences (the possibly empty
-#@   $ACCUDIR/btrfs-snaps/) within $ACCUDIR.
+#@ - "create-balls" sends the (differences to the last, if any) snapshots into
+#@   $ACCUDIR/.snap-ISODATE/ as zstd(1) compressed streams, split into files
+#@   of 2 GB size at most.  You then move the entire $ACCUDIR/.snap-ISODATE
+#@   directory tree somewhere else.  (Or you can create a tar archive of it,
+#@   if the target filesystem can deal with very large files.)
 #@
-#@ - "receive-ball" receives one or multiple $BALLS, which must have been
-#@   created by "create-ball", and merges them in snapshots/.
-#@   The ball(s) is/are expanded in the root of the target first!
-#@   A ball can also be split(1)ted up into subfiles, for example to store it
-#@   on a VFAT partition: if a BALL is a directory we will join all files via
-#@   a cat(1) * glob, and expand the output behind a pipe instead.
-#@      i=${1%%.*}
-#@      mkdir "$i".split || exit 7
-#@      cd "$i".split
-#@      < "$1" split -a 4 -b 2000000000 -d - || exit 8
-#@      cd ..
-#@    ->
-#@      btrfs-snapshot.sh receive-ball "$i".split
+#@ - "receive-balls" receives one or multiple $BALLS, which must have been
+#@   created by "create-balls", and merges them in snapshots/.
+#@   Ball must refer to a .snap-ISODATE super-directory, and the path must
+#@   be absolute.  (If realpath(1) is available we use it though.)
 #@
 #@ - "clone-to-cwd" and "sync-to-cwd" need one existing snapshot (series),
 #@   and will clone all the latest snapshots to the CWD.
@@ -45,10 +45,10 @@
 #@   non-existing directories.
 #@   Only the difference to the last snapshot which is present in both trees is
 #@   synchronized: for the target this must be the last.
+#@   Be aware that $DIRS etc. still corresponds to $HOSTNAME!
 #@
 #@ + the_worker() drives the logic, and may become adjusted, if simply
 #@   setting other values for $THEVOL, $DIRS and $ACCUDIR does not suffice.
-#@   (Maybe $UNPRIVU and $UNPRIVG may need a hand, too.)
 #
 # 2018 - 2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain
@@ -65,12 +65,6 @@ if [ -f /root/${HOSTNAME}/btrfs-snapshot ]; then
    # ACCUDIR: where everything is stored, including the final target
    #ACCUDIR=/media/btrfs-master
 
-   # Shall the snapshot ball be compressed (non-empty)
-   #DOZSTD=
-
-   # When receiving, we unpack ball(s) under unprivileged accounts via su(1)
-   #UNPRIVU=guest UNPRIVG=guest
-
    . /root/${HOSTNAME}/btrfs-snapshot
 else
    logger -s -t root/btrfs-snapshot.sh \
@@ -83,7 +77,7 @@ DEBUG=
 
 ## 8< >8
 
-# Will be set by "receive-ball"
+# Will be set by "receive-balls"
 BALLS=
 
 the_worker() { # Will run in subshell!
@@ -110,46 +104,40 @@ the_worker() { # Will run in subshell!
    }
 
    echo '= Checking mirrors for '$DIRS
+   i=
+   [ $1 = create-dir-tree ] && i=y
    for d in $DIRS; do
-      check_mirror "$d"
+      check_mirror "$d" "$i"
    done
 
-   if [ $1 = create ]; then
+   if [ $1 = create-dir-tree ]; then
+      exit 0
+   elif [ $1 = create ]; then
       echo '= Creating snapshots for '$DIRS
       create_setup
       for d in $DIRS; do
          create_one "$d"
       done
-   elif [ $1 = create-ball ]; then
-      echo '= Setting up ball target mirrors for '$DIRS
+   elif [ $1 = create-balls ]; then
       create_setup
-      create_ball_setup
-      trap "cd; rm -rf \"$ACCUDIR\"/btrfs-snaps; $UMOUNT" EXIT
+      echo '= Creating balls in '$ACCUDIR/.snap-$now
+
+      act mkdir "$ACCUDIR"/.snap-$now
+      trap "cd; rm -rf \"$ACCUDIR\"/.snap-$now; $UMOUNT" EXIT
+
       for d in $DIRS; do
-         create_mirror "$d"
+         create_ball "$d"
       done
 
-      echo '= Sending snapshots and creating ball in '$ACCUDIR
-      for d in $DIRS; do
-         create_send "$d"
-      done
-
-      create_ball
       trap "$UMOUNT" EXIT
-   elif [ $1 = receive-ball ]; then
-      echo '= Setting up ball receive environment'
-      receive_setup
-      trap "cd; rm -rf \"$ACCUDIR\"/btrfs-snaps; $UMOUNT" EXIT
-
-      echo '= Expanding ball(s) '$BALLS
-      receive_expand
-
-      echo '= Receiving snapshots from '$ACCUDIR'/btrfs-snaps'
-      for d in $DIRS; do
-         receive_one "$d"
+   elif [ $1 = receive-balls ]; then
+      echo '= Working balls'
+      for b in $BALLS; do
+         echo '== Receiving ball '$b
+         for d in $DIRS; do
+            receive_one "$d" "$b"
+         done
       done
-      act rm -rf "$ACCUDIR"/btrfs-snaps
-      trap "$UMOUNT" EXIT
    elif [ $1 = trim ]; then
       echo '= Trimming snapshots for '$DIRS
       for d in $DIRS; do
@@ -191,8 +179,12 @@ act() {
 
 check_mirror() {
    if [ -d "$1" ] && [ -d snapshots/"$1" ]; then :; else
-      echo 'PANIC: cannot handle '$1
-      exit 1
+      if [ -n "$2" ]; then
+         act mkdir -p "$1" snapshots/"$1"
+      else
+         echo 'PANIC: cannot handle '$1
+         exit 1
+      fi
    fi
 }
 
@@ -200,20 +192,12 @@ create_setup() {
    now=`date +%Y%m%dT%H%M%S`
 }
 
-create_ball_setup() {
-   act mkdir "$ACCUDIR"/btrfs-snaps
-}
-
-create_mirror() {
-   act mkdir -p "$ACCUDIR"/btrfs-snaps/"$1"
-}
-
 create_one() {
    echo '== Creating snapshot: '$1' -> snapshots/'$1'/'$now
    act btrfs subvolume snapshot -r "$1" snapshots/"$1"/"$now"
 }
 
-create_send() {
+create_ball() {
    (
    mydir=$1
    cd snapshots/"$mydir" || exit 11
@@ -227,6 +211,7 @@ create_send() {
       shift
    done
 
+   # The send stream
    if [ $# -eq 1 ]; then
       parent=
       i='without parent'
@@ -237,74 +222,38 @@ create_send() {
       parent=' -p '$parent
       this=`basename "$2"`
    fi
-   target="$ACCUDIR"/btrfs-snaps/"$mydir"/"$this"
+   target="$ACCUDIR"/.snap-$now/"$mydir" #/"$this"
+
    echo '== '$mydir': '$i' to '$target
 
-   if command -v chattr >/dev/null 2>&1; then
-      act touch "$target"
-      act chattr +C "$target"
-   fi
-   act btrfs send $parent "$this" ">" "$target"
-   ) || exit $?
-}
-
-create_ball() {
-   (
-   act cd "$ACCUDIR"
-   ext=tar
-   [ -n "$DOZSTD" ] && ext=${ext}.zst
-   echo '== In '"$ACCUDIR"', creating ball btrfs-snaps_'${now}.${ext}
-   if command -v chattr >/dev/null 2>&1; then
-      act touch btrfs-snaps_$now.${ext}
-      act chattr +C btrfs-snaps_$now.${ext}
-   fi
-   if [ -n "$DOZSTD" ]; then
-      act tar -c -f - btrfs-snaps "|" \
-         zstd -zc -T0 -19 ">" btrfs-snaps_$now.${ext}
-   else
-      act tar -c -f - btrfs-snaps ">" btrfs-snaps_$now.${ext}
-   fi
-   act rm -rf btrfs-snaps
-   ) || exit $?
-}
-
-receive_setup() {
-   for f in $BALLS; do
-      if [ -f "$f" ]; then :; else
-         echo 'No such ball to receive: '$f
-         exit 1
-      fi
-   done
-   act mkdir "$ACCUDIR"/btrfs-snaps
-}
-
-receive_expand() {
-   (
-   act cd "$ACCUDIR"/btrfs-snaps
-   act chown -R ${UNPRIVU}:${UNPRIVG} .
-
-   for f in $BALLS; do
-      if [ "$f" != "${f%.zst}" ]; then
-         act su -s /bin/sh $UNPRIVU -c '"zstd -dc < "\"'"$f"'\"" | tar -xf -"'
-      elif [ -d "$f" ]; then
-         act su -s /bin/sh $UNPRIVU -c '"cat "\"'"$f"'\"/*" | tar -xf -"'
-      else
-         act su -s /bin/sh $UNPRIVU -c '"< "\"'"$f"'\"" tar -xf -"'
-      fi
-   done
+   act mkdir -p "$target"
+   act btrfs send $parent "$this" "|" \
+      zstd -zc -T0 -10 "|" \
+      '(cd '"$target"' && split -a 4 -b 2000000000 -d -)'
    ) || exit $?
 }
 
 receive_one() {
    (
    mydir=$1
+   ball=$2
+
+   if [ -d "$ball"/"$mydir" ]; then :; else
+      echo '=== '$mydir': no snapshot for me in here: '"$ball"/"$mydir"
+      exit 0
+   fi
+   snaps=0
+   for snap in "$ball"/"$mydir"/*; do
+      snaps=$((snaps + 1))
+      [ -f "$snap" ] && continue
+      echo '=== '$mydir': invalid content, skipping this: '$snap
+      exit 1
+   done
+
    cd snapshots/"$mydir" || exit 11
 
-   find "$ACCUDIR"/btrfs-snaps/btrfs-snaps/"$mydir" -type f -print | sort |
-   while read f; do
-      echo '== '$mydir': receiving snapshot: '$f
-      act btrfs receive . "<" $f
-   done
+   echo '=== '$mydir': receiving snapshot of '$snaps' files'
+   act cat "$ball"/"$mydir"/* '|' zstd -dc '|' btrfs receive .
    ) || exit $?
 }
 
@@ -438,36 +387,56 @@ clone_to_cwd() {
 
 mytee() {
    while read l; do
-      echo "$l"
+      [ -z "$DEBUG" ] && echo "$l"
       echo >&2 "$l"
    done
 }
 
+mymail() {
+   if [ -n "$DEBUG" ]; then
+      cat
+   else
+      mail -s 'BTRFS snapshot management: '"$cmd ${DEBUG:+ (DEBUG MODE)}" root
+   fi
+}
+
 syno() {
+   echo 'Synopsis: btrfs-snapshot.sh create-dir-tree'
    echo 'Synopsis: btrfs-snapshot.sh create|trim|setmounts'
-   echo 'Synopsis: btrfs-snapshot.sh create-ball'
-   echo 'Synopsis: btrfs-snapshot.sh receive-ball [:BALL:]'
+   echo 'Synopsis: btrfs-snapshot.sh create-balls'
+   echo 'Synopsis: btrfs-snapshot.sh receive-balls [:BALL:]'
    echo 'Synopsis: btrfs-snapshot.sh clone-to-cwd|sync-to-cwd'
    exit $1
 }
 
 cmd=$1
-if [ "$cmd" = receive-ball ]; then
+if [ "$cmd" = receive-balls ]; then
    shift
-   BALLS="$@"
+   echo '= Checking balls'
+   for b in "$@"; do
+      if [ -d "$b" ]; then :; else
+         echo 'No such ball to receive: '$b
+         exit 1
+      fi
+   done
+   if command -v realpath >/dev/null 2>&1; then
+      for i in "$@"; do
+         i=`realpath "$i"`
+         BALLS="$BALLS $i" # XXX quoting
+      done
+   fi
 else
    [ $# -ne 1 ] && syno 1
    case $cmd in
    help) syno 0;;
+   create-dir-tree) ;;
    create) ;; trim) ;; setmounts) ;;
-   create-ball) ;; #receive-ball) ;;
+   create-balls) ;; #receive-balls) ;;
    clone-to-cwd) ;; sync-to-cwd) ;;
    *) syno 1;;
    esac
 fi
 
-( the_worker "$cmd" ) 2>&1 |
-   mytee |
-   mail -s 'BTRFS snapshot management: '"$cmd ${DEBUG:+ (DEBUG MODE)}" root
+( the_worker "$cmd" ) 2>&1 | mytee | mymail
 
 # s-sh-mode

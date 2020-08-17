@@ -101,6 +101,10 @@ btrfs-snapshot.sh:
    Simple script to deal with BTRFS snapshots.
    ...
    2019-09-29: allow directories as arguments to receive-ball.
+   2020-08-18: drop {create,receive}-ball, introduce ditto -balls:
+               create one ball per subvolume in a .snaps-DATE directory.
+               Files are split(1) at 2 GB size boundaries, and zstd(1)
+               compresssed.  Copy that around via cp -n -v -R.
 
 cdoc-freebsd.S:
    FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on
