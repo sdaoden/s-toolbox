@@ -229,7 +229,9 @@ create_ball() {
    act mkdir -p "$target"
    act btrfs send $parent "$this" "|" \
       zstd -zc -T0 -10 "|" \
-      '(cd '"$target"' && split -a 4 -b 2000000000 -d -)'
+      '(cd '"$target"' &&
+        echo '"$this"' > .stamp &&
+        split -a 4 -b 2000000000 -d -)'
    ) || exit $?
 }
 
@@ -242,6 +244,7 @@ receive_one() {
       echo '=== '$mydir': no snapshot for me in here: '"$ball"/"$mydir"
       exit 0
    fi
+
    snaps=0
    for snap in "$ball"/"$mydir"/*; do
       snaps=$((snaps + 1))
@@ -249,8 +252,19 @@ receive_one() {
       echo '=== '$mydir': invalid content, skipping this: '$snap
       exit 1
    done
+   if [ -f "$ball"/"$mydir"/.stamp ]; then
+      snap=`cat "$ball"/"$mydir"/.stamp`
+   else
+      echo '=== '$mydir': invalid content, missing .stamp file'
+      exit 1
+   fi
 
    cd snapshots/"$mydir" || exit 11
+
+   if [ -d "$snap" ]; then
+      echo '=== '$mydir': snapshot '$snap' already exists'
+      exit 0
+   fi
 
    echo '=== '$mydir': receiving snapshot of '$snaps' files'
    act cat "$ball"/"$mydir"/* '|' zstd -dc '|' btrfs receive .
@@ -414,12 +428,15 @@ if [ "$cmd" = receive-balls ]; then
    shift
    echo '= Checking balls'
    for b in "$@"; do
-      if [ -d "$b" ]; then :; else
+      if [ -d "$b" ]; then
+         BALLS="$BALLS $b" # XXX quoting
+      else
          echo 'No such ball to receive: '$b
          exit 1
       fi
    done
    if command -v realpath >/dev/null 2>&1; then
+      BALLS=
       for i in "$@"; do
          i=`realpath "$i"`
          BALLS="$BALLS $i" # XXX quoting
