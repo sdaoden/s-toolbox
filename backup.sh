@@ -21,8 +21,9 @@
 #@          sed −e 's/"/"\\""/g' −e 's/.*/"&"/'
 #@ 2018-11-12: add -p option to tar.
 #@ 2018-11-13: change builtin path set.
+#@ 2020-09-03: change builtin path set.
 #
-# 2010 - 2018 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+# 2010 - 2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain.
 
 # Now start perl(1) without PERL5OPT set to avoid multibyte sequence errors
@@ -82,7 +83,6 @@ my @NORMAL_INPUT = (
    "$HOME/arena",
    "$HOME/.sec.arena",
    "$HOME/.sic",
-   "/x/src",
    "/x/doc"
 );
 my @COMPLETE_INPUT = (
