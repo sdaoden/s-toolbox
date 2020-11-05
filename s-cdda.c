@@ -22,7 +22,7 @@
  */
 
 /* */
-#define a_VERSION "0.8.3"
+#define a_VERSION "0.8.4"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* -- >8 -- 8< -- */
@@ -972,7 +972,7 @@ a_read(struct a_data *dp, u8 tno){
       }
    }
 
-   fprintf(stderr, "Read track %u, %d bytes)\n", tno, len);
+   fprintf(stderr, "Read track %u, %d bytes\n", tno, len);
 jleave:
    return rv;
 
