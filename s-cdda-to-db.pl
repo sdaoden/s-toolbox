@@ -30,7 +30,7 @@ my $ABSTRACT = 'Read and encode audio CDs, integrated in S-Music DB.';
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-my $VERSION = '0.6.0';
+my $VERSION = '0.6.1';
 my $CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>';
 
 # MusicBrainz Web-Service; we use TLS if possible
@@ -678,8 +678,8 @@ jdarwin_read_stop:
       ::v("Invoking $l");
 
       $l = `$l`;
-      $dev .= length $dev ? ': f' : 'F';
-      return "! ${dev}ailed reading TOC: $?/$!\n" if $?;
+      return "! ${dev}" . (length $dev ? ': f' : 'F') .
+         "ailed reading TOC: $?/$!\n" if $?;
       @res = split "\n", $l;
 
       my ($emsg, $had_leadout) = ('', 0);
