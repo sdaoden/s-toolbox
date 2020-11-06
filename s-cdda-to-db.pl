@@ -642,6 +642,7 @@ jdarwin_read_stop:
       return $emsg if length $emsg;
 
       _calc_cdid(\@cdtoc);
+      _calc_mb_discid();
       return undef
    } # }}}
 
