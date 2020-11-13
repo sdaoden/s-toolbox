@@ -68,7 +68,7 @@ if [ -f /root/${HOSTNAME}/btrfs-snapshot ]; then
    . /root/${HOSTNAME}/btrfs-snapshot
 else
    logger -s -t root/btrfs-snapshot.sh \
-         -i "no config /root/${HOSTNAME}/btrfs-snapshot"
+         "no config /root/${HOSTNAME}/btrfs-snapshot"
    exit 1
 fi
 
