@@ -547,7 +547,7 @@ jOUTER:
       close XARGS;
 
       if($RESET || $COMPLETE){
-         system("$COMPRESSOR $ar >>$MFFN 2>&1");
+         system("</dev/null $COMPRESSOR $ar >>$MFFN 2>&1");
          unless(! -f $ar || unlink $ar){
             ::err(1, "Temporary archive $ar cannot be deleted: $^E");
             ::do_exit(1)
