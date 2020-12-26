@@ -66,6 +66,8 @@ if [ -f /root/${HOSTNAME}/btrfs-snapshot ]; then
    #ACCUDIR=/media/btrfs-master
 
    . /root/${HOSTNAME}/btrfs-snapshot
+
+   : ${ZSTD_LEVEL:=-5}
 else
    logger -s -t root/btrfs-snapshot.sh \
          "no config /root/${HOSTNAME}/btrfs-snapshot"
@@ -228,7 +230,7 @@ create_ball() {
 
    act mkdir -p "$target"
    act btrfs send $parent "$this" "|" \
-      zstd -zc -T0 -10 "|" \
+      zstd -zc -T0 ${ZSTD_LEVEL} "|" \
       '(cd '"$target"' &&
         echo '"$this"' > .stamp &&
         split -a 4 -b 2000000000 -d -)'
