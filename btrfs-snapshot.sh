@@ -270,6 +270,7 @@ receive_one() {
 
    echo '=== '$mydir': receiving snapshot of '$snaps' files'
    act cat "$ball"/"$mydir"/* '|' zstd -dc '|' btrfs receive .
+   act btrfs filesystem sync .
    ) || exit $?
 }
 
@@ -392,7 +393,8 @@ clone_to_cwd() {
       echo '== Synchronizing to '"$1$parentmsg"' from snapshots/'$d
       ( set -o pipefail ) >/dev/null 2>&1 && set -o pipefail
       act btrfs send $parent $1 '|' \
-         '('cd "$CLONEDIR"/snapshots/"$d" '&&' btrfs receive .')'
+         '('cd "$CLONEDIR"/snapshots/"$d" '&&' btrfs receive . '&&' \
+            btrfs filesystem sync .')'
       ) || exit $?
    done
 
