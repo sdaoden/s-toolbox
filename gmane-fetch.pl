@@ -14,7 +14,7 @@ my $RCFILE = "${ENV{HOME}}/sec.arena/mail/.gmane.rc";
 my $MBOX = "${ENV{HOME}}/sec.arena/mail/gmane";
 my $SAFE_FSYNC = 1; # fsync(3) after each message (etc.)?
 #
-# Copyright (c) 2014 - 2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+# Copyright (c) 2014 - 2021 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 #
 # Based on the script nntp-to-mbox.pl that is:
 #

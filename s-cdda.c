@@ -5,7 +5,7 @@
  *@ Use s-cdda.makefile for compilation: $ make -f s-cdda.makefile
  *@ TODO de-preemphasis, handling of SCSI sense states? It is half assed.
  *
- * Copyright (c) 2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+ * Copyright (c) 2020 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
  *
  * Permission to use, copy, modify, and/or distribute this software for any

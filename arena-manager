@@ -11,7 +11,7 @@
 #@ FIXME - when updating, check that the working tree is expanded (and we're
 #@ FIXME   on the right branch) for vcs which don't work otherwise, e.g., svn
 #
-# Copyright (c) 2011 - 2018 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+# Copyright (c) 2011 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above

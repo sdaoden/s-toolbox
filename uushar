@@ -1,10 +1,8 @@
 #!/bin/sh -
 #@ Like shar(1), but with an uuencode(1)/uudecode(1) binary safe layer added.
 #@ Member compression via optional --(compress|gzip|bzip2|xz) argument.
-#@ Web: https://www.sdaoden.eu/code.html
-#@ Git: https?://git.sdaoden.eu/cgit/s-toolbox.git
 #
-# Copyright (c) 2012 - 2018 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+# Copyright (c) 2012 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
