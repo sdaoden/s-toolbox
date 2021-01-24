@@ -50,7 +50,7 @@
 #@ + the_worker() drives the logic, and may become adjusted, if simply
 #@   setting other values for $THEVOL, $DIRS and $ACCUDIR does not suffice.
 #
-# 2018 - 2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+# 2018 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain
 
 : ${HOSTNAME:=`hostname`}

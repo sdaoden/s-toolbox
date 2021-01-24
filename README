@@ -98,6 +98,7 @@ backup.sh:
    ...
    2016-08-27: FIX faulty xarg/tar -c invocations (Ralph Corderoy)
    2019-05-10: extend exclude glob.
+   2021-01-24: try to silence archiver and compressor a bit.
 
 btrfs-snapshot.sh:
    Simple script to deal with BTRFS snapshots.
@@ -110,6 +111,7 @@ btrfs-snapshot.sh:
    2020-08-27: tweak former: since btrfs-receive does not differentiate
                in between "error" and "snapshot already exists", we need
                .stamp files in the ball directories to test this case.
+   2021-01:    add ZSTD_LEVEL, default to -5.  "sync" the BTRFS.
 
 cdoc-freebsd.S:
    FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on

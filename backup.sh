@@ -23,7 +23,7 @@
 #@ 2018-11-13: change builtin path set.
 #@ 2020-09-03: change builtin path set.
 #
-# 2010 - 2020 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+# 2010 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain.
 
 # Now start perl(1) without PERL5OPT set to avoid multibyte sequence errors
@@ -538,7 +538,7 @@ jOUTER:
          ::msg(0, "Creating/Updating archive <$ar>")
       }
 
-      unless(open XARGS, "| xargs -0 tar -v -r -p -f $ar >>$MFFN 2>&1"){
+      unless(open XARGS, "| xargs -0 tar -r -p -f $ar >>$MFFN 2>&1"){
          ::err(1, "Failed to create pipe: $^E");
          ::do_exit(1)
       }
