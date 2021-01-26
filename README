@@ -43,6 +43,10 @@ gmane-fetch.pl:
    ...
    2017-07-24: add support for multiple servers and add gwene.org.
 
+pam_shrundir:
+   Simple POSIX shell script which can be used to manage the Linux
+   /run/user/`id -u` directory.  See script head.
+
 quote-rndtrip.sh:
    Round trip quote strings in POSIX (and elder) shell(s).
    Thanks to Robert Elz (kre).

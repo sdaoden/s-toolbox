@@ -1,0 +1,75 @@
+#!/bin/sh -
+#@ Create /run/user/`id -u` when the first session is opened, and remove it
+#@ again once the last is closed.
+#@ Place this 0755 in /sbin/pam_shrundir (or wherever you want), then put
+#@    session required pam_exec.so quiet /sbin/pam_shrundir
+#@ (or "optional" not "required") in /etc/pam.d/common-session, or wherever.
+#
+# 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
+# Public Domain.
+
+lckfile=.pam_shrundir.lck
+datfile=.pam_shrundir.dat
+
+cd /run || {
+   logger -t pam_rundir 'ERROR: /run must exist'
+   exit 1
+}
+
+command -v flock >/dev/null 2>&1 || {
+   logger -t pam_rundir 'ERROR: i need flock(1) from util-linux'
+   exit 2
+}
+
+[ -d user ] || mkdir -m 0755 user || [ -d user ] || {
+   logger -t pam_rundir 'ERROR: cannot create /run/user'
+   exit 3
+}
+
+cd user || {
+   logger -t pam_rundir 'ERROR: cannot cd to /run/user'
+   exit 4
+}
+
+user=`id -u ${PAM_USER}`
+group=`id -g ${PAM_USER}`
+umask 0077
+
+touch "${lckfile}"
+flock "${lckfile}" -c '
+   ex=0
+   if [ "'"${PAM_TYPE}"'" = open_session ]; then
+      if [ -d '"${user}"' ]; then :; else
+         mkdir -m 0700 '"${user}"' || exit 5
+         chown '"${user}"':'"${group}"' '"${user}"' || exit 6
+         echo 0 > '"${user}"'/'"${datfile}"'
+         chmod 0600 '"${user}"'/'"${datfile}"'
+      fi
+      op=+
+   else
+      op=-
+   fi
+
+   read cnt < '"${user}"'/'"${datfile}"'
+   [ -z "${cnt}" ] && cnt=0
+   cnt=`expr ${cnt} ${op} 1`
+   if [ ${cnt} -le 0 ]; then
+      rm -rf '"${user}"' || ex=7
+   else
+      echo ${cnt} > '"${user}"'/'"${datfile}"'
+   fi
+
+   exit ${ex}
+'
+e=${?}
+rm -f "${lckfile}"
+
+case ${e} in
+*) ;;
+5) logger -t pam_rundir 'ERROR: cannot create /run/user/'${user};;
+6) logger -t pam_rundir 'ERROR: cannot impersonate /run/user/'${user};;
+7) logger -t pam_rundir 'ERROR: cannot remove /run/user/'${user};;
+esac
+
+exit ${e}
+# s-sh-mode
