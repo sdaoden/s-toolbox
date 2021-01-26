@@ -1,0 +1,61 @@
+.\"@ pam_shrundir - PAM module (script) to manage XDG_RUNTIME_DIR.
+.\"
+.\" Public Domain
+.
+.Dd January 27, 2021
+.Dt PAM_SHRUNDIR 8
+.Os
+.
+.
+.Sh NAME
+.Nm pam_shrundir
+.Nd PAM Manage XDG_RUNTIME_DIR existance
+.
+.
+.Sh SYNOPSIS
+.Nm
+.
+.
+.Sh DESCRIPTION
+.
+.Nm
+is a PAM module (script) that manages creation and deletion of the
+.Ev XDG_RUNTIME_DIR
+directory as specified by the 
+.Lk https://specifications.\:freedesktop.\:org/basedir-\:\
+spec/\:basedir-\:spec-\:latest.html "XDG Base Directory Specification" .
+.
+.Pp
+When linked into the PAM system, the directory will be created as
+.Ql /run/user/`id -u`
+once a user creates his or her first login session, and it will be
+removed recursively once the last such session ends.
+This script does not handle creation of the user environment variable
+.Ev XDG_RUNTIME_DIR ,
+it only manages the lifetime of the according directory.
+.
+.Pp
+In order to make use of this script, place the following in the control
+file of desire under
+.Pa /etc/pam.d ,
+best maybe
+.Pa /etc/pam.d/common-session
+if that exists (possibly adjusting paths):
+.
+.Bd -literal -offset indent
+session optional pam_exec.so quiet /sbin/pam_shrundir
+.Ed
+.
+.
+.Sh "SEE ALSO"
+.
+.Xr pam.conf 5 ,
+.Xr pam.d 8 ,
+.Xr pam 8
+.
+.
+.Sh AUTHORS
+.
+.An "Steffen Nurpmeso" Aq steffen@sdaoden.eu .
+.
+.\" s-ts-mode
