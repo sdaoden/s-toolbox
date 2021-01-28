@@ -1,5 +1,5 @@
 /*@ s-cdda: access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
- *@ Developed in 2020 on then current operating-systems and hardware.
+ *@ Developed in 2020 on then-current operating-systems and hardware.
  *@ Thanks to Thomas Schmitt (libburnia) for cdrom-cookbook.txt and cdtext.txt.
  *@ According to SCSI Multimedia Commands - 3 (MMC-3, Revision 10g).
  *@ Use s-cdda.makefile for compilation: $ make -f s-cdda.makefile
@@ -22,7 +22,7 @@
  */
 
 /* */
-#define a_VERSION "0.8.4"
+#define a_VERSION "0.8.5"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* -- >8 -- 8< -- */
@@ -113,6 +113,8 @@
 #define NELEM(A) (sizeof(A) / sizeof((A)[0]))
 #define su_CONCAT(S1,S2) su__CONCAT_1(S1, S2)
 #define su__CONCAT_1(S1,S2) S1 ## S2
+#define su_STRING(X) #X
+#define su_XSTRING(X) su_STRING(X)
 #define UNINIT(X, Y) X = Y
 #define Z_ALIGN(X) (((X) + sizeof(ul)-1) & ~(sizeof(ul) - 1))
 #define ul unsigned long int
@@ -342,7 +344,9 @@ struct a_data{
 #if su_OS_DRAGONFLY || su_OS_FREEBSD
    struct cam_device *d_camdev;
 #endif
+   int d_maxframes;
    int d_fd;
+   u8 d__pad[4];
    u8 d_flags; /* a_actions | a_flags */
    u8 d_trackno_start;
    u8 d_trackno_end;
@@ -514,10 +518,19 @@ main(int argc, char **argv){
    rv = EX_USAGE;
    UNINIT(li, 0);
 
-   while((opt = getopt(argc, argv, "ad:hiLl:mnr:tvx")) != -1){
+   while((opt = getopt(argc, argv, "ad:f:hiLl:mnr:tvx")) != -1){
       switch(opt){
       case 'a': act |= a_ACT_QUERY_MASK; break;
       case 'd': d.d_dev = optarg; break;
+      case 'f':
+         errno = 0;
+         li = strtol(optarg, &ep, 0);
+         if(li < 1 || li > 999 || *ep != '\0'){ /* xxx documented magic */
+            fprintf(stderr, "! -f: invalid number: %s\n", optarg);
+            goto jusage;
+         }
+         d.d_maxframes = (int)li;
+         break;
       case 'h': rv = EX_OK; goto jusage;
       case 'i': act |= a_ACT_ISRC | a_F_NO_TOC_DUMP; break;
       case 'L':
@@ -589,6 +602,10 @@ main(int argc, char **argv){
       goto jusage;
    }
 
+   if(d.d_maxframes == 0)
+      d.d_maxframes = a_CDROM_MMC_MAX_FRAMES_PER_SEC;
+   else if(!(act & a_ACT_READ))
+      fprintf(stderr, "! -f command line option unused\n");
    d.d_flags = act;
 
    /* */
@@ -636,7 +653,7 @@ jusage:
       "     Dump CD-TEXT information for LANGuage (-L for list) "
          "if available/supported\n"
       "\n"
-      "  s-cdda [-d DEV] [-v] -r NUM\n"
+      "  s-cdda [-d DEV] [-f NUM] [-nv] -r NUM\n"
       "     Dump audio track NUMber in WAVE format "
          "to (non-terminal) standard output\n"
       "\n"
@@ -650,7 +667,8 @@ jusage:
       ". -[im] subject to HW/driver quality: retry on \"not-found\".  "
          "With multiple\n"
       "  queries errors are ignored but for TOC.  sysexits.h exit states.\n"
-      ". s-cdda -h: this help, s-cdda -L: CD-TEXT languages\n"
+      ". -L: CD-TEXT language list; -f NUM: read NUM frames per sec ("
+         su_XSTRING(a_CDROM_MMC_MAX_FRAMES_PER_SEC) ")\n"
       ". Bugs/Contact via " a_CONTACT "\n",
       (rv == EX_OK ? stdout : stderr));
    goto jleave;
@@ -889,8 +907,7 @@ a_read(struct a_data *dp, u8 tno){
 
    rbp = &dp->d_rawbufs[a_ACT_RAWBUF_READ];
    rbp->rb_buf = a_alloc(rbp->rb_buflen =
-         Z_ALIGN((maxframes = a_CDROM_MMC_MAX_FRAMES_PER_SEC) *
-            a_MMC_FRAME_SIZE));
+         Z_ALIGN((maxframes = dp->d_maxframes) * a_MMC_FRAME_SIZE));
 
    lbas = dp->d_track_data[tno].t_lba;
    lbae = dp->d_track_data[(tno == dp->d_trackno_end) ? 0 : tno + 1].t_lba;

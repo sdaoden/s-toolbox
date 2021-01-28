@@ -55,7 +55,7 @@ quote-rndtrip.sh:
 
    2019-05-27: ensure outer driver(s) do not leak variabes (Steven Penny).
 
-s-cdda.c (manual in s-cdda.1; s-cdda.makefile) v0.8.4:
+s-cdda.c (manual in s-cdda.1; s-cdda.makefile) v0.8.5:
    Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
    Developed in 2020 on then current operating-systems and hardware.
    Not tested with CD-Extra etc (only proofed logically.
@@ -64,6 +64,7 @@ s-cdda.c (manual in s-cdda.1; s-cdda.makefile) v0.8.4:
                And port to DragonFly BSD, FreeBSD, NetBSD, and OpenBSD.
    ..2020-06-12: CD-TEXT dump generated [CDDB] section, should be [ALBUM]
    2020-11-05: cleaning a log message, v0.8.4.
+   2021-01-28: add -f (rame number) option, remove manual nits, v0.8.5.
 
 s-cdda-to-db.pl (manual in s-cdda-to-db.1; s-cdda-to-db.makefile) v0.6.1:
    Queries the content and data of audio CDs through s-cdda(1), collects

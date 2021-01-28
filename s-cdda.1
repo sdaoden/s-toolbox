@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd November 06, 2020
+.Dd January 28, 2021
 .Dt S-CDDA 1
 .Os
 .Mx -enable
@@ -59,6 +59,7 @@
 .Nm
 .Op Fl nv
 .Op Fl d Ar DEVICE
+.Op Fl f Ar NUMBER
 .Fl r Ar NUMBER
 .
 .
@@ -80,7 +81,7 @@ It only works with SCSI MMC-3 aware cdrom/drivers.
 .Bl -tag -width ".It Fl BaNg"
 .Mx
 .It Fl a
-Perform all possible queries.
+Dump all available informations.
 .
 .Mx
 .It Fl d Ar DEVICE
@@ -93,12 +94,25 @@ is inspected, a system-dependent value (like
 is used as a fallback.
 .
 .Mx
+.It Fl f Ar NUMBER
+Set maximum
+.Ar NUMBER
+of frames (data chunks) we read at once.
+75 frames represent one second of CD-audio.
+The system-dependent default is 25 or 50, some systems cramp to a one
+second limit, devices impose their own limits.
+If reads fail frames are throttled until minimum is reached (shown in
+.Fl v Ns
+erbose mode).
+Values in between 1 and 999 are accepted, inclusive.
+.
+.Mx
 .It Fl h
-Show a brief usage summary, then exit.
+Show a brief usage summary.
 .
 .Mx
 .It Fl i
-Query the International Standard Recording Code (ISRC) entries,
+Dump International Standard Recording Code (ISRC) entries,
 if available on the CD-ROM and supported by the device.
 Quality of service: devices are known which do not find ISRC
 subchannel data: repeating the query may succeed.
@@ -111,12 +125,12 @@ Show list of selectable CD-TEXT languages, then exit.
 .Mx
 .It Fl l Ar LANGUAGE
 Add a language, case-insensitively, to the CD-TEXT filter.
-If used multiple times, earlier ones take precedence, the best
-fitting CD-TEXT entry will be used.
+May be used multiple times in precedence order, the first available
+match will be used.
 .
 .Mx
 .It Fl m
-Query the Media Catalog Number,
+Dump the MCN (Media Catalog Number),
 if available on the CD-ROM, and supported by the device.
 Quality of service: devices are known which do not find the MCN
 subchannel data: repeating the query may succeed.
@@ -125,23 +139,21 @@ Is missing on many CD-ROMs.
 .Mx
 .It Fl n
 Do not perform sanity checks on data.
-May
-.Dq pamper
-over invalid data!
 .
 .Mx
 .It Fl r Ar NUMBER
-Read the audio track
+Read audio track
 .Ar NUMBER ,
-and write it in WAVE format to the standard output.
-It will refuse to write if standard output is a terminal.
+and write it in WAVE format to standard output.
+Will refuse to write if standard output is a terminal.
 .
 .Mx
 .It Fl t
-Query the table of contents.
-Outputs an audio-only, if available, and a complete table of contents in
-a format suitable as input to the
-.Xr sh 1 .
+Dump table of contents; this is the default mode of operation.
+Outputs an audio-only, if available, and a complete table of contents
+in a format suitable as input to the
+.Xr sh 1 Ns
+shell.
 .
 .Mx
 .It Fl v
@@ -149,7 +161,7 @@ Be more verbose, dump packets as they are encountered.
 .
 .Mx
 .It Fl x
-Collect CD-TEXT information of the desired
+Dump CD-TEXT information of the desired
 .Fl l Ns
 anguage, if available on the CD-ROM, and supported by the device.
 Is missing on many CD-ROMs.
@@ -164,11 +176,12 @@ $ s-cdda
 $ s-cdda -v
 
 # Read track number 2 to track-2.wav
-$ s-cdda --read 2 > track-2.wav
+$ s-cdda -r 2 > track-2.wav
 .Ed
 .
 .
 .Sh AUTHORS
 .
 .An Steffen Nurpmeso Aq steffen@sdaoden.eu
+.
 .\" s-ts-mode

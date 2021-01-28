@@ -7,10 +7,17 @@ MANDIR = $(DESTDIR)$(PREFIX)/share/man/man1
 TARGET = s-cdda
 
 CC = cc
-CFLAGS = -O2
-LDFLAGS = \
+CFLAGS = -DNDEBUG \
+	-O2 -W -Wall -Wextra -pedantic \
+	-Wno-uninitialized -Wno-unused-result -Wno-unused-value \
+	-fno-asynchronous-unwind-tables -fno-unwind-tables \
+	-fno-common \
+	-fstrict-aliasing -fstrict-overflow \
+	-fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE
+LDFLAGS = -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
+	-Wl,--enable-new-dtags -pie \
 	`os=\`uname -s|tr [[:upper:]] [[:lower:]]\`;\
-	if [ $$os = freebsd ] || [ $$os = dragonfly ]; then \
+	if [ "$$os" = freebsd ] || [ "$$os" = dragonfly ]; then \
 		printf -- -lcam;\
 	fi`
 INSTALL = install
