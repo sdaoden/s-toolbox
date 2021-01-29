@@ -48,6 +48,7 @@ pam_shrundir (manual in pam_shrundir.8):
    /run/user/`id -u` directory.  See script head.
 
    2021-01-27: added manual.
+   2021-01-29: fix lockfile race; use file-descriptor approach
 
 quote-rndtrip.sh:
    Round trip quote strings in POSIX (and elder) shell(s).
