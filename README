@@ -67,22 +67,22 @@ s-cdda.c (manual in s-cdda.1; s-cdda.makefile) v0.8.5:
    2020-11-05: cleaning a log message, v0.8.4.
    2021-01-28: add -f (rame number) option, remove manual nits, v0.8.5.
 
-s-cdda-to-db.pl (manual in s-cdda-to-db.1; s-cdda-to-db.makefile) v0.6.1:
+s-cdda-to-db.pl (manual in s-cdda-to-db.1; s-cdda-to-db.makefile) v0.6.2:
    Queries the content and data of audio CDs through s-cdda(1), collects
    informations, like the name of the artist, album, song titles, etc., of
-   desired audio tracks, also over the world wide web if possible, and
-   integrates encoded variants of the audio tracks as well as a human
-   readable database file in a per-CD directory under a directory tree.
+   desired audio tracks, if possible correlates data with a web query
+   against MusicBrainz, and integrates encoded variants of the audio tracks
+   as well as a human readable database file in a per-CD directory under
+   a directory tree.
    Multiple audio encoding formats are supported, and as much of the
    collected information as possible is also stored in the encoded files
    itself.  The user will be asked to edit collected informations, and will
    be given documentation for the rather sophisticated (classical music
    aware) database layout while doing so.
-
-   2020-06-13: taken over from former musicbox.git repository.
-   2020-06-16: Hunt bugs in this 2020 rewrite.
+   ...
    2020-06-20: add MusicBrainz CD information support, go for v0.6.0.
    2020-11-05: fix new log-related bug, v0.6.1 (fizzie #perl/freenode).
+   2021-01-30: add --frames option, remove manual nits, v0.6.2.
 
 zte.sh:
    Control a ZTE modem (MF79 and many others according to web search)

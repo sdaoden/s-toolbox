@@ -16,7 +16,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd June 12, 2020
+.Dd January 30, 2021
 .Dt S-CDDA-TO-DB 1
 .Os
 .Mx -enable
@@ -38,6 +38,7 @@
 .Op Fl v
 .Op Fl d Ar DEVICE
 .Op Fl f Ar FORMATS
+.Op Fl Fl frames Ns = Ns Ar NUMBER
 .Op Fl m Ar PATH
 .Op Fl Fl no-volume-normalize
 .Pp
@@ -49,6 +50,7 @@
 .Op Fl v
 .Op Fl d Ar DEVICE
 .Op Fl f Ar FORMATS
+.Op Fl Fl frames Ns = Ns Ar NUMBER
 .Op Fl m Ar PATH
 .Op Fl Fl no-volume-normalize
 .Fl e Ar CDID
@@ -62,8 +64,9 @@
 .Nm
 queries the content and data of audio CDs through
 .Xr s-cdda 1 ,
-collects informations, like the name of the artist, album, song titles,
-etc., of desired audio tracks, also over the world wide web if possible,
+collects informations, like name of artist, album, song titles, etc., of
+desired audio tracks, if possible correlates data with a web query against
+.Lk https://musicbrainz.org MusicBrainz ,
 and integrates encoded variants of the audio tracks as well as a human
 readable database file in a per-CD directory under a directory tree.
 Multiple audio encoding formats are supported, and as much of the
@@ -82,12 +85,10 @@ database layout while doing so.
 .It Fl d Ar DEVICE
 Specify the CD-ROM
 .Ar DEVICE .
-If not given the environment variable
-.Ev CDROM
-is inspected.
-This is used by
-.Xr s-cdda 1 ,
-please see there for more.
+This is passed to
+.Xr s-cdda 1
+via the same option if specified, please see there for more, also for
+which defaults come into play when not specified.
 .
 .Mx
 .It Fl e Ar CDID
@@ -103,6 +104,14 @@ The list of target audio encoding formats, as a comma-separated list.
 If not given the environment variable
 .Ev S_MUSIC_FORMATS
 is used, and please see there (below) for more.
+.
+.Mx
+.It Fl Fl frames Ns = Ns Ar NUMBER
+Passed to
+.Xr s-cdda 1
+as its
+.Fl \&f
+option, please see there for more.
 .
 .Mx
 .It Fl g
@@ -152,11 +161,6 @@ is to read and encode an audio CD.
 .Sh ENVIRONMENT
 .
 .Bl -tag -width ".It Fl BaNg"
-.Mx
-.It Ev CDROM
-Path name to the CDROM device, if not specified via
-.Fl d .
-.
 .Mx
 .It Ev EDITOR
 Used if
@@ -217,4 +221,5 @@ will be tried if this is not set.
 .Sh AUTHORS
 .
 .An Steffen Nurpmeso Aq steffen@sdaoden.eu
+.
 .\" s-ts-mode

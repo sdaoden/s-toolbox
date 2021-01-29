@@ -30,7 +30,7 @@ my $ABSTRACT = 'Read and encode audio CDs, integrated in S-Music DB.';
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-my $VERSION = '0.6.1';
+my $VERSION = '0.6.2';
 my $CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>';
 
 # MusicBrainz Web-Service; we use TLS if possible
@@ -122,7 +122,8 @@ my @Genres = (
    [ 28, 'Vocal' ]
 ); # }}}
 
-my ($READ_ONLY, $ENC_ONLY, $NO_VOL_NORM, $VERBOSE) = (0, 0, 0, 0);
+my ($READ_ONLY, $ENC_ONLY, $NO_FRAMES, $NO_VOL_NORM, $VERBOSE) =
+      (0, 0, undef, 0, 0);
 my ($CLEANUP_OK, $WORK_DIR, $TARGET_DIR) = (0);
 
 sub main_fun{ # {{{
@@ -252,6 +253,7 @@ sub command_line{
          'd|device=s' => \$CDROM,
          'e|encode-only=s' => \$ENC_ONLY,
          'f|formats=s' => sub {parse_formats($_[1])},
+         'frames=i' => \$NO_FRAMES,
          'm|music-db=s' => \$MUSIC_DB,
          'r|read-only' => \$READ_ONLY,
          'no-volume-normalize' => \$NO_VOL_NORM,
@@ -312,24 +314,24 @@ jdocu:
    print $FH <<__EOT__;
 $SELF ($VERSION): $ABSTRACT
 
- $SELF -h|--help  |  -g|--genre-list
+ $SELF -h|--help  /  $SELF -g|--genre-list
 
- $SELF [-v] [-d DEV] [-f|--formats ..] [-m|--music-db PATH]
-      [--no-volume-normalize]
+ $SELF [-v] [-d DEV] [-f|--formats ..] [--frames=NUMBER]
+      [-m|--music-db PATH] [--no-volume-normalize]
    Do all the entire processing in one run
  $SELF [-v] [-d DEV] -r|--read-only
    Only read audio tracks from CD-ROM to temporary work directory
- $SELF [-v] [-f|--formats ..] [-m|--music-db PATH]
+ $SELF [-v] [-f|--formats ..] [--frames=NUMBER] [-m|--music-db PATH]
       [--no-volume-normalize] -e|--encode-only CDID
    Only resume a --read-only session
 
--d|--device DEV       Use CD-ROM DEVice; else \$CDROM; else s-cdda(1) fallback
+-d|--device DEV       Use CD-ROM DEVice; else s-cdda(1) fallback
 -e|--encode-only CDID Resume --read-only session; it echoed the CDID to use
 -f|--formats LIST     Comma-separated audio format list; else \$S_MUSIC_FORMATS
                       ($flr)
+--frames=NUMBER       frames to read per iteration
 -m|--music-db PATH    S-Music DB directory; else \$S_MUSIC_DB
 -r|--read-only        Only read data, then exit; resume with --encode-only
---no-volume-normalize Do not apply volume normalization
 -v|--verbose          Be more verbose; does not delete temporary files!
 
 . Honours \$TMPDIR, \$VISUAL (or \$EDITOR; environment variables).
@@ -656,7 +658,9 @@ jdarwin_read_stop:
    sub _os_via_scdda{
       ($RawIsWAVE, $ReadFileExt) = (1, 'wav');
 
-      my ($dev, $l, @res, @cdtoc);
+      my ($frames, $dev, $l, @res, @cdtoc);
+
+      $frames = defined $NO_FRAMES ? ' -f ' . $NO_FRAMES : '';
 
       print '  ', shift, ': ';
       if(defined $CDROM){
@@ -670,12 +674,13 @@ jdarwin_read_stop:
 
       $FileReader = sub{
          my $title = shift;
-         return undef if 0 == system("s-cdda $dev " . ($VERBOSE ? '-v ' : '') .
+         return undef if 0 == system("s-cdda $dev $frames " .
+            ($VERBOSE ? '-v ' : '') .
             '-r ' .  $title->{NUMBER} . ' > ' .  $title->{RAW_FILE});
          return "! Device $dev: cannot read track $title->{NUMBER}: $?\n"
       };
 
-      $l = 's-cdda ' . $dev . ($VERBOSE ? ' -v' : '');
+      $l = 's-cdda ' . $dev . $frames .($VERBOSE ? ' -v' : '');
       ::v("Invoking $l");
 
       $l = `$l`;
