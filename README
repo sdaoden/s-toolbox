@@ -51,6 +51,11 @@ pam_shrundir (manual in pam_shrundir.8):
    2021-01-29: fix lockfile race; use file-descriptor approach.
    2021-01-30: do not even remove the lockfile, no good in sh(1).
 
+pam_xdg.c (manual in pam_xdg.8; pam_xdg.makefile )
+   Complete XDG Base Directories support via PAM, including injection of
+   according environment variables into user sessions, as well as life-
+   cycle support for per-user XDG_RUNTIME_DIR.
+
 quote-rndtrip.sh:
    Round trip quote strings in POSIX (and elder) shell(s).
    Thanks to Robert Elz (kre).
