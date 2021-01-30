@@ -62,7 +62,7 @@ umask 0077
    exit ${ex}
 ) 8>"${lckfile}"
 e=${?}
-rm -f "${lckfile}"
+# No good in sh(1): rm -f "${lckfile}"
 
 em=
 case ${e} in
