@@ -1,14 +1,12 @@
 /*@ pam_xdg - manage XDG Base Directories (runtime dir life time, environment).
- *@ Create /run/user/`id -u` when the first session is opened, and remove it
- *@ again once the last is closed.
+ *@ Create /run/user/`id -u` when the first session is opened.
  *@ It also creates according XDG_RUNTIME_DIR etc. environment variables in the
  *@ user sessions, except when given the "runtime" option, in which case it
  *@ only creates XDG_RUNTIME_DIR and not the others.
  *@ Place for example in /etc/pam.d/common-session one of the following:
  *@   session options pam_xdg.so [runtime] [notroot]
- *@ Notes: - effectively needs ISO C99 as it uses strtoull(3).
- *@        - according to XDG Base Directory Specification, v0.7.
- *@        - Linux.
+ *@ Notes: - according to XDG Base Directory Specification, v0.7.
+ *@        - Linux-only (i think).
  *
  * Copyright (c) 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -37,13 +35,9 @@
 /* */
 #define a_XDG "pam_xdg"
 
-#define a_RUNTIME_DIR_OUTER "/run"  /* This must exist already */
+#define a_RUNTIME_DIR_OUTER "/run" /* This must exist already */
 #define a_RUNTIME_DIR_BASE "user" /* We create this as necessary, thus. */
-
-#define a_LOCK_FILE "." a_XDG ".lck"
-#define a_LOCK_TRIES 10
-
-#define a_DAT_FILE "." a_XDG ".dat"
+#define a_RUNTIME_DIR_BASE_MODE 0755 /* 0711? */
 
 /* >8 -- 8< */
 
@@ -55,13 +49,10 @@
 
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 
 #include <errno.h>
 #include <fcntl.h>
-#include <limits.h>
 #include <pwd.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -82,23 +73,19 @@ static int a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc,
 static int
 a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
    char uidbuf[sizeof "18446744073709551615"],
-         wbuf[(((sizeof("18446744073709551615") -1) * 2) | 
-            (sizeof("cd ..;rm -rf ") + sizeof("18446744073709551615")) |
-            (sizeof("XDG_RUNTIME_DIR=") + sizeof(a_RUNTIME_DIR_OUTER) +
+         wbuf[((sizeof("XDG_RUNTIME_DIR=") + sizeof(a_RUNTIME_DIR_OUTER) +
                sizeof(a_RUNTIME_DIR_BASE) + sizeof("18446744073709551615")) |
             (sizeof("XDG_CONFIG_DIRS=") + PATH_MAX)
             ) +1];
-   struct flock flp;
    struct stat st;
-   uint64_t sessions;
    struct passwd *pwp;
    char const *emsg;
-   int cntrlfd, fd, cwdfd, only_runtime, notroot, res, uidbuflen;
+   int cwdfd, only_runtime, notroot, res, uidbuflen;
    char const *user;
    (void)flags;
 
    user = "<unset>";
-   cntrlfd = fd = cwdfd = -1;
+   cwdfd = -1;
    only_runtime = notroot = 0;
 
    /* Command line */
@@ -114,7 +101,8 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
             goto jerr;
          }
       }
-   }
+   }else
+      goto jok; /* No longer used, session counting does not work */
 
    /* We need the user we go for */
    if((res = pam_get_item(pamh, PAM_USER, (void const**)&user)
@@ -143,7 +131,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
    }
 
    /* We try create the base directory once as necessary */
-   if(isopen){
+   /*if(isopen)*/{
       res = 0;
       while(fstatat(cwdfd, a_RUNTIME_DIR_BASE, &st, AT_SYMLINK_NOFOLLOW
             ) == -1){
@@ -153,7 +141,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
             goto jerr;
          }
 
-         if(mkdirat(cwdfd, a_RUNTIME_DIR_BASE, 0711) == -1){
+         if(mkdirat(cwdfd, a_RUNTIME_DIR_BASE, a_RUNTIME_DIR_BASE_MODE) == -1){
             emsg = "cannot create base directory "
                   a_RUNTIME_DIR_OUTER "/" a_RUNTIME_DIR_BASE;
             goto jerr;
@@ -170,148 +158,47 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
    close(cwdfd);
    cwdfd = res;
 
-   /* Landed in the runtime base dir, obtain our lock */
-   if((cntrlfd = openat(cwdfd, a_LOCK_FILE,
-         (O_CREAT | O_WRONLY | O_NOFOLLOW | O_NOCTTY),
-         (S_IRUSR | S_IWUSR))) == -1){
-      emsg = "cannot open control lock file";
-      goto jerr;
-   }
-
-   for(res = a_LOCK_TRIES;;){
-      memset(&flp, 0, sizeof flp);
-      flp.l_type = F_WRLCK;
-      flp.l_start = 0;
-      flp.l_whence = SEEK_SET;
-      flp.l_len = 0;
-
-      if(fcntl(cntrlfd, F_SETLKW, &flp) != -1)
-         break;
-
-      if(errno != EINTR){
-         emsg = "unexpected error obtaining lock on control lock file";
-         goto jerr;
-      }
-      if(--res == 0){
-         emsg = "cannot obtain lock on control lock file";
-         goto jerr;
-      }
-   }
-
    /* Turn to user management */
    uidbuflen = snprintf(uidbuf, sizeof(uidbuf), "%lu",
          (unsigned long)pwp->pw_uid);
 
    /* We create the per-user directory on isopen time as necessary */
-   for(res = 0;; ++res){
-      int nfd;
+   /*if(isopen)*/{
+      for(res = 0;; ++res){
+         int nfd;
 
-      if((nfd = openat(cwdfd, uidbuf, (O_PATH | O_DIRECTORY | O_NOFOLLOW))
-            ) != -1){
-         close(cwdfd);
-         cwdfd = nfd;
-         break;
-      }else{
-         if(errno == ENOENT){
-            if(!isopen)
-               goto jok;
-            if(res != 0)
-               goto jeurd;
-         }else{
-jeurd:
-            emsg = "per user XDG_RUNTIME_DIR not accessible";
-            goto jerr;
-         }
-      }
-
-      if(mkdirat(cwdfd, uidbuf, 0700) == -1){
-         emsg = "cannot create per user XDG_RUNTIME_DIR";
-         goto jerr;
-      }
-      if(fchownat(cwdfd, uidbuf, pwp->pw_uid, pwp->pw_gid, AT_SYMLINK_NOFOLLOW
-            ) == -1){
-         emsg = "cannot chown(2) per user XDG_RUNTIME_DIR";
-         goto jerr;
-      }
-   }
-
-   /* Read session counter; be simple and assume 0 if non-existent, this should
-    * not happen in practice */
-   sessions = 0;
-   if((fd = openat(cwdfd, a_DAT_FILE, O_RDONLY)) != -1){
-      char *ep;
-      ssize_t r;
-
-      while((r = read(fd, wbuf, sizeof(wbuf) -1)) == -1){
-         if(errno != EINTR){
-            emsg = "I/O error while reading session counter";
-            goto jerr;
-         }
-      }
-
-      /* We have written this as a valid POSIX text file, then, so chop tail */
-      if(r < 1 || (size_t)r >= (sizeof(wbuf) -1) / 2){
-jecnt:
-         emsg = "session counter corrupted, ask administrator to remove "
-               a_RUNTIME_DIR_OUTER "/" a_RUNTIME_DIR_BASE "/YOUR-UID/"
-               a_DAT_FILE;
-         goto jerr;
-      }
-      for(;;){
-         char c;
-
-         c = wbuf[(size_t)r - 1];
-         if(c == '\0' || c == '\n'){
-            if(--r == 0)
-               goto jecnt;
-         }else
+         if((nfd = openat(cwdfd, uidbuf, (O_PATH | O_DIRECTORY | O_NOFOLLOW))
+               ) != -1){
+            close(cwdfd);
+            cwdfd = nfd;
             break;
+         }else{
+            if(errno == ENOENT){
+               if(!isopen)
+                  goto jok;
+               if(res != 0)
+                  goto jeurd;
+            }else{
+jeurd:
+               emsg = "per user XDG_RUNTIME_DIR not accessible";
+               goto jerr;
+            }
+         }
+
+         if(mkdirat(cwdfd, uidbuf, 0700) == -1){
+            emsg = "cannot create per user XDG_RUNTIME_DIR";
+            goto jerr;
+         }
+         if(fchownat(cwdfd, uidbuf, pwp->pw_uid, pwp->pw_gid,
+               AT_SYMLINK_NOFOLLOW) == -1){
+            emsg = "cannot chown(2) per user XDG_RUNTIME_DIR";
+            goto jerr;
+         }
       }
-      wbuf[(size_t)r] = '\0';
-
-      sessions = strtoull(wbuf, &ep, 10);
-      if(sessions == ULLONG_MAX || ep == wbuf || *ep != '\0')
-         goto jecnt;
-
-      close(fd);
-      fd = -1;
    }
-
-   if(isopen)
-      ++sessions;
-   /* == 0 should never happen, but just handled it easily */
-   else if(sessions == 0 || --sessions == 0){
-      /* This is ridiculously simple, but everything else would be opposite */
-      char const cmd[] = "rm -rf " a_RUNTIME_DIR_OUTER "/"
-            a_RUNTIME_DIR_BASE "/";
-
-      memcpy(wbuf, cmd, sizeof(cmd) -1);
-      memcpy(&wbuf[sizeof(cmd) -1], uidbuf, uidbuflen +1);
-      res = system(wbuf);
-      if(!WIFEXITED(res) || WEXITSTATUS(res) != 0){
-         emsg = "unable to rm(1) -rf per user XDG_RUNTIME_DIR";
-         errno = EINVAL;
-         goto jerr;
-      }
-      goto jok;
-   }
-
-   /* Write out session counter (as a valid POSIX text file) */
-   res = snprintf(wbuf, sizeof wbuf, "%llu\n", (unsigned long long)sessions);
-
-   if(((fd = openat(cwdfd, a_DAT_FILE,
-         (O_CREAT | O_TRUNC | O_WRONLY | O_SYNC | O_NOFOLLOW | O_NOCTTY),
-         (S_IRUSR | S_IWUSR))) == -1) || write(fd, wbuf, res) != res){
-      emsg = "cannot write session counter, ask administrator to remove "
-            a_RUNTIME_DIR_OUTER "/" a_RUNTIME_DIR_BASE "/YOUR-UID/"
-            a_DAT_FILE;
-      goto jerr;
-   }
-   close(fd);
-   fd = -1;
 
    /* When opening, we want to put environment variables, too */
-   if(isopen){
+   /*if(isopen)*/{
       char *cp;
 
       /* XDG_RUNTIME_DIR */
@@ -374,10 +261,6 @@ jecnt:
 jok:
    res = PAM_SUCCESS;
 jleave:
-   if(fd != -1)
-      close(fd);
-   if(cntrlfd != -1)
-      close(cntrlfd);
    if(cwdfd != -1)
       close(cwdfd);
 

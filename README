@@ -43,18 +43,13 @@ gmane-fetch.pl:
    ...
    2017-07-24: add support for multiple servers and add gwene.org.
 
-pam_shrundir (manual in pam_shrundir.8):
-   Simple POSIX shell script which can be used to manage the Linux
-   /run/user/`id -u` directory.  See script head.
-
-   2021-01-27: added manual.
-   2021-01-29: fix lockfile race; use file-descriptor approach.
-   2021-01-30: do not even remove the lockfile, no good in sh(1).
-
 pam_xdg.c (manual in pam_xdg.8; pam_xdg.makefile )
    Complete XDG Base Directories support via PAM, including injection of
-   according environment variables into user sessions, as well as life-
-   cycle support for per-user XDG_RUNTIME_DIR.
+   according environment variables into user sessions, as well as creation
+   support for per-user $XDG_RUNTIME_DIR.
+
+   2021-01-31: no more life-cycle of RUNTIME_DIR, PAM cannot do that.
+               Strip to absolute minimum implementation.
 
 quote-rndtrip.sh:
    Round trip quote strings in POSIX (and elder) shell(s).

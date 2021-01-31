@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd January 30, 2021
+.Dd January 31, 2021
 .Dt PAM_XDG 8
 .Os
 .
@@ -35,7 +35,7 @@
 .Sh DESCRIPTION
 .
 .Nm
-is a PAM module that manages creation and deletion of the
+is a PAM module that manages creation of the
 .Ev XDG_RUNTIME_DIR
 directory, as well as injection of environment variables denoting all
 directories specified by the
@@ -44,19 +44,17 @@ spec/\:basedir-\:spec-\:latest.html "XDG Base Directory Specification"
 into user sessions.
 .
 .Pp
-When linked into the PAM system, the runtime directory will be created as
-.Ql /run/user/`id -u`
-once a user creates his or her first login session, and it will be
-removed recursively once the last such session ends.
+When linked into the PAM session system the runtime directory will be
+created once a user creates his or her first login session.
 Unless
 .Ar rundir
-was given all XDG related environment variables will be created in the
-user session with their default or computed values, otherwise only
+was given all XDG related environment variables will be created in all
+user sessions with their default or computed values, otherwise only
 .Ev XDG_RUNTIME_DIR .
 If
 .Ar notroot
-was given the module will bypass itself for root account logins, that
-is, no actions will be performed.
+was given the module will bypass itself for root account logins and
+perform no actions for root.
 .
 .Pp
 In order to make use of this script, place the following in the control
