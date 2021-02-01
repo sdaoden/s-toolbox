@@ -141,12 +141,14 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
             goto jerr;
          }
 
-         if(mkdirat(cwdfd, a_RUNTIME_DIR_BASE, a_RUNTIME_DIR_BASE_MODE) == -1){
+         if(mkdirat(cwdfd, a_RUNTIME_DIR_BASE, a_RUNTIME_DIR_BASE_MODE
+               ) == -1 && errno != EEXIST){
             emsg = "cannot create base directory "
                   a_RUNTIME_DIR_OUTER "/" a_RUNTIME_DIR_BASE;
             goto jerr;
          }
       }
+      /* Not worth doing S_ISDIR(st.st_mode), O_DIRECTORY will bail next */
    }
 
    if((res = openat(cwdfd, a_RUNTIME_DIR_BASE,
@@ -163,37 +165,37 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
          (unsigned long)pwp->pw_uid);
 
    /* We create the per-user directory on isopen time as necessary */
-   /*if(isopen)*/{
-      for(res = 0;; ++res){
-         int nfd;
+   for(res = 0;; ++res){
+      int nfd;
 
-         if((nfd = openat(cwdfd, uidbuf, (O_PATH | O_DIRECTORY | O_NOFOLLOW))
-               ) != -1){
-            close(cwdfd);
-            cwdfd = nfd;
-            break;
+      if((nfd = openat(cwdfd, uidbuf, (O_PATH | O_DIRECTORY | O_NOFOLLOW))
+            ) != -1){
+         close(cwdfd);
+         cwdfd = nfd;
+         break;
+      }else{
+         if(errno == ENOENT){
+            if(!isopen)
+               goto jok;
+            if(res != 0)
+               goto jeurd;
          }else{
-            if(errno == ENOENT){
-               if(!isopen)
-                  goto jok;
-               if(res != 0)
-                  goto jeurd;
-            }else{
 jeurd:
-               emsg = "per user XDG_RUNTIME_DIR not accessible";
-               goto jerr;
-            }
+            emsg = "per user XDG_RUNTIME_DIR not accessible";
+            goto jerr;
          }
+      }
 
-         if(mkdirat(cwdfd, uidbuf, 0700) == -1){
-            emsg = "cannot create per user XDG_RUNTIME_DIR";
-            goto jerr;
-         }
-         if(fchownat(cwdfd, uidbuf, pwp->pw_uid, pwp->pw_gid,
-               AT_SYMLINK_NOFOLLOW) == -1){
-            emsg = "cannot chown(2) per user XDG_RUNTIME_DIR";
-            goto jerr;
-         }
+      if(mkdirat(cwdfd, uidbuf, 0700) == -1 && errno != EEXIST){
+         emsg = "cannot create per user XDG_RUNTIME_DIR";
+         goto jerr;
+      }
+
+      /* Just chown it! */
+      if(fchownat(cwdfd, uidbuf, pwp->pw_uid, pwp->pw_gid,
+            AT_SYMLINK_NOFOLLOW) == -1){
+         emsg = "cannot chown(2) per user XDG_RUNTIME_DIR";
+         goto jerr;
       }
    }
 

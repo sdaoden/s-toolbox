@@ -50,6 +50,7 @@ pam_xdg.c (manual in pam_xdg.8; pam_xdg.makefile )
 
    2021-01-31: no more life-cycle of RUNTIME_DIR, PAM cannot do that.
                Strip to absolute minimum implementation.
+   2021-02-01: now without lock file, must ignore EEXIST of mkdir(2)!
 
 quote-rndtrip.sh:
    Round trip quote strings in POSIX (and elder) shell(s).
