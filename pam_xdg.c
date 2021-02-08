@@ -122,8 +122,6 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
       goto jok;
 
    /* I admit all this is overly complicated and expensive */
-   umask(0022);
-
    if((cwdfd = open(a_RUNTIME_DIR_OUTER, (O_PATH | O_DIRECTORY | O_NOFOLLOW))
          ) == -1){
       emsg = "cannot obtain chdir(2) descriptor to " a_RUNTIME_DIR_OUTER;
