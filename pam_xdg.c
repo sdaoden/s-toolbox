@@ -130,6 +130,9 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
 
    /* We try create the base directory once as necessary */
    /*if(isopen)*/{
+      gid_t oegid;
+      mode_t oumask;
+
       res = 0;
       while(fstatat(cwdfd, a_RUNTIME_DIR_BASE, &st, AT_SYMLINK_NOFOLLOW
             ) == -1){
@@ -139,12 +142,19 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
             goto jerr;
          }
 
+         oumask = umask(0000);
+         oegid = getegid();
+         setegid(0);
+
          if(mkdirat(cwdfd, a_RUNTIME_DIR_BASE, a_RUNTIME_DIR_BASE_MODE
                ) == -1 && errno != EEXIST){
             emsg = "cannot create base directory "
                   a_RUNTIME_DIR_OUTER "/" a_RUNTIME_DIR_BASE;
             goto jerr;
          }
+
+         setegid(oegid);
+         umask(oumask);
       }
       /* Not worth doing S_ISDIR(st.st_mode), O_DIRECTORY will bail next */
    }

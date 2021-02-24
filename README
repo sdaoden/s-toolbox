@@ -52,6 +52,9 @@ pam_xdg.c (manual in pam_xdg.8; pam_xdg.makefile )
                Strip to absolute minimum implementation.
    2021-02-01: now without lock file, must ignore EEXIST of mkdir(2)!
    2021-02-08: do not set umask(2) either, or had to restore original value.
+   2021-02-24: the latter is false, in fact we must even play setegid(2) games
+               in order to work under all possible conditions.  This is not
+               documented, and a bit weird modules have to deal with it.
 
 quote-rndtrip.sh:
    Round trip quote strings in POSIX (and elder) shell(s).
