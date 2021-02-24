@@ -21,7 +21,7 @@
 #@          sed −e 's/"/"\\""/g' −e 's/.*/"&"/'
 #@ 2018-11-12: add -p option to tar.
 #@ 2018-11-13: change builtin path set.
-#@ 2020-09-03: change builtin path set.
+#@ 2020-09-03, 2021-02-23: change builtin path set.
 #
 # 2010 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain.
@@ -81,12 +81,14 @@ my @EXLIST = qw(.DS_Store .localized .Trash);
 # @NORMAL_INPUT is regulary extended by all directories found in $ADDONS, iff
 my @NORMAL_INPUT = (
    "$HOME/arena",
+   "$HOME/.secweb-mozilla",
    "$HOME/.sec.arena",
    "$HOME/.sic",
    "/x/doc"
 );
 my @COMPLETE_INPUT = (
    "$HOME/arena",
+   "$HOME/.secweb-mozilla",
    "$HOME/.sec.arena",
    "$HOME/.sic",
    "/x/doc"
