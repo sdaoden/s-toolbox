@@ -90,8 +90,7 @@ my @COMPLETE_INPUT = (
    "$HOME/arena",
    "$HOME/.secweb-mozilla",
    "$HOME/.sec.arena",
-   "$HOME/.sic",
-   "/x/doc"
+   "$HOME/.sic"
 );
 
 # Symbolic links will be skipped actively if this is true.
