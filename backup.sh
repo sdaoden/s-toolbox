@@ -22,6 +22,7 @@
 #@ 2018-11-12: add -p option to tar.
 #@ 2018-11-13: change builtin path set.
 #@ 2020-09-03, 2021-02-23: change builtin path set.
+#@ 2021-03-03: silence $COMPRESSOR
 #
 # 2010 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain.
@@ -98,9 +99,9 @@ my @COMPLETE_INPUT = (
 my $SYMLINK_INCLUDE = 0;
 
 # Compressor for --complete and --reset.  It must compress its filename
-# argument to FILENAME${COMPRESSOR_EXT}.  If it doesn't remove the original
+# argument to FILENAME${COMPRESSOR_EXT}.  If it does not remove the original
 # file, we will do
-my $COMPRESSOR = 'zstd -19 -T0';
+my $COMPRESSOR = 'zstd -19 -T0 -q';
 my $COMPRESSOR_EXT = '.zst';
 
 ###  --  >8  --  8<  --  ###
