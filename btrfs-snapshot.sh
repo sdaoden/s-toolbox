@@ -1,6 +1,20 @@
 #!/bin/sh -
 #@ Create BTRFS filesystem snapshots, send them to a ball, trim them down.
-#@ The configuration is read from /root/$HOSTNAME/btrfs-snapshot.
+#@ The configuration is read from ./btrfs-snapshot, or otherwise
+#@ /root/hosts/$HOSTNAME/btrfs-snapshot.  It must contain:
+#@
+#@   # Top BTRFS volume..
+#@   THEVOL=/media/btrfs-master
+#@
+#@   # the mount points within; we cd(1) to $THEVOL, these need to be relative.
+#@   DIRS='home x/doc x/m x/m-mp4 x/os x/p x/src var/cache/apk'
+#@
+#@   # ACCUDIR: where everything is stored, including the final target
+#@   ACCUDIR=/media/btrfs-master
+#@
+#@   # If set, no real action is performed
+#@   #DEBUG
+#@
 #@ TODO (Instead) We should offer command line arguments, to a config file
 #@ TODO and/or to set the vars directly: THEVOL,DIRS,ACCUDIR.
 #@
@@ -14,12 +28,12 @@
 #@ as mount points, and a snapshots/ at the first level under which all those
 #@ subvolumes are mirrored.  Otherwise the_worker() must be adjusted.
 #@
-#@ - "create-dir-tree" reads /root/$HOSTNAME/btrfs-snapshot and creates all
-#@   $DIRS and their snapshot mirrors, as necessary.
+#@ - "create-dir-tree" reads /root/hosts/$HOSTNAME/btrfs-snapshot and creates
+#@   all $DIRS and their snapshot mirrors, as necessary.
 #@   It does not remove surplus directories.
 #@   Any further synchronization can then be performed via
 #@      cd WHEREVER && btrfs-snapshot.sh sync-to-cwd
-#@   (assuming that /root/$HOSTNAME/btrfs-snapshot describes the template).
+#@   (assuming /root/hosts/$HOSTNAME/btrfs-snapshot describes the template).
 #@
 #@ - "create" creates snapshots/ of all $DIRS.
 #@
@@ -40,7 +54,7 @@
 #@   be absolute.  (If realpath(1) is available we use it though.)
 #@
 #@ - "clone-to-cwd" and "sync-to-cwd" need one existing snapshot (series),
-#@   and will clone all the latest snapshots to the CWD.
+#@   and will clone all the latest snapshots to the current-working-directory.
 #@   clone-to-cwd creates the necessary hierarchy first, sync-to-cwd skips
 #@   non-existing directories.
 #@   Only the difference to the last snapshot which is present in both trees is
@@ -50,34 +64,26 @@
 #@ + the_worker() drives the logic, and may become adjusted, if simply
 #@   setting other values for $THEVOL, $DIRS and $ACCUDIR does not suffice.
 #
-# 2018 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
+# 2019 - 2021 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain
 
-: ${HOSTNAME:=`hostname`}
+: ${HOSTNAME:=`uname -n`}
 
-if [ -f /root/${HOSTNAME}/btrfs-snapshot ]; then
-   # Top BTRFS volume..
-   #THEVOL=/media/btrfs-master
-
-   # the mount points within; we cd(1) to $THEVOL, these need to be relative.
-   #DIRS='home x/doc x/m x/m-mp4 x/os x/p x/src var/cache/apk'
-
-   # ACCUDIR: where everything is stored, including the final target
-   #ACCUDIR=/media/btrfs-master
-
-   . /root/${HOSTNAME}/btrfs-snapshot
-
-   : ${ZSTD_LEVEL:=-5}
+if [ -f ./btrfs-snapshot ]; then
+   . ./btrfs-snapshot
+elif [ -f /root/hosts/${HOSTNAME}/btrfs-snapshot ]; then
+   . /root/hosts/${HOSTNAME}/btrfs-snapshot
 else
-   logger -s -t root/btrfs-snapshot.sh \
-         "no config /root/${HOSTNAME}/btrfs-snapshot"
+   logger -s -t /root/bin/btrfs-snapshot.sh \
+      "no config ./btrfs-snapshot, nor /root/hosts/${HOSTNAME}/btrfs-snapshot"
    exit 1
 fi
+: ${ZSTD_LEVEL:=-5}
 
 # Non-empty and we will not act().
-DEBUG=
+: ${DEBUG:=}
 
-## 8< >8
+## >8 -- 8<
 
 # Will be set by "receive-balls"
 BALLS=
@@ -165,7 +171,7 @@ the_worker() { # Will run in subshell!
    echo '= Done'
 }
 
-## 8< ----- >8
+## >8 -- -- 8<
 
 act() {
    if [ -n "$DEBUG" ]; then
@@ -311,7 +317,7 @@ setmount_one() {
    echo '== Setting "mount point" of '$mydir' to '$1
    # Since $HOSTNAME can be anything when we operate on sticks or whatever
    mountpoint=
-   if [ "$HOSTNAME" = "`hostname`" ] &&
+   if [ "$HOSTNAME" = "`uname -n`" ] &&
          < /etc/fstab grep -q 'subvol=/'"$mydir"; then
       mountpoint=`</etc/fstab awk '
             BEGIN{regex="/'"$mydir"'"; gsub("/","\\\/", regex)}

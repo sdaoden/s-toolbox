@@ -3,21 +3,6 @@ A repo of some small tools
 
 Somewhat useful:
 
-entropy-saver.c:
-   Linux: for my use cases i find it annoying that "entropy_avail" is not
-   incremented when i restore the saved random seed that machines have
-   collected so hard.  This little program touches this count also.
-   ...
-   2019-01-21: Small fixes, and take care for EAGAIN (Bernd Petrovitsch).
-   2019-01-24: use syslog(3) instead; also test EBUSY (Bernd Petrovitsch).
-
-fan-adaptive.sh:
-   "Adaptive", more generic, and much more easily adaptable successor of
-   fancontrol.sh.  For now with simulator and MacBook Air model support.
-   See the script header for more.
-   ...
-   2019-04-09: add a SIGTSTP handler which only stops fans.
-
 find-command.sh:
    Find an executable command within a POSIX shell.
    which(1) is not standardized, and command(1) -v may return non-executable,
@@ -117,21 +102,32 @@ backup.sh:
 btrfs-snapshot.sh:
    Simple script to deal with BTRFS snapshots.
    ...
-   2019-09-29: allow directories as arguments to receive-ball.
-   2020-08-18: drop {create,receive}-ball, introduce ditto -balls:
-               create one ball per subvolume in a .snaps-DATE directory.
-               Files are split(1) at 2 GB size boundaries, and zstd(1)
-               compresssed.  Copy that around via cp -n -v -R.
    2020-08-27: tweak former: since btrfs-receive does not differentiate
                in between "error" and "snapshot already exists", we need
                .stamp files in the ball directories to test this case.
    2021-01:    add ZSTD_LEVEL, default to -5.  "sync" the BTRFS.
+   2021-03-30: try ./btrfs-snapshot first, then /root/$HOSTNAME/b..
 
 cdoc-freebsd.S:
    FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on
    newer ones, but have not tried it in a while.  It had 416 object
    file bytes when everything was placed in ``.text`` (no .EH frames
    back then).
+
+entropy-saver.c:
+   Linux: for my use cases i find it annoying that "entropy_avail" is not
+   incremented when i restore the saved random seed that machines have
+   collected so hard.  This little program touches this count also.
+   ...
+   2019-01-21: Small fixes, and take care for EAGAIN (Bernd Petrovitsch).
+   2019-01-24: use syslog(3) instead; also test EBUSY (Bernd Petrovitsch).
+
+fan-adaptive.sh:
+   "Adaptive", more generic, and much more easily adaptable successor of
+   fancontrol.sh.  For now with simulator and MacBook Air model support.
+   See the script header for more.
+   ...
+   2019-04-09: add a SIGTSTP handler which only stops fans.
 
 gen-uushar-wrapper:
    Creates a shell archive similar to uushar as below, except that the
