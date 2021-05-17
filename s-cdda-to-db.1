@@ -40,6 +40,7 @@
 .Op Fl f Ar FORMATS
 .Op Fl Fl frames Ns = Ns Ar NUMBER
 .Op Fl m Ar PATH
+.Op Fl Fl music-brainz-tls
 .Op Fl Fl no-volume-normalize
 .Pp
 .Nm
@@ -52,6 +53,7 @@
 .Op Fl f Ar FORMATS
 .Op Fl Fl frames Ns = Ns Ar NUMBER
 .Op Fl m Ar PATH
+.Op Fl Fl music-brainz-tls
 .Op Fl Fl no-volume-normalize
 .Fl e Ar CDID
 .
@@ -127,6 +129,11 @@ The top directory of the S-Music DB.
 If not given the environment variable
 .Ev S_MUSIC_DB
 is used, please see there for more.
+.
+.Mx
+.It Fl Fl music-brainz-tls
+.Lk https://musicbrainz.org MusicBrainz
+has shown problems with HTTPS queries in the past, they are off by default.
 .
 .Mx
 .It Fl Fl no-volume-normalize

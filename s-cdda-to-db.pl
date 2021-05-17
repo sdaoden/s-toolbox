@@ -125,6 +125,7 @@ my @Genres = (
 my ($DEBUG, $READ_ONLY, $ENC_ONLY, $NO_FRAMES, $NO_VOL_NORM, $VERBOSE) =
       (undef, 0, 0, undef, 0, 0);
 my ($CLEANUP_OK, $WORK_DIR, $TARGET_DIR) = (0);
+my ($MBRAINZ_TLS) = (0);
 
 sub main_fun{ # {{{
    # Do not check for the 'a' and 'A' subflags of -C, but only I/O related ones
@@ -276,7 +277,9 @@ sub command_line{
          'm|music-db=s' => \$MUSIC_DB,
          'r|read-only' => \$READ_ONLY,
          'no-volume-normalize' => \$NO_VOL_NORM,
-         'v|verbose' => \$VERBOSE
+         'v|verbose' => \$VERBOSE,
+
+         'music-brainz-tls' => \$MBRAINZ_TLS
          );
    if($^O eq 'darwin'){
       $opts{'cdromdev=s'} = \$CDROMDEV
@@ -1040,8 +1043,13 @@ __EOT__
          '  collect more data of the audio CD? ';
       return unless ::user_confirm();
 
-      $self->{_protocol} = ($self->{_use_ssl} = HTTP::Tiny::can_ssl())
-            ? 'https' : 'http';
+      if($MBRAINZ_TLS && HTTP::Tiny::can_ssl()){
+         $self->{_use_ssl} = 1;
+         $self->{_protocol} = 'https'
+      }else{
+         $self->{_use_ssl} = 0;
+         $self->{_protocol} = 'http'
+      }
       $self->{_headers} = {
             'Accept' => 'application/xml',
             'Content-Type' => 'application/xml'
