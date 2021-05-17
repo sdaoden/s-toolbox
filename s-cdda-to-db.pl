@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-require 5.008_001; # xxx I have forgotten why, i do not know whether it is true
+require 5.008_008; # ${^UTF8LOCALE}
 my $SELF = 's-cdda-to-db';
 my $ABSTRACT = 'Read and encode audio CDs, integrated in S-Music DB.';
 #@ Web: https://www.sdaoden.eu/code.html
@@ -30,7 +30,7 @@ my $ABSTRACT = 'Read and encode audio CDs, integrated in S-Music DB.';
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-my $VERSION = '0.6.2';
+my $VERSION = '0.6.3-ALPHA';
 my $CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>';
 
 # MusicBrainz Web-Service; we use TLS if possible
@@ -282,13 +282,14 @@ sub command_line{
       $ENC_ONLY = 1
    }
 
-   unless($READ_ONLY){
-      $MUSIC_DB = glob $MUSIC_DB if defined $MUSIC_DB;
-      unless(defined $MUSIC_DB && -d $MUSIC_DB && -w _){
-         $emsg = '-m / $S_MUSIC_DB directory not accessible';
-         goto jdocu
-      }
+   # We now always need this, even in $READ_ONLY mode.
+   $MUSIC_DB = glob $MUSIC_DB if defined $MUSIC_DB;
+   unless(defined $MUSIC_DB && -d $MUSIC_DB && -w _){
+      $emsg = '-m / $S_MUSIC_DB directory not accessible';
+      goto jdocu
+   }
 
+   unless($READ_ONLY){
       if(!Enc::format_has_any() && defined(my $v = $ENV{S_MUSIC_FORMATS})){
          parse_formats($v)
       }
