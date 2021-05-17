@@ -31,7 +31,7 @@ my $ABSTRACT = 'Read and encode audio CDs, integrated in S-Music DB.';
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-my $VERSION = '0.6.3-ALPHA';
+my $VERSION = '0.7.0';
 my $CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>';
 
 # MusicBrainz Web-Service; we use TLS if possible

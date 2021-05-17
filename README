@@ -32,11 +32,7 @@ pam_xdg.c (manual in pam_xdg.8; pam_xdg.makefile )
    Complete XDG Base Directories support via PAM, including injection of
    according environment variables into user sessions, as well as creation
    support for per-user $XDG_RUNTIME_DIR.
-
-   2021-01-31: no more life-cycle of RUNTIME_DIR, PAM cannot do that.
-               Strip to absolute minimum implementation.
-   2021-02-01: now without lock file, must ignore EEXIST of mkdir(2)!
-   2021-02-08: do not set umask(2) either, or had to restore original value.
+   ...
    2021-02-24: the latter is false, in fact we must even play setegid(2) games
                in order to work under all possible conditions.  This is not
                documented, and a bit weird modules have to deal with it.
@@ -51,14 +47,10 @@ s-cdda.c (manual in s-cdda.1; s-cdda.makefile) v0.8.5:
    Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
    Developed in 2020 on then current operating-systems and hardware.
    Not tested with CD-Extra etc (only proofed logically.
-
-   2020-03-03: base even track reading upon SCSI MMC commands.
-               And port to DragonFly BSD, FreeBSD, NetBSD, and OpenBSD.
-   ..2020-06-12: CD-TEXT dump generated [CDDB] section, should be [ALBUM]
-   2020-11-05: cleaning a log message, v0.8.4.
+   ...
    2021-01-28: add -f (rame number) option, remove manual nits, v0.8.5.
 
-s-cdda-to-db.pl (manual in s-cdda-to-db.1; s-cdda-to-db.makefile) v0.6.2:
+s-cdda-to-db.pl (manual in s-cdda-to-db.1; s-cdda-to-db.makefile) v0.6.3:
    Queries the content and data of audio CDs through s-cdda(1), collects
    informations, like the name of the artist, album, song titles, etc., of
    desired audio tracks, if possible correlates data with a web query
@@ -71,16 +63,11 @@ s-cdda-to-db.pl (manual in s-cdda-to-db.1; s-cdda-to-db.makefile) v0.6.2:
    be given documentation for the rather sophisticated (classical music
    aware) database layout while doing so.
    ...
-   2020-06-20: add MusicBrainz CD information support, go for v0.6.0.
-   2020-11-05: fix new log-related bug, v0.6.1 (fizzie #perl/freenode).
-   2021-01-30: add --frames option, remove manual nits, v0.6.2.
-
-zte.sh:
-   Control a ZTE modem (MF79 and many others according to web search)
-   from the command line.  Needs curl(1) and OpenSSL(1).
-   ..
-   2018-12-26: "login" now asks until there is a password, but PASSWORD=
-               could still be set to avoid that.
+   2021-05-17: fix: $MUSIC_DB now always needed, even in read-only mode.
+               Talk about $LC_ALL and $PERL5OPT in the manual.
+               MusicBrainz has HTTPS-query problems, henceforth require
+               new --music-brainz-tls; add --music-brainz to avoid interactive
+               prompt, v0.7.0.
 
 You likely do not wanna know:
 
@@ -172,6 +159,12 @@ uushar (manual in uushar.1):
    implementation of uushar may be easily examined with the command::
 
       $ grep '^[^X#]' shar.file
-   ...
+
+zte.sh:
+   Control a ZTE modem (MF79 and many others according to web search)
+   from the command line.  Needs curl(1) and OpenSSL(1).
+   ..
+   2018-12-26: "login" now asks until there is a password, but PASSWORD=
+               could still be set to avoid that.
 
 # s-it-mode
