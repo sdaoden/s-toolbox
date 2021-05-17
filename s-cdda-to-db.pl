@@ -122,8 +122,8 @@ my @Genres = (
    [ 28, 'Vocal' ]
 ); # }}}
 
-my ($READ_ONLY, $ENC_ONLY, $NO_FRAMES, $NO_VOL_NORM, $VERBOSE) =
-      (0, 0, undef, 0, 0);
+my ($DEBUG, $READ_ONLY, $ENC_ONLY, $NO_FRAMES, $NO_VOL_NORM, $VERBOSE) =
+      (undef, 0, 0, undef, 0, 0);
 my ($CLEANUP_OK, $WORK_DIR, $TARGET_DIR) = (0);
 
 sub main_fun{ # {{{
@@ -267,6 +267,8 @@ sub command_line{
                exit 0
                },
 
+         'debug=s' => \$DEBUG,
+
          'd|device=s' => \$CDROM,
          'e|encode-only=s' => \$ENC_ONLY,
          'f|formats=s' => sub {parse_formats($_[1])},
@@ -284,6 +286,12 @@ sub command_line{
    unless(GetOptions(%opts)){
       $emsg = 'Invocation failure';
       goto jdocu
+   }
+
+   if(defined $DEBUG){
+      print STDERR "! DEBUG mode..\n! -> S_MUSIC_DB=/tmp/\n! -> DATFILE=",
+         $DEBUG, "\n";
+      $MUSIC_DB = '/tmp/'
    }
 
    if($ENC_ONLY){
@@ -346,13 +354,13 @@ $SELF ($VERSION): $ABSTRACT
 -d|--device DEV       Use CD-ROM DEVice; else s-cdda(1) fallback
 -e|--encode-only CDID Resume --read-only session; it echoed the CDID to use
 -f|--formats LIST     Comma-separated audio format list; else \$S_MUSIC_FORMATS
-                      ($flr)
+  Note: OPUS untested ($flr)
 --frames=NUMBER       frames to read per iteration
 -m|--music-db PATH    S-Music DB directory; else \$S_MUSIC_DB
 -r|--read-only        Only read data, then exit; resume with --encode-only
 -v|--verbose          Be more verbose; does not delete temporary files!
 
-. Honours \$TMPDIR, \$VISUAL (or \$EDITOR; environment variables).
+. Environment variables: \$TMPDIR, \$VISUAL (\$EDITOR), \$LC_ALL, \$PERL5OPT ..
 . Bugs/Contact via $CONTACT
 __EOT__
 
@@ -550,7 +558,16 @@ jREDO:
       die "! System $^O not supported" unless defined *{"CDInfo::_os_$^O"};
       print "\nCDInfo: assuming an Audio-CD is in the drive ...\n";
 
-      my $i = &{"CDInfo::_os_$^O"}();
+      my $i;
+      unless(defined $DEBUG){
+         $i = &{"CDInfo::_os_$^O"}()
+      }else{
+         my $j = $DatFile;
+         $DatFile = $DEBUG;
+         read_data();
+         $DatFile = $j;
+         return
+      }
       if(defined $i){
          print $i,
             "! Unable to collect CD Table-Of-Contents\n",
