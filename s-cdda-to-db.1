@@ -16,7 +16,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd January 30, 2021
+.Dd May 17, 2021
 .Dt S-CDDA-TO-DB 1
 .Os
 .Mx -enable
@@ -166,6 +166,34 @@ is to read and encode an audio CD.
 Used if
 .Ev VISUAL
 is not set (see there).
+.
+.Mx
+.It Ev LC_ALL
+The master switch to configure all
+.Xr locale 1 Ns
+s to a specific
+.Xr locale 7 ,
+for example
+.Ql export LC_ALL=en_US.UTF-8
+or
+.Ql export LC_ALL=en_US.utf8 ;
+locale names differ in between operating systems.
+Best is to run this program in an Unicode UTF-8 locale: metadata will
+always be stored in UTF-8, and only few encoders (like
+.Xr oggenc 1
+and
+.Xr flac 1 )
+support command line options to (further) suppress character set
+conversions.
+.
+.Mx
+.It Ev PERL5OPT
+Should be set to
+.Ql -C
+in an Unicode environment in order to configure
+.Xr perl 1
+for UTF-8 input and output; also see
+.Xr perlrun 1 .
 .
 .Mx
 .It Ev S_MUSIC_DB

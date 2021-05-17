@@ -143,6 +143,23 @@ WARNING WARNING WARNING
   Please read the perlrun(1) manual page for more on this topic.
 WARNING WARNING WARNING
 __EOT__
+   }elsif(!${^UTF8LOCALE}){
+      print STDERR <<__EOT__;
+WARNING WARNING WARNING
+  This is not an UTF-8 (Unicode) locale.
+  Track metadata is also stored in encoded files, and will be in UTF-8
+  encoding: it may be mangled by the encoder (only oggenc and flac support
+  specifying that data already is in UTF-8 encoding).
+  It could be that this does not produce the results you desire!
+  You could instead (temporarily) use an UTF-8 locale:
+
+    # or XY.utf8 etc.: system-dependent
+    EITHER: \$ LC_ALL=en_US.UTF-8 PERL5OPT=-C; export LC_ALL PERL5OPT
+    OR    : \$ LC_ALL=en_US.UTF-8 PERL5OPT=-C s-cdda-to-db xy
+
+  Please read the perlrun(1) manual page for more on this topic.
+WARNING WARNING WARNING
+__EOT__
    }
 
    # Also verifies we have valid (DB,TMP..) paths
@@ -3236,7 +3253,7 @@ __EOT__
 
    sub _create_comment{
       my ($title) = @_;
-      my ($ti, $res, $i) = ($title->{TAG_INFO}, '', undef);
+      my ($ti, $res, $i) = ($title->{TAG_INFO}, '--utf8 ', undef);
       $i = $ti->{ARTIST};
          $i =~ s/"/\\"/g;
          $res .= "--artist \"$i\" ";
@@ -3328,7 +3345,7 @@ __EOT__
 
    sub _create_comment{
       my ($title) = @_;
-      my ($ti, $res, $i) = ($title->{TAG_INFO}, '', undef);
+      my ($ti, $res, $i) = ($title->{TAG_INFO}, '--no-utf8-convert ', undef);
       $i = $ti->{ARTIST};
          $i =~ s/"/\\"/g;
          $res .= "-T artist=\"$i\" ";
