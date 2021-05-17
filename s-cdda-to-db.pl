@@ -6,13 +6,14 @@ my $ABSTRACT = 'Read and encode audio CDs, integrated in S-Music DB.';
 #@ Requirements:
 #@ - s-cdda for CD-ROM access (https://ftp.sdaoden.eu/s-cdda-latest.tar.gz).
 #@   P.S.: not on MacOS X/Darwin, but not tested there for many years
-#@ - unless --no-volume-normalize is used: sox(1) (sox.sourceforge.net)
-#@   NOTE: sox(1) changed - see $NEW_SOX below
-#@ - if MP3 is used: lame(1) (www.mp3dev.org)
-#@ - if MP4/AAC is used: faac(1) (www.audiocoding.com)
-#@ - if Ogg/Vorbis is used: oggenc(1) (www.xiph.org)
-#@ - if FLAC is used: flac(1) (www.xiph.org)
-#@ - if OPUS is used: opusenc (see Vorbis TODO untested!)
+#@ - For MusicBrainz: XML::Parser and HTTP::Tiny (plus IO::Socket::SSL).
+#@ - Unless --no-volume-normalize is used: sox(1) (sox.sourceforge.net).
+#@   NOTE: sox(1) changed - see $NEW_SOX below.
+#@ - For MP3: lame(1) (www.mp3dev.org).
+#@ - For MP4/AAC: faac(1) (www.audiocoding.com).
+#@ - For Ogg/Vorbis: oggenc(1) (www.xiph.org).
+#@ - For FLAC: flac(1) (www.xiph.org).
+#@ - For OPUS: opusenc (see Vorbis TODO untested!).
 #
 # Copyright (c) 1998 - 2003, 2010 - 2014, 2016 - 2018,
 #               2020 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
@@ -122,10 +123,17 @@ my @Genres = (
    [ 28, 'Vocal' ]
 ); # }}}
 
-my ($DEBUG, $READ_ONLY, $ENC_ONLY, $NO_FRAMES, $NO_VOL_NORM, $VERBOSE) =
-      (undef, 0, 0, undef, 0, 0);
+my $DEBUG = undef;
+my $ENC_ONLY = 0;
+my $MBRAINZ_QUERY = 2;
+my $NO_FRAMES = undef;
+my $NO_VOL_NORM = 0;
+my $READ_ONLY = 0;
+my $VERBOSE = 0;
+
+my $MBRAINZ_TLS = 0;
+
 my ($CLEANUP_OK, $WORK_DIR, $TARGET_DIR) = (0);
-my ($MBRAINZ_TLS) = (0);
 
 sub main_fun{ # {{{
    # Do not check for the 'a' and 'A' subflags of -C, but only I/O related ones
@@ -275,8 +283,9 @@ sub command_line{
          'f|formats=s' => sub {parse_formats($_[1])},
          'frames=i' => \$NO_FRAMES,
          'm|music-db=s' => \$MUSIC_DB,
-         'r|read-only' => \$READ_ONLY,
          'no-volume-normalize' => \$NO_VOL_NORM,
+         'music-brainz!' => \$MBRAINZ_QUERY,
+         'r|read-only' => \$READ_ONLY,
          'v|verbose' => \$VERBOSE,
 
          'music-brainz-tls' => \$MBRAINZ_TLS
@@ -1024,6 +1033,14 @@ __EOT__
    sub create_db{ # {{{
       my $self = $_[0];
 
+      return if $MBRAINZ_QUERY == 0;
+      if($MBRAINZ_QUERY == 2){
+         print
+            "\nShall i contact the MusicBrainz Web-Service in order to\n",
+            '  collect more data of the audio CD? ';
+         return unless ::user_confirm()
+      }
+
       eval{
          require HTTP::Tiny;
          require XML::Parser
@@ -1035,13 +1052,9 @@ __EOT__
             "!   Are they installed?  (Install them via CPAN?)\n",
             '!   Confirm to again try to use them, otherwise we skip this: ';
          return unless user_confirm();
+         $MBRAINZ_QUERY = 1;
          return $self->create_db()
       }
-
-      print
-         "\nShall i try to contact the MusicBrainz Web-Service in order to\n",
-         '  collect more data of the audio CD? ';
-      return unless ::user_confirm();
 
       if($MBRAINZ_TLS && HTTP::Tiny::can_ssl()){
          $self->{_use_ssl} = 1;

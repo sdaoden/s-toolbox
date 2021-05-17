@@ -40,6 +40,7 @@
 .Op Fl f Ar FORMATS
 .Op Fl Fl frames Ns = Ns Ar NUMBER
 .Op Fl m Ar PATH
+.Op Fl Fl Oo Cm no- Oc Ns Cm music-brainz
 .Op Fl Fl music-brainz-tls
 .Op Fl Fl no-volume-normalize
 .Pp
@@ -53,6 +54,7 @@
 .Op Fl f Ar FORMATS
 .Op Fl Fl frames Ns = Ns Ar NUMBER
 .Op Fl m Ar PATH
+.Op Fl Fl Oo Cm no- Oc Ns Cm music-brainz
 .Op Fl Fl music-brainz-tls
 .Op Fl Fl no-volume-normalize
 .Fl e Ar CDID
@@ -130,10 +132,16 @@ If not given the environment variable
 .Ev S_MUSIC_DB
 is used, please see there for more.
 .
+.\" TODO cannot be expressed Mx
+.It Fl Fl Oo Cm \&\&no- Oc Ns Cm \&\&music-brainz
+Always (do not) query information data from
+.Lk https://musicbrainz.org MusicBrainz .
+By default an interactive prompt will appear instead.
+.
 .Mx
 .It Fl Fl music-brainz-tls
-.Lk https://musicbrainz.org MusicBrainz
-has shown problems with HTTPS queries in the past, they are off by default.
+After problems with encrypted queries in the past unencrypted queries
+are now the default.
 .
 .Mx
 .It Fl Fl no-volume-normalize
