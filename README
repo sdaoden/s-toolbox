@@ -89,11 +89,8 @@ backup.sh:
 btrfs-snapshot.sh:
    Simple script to deal with BTRFS snapshots.
    ...
-   2020-08-27: tweak former: since btrfs-receive does not differentiate
-               in between "error" and "snapshot already exists", we need
-               .stamp files in the ball directories to test this case.
-   2021-01:    add ZSTD_LEVEL, default to -5.  "sync" the BTRFS.
-   2021-03-30: try ./btrfs-snapshot first, then /root/$HOSTNAME/b..
+   2021-05-29: try config via $BTRFS_SNAPSHOT first; for receive-balls,
+               let a filename of = mean: trim snapshots.
 
 cdoc-freebsd.S:
    FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on
