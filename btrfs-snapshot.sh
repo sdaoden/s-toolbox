@@ -1,7 +1,7 @@
 #!/bin/sh -
 #@ Create BTRFS filesystem snapshots, send them to a ball, trim them down.
-#@ The configuration is read from ./btrfs-snapshot, or otherwise
-#@ /root/hosts/$HOSTNAME/btrfs-snapshot.  It must contain:
+#@ The configuration is read from $BTRFS_SNAPSHOT, ./btrfs-snapshot, or
+#@ otherwise /root/hosts/$HOSTNAME/btrfs-snapshot.  It must contain:
 #@
 #@   # Top BTRFS volume..
 #@   THEVOL=/media/btrfs-master
@@ -28,12 +28,10 @@
 #@ as mount points, and a snapshots/ at the first level under which all those
 #@ subvolumes are mirrored.  Otherwise the_worker() must be adjusted.
 #@
-#@ - "create-dir-tree" reads /root/hosts/$HOSTNAME/btrfs-snapshot and creates
-#@   all $DIRS and their snapshot mirrors, as necessary.
-#@   It does not remove surplus directories.
+#@ - "create-dir-tree" creates all $DIRS and their snapshot mirrors,
+#@   as necessary, in and under CWD.  It does not remove surplus directories.
 #@   Any further synchronization can then be performed via
 #@      cd WHEREVER && btrfs-snapshot.sh sync-to-cwd
-#@   (assuming /root/hosts/$HOSTNAME/btrfs-snapshot describes the template).
 #@
 #@ - "create" creates snapshots/ of all $DIRS.
 #@
@@ -64,12 +62,14 @@
 #@ + the_worker() drives the logic, and may become adjusted, if simply
 #@   setting other values for $THEVOL, $DIRS and $ACCUDIR does not suffice.
 #
-# 2019 - 2021 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+# 2019 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain
 
 : ${HOSTNAME:=`uname -n`}
 
-if [ -f ./btrfs-snapshot ]; then
+if [ -f "${BTRFS_SNAPSHOT}" ]; then
+   . "${BTRFS_SNAPSHOT}"
+elif [ -f ./btrfs-snapshot ]; then
    . ./btrfs-snapshot
 elif [ -f /root/hosts/${HOSTNAME}/btrfs-snapshot ]; then
    . /root/hosts/${HOSTNAME}/btrfs-snapshot
