@@ -46,10 +46,11 @@
 #@   directory tree somewhere else.  (Or you can create a tar archive of it,
 #@   if the target filesystem can deal with very large files.)
 #@
-#@ - "receive-balls" receives one or multiple $BALLS, which must have been
+#@ - "receive-balls" receives one or multiple BALLS, which must have been
 #@   created by "create-balls", and merges them in snapshots/.
 #@   Ball must refer to a .snap-ISODATE super-directory, and the path must
 #@   be absolute.  (If realpath(1) is available we use it though.)
+#@   If the filename of a BALL is =, "trim" is executed.
 #@
 #@ - "clone-to-cwd" and "sync-to-cwd" need one existing snapshot (series),
 #@   and will clone all the latest snapshots to the current-working-directory.
@@ -143,7 +144,11 @@ the_worker() { # Will run in subshell!
       for b in $BALLS; do
          echo '== Receiving ball '$b
          for d in $DIRS; do
-            receive_one "$d" "$b"
+            if [ "$b" = = ]; then
+               trim_one "$d"
+            else
+               receive_one "$d" "$b"
+            fi
          done
       done
    elif [ $1 = trim ]; then
@@ -437,21 +442,19 @@ cmd=$1
 if [ "$cmd" = receive-balls ]; then
    shift
    echo '= Checking balls'
+   rp=
+   command -v realpath >/dev/null 2>&1 && rp=realpath
    for b in "$@"; do
-      if [ -d "$b" ]; then
+      if  [ "$b" = = ]; then
+         BALLS="$BALLS $b"
+      elif [ -d "$b" ]; then
+         [ -n "$rp" ] && b=`$rp "$b"`
          BALLS="$BALLS $b" # XXX quoting
       else
          echo 'No such ball to receive: '$b
          exit 1
       fi
    done
-   if command -v realpath >/dev/null 2>&1; then
-      BALLS=
-      for i in "$@"; do
-         i=`realpath "$i"`
-         BALLS="$BALLS $i" # XXX quoting
-      done
-   fi
 else
    [ $# -ne 1 ] && syno 1
    case $cmd in
