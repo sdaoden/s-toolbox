@@ -31,7 +31,7 @@ my $ABSTRACT = 'Read and encode audio CDs, integrated in S-Music DB.';
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-my $VERSION = '0.7.0';
+my $VERSION = '0.8.0';
 my $CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>';
 
 # MusicBrainz Web-Service; we use TLS if possible
@@ -63,6 +63,8 @@ use strict;
 use Digest;
 use Encode;
 use Getopt::Long;
+
+use POSIX qw(setlocale LC_ALL);
 
 # Genre list, alpha sorted {{{
 my @Genres = (
@@ -136,23 +138,9 @@ my $MBRAINZ_TLS = 0;
 my ($CLEANUP_OK, $WORK_DIR, $TARGET_DIR) = (0);
 
 sub main_fun{ # {{{
-   # Do not check for the 'a' and 'A' subflags of -C, but only I/O related ones
-   if(!(${^UNICODE} & 0x5FF) && ${^UTF8LOCALE}){
-      print STDERR <<__EOT__;
-WARNING WARNING WARNING
-  Perl detected an UTF-8 (Unicode) locale, but it does NOT use UTF-8 I/O!
-  It is very likely that this does not produce the results you desire!
-  You should either invoke perl(1) with the -C command line option, or
-  set a PERL5OPT environment variable, e.g., in a POSIX/Bourne/Korn shell:
+   setlocale(LC_ALL, "");
 
-    EITHER: \$ perl -C $SELF
-    OR    : \$ PERL5OPT=-C; export PERL5OPT; $SELF
-    (OR   : \$ PERL5OPT=-C $SELF)
-
-  Please read the perlrun(1) manual page for more on this topic.
-WARNING WARNING WARNING
-__EOT__
-   }elsif(!${^UTF8LOCALE}){
+   if(!${^UTF8LOCALE}){
       print STDERR <<__EOT__;
 WARNING WARNING WARNING
   This is not an UTF-8 (Unicode) locale.
@@ -163,12 +151,15 @@ WARNING WARNING WARNING
   You could instead (temporarily) use an UTF-8 locale:
 
     # or XY.utf8 etc.: system-dependent
-    EITHER: \$ LC_ALL=en_US.UTF-8 PERL5OPT=-C; export LC_ALL PERL5OPT
-    OR    : \$ LC_ALL=en_US.UTF-8 PERL5OPT=-C s-cdda-to-db xy
+    EITHER: \$ LC_ALL=en_US.UTF-8; export LC_ALL
+    OR    : \$ LC_ALL=en_US.UTF-8 s-cdda-to-db xy
 
-  Please read the perlrun(1) manual page for more on this topic.
 WARNING WARNING WARNING
+
 __EOT__
+
+      print STDERR 'Continue nonetheless?';
+      exit 1 unless user_confirm()
    }
 
    # Also verifies we have valid (DB,TMP..) paths
