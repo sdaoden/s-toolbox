@@ -19,7 +19,7 @@
 #@ TODO and/or to set the vars directly: THEVOL,DIRS,ACCUDIR.
 #@
 #@ Synopsis: btrfs-snapshot.sh create-dir-tree
-#@ Synopsis: btrfs-snapshot.sh create|trim|setmounts
+#@ Synopsis: btrfs-snapshot.sh create|trim|setvols
 #@ Synopsis: btrfs-snapshot.sh create-balls
 #@ Synopsis: btrfs-snapshot.sh receive-balls [:BALL:]
 #@ Synopsis: btrfs-snapshot.sh clone-to-cwd|sync-to-cwd
@@ -36,9 +36,11 @@
 #@ - "create" creates snapshots/ of all $DIRS.
 #@
 #@ - "trim" deletes all but the last snaphost of each folder under snapshots/.
+#@   It also removes anything (!) in .old/.
 #@
-#@ - "setmounts" throws away the $DIRS subvolumes, and recreates them from the
-#@   latest corresponding entry from snapshots/.
+#@ - "setvols" moves any existing $DIRS (subvolumes) to $THEVOL/.old/$now/
+#@   (covered by "trim"), and recreates them from the latest corresponding
+#@   entry within snapshots/.
 #@
 #@ - "create-balls" sends the (differences to the last, if any) snapshots into
 #@   $ACCUDIR/.snap-ISODATE/ as zstd(1) compressed streams, split into files
@@ -156,10 +158,12 @@ the_worker() { # Will run in subshell!
       for d in $DIRS; do
          trim_one "$d"
       done
-   elif [ $1 = setmounts ]; then
-      echo '= Setting mount points '$DIRS' to newest snapshots'
+      trim_old_vols
+   elif [ $1 = setvols ]; then
+      create_setup
+      echo '= Setting '$DIRS' to newest snapshots'
       for d in $DIRS; do
-         setmount_one "$d"
+         setvol_one "$d"
       done
    elif [ $1 = clone-to-cwd ]; then
       echo '= Creating or updating a clone in '$CLONEDIR
@@ -305,43 +309,52 @@ trim_one() {
    ) || exit $?
 }
 
-setmount_one() {
+trim_old_vols() {
+   (
+   cd .old || exit 0
+   echo '= Trimming old volumes in .old'
+
+   set -- `find . -maxdepth 2 -type d -not -path . | sort`
+   if [ $# -le 1 ]; then
+      echo '== No old volumes to trim'
+      exit 0
+   fi
+
+   while [ $# -gt 1 ]; do
+      echo '== Deleting '$1
+      act btrfs subvolume delete "$1"
+      shift
+   done
+   ) || exit $?
+}
+
+setvol_one() {
    (
    mydir=$1
    cd snapshots/"$mydir" || exit 11
 
    set -- `find . -maxdepth 1 -type d -not -path . | sort`
    if [ $# -eq 0 ]; then
-      echo '== No mount point to set from snapshots/'$mydir
+      echo '== No volume to set from snapshots/'$mydir
       exit 0
    fi
    while [ $# -gt 1 ]; do
       shift
    done
 
-   echo '== Setting "mount point" of '$mydir' to '$1
-   # Since $HOSTNAME can be anything when we operate on sticks or whatever
-   mountpoint=
-   if [ "$HOSTNAME" = "`uname -n`" ] &&
-         < /etc/fstab grep -q 'subvol=/'"$mydir"; then
-      mountpoint=`</etc/fstab awk '
-            BEGIN{regex="/'"$mydir"'"; gsub("/","\\\/", regex)}
-            $4 ~ regex{print $2}
-            '`
-      if [ "$mountpoint" = '/' ]; then
-         echo '=== Not un-/remounting the root partition!'
-         mountpoint=
+   echo '== Setting '$mydir' to '$1
+   if [ -d "$THEVOL/$mydir" ]; then
+      if btrfs subvolume show "$THEVOL/$mydir" >/dev/null 2>&1; then
+         # We do not remove old volumes, but move them to .old.
+         # This keeps mount points intact etc.  Of course it means later
+         # cleaning is necessary
+         [ -d "$THEVOL/.old/$now" ] || act mkdir -p "$THEVOL/.old/$now"
+         act mv "$THEVOL/$mydir" "$THEVOL/.old/$now/$mydir"
       else
-         act umount -f $mountpoint
+         act rm -rf "$THEVOL/$mydir"
       fi
    fi
-
-   [ -d "$THEVOL/$mydir" ] && act btrfs subvolume delete "$THEVOL/$mydir"
    act btrfs subvolume snapshot "$1" "$THEVOL/$mydir"
-
-   if [ -n "$mountpoint" ]; then
-      act mount $mountpoint
-   fi
    ) || exit $?
 }
 
@@ -431,7 +444,7 @@ mymail() {
 
 syno() {
    echo 'Synopsis: btrfs-snapshot.sh create-dir-tree'
-   echo 'Synopsis: btrfs-snapshot.sh create|trim|setmounts'
+   echo 'Synopsis: btrfs-snapshot.sh create|trim|setvols'
    echo 'Synopsis: btrfs-snapshot.sh create-balls'
    echo 'Synopsis: btrfs-snapshot.sh receive-balls [:BALL:]'
    echo 'Synopsis: btrfs-snapshot.sh clone-to-cwd|sync-to-cwd'
@@ -460,7 +473,7 @@ else
    case $cmd in
    help) syno 0;;
    create-dir-tree) ;;
-   create) ;; trim) ;; setmounts) ;;
+   create) ;; trim) ;; setvols) ;;
    create-balls) ;; #receive-balls) ;;
    clone-to-cwd) ;; sync-to-cwd) ;;
    *) syno 1;;

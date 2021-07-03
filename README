@@ -94,6 +94,7 @@ btrfs-snapshot.sh:
    ...
    2021-05-29: try config via $BTRFS_SNAPSHOT first; for receive-balls,
                let a filename of = mean: trim snapshots.
+   2021-07-03: drop unused/broken "setmounts", add "setvols" command.
 
 cdoc-freebsd.S:
    FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on
