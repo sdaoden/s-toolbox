@@ -80,4 +80,18 @@ session optional pam_xdg.so notroot
 .
 .An "Steffen Nurpmeso" Aq steffen@sdaoden.eu .
 .
+.
+.Sh CAVEATS
+.
+PAM cannot truly perform session handling on any
+.Dq normal
+Unix system since any
+.Dq daemonized
+program or script is reparented to the program running with PID 1,
+and therefore leave the user session.
+However, careless programming may still hold or expect availability of
+resources of the user session.
+It therefore seems unwise to truly perform session close events unless
+the system's reparenting is aware of user sessions.
+.
 .\" s-ts-mode
