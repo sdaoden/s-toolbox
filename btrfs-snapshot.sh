@@ -118,7 +118,7 @@ the_worker() { # Will run in subshell!
    i=
    [ $1 = create-dir-tree ] && i=y
    for d in $DIRS; do
-      check_mirror "$d" "$i"
+      check_mirror "$d" "snapshots" "$i"
    done
 
    if [ $1 = create-dir-tree ]; then
@@ -161,6 +161,11 @@ the_worker() { # Will run in subshell!
       trim_old_vols
    elif [ $1 = setvols ]; then
       create_setup
+      echo '= Checking .old mirrors for '$DIRS
+      for d in $DIRS; do
+         dx=`dirname "$d"`
+         check_mirror "$dx" ".old/$now" y
+      done
       echo '= Setting '$DIRS' to newest snapshots'
       for d in $DIRS; do
          setvol_one "$d"
@@ -195,9 +200,9 @@ act() {
 }
 
 check_mirror() {
-   if [ -d "$1" ] && [ -d snapshots/"$1" ]; then :; else
-      if [ -n "$2" ]; then
-         act mkdir -p "$1" snapshots/"$1"
+   if [ -d "$1" ] && [ -d "$2"/"$1" ]; then :; else
+      if [ -n "$3" ]; then
+         act mkdir -p "$1" "$2"/"$1"
       else
          echo 'PANIC: cannot handle '$1
          exit 1
@@ -311,20 +316,13 @@ trim_one() {
 
 trim_old_vols() {
    (
-   cd .old || exit 0
    echo '= Trimming old volumes in .old'
-
-   set -- `find . -maxdepth 2 -type d -not -path . | sort`
-   if [ $# -le 1 ]; then
-      echo '== No old volumes to trim'
-      exit 0
-   fi
-
-   while [ $# -gt 1 ]; do
-      echo '== Deleting '$1
-      act btrfs subvolume delete "$1"
-      shift
-   done
+   btrfs subvol list . |
+      awk '/ .old\//{print $9}' |
+      while read p; do
+         act btrfs subvolume delete "$p"
+      done
+   rm -rf .old
    ) || exit $?
 }
 
@@ -348,7 +346,6 @@ setvol_one() {
          # We do not remove old volumes, but move them to .old.
          # This keeps mount points intact etc.  Of course it means later
          # cleaning is necessary
-         [ -d "$THEVOL/.old/$now" ] || act mkdir -p "$THEVOL/.old/$now"
          act mv "$THEVOL/$mydir" "$THEVOL/.old/$now/$mydir"
       else
          act rm -rf "$THEVOL/$mydir"
