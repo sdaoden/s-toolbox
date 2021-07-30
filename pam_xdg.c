@@ -133,6 +133,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
                sizeof(a_RUNTIME_DIR_BASE) + sizeof(".18446744073709551615")) |
             (sizeof("XDG_CONFIG_DIRS=") + PATH_MAX)
             ) +1];
+   struct a_dirtree dt_user;
    struct a_dirtree const *dtp;
    struct passwd *pwp;
    char const *emsg;
@@ -202,8 +203,15 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
       goto jok;
    }
 
-   /* Handle outer directory tree.  On *BSD outermost may not exist! */
-   for(/*f &= ~a_MPV,*/ dtp = a_dirtree; dtp->name != NULL;){
+   /* Our lockfile and per-user directory name */
+   uidbuflen = snprintf(uidbuf, sizeof(uidbuf), ".%lu",
+         (unsigned long)pwp->pw_uid);
+
+   dt_user.name = &uidbuf[1];
+   dt_user.mode = 0700;
+
+   /* Handle tree.  On *BSD outermost may not exist! */
+   for(/*f &= ~a_MPV,*/ dtp = a_dirtree;;){
       int e;
       gid_t oegid;
       mode_t oumask;
@@ -213,8 +221,12 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
          if(cwdfd != AT_FDCWD)
             close(cwdfd); /* XXX error hdl */
          cwdfd = res;
+
+         if(dtp == &dt_user)
+            break;
+         else if((++dtp)->name == NULL)
+            dtp = &dt_user;
          f &= ~a_MPV;
-         ++dtp;
          continue;
       }
 
@@ -223,7 +235,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
           * Silently out!?! */
          goto jok;
 
-      /* We try create the directories once as necessary */
+      /* We try creating the directories once as necessary */
       if((f & a_MPV) || errno != ENOENT){
          emsg = "cannot obtain chdir(2) descriptor (within) tree "
                a_RUNTIME_DIR_OUTER "/" a_RUNTIME_DIR_BASE;
@@ -249,40 +261,10 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
          a_LOG(pamh, a_LOG_NOTICE,
             a_XDG ": " a_RUNTIME_DIR_OUTER " did not exist, but should be "
             "(a mount point of) volatile storage!");
-   }
-
-   /* Turn to user management; note this is the lockfile */
-   uidbuflen = snprintf(uidbuf, sizeof(uidbuf), ".%lu",
-         (unsigned long)pwp->pw_uid);
-
-   /* We create the per-user directory on isopen time as necessary */
-   for(f &= ~a_MPV;; f |= a_MPV){
-      if((res = openat(cwdfd, &uidbuf[1],
-            (a_O_SEARCH | O_DIRECTORY | O_NOFOLLOW))) != -1){
-         close(cwdfd); /* XXX error hdl */
-         cwdfd = res;
-         break;
-      }else{
-         if(errno == ENOENT){
-            if(!isopen)
-               goto jok;
-            if(f & a_MPV)
-               goto jeurd;
-         }else{
-jeurd:
-            emsg = "per user XDG_RUNTIME_DIR not accessible";
-            goto jerr;
-         }
-      }
-
-      if(mkdirat(cwdfd, &uidbuf[1], 0700) == -1 && errno != EEXIST){
-         emsg = "cannot create per user XDG_RUNTIME_DIR";
-         goto jerr;
-      }
-
       /* Just chown it! */
-      if(fchownat(cwdfd, &uidbuf[1], pwp->pw_uid, pwp->pw_gid,
-            AT_SYMLINK_NOFOLLOW) == -1){
+      else if(dtp == &dt_user &&
+            fchownat(cwdfd, &uidbuf[1], pwp->pw_uid, pwp->pw_gid,
+               AT_SYMLINK_NOFOLLOW) == -1){
          emsg = "cannot chown(2) per user XDG_RUNTIME_DIR";
          goto jerr;
       }
