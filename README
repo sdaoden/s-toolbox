@@ -8,8 +8,6 @@ find-command.sh:
    which(1) is not standardized, and command(1) -v may return non-executable,
    so here is how it is possible to really find a usable executable file.
    Thanks to Robert Elz (kre).
-   ...
-   2019-02-05: truly support presets again (e.g. "awk=nawk TESTFUN ...").
 
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so
@@ -25,30 +23,25 @@ gmane-fetch.pl:
    Download NNTP articles from Gmane.org and Gwene.org, incrementally, and
    store them in (append them to) a local MBOX.
    Read and adjust the script header for documentation and configuration.
-   ...
-   2017-07-24: add support for multiple servers and add gwene.org.
 
 pam_xdg.c (manual in pam_xdg.8; pam_xdg.makefile )
-   Complete XDG Base Directories support via PAM, including injection of
-   according environment variables into user sessions, as well as creation
-   support for per-user $XDG_RUNTIME_DIR.
+   XDG Base Directories support via PAM: creation of $XDG_RUNTIME_DIRs,
+   injection of environment variables into sessions.  libpam and OpenPAM.
    ...
-   2021-02-24: the latter is false, in fact we must even play setegid(2) games
-               in order to work under all possible conditions.  This is not
-               documented, and a bit weird modules have to deal with it.
+   2021-02-24: [.] must even play setegid(2) games in order to work under
+               all possible conditions [.] weird modules have to deal[.].
+   2021-07-29: port to OpenPAM (BSD). (Jan Bleich)
 
 quote-rndtrip.sh:
    Round trip quote strings in POSIX (and elder) shell(s).
    Thanks to Robert Elz (kre).
 
-   2019-05-27: ensure outer driver(s) do not leak variabes (Steven Penny).
+   2019-05-27: ensure outer driver(s) do not leak variabes. (Steven Penny)
 
 s-cdda.c (manual in s-cdda.1; s-cdda.makefile) v0.8.5:
    Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
    Developed in 2020 on then current operating-systems and hardware.
-   Not tested with CD-Extra etc (only proofed logically.
-   ...
-   2021-01-28: add -f (rame number) option, remove manual nits, v0.8.5.
+   Not tested with CD-Extra etc (only proofed logically.  Linux and *BSD.
 
 s-cdda-to-db.pl (manual in s-cdda-to-db.1; s-cdda-to-db.makefile) v0.8.0:
    Queries the content and data of audio CDs through s-cdda(1), collects
@@ -85,9 +78,8 @@ backup.sh:
    P.S.: it is fantastic to have a filesystem with snapshots thats can be
    "send" in addition!
    ...
-   2016-08-27: FIX faulty xarg/tar -c invocations (Ralph Corderoy)
-   2019-05-10: extend exclude glob.
-   2021-01-24: try to silence archiver and compressor a bit.
+   2016-08-27: FIX faulty xarg/tar -c invocations. (Ralph Corderoy)
+   ...
 
 btrfs-snapshot.sh:
    Simple script to deal with BTRFS snapshots.
@@ -107,15 +99,13 @@ entropy-saver.c:
    incremented when i restore the saved random seed that machines have
    collected so hard.  This little program touches this count also.
    ...
-   2019-01-21: Small fixes, and take care for EAGAIN (Bernd Petrovitsch).
-   2019-01-24: use syslog(3) instead; also test EBUSY (Bernd Petrovitsch).
+   2019-01-21: Small fixes, and take care for EAGAIN. (Bernd Petrovitsch)
+   2019-01-24: use syslog(3) instead; also test EBUSY. (Bernd Petrovitsch)
 
 fan-adaptive.sh:
    "Adaptive", more generic, and much more easily adaptable successor of
    fancontrol.sh.  For now with simulator and MacBook Air model support.
    See the script header for more.
-   ...
-   2019-04-09: add a SIGTSTP handler which only stops fans.
 
 gen-uushar-wrapper:
    Creates a shell archive similar to uushar as below, except that the
@@ -125,9 +115,6 @@ gen-uushar-wrapper:
    hidden directory in $TMPDIR to unpack its members.
    Without arguments it shows its contents and the creation date.
    Simply execute it, it guides through the archive creation process.
-   ...
-   2016-01-05: port to FreeBSD: uudecode(1) does not honour /dev/stdout
-               in-stream, so give -o command line option.
 
 real-periodic.sh:
    A _real_ periodic for NetBSD, FreeBSD, DragonFly BSD and OpenBSD that
@@ -164,8 +151,5 @@ uushar (manual in uushar.1):
 zte.sh:
    Control a ZTE modem (MF79 and many others according to web search)
    from the command line.  Needs curl(1) and OpenSSL(1).
-   ..
-   2018-12-26: "login" now asks until there is a password, but PASSWORD=
-               could still be set to avoid that.
 
 # s-it-mode

@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd January 31, 2021
+.Dd July 29, 2021
 .Dt PAM_XDG 8
 .Os
 .
@@ -28,8 +28,9 @@
 .Sh SYNOPSIS
 .
 .Nm
-.Op Ar rundir
+.Op Ar runtime
 .Op Ar notroot
+.\".Op Ar track_user_sessions Op Ar per_user_lock
 .
 .
 .Sh DESCRIPTION
@@ -47,7 +48,7 @@ into user sessions.
 When linked into the PAM session system the runtime directory will be
 created once a user creates his or her first login session.
 Unless
-.Ar rundir
+.Ar runtime
 was given all XDG related environment variables will be created in all
 user sessions with their default or computed values, otherwise only
 .Ev XDG_RUNTIME_DIR .
@@ -55,25 +56,39 @@ If
 .Ar notroot
 was given the module will bypass itself for root account logins and
 perform no actions for root.
+.\"Lastly
+.\".Ar track_user_sessions
+.\"will enable session tracking: once the last session ends, the user's
+.\".Ev XDG_RUNTIME_DIR
+.\"will be recursively removed; on high-load servers setting
+.\".Ar per_user_lock
+.\"then will reduce lock file lock contention.
 .
 .Pp
-In order to make use of this script, place the following in the control
-file of desire under
+In order to make use of this module, place the following in the
+.Ql session
+part of the control file of desire under
 .Pa /etc/pam.d ,
-best maybe
+on Linux it may be
 .Pa /etc/pam.d/common-session
-if that exists (possibly adjusting paths):
+if that exists, on BSD's the files
+.Pa /etc/pam.d/system
+as well as
+.Pa /etc/pam.d/login ,
+.Pa /etc/pam.d/sshd
+and
+.Pa /etc/pam.d/su
+may be desirable, adjusting paths as necessary:
 .
 .Bd -literal -offset indent
-session optional pam_xdg.so notroot
+session optional pam_xdg.so notroot \"track_user_sessions
 .Ed
 .
 .
 .Sh "SEE ALSO"
 .
-.Xr pam.conf 5 ,
-.Xr pam.d 8 ,
-.Xr pam 8
+.Xr pam 3 ,
+.Xr pam.conf 5
 .
 .
 .Sh AUTHORS
@@ -83,15 +98,16 @@ session optional pam_xdg.so notroot
 .
 .Sh CAVEATS
 .
-PAM cannot truly perform session handling on any
-.Dq normal
-Unix system since any
+On Unix systems any
 .Dq daemonized
 program or script is reparented to the program running with PID 1,
-and therefore leave the user session.
-However, careless programming may still hold or expect availability of
-resources of the user session.
-It therefore seems unwise to truly perform session close events unless
-the system's reparenting is aware of user sessions.
+therefore leaving the PAM user session without PAM recognizing this.
+Yet careless such code may hold or expect availability of resources of
+the session it just left, truly performing cleanup when sessions end
+seems thus unwise.
+.\"However, many PAM modules do support cleanup upon closing the last
+.\"session of a user, and therefore
+.\".Nm
+.\"supports this optionally, too.
 .
 .\" s-ts-mode
