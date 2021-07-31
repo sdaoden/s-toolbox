@@ -30,7 +30,8 @@ pam_xdg.c (manual in pam_xdg.8; pam_xdg.makefile )
    ...
    2021-02-24: [.] must even play setegid(2) games in order to work under
                all possible conditions [.] weird modules have to deal[.].
-   2021-07-29: port to OpenPAM (BSD). (Jan Bleich)
+   2021-07-29: port to OpenPAM (BSD).  (Jan Bleich)
+   2021-08-01: (Re)Added (now optional) session handling.
 
 quote-rndtrip.sh:
    Round trip quote strings in POSIX (and elder) shell(s).

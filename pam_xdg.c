@@ -1,8 +1,9 @@
 /*@ pam_xdg - manage XDG Base Directories (runtime dir life time, environment).
  *@ See pam_xdg.8 for more.
  *@ - According to XDG Base Directory Specification, v0.7.
- *@ - Supports libpam (Linux) and *BSD OpenPAM.
+ *@ - Supports libpam (Linux) and OpenPAM.
  *@ - Requires C preprocessor with __VA_ARGS__ support!
+ *@ - Uses "rm -rf" to drop per-user directories. XXX Unroll this?  nftw?
  *
  * Copyright (c) 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -34,6 +35,13 @@
 #define a_RUNTIME_DIR_BASE "user"
 #define a_RUNTIME_DIR_BASE_MODE 0755 /* 0711? */
 
+/* Note: we manage these relative to the per-user directory!
+ * a_LOCK_FILE is only used without "per_user_lock" */
+#define a_LOCK_FILE "../." a_XDG ".lck"
+#define a_LOCK_TRIES 10
+
+#define a_DAT_FILE "." a_XDG ".dat"
+
 /* >8 -- 8< */
 
 /*
@@ -44,11 +52,13 @@
 
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <pwd.h>
+#include <stdint.h> /* xxx not, actually!?! */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -96,7 +106,7 @@
 # define a_LOG_NOTICE LOG_NOTICE
 #endif
 
-/* Because of complicated file locking, use one function with two exec paths */
+/* Just put it all in one big fun, use two exec paths */
 static int a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc,
       const char **argv);
 
@@ -107,10 +117,9 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
       /* Options */
       a_RUNTIME = 1u<<0,
       a_NOTROOT = 1u<<1,
-#if 0
       a_SESSIONS = 1u<<16,
       a_USER_LOCK = 1u<<17,
-#endif
+
       /* Flags */
       a_MPV = 1u<<29, /* Multi-Purpose-Vehicle */
       a_SKIP_XDG = 1u<<30 /* We shall not act */
@@ -128,20 +137,22 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
    };
    static int f_saved;
 
-   char uidbuf[sizeof ".18446744073709551615"],
-         wbuf[((sizeof("XDG_RUNTIME_DIR=") + sizeof(a_RUNTIME_DIR_OUTER) +
-               sizeof(a_RUNTIME_DIR_BASE) + sizeof(".18446744073709551615")) |
+   char uidbuf[sizeof "../.18446744073709551615"],
+         xbuf[((sizeof("XDG_RUNTIME_DIR=") + sizeof(a_RUNTIME_DIR_OUTER) +
+               sizeof(a_RUNTIME_DIR_BASE) +
+               sizeof("../.18446744073709551615")) |
             (sizeof("XDG_CONFIG_DIRS=") + PATH_MAX)
             ) +1];
    struct a_dirtree dt_user;
    struct a_dirtree const *dtp;
    struct passwd *pwp;
    char const *emsg;
-   int cwdfd, f, res, uidbuflen;
+   int cwdfd, cntrlfd, datfd, f, res, uidbuflen;
    char const *user;
 
    user = "<unset>";
    cwdfd = AT_FDCWD;
+   datfd = cntrlfd = -1;
 
    /* Command line */
    if(isopen){
@@ -158,12 +169,10 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
          }
          else if(!strcmp(argv[0], "notroot"))
             f |= a_NOTROOT;
-#if 0
-         else if(!strcmp(argv[0], "track_user_sessions"))
+         else if(!strcmp(argv[0], "track_sessions"))
             f |= a_SESSIONS;
          else if(!strcmp(argv[0], "per_user_lock"))
             f |= a_USER_LOCK;
-#endif
          else if(!(flags & PAM_SILENT)){
             emsg = "command line";
             errno = EINVAL;
@@ -171,17 +180,14 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
          }
       }
 
-#if 0
       if((f & a_USER_LOCK) && !(f & a_SESSIONS))
          a_LOG(pamh, a_LOG_NOTICE,
-            a_XDG ": \"per_user_lock\" requires \"track_user_sessions\"");
-#endif
+            a_XDG ": \"per_user_lock\" requires \"track_sessions\"");
    }else{
       f = f_saved;
 
       if(f & a_SKIP_XDG)
          goto jok;
-      goto jok; /* No longer used, session counting does not work */
    }
 
    /* We need the user we go for */
@@ -192,6 +198,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
       goto jepam;
    }
 
+   /* No PAM failure, no PAM_USER_UNKNOWN here: we are no authentificator! */
    if((pwp = getpwnam(user)) == NULL){
       emsg = "host does not know about user";
       errno = EINVAL;
@@ -204,13 +211,13 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
    }
 
    /* Our lockfile and per-user directory name */
-   uidbuflen = snprintf(uidbuf, sizeof(uidbuf), ".%lu",
-         (unsigned long)pwp->pw_uid);
+   uidbuflen = snprintf(uidbuf, sizeof(uidbuf), "../.%lu", /* xxx error?? */
+         (unsigned long)pwp->pw_uid) - 3;
 
-   dt_user.name = &uidbuf[1];
-   dt_user.mode = 0700;
+   dt_user.name = &uidbuf[4];
+   dt_user.mode = 0700; /* XDG implied */
 
-   /* Handle tree.  On *BSD outermost may not exist! */
+   /* Handle tree, go to user runtime.  On *BSD outermost may not exist! */
    for(/*f &= ~a_MPV,*/ dtp = a_dirtree;;){
       int e;
       gid_t oegid;
@@ -231,8 +238,8 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
       }
 
       if(!isopen)
-         /* Someone removed the entire directory tree while sessions were open!
-          * Silently out!?! */
+         /* XXX Entire directory tree disappeared while sessions were open!
+          * XXX Silently out!?! */
          goto jok;
 
       /* We try creating the directories once as necessary */
@@ -263,10 +270,115 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
             "(a mount point of) volatile storage!");
       /* Just chown it! */
       else if(dtp == &dt_user &&
-            fchownat(cwdfd, &uidbuf[1], pwp->pw_uid, pwp->pw_gid,
+            fchownat(cwdfd, &uidbuf[4], pwp->pw_uid, pwp->pw_gid,
                AT_SYMLINK_NOFOLLOW) == -1){
          emsg = "cannot chown(2) per user XDG_RUNTIME_DIR";
          goto jerr;
+      }
+   }
+
+   /* In session mode we have to manage the counter file */
+   if(f & a_SESSIONS){
+      unsigned long long int sessions;
+
+      /* Landed in the runtime base dir, obtain our lock */
+      if((cntrlfd = openat(cwdfd,
+            (f & a_USER_LOCK ? uidbuf : a_LOCK_FILE),
+            (O_CREAT | O_WRONLY | O_NOFOLLOW | O_NOCTTY),
+            (S_IRUSR | S_IWUSR))) == -1){
+         emsg = "cannot open control lock file";
+         goto jerr;
+      }
+
+      for(res = a_LOCK_TRIES;;){
+         struct flock flp;
+
+         memset(&flp, 0, sizeof flp);
+         flp.l_type = F_WRLCK;
+         flp.l_start = 0;
+         flp.l_whence = SEEK_SET;
+         flp.l_len = 0;
+
+         if(fcntl(cntrlfd, F_SETLKW, &flp) != -1)
+            break;
+
+         /* XXX It may happen we cannot manage the lock and thus not access
+          * XXX the session counter, ie this session is zombie to us.
+          * XXX Just like counter below, should globally disable sessions!! */
+         if(errno != EINTR){
+            emsg = "unexpected error obtaining lock on lock control file";
+            goto jerr;
+         }
+         if(--res == 0){
+            emsg = "cannot obtain lock on lock control file";
+            goto jerr;
+         }
+      }
+
+      sessions = 0;
+
+      if((datfd = openat(cwdfd, a_DAT_FILE, O_RDONLY)) != -1){
+         char *ep;
+         ssize_t r;
+
+         while((r = read(datfd, xbuf, sizeof(xbuf) -1)) == -1){
+            if(errno != EINTR)
+               goto jecnt;
+         }
+
+         close(datfd);
+         datfd = -1;
+
+         xbuf[(size_t)r] = '\0';
+         sessions = strtoull(xbuf, &ep, 10);
+         /* Do not log too often for "session counter error"s, as below */
+         if(ep == xbuf){
+            res = PAM_SESSION_ERR;
+            goto jleave;
+         }else if(sessions == ULLONG_MAX || ep != &xbuf[(size_t)r])
+            goto jecnt;
+      }
+
+      if(isopen)
+         ++sessions;
+      else if(sessions > 0)
+         --sessions;
+
+      if(!isopen && sessions == 0){ /* former.. hmmm. */
+         /* Ridiculously simple, but everything else would be the opposite.
+          * Ie, E[MN]FILE failures, or whatever else */
+         char const cmd[] = "rm -rf " a_RUNTIME_DIR_OUTER "/"
+               a_RUNTIME_DIR_BASE "/";
+
+         memcpy(xbuf, cmd, sizeof(cmd) -1);
+         memcpy(&xbuf[sizeof(cmd) -1], &uidbuf[4], uidbuflen +1);
+
+         res = system(xbuf);
+         if(!WIFEXITED(res) || WEXITSTATUS(res) != 0){
+            emsg = "unable to rm(1) -rf per user XDG_RUNTIME_DIR";
+            errno = EINVAL;
+            goto jerr;
+         }
+         /* This is the end .. */
+         goto jok;
+      }else{
+         /* Write out session counter */
+         res = snprintf(xbuf, sizeof xbuf, "%llu", sessions); /* xxx error? */
+
+         if(((datfd = openat(cwdfd, a_DAT_FILE,
+                  (O_CREAT | O_TRUNC | O_WRONLY | O_SYNC | O_NOFOLLOW |
+                     O_NOCTTY),
+                  (S_IRUSR | S_IWUSR))) == -1) ||
+               write(datfd, xbuf, res) != res){
+jecnt:
+            /* Ensure read above fails, so that henceforth session teardown is
+             * skipped for this user */
+            truncate(a_DAT_FILE, 0);
+            emsg = "counter file error, disabled session tracking for user";
+            goto jerr;
+         }
+         close(datfd);
+         datfd = -1;
       }
    }
 
@@ -275,7 +387,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
       char *cp;
 
       /* XDG_RUNTIME_DIR */
-      cp = wbuf;
+      cp = xbuf;
       memcpy(cp, "XDG_RUNTIME_DIR=", sizeof("XDG_RUNTIME_DIR=") -1);
       cp += sizeof("XDG_RUNTIME_DIR=") -1;
       memcpy(cp, a_RUNTIME_DIR_OUTER, sizeof(a_RUNTIME_DIR_OUTER) -1);
@@ -284,9 +396,9 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
       memcpy(cp, a_RUNTIME_DIR_BASE, sizeof(a_RUNTIME_DIR_BASE) -1);
       cp += sizeof(a_RUNTIME_DIR_BASE) -1;
       *cp++ = '/';
-      memcpy(cp, &uidbuf[1], uidbuflen);
+      memcpy(cp, &uidbuf[4], uidbuflen);
 
-      if((res = pam_putenv(pamh, wbuf)) != PAM_SUCCESS)
+      if((res = pam_putenv(pamh, xbuf)) != PAM_SUCCESS)
          goto jepam;
 
       /* And the rest unless disallowed */
@@ -318,7 +430,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
          i = strlen(pwp->pw_dir);
 
          for(adp = a_dirs; adp->name != NULL; ++adp){
-            cp = wbuf;
+            cp = xbuf;
             memcpy(cp, adp->name, adp->len);
             cp += adp->len;
             if(*(src = adp->defval) == '\1'){
@@ -328,7 +440,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
             }
             memcpy(cp, src, strlen(src) +1);
 
-            if((res = pam_putenv(pamh, wbuf)) != PAM_SUCCESS)
+            if((res = pam_putenv(pamh, xbuf)) != PAM_SUCCESS)
                goto jepam;
          }
       }
@@ -337,6 +449,10 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
 jok:
    res = PAM_SUCCESS;
 jleave:
+   if(datfd != -1)
+      close(datfd);
+   if(cntrlfd != -1)
+      close(cntrlfd);
    if(cwdfd != -1 && cwdfd != AT_FDCWD) /* >=0, but AT_FDCWD unspecified */
       close(cwdfd);
 

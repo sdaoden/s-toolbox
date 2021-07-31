@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd July 29, 2021
+.Dd August 1, 2021
 .Dt PAM_XDG 8
 .Os
 .
@@ -30,7 +30,7 @@
 .Nm
 .Op Ar runtime
 .Op Ar notroot
-.\".Op Ar track_user_sessions Op Ar per_user_lock
+.Op Ar track_sessions Op Ar per_user_lock
 .
 .
 .Sh DESCRIPTION
@@ -56,13 +56,13 @@ If
 .Ar notroot
 was given the module will bypass itself for root account logins and
 perform no actions for root.
-.\"Lastly
-.\".Ar track_user_sessions
-.\"will enable session tracking: once the last session ends, the user's
-.\".Ev XDG_RUNTIME_DIR
-.\"will be recursively removed; on high-load servers setting
-.\".Ar per_user_lock
-.\"then will reduce lock file lock contention.
+Lastly
+.Ar track_sessions
+will enable session tracking: once the last session ends, the user's
+.Ev XDG_RUNTIME_DIR
+will be recursively removed; on high-load servers then setting
+.Ar per_user_lock
+will reduce lock file lock contention.
 .
 .Pp
 In order to make use of this module, place the following in the
@@ -81,7 +81,7 @@ and
 may be desirable, adjusting paths as necessary:
 .
 .Bd -literal -offset indent
-session optional pam_xdg.so notroot \"track_user_sessions
+session optional pam_xdg.so notroot track_sessions
 .Ed
 .
 .
@@ -101,13 +101,12 @@ session optional pam_xdg.so notroot \"track_user_sessions
 On Unix systems any
 .Dq daemonized
 program or script is reparented to the program running with PID 1,
-therefore leaving the PAM user session without PAM recognizing this.
+most likely leaving the PAM user session without PAM recognizing this.
 Yet careless such code may hold or expect availability of resources of
 the session it just left, truly performing cleanup when sessions end
 seems thus unwise.
-.\"However, many PAM modules do support cleanup upon closing the last
-.\"session of a user, and therefore
-.\".Nm
-.\"supports this optionally, too.
+Since so many PAM modules do support session tracking and cleanup
+.Nm
+readded optional support for this.
 .
 .\" s-ts-mode
