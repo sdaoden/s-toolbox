@@ -26,7 +26,7 @@
 #define a_XDG_DATA_HOME_DEF "\1/.local/share"
 #define a_XDG_CONFIG_HOME_DEF "\1/.config"
 #define a_XDG_DATA_DIRS_DEF "/usr/local/share:/usr/share"
-#define a_XDG_CONFIG_DIRS_DEF "/etc/xdg/"
+#define a_XDG_CONFIG_DIRS_DEF "/etc/xdg"
 #define a_XDG_CACHE_HOME_DEF "\1/.cache"
 
 /* We create the outer directories as necessary (stack buffer storage!) */
@@ -108,21 +108,24 @@
 
 /* Just put it all in one big fun, use two exec paths */
 static int a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc,
-      const char **argv);
+      char const **argv);
 
 static int
-a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
+a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
    enum a_flags{
       a_NONE,
       /* Options */
       a_RUNTIME = 1u<<0,
       a_NOTROOT = 1u<<1,
-      a_SESSIONS = 1u<<16,
-      a_USER_LOCK = 1u<<17,
+      a_SESSIONS = 1u<<2,
+      a_USER_LOCK = 1u<<3,
+
+      a_SKIP_XDG = 1u<<15, /* We shall not act */
+
+      a__SAVED_MASK = (a_SKIP_XDG << 1) - 1, /* Bits to restore on !isopen */
 
       /* Flags */
-      a_MPV = 1u<<29, /* Multi-Purpose-Vehicle */
-      a_SKIP_XDG = 1u<<30 /* We shall not act */
+      a_MPV = 1u<<30 /* Multi-Purpose-Vehicle */
    };
 
    struct a_dirtree{
@@ -146,9 +149,8 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
    struct a_dirtree dt_user;
    struct a_dirtree const *dtp;
    struct passwd *pwp;
-   char const *emsg;
    int cwdfd, cntrlfd, datfd, f, res, uidbuflen;
-   char const *user;
+   char const *user, *emsg;
 
    user = "<unset>";
    cwdfd = AT_FDCWD;
@@ -277,6 +279,73 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
       }
    }
 
+   /* When opening, put environment.  Ignore (but log) putenv() failures, even
+    * if session handling is not enabled: very unlikely, and non-critical */
+   if(isopen){
+      char *cp;
+
+      /* XDG_RUNTIME_DIR */
+      cp = xbuf;
+      memcpy(cp, "XDG_RUNTIME_DIR=", sizeof("XDG_RUNTIME_DIR=") -1);
+      cp += sizeof("XDG_RUNTIME_DIR=") -1;
+      memcpy(cp, a_RUNTIME_DIR_OUTER, sizeof(a_RUNTIME_DIR_OUTER) -1);
+      cp += sizeof(a_RUNTIME_DIR_OUTER) -1;
+      *cp++ = '/';
+      memcpy(cp, a_RUNTIME_DIR_BASE, sizeof(a_RUNTIME_DIR_BASE) -1);
+      cp += sizeof(a_RUNTIME_DIR_BASE) -1;
+      *cp++ = '/';
+      memcpy(cp, &uidbuf[4], uidbuflen);
+
+      if(pam_putenv(pamh, xbuf) != PAM_SUCCESS)
+         a_LOG(pamh, a_LOG_ERR, a_XDG ": user %s: pam_putenv(): %s\n",
+            user, pam_strerror(pamh, res));
+
+      /* And the rest unless disallowed */
+      if(!(f & a_RUNTIME)){
+         struct a_dir{
+            char const *name;
+            size_t len;
+            char const *defval;
+         };
+
+         static struct a_dir const a_dirs[] = {
+            {"XDG_DATA_HOME=", sizeof("XDG_DATA_HOME=") -1,
+               a_XDG_DATA_HOME_DEF},
+            {"XDG_CONFIG_HOME=", sizeof("XDG_CONFIG_HOME=") -1,
+               a_XDG_CONFIG_HOME_DEF},
+            {"XDG_DATA_DIRS=", sizeof("XDG_DATA_DIRS=") -1,
+               a_XDG_DATA_DIRS_DEF},
+            {"XDG_CONFIG_DIRS=", sizeof("XDG_CONFIG_DIRS=") -1,
+               a_XDG_CONFIG_DIRS_DEF},
+            {"XDG_CACHE_HOME=", sizeof("XDG_CACHE_HOME=") -1,
+               a_XDG_CACHE_HOME_DEF},
+            {NULL,0,NULL} /* XXX -> nelem/item/countof */
+         };
+
+         char const *src;
+         struct a_dir const *adp;
+         size_t i;
+
+         i = strlen(pwp->pw_dir);
+
+         for(adp = a_dirs; adp->name != NULL; ++adp){
+            cp = xbuf;
+            memcpy(cp, adp->name, adp->len);
+            cp += adp->len;
+            if(*(src = adp->defval) == '\1'){
+               memcpy(cp, pwp->pw_dir, i);
+               cp += i;
+               ++src;
+            }
+            memcpy(cp, src, strlen(src) +1);
+
+            if(pam_putenv(pamh, xbuf) != PAM_SUCCESS)
+               a_LOG(pamh, a_LOG_ERR, a_XDG ": user %s: pam_putenv(): %s\n",
+                  user, pam_strerror(pamh, res));
+         }
+      }
+   }
+
    /* In session mode we have to manage the counter file */
    if(f & a_SESSIONS){
       unsigned long long int sessions;
@@ -333,6 +402,14 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
          sessions = strtoull(xbuf, &ep, 10);
          /* Do not log too often for "session counter error"s, as below */
          if(ep == xbuf){
+            /* It likely had been actively truncate(2)d below.  If we are
+             * opening this session, simply continue without session support,
+             * the corresponding log entry had been emitted in the past, so
+             * just give the user the environment variables (s)he wants */
+            if(isopen){
+               f |= a_SKIP_XDG;
+               goto jok;
+            }
             res = PAM_SESSION_ERR;
             goto jleave;
          }else if(sessions == ULLONG_MAX || ep != &xbuf[(size_t)r])
@@ -373,76 +450,12 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, const char **argv){
 jecnt:
             /* Ensure read above fails, so that henceforth session teardown is
              * skipped for this user */
-            truncate(a_DAT_FILE, 0);
+            truncate(a_DAT_FILE, 0); /* xxx that may fail, too!? */
             emsg = "counter file error, disabled session tracking for user";
             goto jerr;
          }
          close(datfd);
          datfd = -1;
-      }
-   }
-
-   /* When opening, we want to put environment variables, too */
-   if(isopen){
-      char *cp;
-
-      /* XDG_RUNTIME_DIR */
-      cp = xbuf;
-      memcpy(cp, "XDG_RUNTIME_DIR=", sizeof("XDG_RUNTIME_DIR=") -1);
-      cp += sizeof("XDG_RUNTIME_DIR=") -1;
-      memcpy(cp, a_RUNTIME_DIR_OUTER, sizeof(a_RUNTIME_DIR_OUTER) -1);
-      cp += sizeof(a_RUNTIME_DIR_OUTER) -1;
-      *cp++ = '/';
-      memcpy(cp, a_RUNTIME_DIR_BASE, sizeof(a_RUNTIME_DIR_BASE) -1);
-      cp += sizeof(a_RUNTIME_DIR_BASE) -1;
-      *cp++ = '/';
-      memcpy(cp, &uidbuf[4], uidbuflen);
-
-      if((res = pam_putenv(pamh, xbuf)) != PAM_SUCCESS)
-         goto jepam;
-
-      /* And the rest unless disallowed */
-      if(!(f & a_RUNTIME)){
-         struct a_dir{
-            char const *name;
-            size_t len;
-            char const *defval;
-         };
-
-         static struct a_dir const a_dirs[] = {
-            {"XDG_DATA_HOME=", sizeof("XDG_DATA_HOME=") -1,
-               a_XDG_DATA_HOME_DEF},
-            {"XDG_CONFIG_HOME=", sizeof("XDG_CONFIG_HOME=") -1,
-               a_XDG_CONFIG_HOME_DEF},
-            {"XDG_DATA_DIRS=", sizeof("XDG_DATA_DIRS=") -1,
-               a_XDG_DATA_DIRS_DEF},
-            {"XDG_CONFIG_DIRS=", sizeof("XDG_CONFIG_DIRS=") -1,
-               a_XDG_CONFIG_DIRS_DEF},
-            {"XDG_CACHE_HOME=", sizeof("XDG_CACHE_HOME=") -1,
-               a_XDG_CACHE_HOME_DEF},
-            {NULL,0,NULL} /* XXX -> nelem/item/countof */
-         };
-
-         char const *src;
-         struct a_dir const *adp;
-         size_t i;
-
-         i = strlen(pwp->pw_dir);
-
-         for(adp = a_dirs; adp->name != NULL; ++adp){
-            cp = xbuf;
-            memcpy(cp, adp->name, adp->len);
-            cp += adp->len;
-            if(*(src = adp->defval) == '\1'){
-               memcpy(cp, pwp->pw_dir, i);
-               cp += i;
-               ++src;
-            }
-            memcpy(cp, src, strlen(src) +1);
-
-            if((res = pam_putenv(pamh, xbuf)) != PAM_SUCCESS)
-               goto jepam;
-         }
       }
    }
 
@@ -456,7 +469,9 @@ jleave:
    if(cwdfd != -1 && cwdfd != AT_FDCWD) /* >=0, but AT_FDCWD unspecified */
       close(cwdfd);
 
+   f &= a__SAVED_MASK;
    f_saved = f;
+
    return (res == PAM_SUCCESS) ? PAM_SUCCESS : PAM_SESSION_ERR;
 
 jerr:
