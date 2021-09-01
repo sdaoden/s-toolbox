@@ -18,6 +18,7 @@ CFLAGS = -DNDEBUG \
 LDFLAGS = -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
 	-Wl,--enable-new-dtags -pie -shared
 INSTALL = install
+MKDIR = mkdir
 RM = rm
 
 .PHONY: all clean distclean install uninstall
@@ -32,8 +33,10 @@ clean:
 distclean: clean
 
 install: all
-	$(INSTALL) -D -m 0755 $(NAME).so $(LIBDIR)/$(NAME).so
-	$(INSTALL) -D -m 0644 $(NAME).8 $(MANDIR)/$(NAME).8
+	$(MKDIR) -p -m 0755 $(LIBDIR)
+	$(INSTALL) -m 0755 $(NAME).so $(LIBDIR)/$(NAME).so
+	$(MKDIR) -p -m 0755 $(MANDIR)
+	$(INSTALL) -m 0644 $(NAME).8 $(MANDIR)/$(NAME).8
 
 uninstall:
 	$(RM) -f $(LIBDIR)/$(NAME).so $(MANDIR)/$(NAME).8
