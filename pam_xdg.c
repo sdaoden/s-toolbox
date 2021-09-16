@@ -25,12 +25,14 @@
  * Be aware we use a stack buffer for storage */
 #define a_XDG_DATA_HOME_DEF "\1/.local/share"
 #define a_XDG_CONFIG_HOME_DEF "\1/.config"
-#define a_XDG_DATA_DIRS_DEF "/usr/local/share:/usr/share"
-#define a_XDG_CONFIG_DIRS_DEF "/etc/xdg"
 #define a_XDG_CACHE_HOME_DEF "\1/.cache"
+/* For porter's sake this */
+#define a_XDG_DATA_DIRS_DEF a_STRING(XDG_DATA_DIR_LOCAL) "/share:/usr/share"
+#define a_XDG_CONFIG_DIRS_DEF a_STRING(XDG_CONFIG_DIR) "/xdg"
 
-/* We create the outer directories as necessary (stack buffer storage!) */
-#define a_RUNTIME_DIR_OUTER "/run"
+/* We create the outer directories as necessary (stack buffer storage!).
+ * This only holds for last component of _OUTER, though. */
+#define a_RUNTIME_DIR_OUTER a_STRING(XDG_RUNTIME_DIR_OUTER)
 #define a_RUNTIME_DIR_OUTER_MODE 0755
 #define a_RUNTIME_DIR_BASE "user"
 #define a_RUNTIME_DIR_BASE_MODE 0755 /* 0711? */
@@ -94,6 +96,10 @@
   /* Well, hardly, but not in practice so do not #error out */
 # define a_O_SEARCH 0
 #endif
+
+/* */
+#define a_STRING(X) a__STRING(X)
+#define a__STRING(X) #X
 
 /* libpam / OpenPAM compat */
 #ifdef OPENPAM_VERSION
