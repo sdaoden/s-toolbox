@@ -9,6 +9,9 @@ find-command.sh:
    so here is how it is possible to really find a usable executable file.
    Thanks to Robert Elz (kre).
 
+   2021-12-16: allow prefilled variables with spaces, no longer find
+               commands with spaces: $VAR (not "$VAR") now always correct.
+
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so
    that i can use ``$ git rebase -i`` for fixups and squashes, without
