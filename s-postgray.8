@@ -1,0 +1,129 @@
+.\"@ s-postgray - postfix policy (gray list) server.
+.\"
+.\" Copyright (c) 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
+.\" SPDX-License-Identifier: ISC
+.\"
+.\" Permission to use, copy, modify, and/or distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.
+.Dd January 14, 2022
+.Dt S_POSTGRAY 8
+.Os
+.
+.
+.Sh NAME
+.Nm s-postgray
+.Nd postfix graylist policy server
+.
+.
+.Sh SYNOPSIS
+.
+.Nm
+.Op h
+.
+.
+.Sh DESCRIPTION
+.
+.Nm
+is a simple
+.Xr postfix 8
+graylist policy server.
+
+
+
+Minutes have a limit a S16_MAX
+
+
+
+whitelisted recipients are not supported;
+  since these are immutable from our point of view, simply use
+    smtpd_recipient_restrictions =
+      ...
+      check_recipient_access
+      ...
+      POSTGRAY
+  ie before the graylist daemon, if you really need it
+
+
+
+
+
+
+
+memory failure upon startup are not handled, only for graylist at runtime
+
+USR1 reload white lists: panic on memory excess!!!
+
+
+
+
+useradd  -U -d /var/lib/_postfix_gray -s /bin/false _postfix_gray
+passwd -l _postfix_gray
+
+
+#postgray unix - n n - - spawn
+#  user=nobody argv=
+#       user=_postfix_gray  argv=/tmp/postgray
+
+
+
+
+# Usage: greylist.pl [-v]
+#
+# Demo delegated Postfix SMTPD policy server. This server implements
+# greylisting. State is kept in a Berkeley DB database.  Logging is
+# sent to syslogd.
+#
+# How it works: each time a Postfix SMTP server process is started
+# it connects to the policy service socket, and Postfix runs one
+# instance of this PERL script.  By default, a Postfix SMTP server
+# process terminates after 100 seconds of idle time, or after serving
+# 100 clients. Thus, the cost of starting this PERL script is smoothed
+# out over time.
+#
+# To run this from /etc/postfix/master.cf:
+#
+#    NAME  unix  -       n       n       -       -       spawn
+#      user=nobody argv=/usr/bin/perl /usr/libexec/postfix/greylist.pl
+#
+# To use this from Postfix SMTPD, use in /etc/postfix/main.cf:
+#
+#    smtpd_recipient_restrictions =
+#       ...
+#       reject_unauth_destination
+#       check_policy_service unix:PATH/NAME
+#       ...
+#
+# NOTE: specify check_policy_service AFTER reject_unauth_destination
+# or else your system can become an open relay.
+#
+
+
+
+
+
+
+
+
+
+.
+.
+.Sh "SEE ALSO"
+.
+.Xr postfix 8
+.
+.
+.Sh AUTHORS
+.
+.An "Steffen Nurpmeso" Aq steffen@sdaoden.eu .
+.
+.\" s-ts-mode
