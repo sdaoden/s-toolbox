@@ -416,10 +416,26 @@ clone_to_cwd() {
       fi
 
       echo '== Synchronizing to '"$1$parentmsg"' from snapshots/'$d
+      # On #btrfs@Libera.Chat multicore: and darkling: suggested looking for
+      # "btrfs sub list -R", and if received_uuid is empty then it was not
+      # successful, but (a) hard to make that fit into this code path, and
+      # (b) "-" seems to cause from uid_is_null(subv->ruuid) and that also
+      # seems to succeed for regular local volumes not received.
+      _remit() {
+         trap '' EXIT
+         echo '!! Cleaning up after error'
+         act cd "$CLONEDIR"/snapshots/"$d" '&&' \
+            btrfs subvolume delete $1 '&&' \
+            btrfs subvolume sync .
+         echo '!! Cleanup finished'
+      }
       ( set -o pipefail ) >/dev/null 2>&1 && set -o pipefail
+      trap _remit EXIT
       act btrfs send $parent $1 '|' \
-         '('cd "$CLONEDIR"/snapshots/"$d" '&&' btrfs receive . '&&' \
+         '('cd "$CLONEDIR"/snapshots/"$d" '&&' \
+            btrfs receive . '&&' \
             btrfs filesystem sync .')'
+      trap '' EXIT
       ) || exit $?
    done
 
