@@ -65,7 +65,7 @@
 #@ + the_worker() drives the logic, and may become adjusted, if simply
 #@   setting other values for $THEVOL, $DIRS and $ACCUDIR does not suffice.
 #
-# 2019 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
+# 2019 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain
 
 : ${HOSTNAME:=`uname -n`}
@@ -311,6 +311,8 @@ trim_one() {
       act btrfs subvolume delete "$1"
       shift
    done
+   echo '=== Syncing on removal(s)'
+   act btrfs subvolume sync .
    ) || exit $?
 }
 
@@ -323,6 +325,8 @@ trim_old_vols() {
          act btrfs subvolume delete "$p"
       done
    rm -rf .old
+   echo '= Syncing on removal(s)'
+   act btrfs subvolume sync .
    ) || exit $?
 }
 
