@@ -147,7 +147,7 @@ the_worker() { # Will run in subshell!
          echo '== Receiving ball '$b
          for d in $DIRS; do
             if [ "$b" = = ]; then
-               trim_one "$d"
+               trim_one "$d" y
             else
                receive_one "$d" "$b"
             fi
@@ -157,6 +157,13 @@ the_worker() { # Will run in subshell!
       echo '= Trimming snapshots for '$DIRS
       for d in $DIRS; do
          trim_one "$d"
+      done
+      for d in $DIRS; do
+         (
+            cd snapshots/"$d" || exit 11
+            echo '== Syncing on removal(s) of '$d
+            act btrfs subvolume sync .
+         ) || exit $?
       done
       trim_old_vols
    elif [ $1 = setvols ]; then
@@ -297,6 +304,7 @@ receive_one() {
 trim_one() {
    (
    mydir=$1
+   dosync=$2
    cd snapshots/"$mydir" || exit 11
 
    set -- `find . -maxdepth 1 -type d -not -path . | sort`
@@ -311,8 +319,10 @@ trim_one() {
       act btrfs subvolume delete "$1"
       shift
    done
-   echo '=== Syncing on removal(s)'
-   act btrfs subvolume sync .
+   if [ -n "$dosync" ]; then
+      echo '=== Syncing on removal(s)'
+      act btrfs subvolume sync .
+   fi
    ) || exit $?
 }
 
