@@ -335,7 +335,7 @@ trim_old_vols() {
          act btrfs subvolume delete "$p"
       done
    rm -rf .old
-   echo '= Syncing on removal(s)'
+   echo '== Syncing on removal(s)'
    act btrfs subvolume sync .
    ) || exit $?
 }
