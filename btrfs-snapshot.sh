@@ -431,11 +431,12 @@ clone_to_cwd() {
       # successful, but (a) hard to make that fit into this code path, and
       # (b) "-" seems to cause from uid_is_null(subv->ruuid) and that also
       # seems to succeed for regular local volumes not received.
+      mysnap=$1
       _remit() {
          trap '' EXIT
          echo '!! Cleaning up after error'
          act cd "$CLONEDIR"/snapshots/"$d" '&&' \
-            btrfs subvolume delete $1 '&&' \
+            btrfs subvolume delete $mysnap '&&' \
             btrfs subvolume sync .
          echo '!! Cleanup finished'
       }
