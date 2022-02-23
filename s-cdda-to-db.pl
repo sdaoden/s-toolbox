@@ -16,7 +16,7 @@ my $ABSTRACT = 'Read and encode audio CDs, integrated in S-Music DB.';
 #@ - For OPUS: opusenc (see Vorbis TODO untested!).
 #
 # Copyright (c) 1998 - 2003, 2010 - 2014, 2016 - 2018,
-#               2020 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
+#               2020 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
 # SPDX-License-Identifier: ISC
 #
 # Permission to use, copy, modify, and/or distribute this software for any

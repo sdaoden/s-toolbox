@@ -6,7 +6,7 @@ require 5.008_001;
 my $SELF = 'git-topic-creator.pl';
 my $VERSION = 'v0.2.1-dirty';
 my $COPYRIGHT =<<__EOT__;
-Copyright (c) 2012 - 2021 Steffen Nurpmeso <steffen\@sdaoden.eu>.
+Copyright (c) 2012 - 2022 Steffen Nurpmeso <steffen\@sdaoden.eu>.
 This software is provided under the terms of the ISC license.
 __EOT__
 # Permission to use, copy, modify, and/or distribute this software for any

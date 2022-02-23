@@ -5,7 +5,7 @@
  *@ - Requires C preprocessor with __VA_ARGS__ support!
  *@ - Uses "rm -rf" to drop per-user directories. XXX Unroll this?  nftw?
  *
- * Copyright (c) 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
+ * Copyright (c) 2021 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -169,12 +169,6 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
       for(; argc > 0; ++argv, --argc){
          if(!strcmp(argv[0], "runtime"))
             f |= a_RUNTIME;
-         else if(!strcmp(argv[0], "rundir")){ /* XXX COMPAT */
-            a_LOG(pamh, a_LOG_NOTICE,
-               a_XDG ": \"rundir\" was a misdocumentation of \"runtime\", "
-               "sorry for this");
-            f |= a_RUNTIME;
-         }
          else if(!strcmp(argv[0], "notroot"))
             f |= a_NOTROOT;
          else if(!strcmp(argv[0], "track_sessions"))
@@ -188,7 +182,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
          }
       }
 
-      if((f & a_USER_LOCK) && !(f & a_SESSIONS))
+      if((f & (a_SESSIONS | a_USER_LOCK)) == a_USER_LOCK)
          a_LOG(pamh, a_LOG_NOTICE,
             a_XDG ": \"per_user_lock\" requires \"track_sessions\"");
    }else{

@@ -7,7 +7,7 @@
 #@ directory in your $TMPDIR to unpack the archive therein; without arguments
 #@ it will always print creation time and members shipped.
 #
-# Copyright (c) 2012 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
+# Copyright (c) 2012 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -126,7 +126,7 @@ CREATION_DATE=`date -u`
 cat <<\! > "${SHAR}"
 #!/bin/sh -
 #@ This file has been created by gen-uushar-wrapper, which is
-# Copyright (c) 2012 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
+# Copyright (c) 2012 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
 #@ by means of the ISC license.
 #@ It contains a shell-archive-execution-environment.
 #@ Run it, and it will tell you which executable files it contains.

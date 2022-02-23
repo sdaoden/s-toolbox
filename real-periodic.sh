@@ -4,7 +4,7 @@
 #@ is running only one hour a day.
 #@ Invoke this once per hour in the roots crontab and disable the usual
 #@ periodic stuff of your system instead.
-#@ I.e., on my old FreeBSD 5.3 box the crontab entry is:
+#@ On my old FreeBSD 5.3 box the crontab entry is:
 #
 #   # Perform daily/weekly/monthly maintenance.
 #   15  * * * * root    /usr/bin/nice -n 15 real-periodic
@@ -12,7 +12,7 @@
 #   #15 4 * * 6 root    periodic weekly
 #   #30 5 1 * * root    periodic monthly
 #
-# 2012 - 2017 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+# (~2003,) 2012 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain.
 
 # Set to a path where you want the timestamp info to be stored

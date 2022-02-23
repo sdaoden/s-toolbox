@@ -27,7 +27,7 @@
 #@ TODO When calculating sleeps, adaptions etc. we should pay
 #@ TODO attention to the overall temperature percentage.
 #
-# 2018 - 2019 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+# 2018 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain
 
 # Predefined models; see MACBOOK_AIR_2011 set for an example.
@@ -41,6 +41,12 @@ DBGLOG=/tmp/fan-adaptive.log
 
 # Set to non-empty if shell truly supports $(< ) (instead of cat(1))?
 FASTCAT=
+##
+
+if ( echo $(( 10 - 10 / 10 )) ) >/dev/null 2>&1; then :; else
+   echo >&2 'Shell cannot do arithmetic, bailing out'
+   exit 1
+fi
 
 ## MODELs
 
@@ -79,18 +85,18 @@ FASTCAT=
 # SIM, the test simulator
 
 init_SIM() {
-   if [ $1 -eq 0 ]; then
-      printf '= init_SIM(): number of datasets: '
-      read fc_no
-      printf ' > sleep: min. max.: '
-      read fc_sleep_min fc_sleep_max
-      i=1
-      while [ $i -le $fc_no ]; do
-         printf ' > Dataset '$i': temp-min temp-max: '
-         eval read fc_temp_min_$i fc_temp_max_$i
-         i=$((i + 1))
-      done
-   fi
+   [ $1 -ne 0 ] && return
+
+   printf '= init_SIM(): number of datasets: '
+   read fc_no
+   printf ' > sleep: min. max.: '
+   read fc_sleep_min fc_sleep_max
+   i=1
+   while [ $i -le $fc_no ]; do
+      printf ' > Dataset '$i': temp-min temp-max: '
+      eval read fc_temp_min_$i fc_temp_max_$i
+      i=$((i + 1))
+   done
 }
 
 status_SIM() {
@@ -117,69 +123,69 @@ adjust_SIM() {
 # MACBOOK_AIR_2011
 
 init_MACBOOK_AIR_2011() {
-   if [ $1 -eq 0 ]; then
-      fc_no=3 fc_sleep_min=10 fc_sleep_max=40 \
-         mac_maxlvl_old=0 mac_fanspeed=0
+   [ $1 -ne 0 ] && return
 
-      i=
-      for d in /sys/class/hwmon/hwmon*; do
-         if [ -f $d/device/fan1_input ]; then
-            i=$d
-            break
-         fi
-      done
-      if [ -z "$i" ]; then
-         echo >&2 '! MACBOOK_AIR_2011: no fan in /sys/class/hwmon/?'
-         exit 1
+   fc_no=3 fc_sleep_min=10 fc_sleep_max=40 \
+      mac_maxlvl_old=0 mac_fanspeed=0
+
+   i=
+   for d in /sys/class/hwmon/hwmon*; do
+      if [ -f $d/device/fan1_input ]; then
+         i=$d
+         break
       fi
-      mac_fan_control=$i/device/fan1_min
-      mac_fan_min=2000 #`cat $mac_fan_control`
-      mac_fan_max=`cat $i/device/fan1_max`
-
-      i=
-      for d in /sys/class/hwmon/hwmon*; do
-         if [ -f $d/temp1_crit_hyst ] && [ -f $d/temp1_input ]; then
-            i=$d
-            break
-         fi
-      done
-      if [ -z "$i" ]; then
-         echo >&2 '! MACBOOK_AIR_2011: cannot find GPU in /sys/class/hwmon/?'
-         exit 1
-      fi
-      mac_input_1=$i/temp1_input
-      fc_temp_max_1=$((`cat $i/temp1_max`))
-         fc_temp_min_1=$((fc_temp_max_1 - (40 * (fc_temp_max_1 / 100)) ))
-         fc_temp_min_1=$((fc_temp_min_1 / 1000))
-         fc_temp_max_1=$((fc_temp_max_1 - (15 * (fc_temp_max_1 / 100)) ))
-         fc_temp_max_1=$((fc_temp_max_1 / 1000))
-
-      i=
-      for d in /sys/class/hwmon/hwmon*; do
-         if [ -f $d/temp2_input ] && [ -f $d/temp3_input ]; then
-            i=$d
-            break
-         fi
-      done
-      if [ -z "$i" ]; then
-         echo >&2 '! MACBOOK_AIR_2011: cannot find CPUs in /sys/class/hwmon/?'
-         exit 1
-      fi
-      mac_input_2=$i/temp2_input
-         fc_temp_max_2=$((`cat $i/temp2_max`))
-            fc_temp_min_2=$((fc_temp_max_2 - (52 * (fc_temp_max_2 / 100)) ))
-            fc_temp_min_2=$((fc_temp_min_2 / 1000))
-            fc_temp_max_2=$((fc_temp_max_2 - (25 * (fc_temp_max_2 / 100)) ))
-            fc_temp_max_2=$((fc_temp_max_2 / 1000))
-      mac_input_3=$i/temp3_input
-         fc_temp_max_3=$((`cat $i/temp3_max`))
-            fc_temp_min_3=$((fc_temp_max_3 - (52 * (fc_temp_max_3 / 100)) ))
-            fc_temp_min_3=$((fc_temp_min_3 / 1000))
-            fc_temp_max_3=$((fc_temp_max_3 - (25 * (fc_temp_max_3 / 100)) ))
-            fc_temp_max_3=$((fc_temp_max_3 / 1000))
-
-      dbg ' = MACBOOK_AIR_2011: fan min='$mac_fan_min', max='$mac_fan_max
+   done
+   if [ -z "$i" ]; then
+      echo >&2 '! MACBOOK_AIR_2011: no fan in /sys/class/hwmon/?'
+      exit 1
    fi
+   mac_fan_control=$i/device/fan1_min
+   mac_fan_min=2000 #`cat $mac_fan_control`
+   mac_fan_max=`cat $i/device/fan1_max`
+
+   i=
+   for d in /sys/class/hwmon/hwmon*; do
+      if [ -f $d/temp1_crit_hyst ] && [ -f $d/temp1_input ]; then
+         i=$d
+         break
+      fi
+   done
+   if [ -z "$i" ]; then
+      echo >&2 '! MACBOOK_AIR_2011: cannot find GPU in /sys/class/hwmon/?'
+      exit 1
+   fi
+   mac_input_1=$i/temp1_input
+   fc_temp_max_1=$((`cat $i/temp1_max`))
+      fc_temp_min_1=$((fc_temp_max_1 - (40 * (fc_temp_max_1 / 100)) ))
+      fc_temp_min_1=$((fc_temp_min_1 / 1000))
+      fc_temp_max_1=$((fc_temp_max_1 - (15 * (fc_temp_max_1 / 100)) ))
+      fc_temp_max_1=$((fc_temp_max_1 / 1000))
+
+   i=
+   for d in /sys/class/hwmon/hwmon*; do
+      if [ -f $d/temp2_input ] && [ -f $d/temp3_input ]; then
+         i=$d
+         break
+      fi
+   done
+   if [ -z "$i" ]; then
+      echo >&2 '! MACBOOK_AIR_2011: cannot find CPUs in /sys/class/hwmon/?'
+      exit 1
+   fi
+   mac_input_2=$i/temp2_input
+      fc_temp_max_2=$((`cat $i/temp2_max`))
+         fc_temp_min_2=$((fc_temp_max_2 - (52 * (fc_temp_max_2 / 100)) ))
+         fc_temp_min_2=$((fc_temp_min_2 / 1000))
+         fc_temp_max_2=$((fc_temp_max_2 - (25 * (fc_temp_max_2 / 100)) ))
+         fc_temp_max_2=$((fc_temp_max_2 / 1000))
+   mac_input_3=$i/temp3_input
+      fc_temp_max_3=$((`cat $i/temp3_max`))
+         fc_temp_min_3=$((fc_temp_max_3 - (52 * (fc_temp_max_3 / 100)) ))
+         fc_temp_min_3=$((fc_temp_min_3 / 1000))
+         fc_temp_max_3=$((fc_temp_max_3 - (25 * (fc_temp_max_3 / 100)) ))
+         fc_temp_max_3=$((fc_temp_max_3 / 1000))
+
+   dbg ' = MACBOOK_AIR_2011: fan min='$mac_fan_min', max='$mac_fan_max
 }
 
 status_MACBOOK_AIR_2011() {
@@ -409,11 +415,6 @@ fanoff() {
    fc_first_time=1
 }
 
-if ( echo $(( 10 - 10 / 10 )) ) >/dev/null 2>&1; then :; else
-   echo >&2 'Shell cannot do arithmetic, bailing out'
-   exit 1
-fi
-
 # Problem: busybox sh(1) succeeds the first but it is a fake
 if ( $(< /dev/null) ) >/dev/null 2>&1 &&
       [ -f /etc/fstab ] && command -v cksum >/dev/null 2>&1 &&
@@ -431,7 +432,7 @@ trap 'dbg "= Received SIGUSR1"; [ -z "$DEBUG" ] && DEBUG=1 || DEBUG=' USR1
 trap 'dbg "= Received SIGUSR2, fanoff, reinit"; fanoff; init' USR2
 trap 'dbg "= Received SIGTSTP, fanoff"; fanoff' TSTP
 
-while [ 1 -eq 1 ]; do
+while :; do
    status
 
    # The way the shell handles signals is complicated, only mksh was able

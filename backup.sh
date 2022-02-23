@@ -24,7 +24,7 @@
 #@ 2020-09-03, 2021-02-23: change builtin path set.
 #@ 2021-03-03: silence $COMPRESSOR
 #
-# 2010 - 2021 Steffen Nurpmeso <steffen@sdaoden.eu>.
+# 2010 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain.
 
 # Now start perl(1) without PERL5OPT set to avoid multibyte sequence errors
