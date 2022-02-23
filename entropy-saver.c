@@ -8,7 +8,7 @@
  *@ "file" defaults to a_RAND_FILE_STORE.
  *@ XXX save: should build [file].new, and link(2) to [file] only on success.
  *
- * 2019 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+ * 2019 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * Public Domain
  */
 
@@ -115,7 +115,7 @@ jeuse:
    }
    x.rpi.entropy_count = iocarg;
 
-   rpibuf = (char*)x.rpi.buf;
+   rpibuf = (char*)&((struct rand_pool_info volatile*)&x.rpi)->buf[0];
 
    if(accu == a_LOAD){
       syslog(LOG_INFO, "%d bits of entropy available at " a_RAND_DEV "\n",
@@ -180,7 +180,7 @@ jeuse:
       /* For at least statistics */
       rv = ioctl(randfd, (int)RNDGETENTCNT, &iocarg);
       if(rv != -1)
-         syslog(LOG_INFO, "%d bits of entropy are at at " a_RAND_DEV "\n",
+         syslog(LOG_INFO, "%d bits of entropy are at " a_RAND_DEV "\n",
             iocarg);
    }else{
       /* Since we are reading in non-blocking mode, and since reading from
@@ -227,15 +227,23 @@ jread_more:
          rv = EX_IOERR;
          goto jerr2;
       }
+
+      /* Newer kernels (?) do not decrement entropy.  If we have filled the
+       * entire buffer, simply assume 4 bits entropy per buf byte */
       entrop_cnt -= iocarg;
       x.rpi.entropy_count += entrop_cnt;
-
+      if(entrop_cnt == 0 && rem_size == 0){
+         x.rpi.entropy_count = (sizeof(x.buf) * 8) / 2;
+         syslog(LOG_INFO,
+            "No random read entropy decrement, "
+            "entropy (%u bits)\n", (unsigned int)x.rpi.entropy_count);
       /* Try to read more? */
-      if(len > 0 && (entrop_cnt = iocarg) >= a_RAND_ENTROPY_COUNT_MIN &&
+      }else if(len > 0 && (entrop_cnt = iocarg) >= a_RAND_ENTROPY_COUNT_MIN &&
             rem_size >= 64)
          goto jread_more;
-      syslog(LOG_INFO, "%d bits of entropy remain at " a_RAND_DEV "\n",
-         iocarg);
+      else
+         syslog(LOG_INFO, "%d bits of entropy remain at " a_RAND_DEV "\n",
+            iocarg);
 
       if(x.rpi.entropy_count <= 128){
 jread_insuff:
@@ -245,7 +253,7 @@ jread_insuff:
          goto jerr2;
       }
 
-      rpibuf = (char*)x.rpi.buf;
+      rpibuf = (char*)&((struct rand_pool_info volatile*)&x.rpi)->buf[0];
       len = x.rpi.buf_size;
       if((ssize_t)sizeof(x.rpi.entropy_count) != write(storfd,
                &x.rpi.entropy_count, sizeof x.rpi.entropy_count) ||

@@ -3,6 +3,15 @@ A repo of some small tools
 
 Somewhat useful:
 
+entropy-saver.c:
+   Linux: for my use cases i find it annoying that "entropy_avail" is not
+   incremented when i restore the saved random seed that machines have
+   collected so hard.  This little program touches this count also.
+   (Thanks Bernd Petrovitsch for pointing out EAGAIN and EBUSY.)
+   ...
+   2022-02-23: work when /proc/sys/kernel/random/entropy_avail is not de-
+               cremented when reading /dev/random.
+
 find-command.sh:
    Find an executable command within a POSIX shell.
    which(1) is not standardized, and command(1) -v may return non-executable,
@@ -89,8 +98,6 @@ backup.sh:
 btrfs-snapshot.sh:
    Simple script to deal with BTRFS snapshots.
    ...
-   2021-05-29: try config via $BTRFS_SNAPSHOT first; for receive-balls,
-               let a filename of = mean: trim snapshots.
    2021-07-03: drop unused/broken "setmounts", add "setvols" command.
    2022-01-02: subvol sync after removal; if receiving a snapshot fails,
                remove it immediately via trap(1) EXIT, 'hope this works.
@@ -100,14 +107,6 @@ cdoc-freebsd.S:
    newer ones, but have not tried it in a while.  It had 416 object
    file bytes when everything was placed in ``.text`` (no .EH frames
    back then).
-
-entropy-saver.c:
-   Linux: for my use cases i find it annoying that "entropy_avail" is not
-   incremented when i restore the saved random seed that machines have
-   collected so hard.  This little program touches this count also.
-   ...
-   2019-01-21: Small fixes, and take care for EAGAIN. (Bernd Petrovitsch)
-   2019-01-24: use syslog(3) instead; also test EBUSY. (Bernd Petrovitsch)
 
 fan-adaptive.sh:
    "Adaptive", more generic, and much more easily adaptable successor of
