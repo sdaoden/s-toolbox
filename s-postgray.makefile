@@ -51,9 +51,9 @@ CFLAGS = $(CMODE) \
 	-fno-asynchronous-unwind-tables -fno-unwind-tables \
 	-fno-common \
 	-fstrict-aliasing -fstrict-overflow \
-	-fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE
+	-fstack-protector-strong -D_FORTIFY_SOURCE=2 #-fPIE
 LDFLAGS = -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
-	-Wl,--enable-new-dtags -pie
+	-Wl,--enable-new-dtags #--pie
 
 INSTALL = install
 MKDIR = mkdir

@@ -12,6 +12,22 @@ DEFER_MSG='DEFER_IF_PERMIT 4.2.0 Cannot hurry love'
 LC_ALL=C SOURCE_DATE_EPOCH=844221007
 export LC_ALL SOURCE_DATE_EPOCH
 
+s4= s5= s6=
+while [ $# -gt 0 ]; do
+   case $1 in
+   4) s4=y;;
+   5) s5=y;;
+   6) s6=y;;
+   *)
+      echo >&2 'No such test to skip: '$1
+      echo >&2 'Synopsis: '$0' [:test major number to skip, eg 5:]'
+      echo >&2 'First three test series cannot be skipped'
+      exit 64
+      ;;
+   esac
+   shift
+done
+
 mkdir .test || exit 1
 trap "trap '' EXIT; [ -z \"$KEEP_TESTS\" ] && rm -rf ./.test" EXIT
 trap 'exit 1' HUP INT TERM
@@ -48,6 +64,10 @@ cmp -s tdef1 defx || exit 3
 
 eval $PGx $LV > ./tdef2 || exit 4
 cmp -s tdef2 defx || exit 5
+
+echo '=def: shutdown request without server='
+eval $PGx --shutdown $REDIR
+[ $? -eq 75 ] || exit 6
 # }}}
 
 # And some explicit resources {{{
@@ -106,6 +126,8 @@ t() {
    [ -n "$REDIR" ] || echo ok $t
    eval "$PGX" -R ./defx "$@" "$LV" > ./$t.2 $REDIR;\
       adj_def $o $v $t.2 || exit $?
+   eval $PGx --shutdown $REDIR
+   [ $? -eq 75 ] || exit 101
    [ -n "$REDIR" ] || echo ok $t.2
 }
 
@@ -174,12 +196,14 @@ eval $PGX -R 2.rc1 -t 10 $LV > ./2.0 $REDIR
       gc-rebalance 2 gc-timeout 7200 \
       limit 11000 limit-delay 10405 \
       master-timeout 10 || exit $?
+eval $PGx --shutdown $REDIR
+[ $? -eq 75 ] || exit 101
 # }}}
 
 ##
-echo '=3: white lists, check=' # {{{
+echo '=3: allow and block, check=' # {{{
 
-cat > ./3.xx <<'_EOT'; cat defx >> ./3.xx;
+cat > ./3.zz <<'_EOT'
 = exact.match
 = also.exact.match
 ~ (*.)?domain.and.subdomain
@@ -193,50 +217,61 @@ cat > ./3.xx <<'_EOT'; cat defx >> ./3.xx;
 ~ 195.90.108.0/22
 _EOT
 
-eval $PGX --allow-check --4-mask 24 --6-mask 64 \
-   -a exact.match \
-   --allow also.exact.match \
-   -a.domain.and.subdomain \
-   --allow=.d.a.s \
-   -a 127.0.0.1 \
-   -a 2a03:2880:20:4f06:face:b00c:0:14/56 \
-   -a 2a03:2880:20:6f06:face:b00c:0:14/66 \
-   -a 2a03:2880:33:5f06:: \
-   -a 193.92.150.2/24 \
-   -a 193.95.150.100/28 \
-   -a 195.90.111.99/22 \
-   \
-   $LV > ./3.0 $REDIR
-cmp -s 3.0 3.xx || exit 101
-[ -n "$REDIR" ] || echo ok 3.0
+cat 3.zz defx > ./3.0x
+sed -e 's/^/!/' < ./3.zz > ./3.2x
+cat defx >> ./3.2x
 
-eval $PGX --allow-check -424 -664 -A x.a1 -A x.a2 $LV > ./3.1 $REDIR
-cmp -s 3.1 3.xx || exit 101
-[ -n "$REDIR" ] || echo ok 3.1
+ab() {
+   eval $PGX --allow-check --4-mask 24 --6-mask 64 \
+      -$2 exact.match \
+      --$3 also.exact.match \
+      -${2}.domain.and.subdomain \
+      --$3=.d.a.s \
+      -$2 127.0.0.1 \
+      -$2 2a03:2880:20:4f06:face:b00c:0:14/56 \
+      -$2 2a03:2880:20:6f06:face:b00c:0:14/66 \
+      -$2 2a03:2880:33:5f06:: \
+      -$2 193.92.150.2/24 \
+      -$2 193.95.150.100/28 \
+      -$2 195.90.111.99/22 \
+      \
+      $LV > ./3.$1 $REDIR
+   cmp -s 3.$1 3.${1}x || exit 101
+   eval $PGX --shutdown $REDIR
+   [ $? -eq 75 ] || exit 102
+   [ -n "$REDIR" ] || echo ok 3.${1}
+
+   i=$(($1 + 1))
+   eval $PGX --allow-check -424 -664 -$4 x.a1 -$4 x.a2 $LV > ./3.$i $REDIR
+   cmp -s 3.$i 3.${1}x || exit 101
+   eval $PGX --shutdown $REDIR
+   [ $? -eq 75 ] || exit 102
+   [ -n "$REDIR" ] || echo ok 3.${i}
+}
+
+ab 0 a allow A
+ab 2 b block B
 
 echo 'allow-file=x.a1' >> ./defx
 echo 'resource-file=3.r1' >> ./defx
 echo 'allow-file=x.a2' >> ./3.r1
 
-eval $PGX --allow-check -R ./defx --4-mask=24 --6-mask 64 $LV > ./3.2 $REDIR
-cmp -s 3.2 3.xx || exit 101
-[ -n "$REDIR" ] || echo ok 3.2
+eval $PGX --allow-check -R ./defx --4-mask=24 --6-mask 64 $LV > ./3.4 $REDIR
+cmp -s 3.4 3.0x || exit 101
+eval $PGX --shutdown $REDIR
+[ $? -eq 75 ] || exit 102
+[ -n "$REDIR" ] || echo ok 3.4
 # }}}
 
 ### Configuration seems to work, go for the real thing!!  (./defx clobbered)
 
 ##
-echo '=4: white lists=' # {{{
+echo '=4: allow and block=' # {{{
+if [ -n "$s4" ]; then
+   echo 'skipping 4'
+else
 
-# A block, the latter two are optional (for us)
-#recipient=root@localhost
-#sender=steffen@kent
-#client_address=127.0.0.1
-#client_name=localhost
-#request=smtpd_access_policy
-#instance=2cf5.61c38318.aacaa.0
-
-cat <<'_EOT' | eval $PG -R ./x.rc -t 1 > ./4.0 $REDIR; cat > ./4.0x <<'_EOT'
+cat <<'_EOT' > ./4.x
 recipient=x@y
 sender=y@z
 client_address=127.0.0.1
@@ -255,7 +290,7 @@ client_name=xy
 
 recipient=x@y
 sender=y@z
-client_address=193.92.150.001
+client_address=193.92.150.1
 client_name=xy
 
 recipient=x@y
@@ -327,50 +362,35 @@ client_address=200.200.200.200
 client_name=a.b.c.d.e.f.d.a.s
 
 _EOT
-action=DUNNO
 
-action=DUNNO
+i=0
+while [ $i -lt 17 ]; do
+   printf 'action=DUNNO\n\n' >> ./4.0x
+   printf 'action=REJECT\n\n' >> ./4.1x
+   i=$((i + 1))
+done
 
-action=DUNNO
+sed -e 's/^allow/block/' < ./x.rc > ./y.rc
 
-action=DUNNO
-
-action=DUNNO
-
-action=DUNNO
-
-action=DUNNO
-
-action=DUNNO
-
-action=DUNNO
-
-action=DUNNO
-
-action=DUNNO
-
-action=DUNNO
-
-action=DUNNO
-
-action=DUNNO
-
-action=DUNNO
-
-action=DUNNO
-
-action=DUNNO
-
-_EOT
-
+< ./4.x eval $PG -R ./x.rc > ./4.0 $REDIR
 cmp -s 4.0 4.0x || exit 101
+eval $PG -R ./x.rc --shutdown $REDIR
+[ $? -ne 75 ] || exit 102
 [ -n "$REDIR" ] || echo ok 4.0
 
+< ./4.x eval $PG -R ./y.rc -t 1 > ./4.1 $REDIR
+cmp -s 4.1 4.1x || exit 101
 eval $PG -R ./x.rc --shutdown $REDIR
+[ $? -ne 75 ] || exit 102
+[ -n "$REDIR" ] || echo ok 4.1
+fi
 # }}}
 
 ##
 echo '=5: gray basics (slow: needs sleeping)=' # {{{
+if [ -n "$s5" ]; then
+   echo 'skipping 5'
+else
 
 # Honour --delay-min and --count
 cat <<'_EOT' | eval $PG -R ./x.rc > ./5.0 $REDIR; cat > ./5.x <<_EOT
@@ -439,8 +459,8 @@ eval $PG -R ./x.rc --shutdown $REDIR
 # ..but sleep a bit so times are adjusted!
 xsleep 1
 
-sed -i'' '3,$d' ./5.x
-sed -i'' '3,$d' ./5.xx
+sed -i'' -e '3,$d' ./5.x
+sed -i'' -e '3,$d' ./5.xx
 
 #
 printf \
@@ -627,10 +647,14 @@ cmp -s ./5.21 ./5.x || exit 101
 
 eval $PG -R ./x.rc --shutdown $REDIR
 [ $? -eq 0 ] || exit 101
+fi
 # }}}
 
 ##
 echo '=6: gray parallel (this takes quite some time)=' # {{{
+if [ -n "$s6" ]; then
+   echo 'skipping 6'
+else
 
 rm -f *.db
 
@@ -642,10 +666,11 @@ max1=4 max2=24
 cat > ./6.rc <<_EOT
 4-mask 24
 count 1
+defer-msg=all the same
 delay-min 2
 delay-max 720
 gc-timeout 1440
-defer-msg=all the same
+master-timeout 720
 store-path=$pwd
 limit $((max2 * max1))
 _EOT
@@ -726,17 +751,10 @@ while [ $i -lt $max1 ]; do
    i=$((i + 1))
 done
 
-
-
 eval $PG -R ./x.rc --shutdown $REDIR
 [ $? -eq 0 ] || exit 101
+fi
 # }}}
-
-##
-echo '=X.Y: shutdown request without server='
-eval $PG -R ./x.rc --shutdown $REDIR
-[ $? -eq 75 ] || exit 101
-[ -n "$REDIR" ] || echo ok X.Y
 )
 exit $?
 

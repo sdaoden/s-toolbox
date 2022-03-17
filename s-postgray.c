@@ -132,51 +132,58 @@
 #define V_(X) X
 
 /* No need for _CASE since keys are normalized already.  No _AUTO_SHRINK! */
-#define a_DICT_WHITE_CA_FLAGS (su_CS_DICT_HEAD_RESORT)
-#define a_DICT_WHITE_CNAME_FLAGS (su_CS_DICT_HEAD_RESORT)
+#define a_PG_WB_CA_FLAGS (su_CS_DICT_HEAD_RESORT)
+#define a_PG_WB_CNAME_FLAGS (su_CS_DICT_HEAD_RESORT)
 
 /* Gray list; that is balanced() after resize; no _ERR_PASS, set later on! */
-#define a_DICT_FLAGS \
+#define a_PG_GRAY_FLAGS \
    (su_CS_DICT_HEAD_RESORT | su_CS_DICT_STRONG /*| su_CS_DICT_ERR_PASS*/)
-#define a_DICT_TS 4
-#define a_DICT_MIN_LIMIT 1000
-#define a_DB_NAME "s-postgray.db"
+#define a_PG_GRAY_TS 4
+#define a_PG_GRAY_MIN_LIMIT 1000
+#define a_PG_GRAY_DB_NAME "s-postgray.db"
 
-enum a_flags{
-   a_F_NONE,
-   a_F_TEST_MODE = 1u<<1, /* -# */
-   a_F_TEST_ERRORS = 1u<<2,
+enum a_pg_flags{
+   a_PG_F_NONE,
+   a_PG_F_TEST_MODE = 1u<<1, /* -# */
+   a_PG_F_TEST_ERRORS = 1u<<2,
 
-   a_F_V = 1u<<6, /* Verbosity */
-   a_F_VV = 1u<<7, /* xxx unused */
-   a_F_V_MASK = a_F_V | a_F_VV,
+   a_PG_F_V = 1u<<6, /* Verbosity */
+   a_PG_F_VV = 1u<<7, /* xxx unused */
+   a_PG_F_V_MASK = a_PG_F_V | a_PG_F_VV,
 
    /* Client */
-   a_F_CLIENT_NONE,
-   a_F_CLIENT_SHUTDOWN_MODE = 1u<<8,
+   a_PG_F_CLIENT_NONE,
+   a_PG_F_CLIENT_SHUTDOWN_MODE = 1u<<8,
 
    /* Master */
-   a_F_MASTER_NONE = 0,
-   a_F_MASTER_ACCEPT_SUSPENDED = 1u<<8,
-   a_F_MASTER_LIMIT_EXCESS_LOGGED = 1u<<9,
-   a_F_MASTER_NOMEM_LOGGED = 1u<<10
+   a_PG_F_MASTER_NONE = 0,
+   a_PG_F_MASTER_ACCEPT_SUSPENDED = 1u<<8,
+   a_PG_F_MASTER_LIMIT_EXCESS_LOGGED = 1u<<9,
+   a_PG_F_MASTER_NOMEM_LOGGED = 1u<<10
 };
 
-enum a_avo_args{
-   a_AVO_NONE,
-   a_AVO_FULL = 1u<<0,
-   a_AVO_RELOAD = 1u<<1
+enum a_pg_avo_args{
+   a_PG_AVO_NONE,
+   a_PG_AVO_FULL = 1u<<0,
+   a_PG_AVO_RELOAD = 1u<<1
 };
 
-/* Fuzzy search whitelist */
-enum a_srch_flags{
-   a_SRCH_NONE,
-   a_SRCH_DOMAIN = 1u<<0,
-   a_SRCH_IPV4 = 1u<<1,
-   a_SRCH_IPV6 = 1u<<2
+enum a_pg_answer{
+   a_PG_ANSWER_DUNNO,
+   a_PG_ANSWER_DEFER,
+   a_PG_ANSWER_DEFER_SLEEP,
+   a_PG_ANSWER_REJECT
 };
 
-union a_srch_ip{
+/* Fuzzy search */
+enum a_pg_srch_flags{
+   a_PG_SRCH_NONE,
+   a_PG_SRCH_DOMAIN = 1u<<0,
+   a_PG_SRCH_IPV4 = 1u<<1,
+   a_PG_SRCH_IPV6 = 1u<<2
+};
+
+union a_pg_srch_ip{
    /* (Let's just place that align thing, ok?  I feel better that way) */
    u64 align;
    struct in_addr v4;
@@ -185,15 +192,21 @@ union a_srch_ip{
    char *cp;
 };
 
-/* Fuzzy search whitelist */
+/* Fuzzy search white/blacklist */
 struct a_pg_srch{
    struct a_pg_srch *pgs_next;
-   BITENUM_IS(u8,a_srch_flags) pgs_flags;
+   BITENUM_IS(u8,a_pg_srch_flags) pgs_flags;
    u8 pgs_mask; /* SRCH_IP*: CIDR mask */
    u8 pgs__pad[2];
    u32 pgs_len; /* SRCH_DOMAIN: hostname len */
    /* Really is a srch_ip but for SRCH_DOMAIN: string */
    char pgs_d[su_VFIELD_SIZE(0)];
+};
+
+struct a_pg_wb{
+   struct a_pg_srch *pgwb_srch; /* ca/cname list, fuzzy */
+   struct su_cs_dict pgwb_ca; /* client_address=, exact */
+   struct su_cs_dict pgwb_cname; /* client_name=, exac) */
 };
 
 struct a_pg_master{
@@ -203,15 +216,14 @@ struct a_pg_master{
    s16 pgm_epoch_min; /* Relative minutes of .pgm_base_epoch .. .pgm_epoch */
    s64 pgm_epoch; /* Of last tick */
    s64 pgm_base_epoch; /* ..of relative minutes; reset by gray_cleanup() */
-   struct a_pg_srch *pgm_white_srch; /* ca/cname whitelist, fuzzy */
-   struct su_cs_dict pgm_white_ca; /* client_address= whitelist (exact) */
-   struct su_cs_dict pgm_white_cname; /* client_name= whitelist (exact) */
+   struct a_pg_wb pgm_white;
+   struct a_pg_wb pgm_black;
    struct su_cs_dict pgm_gray;
    s32 pgm_cli_fds[a_CLIENTS_MAX];
 };
 
 struct a_pg{
-   BITENUM_IS(uz,a_flags) pg_flags;
+   BITENUM_IS(uz,a_pg_flags) pg_flags;
    struct a_pg_master *pg_master;
    /* Configuration; values always <= signed type max */
    u8 pg_4_mask;
@@ -238,13 +250,16 @@ struct a_pg{
 };
 
 static char const a_sopts[] =
-      "4:6:" "A:a:" "c:D:d:G:g:L:l:" "t:" "R:" "m:" "s:" /**/ "#" "." "vHh";
+      "4:6:" "A:a:B:b:" "c:D:d:G:g:L:l:" "t:" "R:" "m:" "s:"
+      "#" "." "vHh";
 static char const * const a_lopts[] = {
    "4-mask:;4;" N_("IPv4 mask to strip off gray addresses before match"),
    "6-mask:;6;" N_("IPv6 mask to strip off gray addresses before match"),
 
    "allow-file:;A;" N_("load a file of whitelist entries (order matters)"),
    "allow:;a;" N_("add domain/address/CIDR to whitelist (order matters)"),
+   "block-file:;B;" N_("load a file of blacklist entries (order matters)"),
+   "block:;b;" N_("add domain/address/CIDR to blacklist (order matters)"),
 
    "count:;c;" N_("of SMTP retries before accepting sender"),
    "delay-max:;D;" N_("until an email \"is not a retry\" but new (minutes)"),
@@ -295,29 +310,31 @@ static s32 a_master(struct a_pg *pgp, char const *sockpath);
 
 static s32 a_master__setup(struct a_pg *pgp, char const *sockpath);
 static s32 a_master__reset(struct a_pg *pgp);
-static s32 a_master__white_setup(struct a_pg *pgp, boole reset);
-static void a_master__white_reset(struct a_pg_master *pgmp);
+static s32 a_master__wb_setup(struct a_pg *pgp, boole reset);
+static void a_master__wb_reset(struct a_pg_master *pgmp);
 static s32 a_master__loop(struct a_pg *pgp);
 static void a_master__cli_ready(struct a_pg *pgp, u32 client);
-static boole a_master__cli_req(struct a_pg *pgp, u32 client, uz len);
+static u8 a_master__cli_req(struct a_pg *pgp, u32 client, uz len);
+static boole a_master__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwp);
 static void a_master__on_sig(int sig);
 
 static void a_master__gray_create(struct a_pg *pgp);
 static void a_master__gray_load(struct a_pg *pgp);
 static void a_master__gray_save(struct a_pg *pgp);
 static void a_master__gray_cleanup(struct a_pg *pgp);
-static boole a_master__gray_lookup(struct a_pg *pgp, char const *key);
+static u8 a_master__gray_lookup(struct a_pg *pgp, char const *key);
 
 /* conf; _conf__(arg|A|a)() return a negative exit status on error */
-static void a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_avo_flags) f);
-static void a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_avo_flags) f);
+static void a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f);
+static void a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f);
 static void a_conf_list_values(struct a_pg *pgp);
 static s32 a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
-      BITENUM_IS(u32,a_avo_flags) f);
-static s32 a_conf__A(struct a_pg *pgp, char const *path);
-static s32 a_conf__a(struct a_pg *pgp, char *entry/*, boole maybe_comment*/);
+      BITENUM_IS(u32,a_pg_avo_flags) f);
+static s32 a_conf__AB(struct a_pg *pgp, char const *path,
+      struct a_pg_wb *pgwbp);
+static s32 a_conf__ab(struct a_pg *pgp, char *entry, struct a_pg_wb *pgwbp);
 static s32 a_conf__R(struct a_pg *pgp, char const *path,
-      BITENUM_IS(u32,a_avo_flags) f);
+      BITENUM_IS(u32,a_pg_avo_flags) f);
 static s32 a_conf_chdir_store_path(struct a_pg *pgp);
 
 /* normalization; can fail for effectively empty or bogus input!
@@ -365,7 +382,7 @@ jretry_socket:
       ) >= sizeof(VAL_NAME) -1 + sizeof(".socket"));
    su_cs_pcopy(su_cs_pcopy(soaun.sun_path, VAL_NAME), ".socket");
 
-   if((pgp->pg_flags & a_F_CLIENT_SHUTDOWN_MODE) &&
+   if((pgp->pg_flags & a_PG_F_CLIENT_SHUTDOWN_MODE) &&
          access(soaun.sun_path, F_OK) && su_err_no_by_errno() == su_ERR_NOENT){
       rv = su_EX_TEMPFAIL;
       goto jleave;
@@ -388,7 +405,7 @@ jretry_socket:
          goto jleave_close;
       }
    }else{
-      if(pgp->pg_flags & a_F_CLIENT_SHUTDOWN_MODE){
+      if(pgp->pg_flags & a_PG_F_CLIENT_SHUTDOWN_MODE){
          su_path_rm(soaun.sun_path);
          rv = su_EX_TEMPFAIL;
          goto jleave_close;
@@ -421,7 +438,7 @@ jretry_socket:
    }
    erefused = 0;
 
-   if(pgp->pg_flags & a_F_CLIENT_SHUTDOWN_MODE)
+   if(pgp->pg_flags & a_PG_F_CLIENT_SHUTDOWN_MODE)
       goto jshutdown;
 
    rv = a_client__loop(pgp);
@@ -479,7 +496,7 @@ a_client__loop(struct a_pg *pgp){
    NYD_IN;
 
    /* Ignore signals that may happen */
-   signal(SIGCLD, SIG_IGN);
+   signal(SIGCHLD, SIG_IGN);
    signal(SIGUSR1, SIG_IGN);
    signal(SIGUSR2, SIG_IGN);
 
@@ -553,7 +570,7 @@ jblock:
              *    connection, the previous message delivery is either completed
              *    or aborted. */
             seen_inst = TRU1;
-            lnr = MIN(lnr, sizeof(inst_buf));
+            lnr = MIN(S(uz,lnr), sizeof(inst_buf));
             if(UCMP(z, lnr, ==, inst_len) &&
                   !su_mem_cmp(xcp, inst_buf, inst_len)){
                a_DBG( su_log_write(su_LOG_DEBUG,
@@ -669,10 +686,7 @@ jredo_write:
    srvx = writev(pgp->pg_clima_fd, iovp, c);
    if(srvx == -1){
       if((rv = su_err_no_by_errno()) == su_ERR_INTR)/* XXX no more in client */
-{
-a_DBG( su_log_write(su_LOG_DEBUG, "EINTR CHILD I"); )
          goto jredo_write;
-}
       goto jioerr;
    }else{
       for(; c > 0; ++iovp, --c){
@@ -691,10 +705,7 @@ jredo_read:
    srvx = read(pgp->pg_clima_fd, &resp, sizeof(resp));
    if(srvx == -1){
       if((rv = su_err_no_by_errno()) == su_ERR_INTR)/* XXX no more in client */
-{
-a_DBG( su_log_write(su_LOG_DEBUG, "EINTR CHILD II"); )
          goto jredo_read;
-}
 jioerr:
       su_log_write(su_LOG_ERR,
          _("client PID %d has server communication I/O: %s"),
@@ -709,18 +720,24 @@ jioerr:
    }
    rv = su_EX_OK;
 
-   if(!resp){
+   switch(resp){
+   case a_PG_ANSWER_DUNNO:
 jex_dunno:
       a_DBG( su_log_write(su_LOG_DEBUG, "answer DUNNO"); )
       srvx = fputs("action=DUNNO\n\n", stdout);
-   }else{
+      break;
+   case a_PG_ANSWER_DEFER_SLEEP:
+      su_time_msleep(a_LIMIT_DELAY_SECS * su_TIMESPEC_SEC_MILLIS, TRU1);
+      /* FALLTHRU */
+   case a_PG_ANSWER_DEFER:
       a_DBG( su_log_write(su_LOG_DEBUG, "answer %s", pgp->pg_defer_msg); )
-
-      if(resp != TRU1)
-         su_time_msleep(a_LIMIT_DELAY_SECS * su_TIMESPEC_SEC_MILLIS, TRU1);
-
       srvx = (fprintf(stdout, "action=%s\n\n", pgp->pg_defer_msg) < 0
             ) ? EOF : 0;
+      break;
+   case a_PG_ANSWER_REJECT:
+      a_DBG( su_log_write(su_LOG_DEBUG, "answer REJECT"); )
+      srvx = fputs("action=REJECT\n\n", stdout);
+      break;
    }
 
    if(srvx == EOF || fflush(stdout) == EOF)
@@ -822,9 +839,11 @@ a_master__setup(struct a_pg *pgp, char const *sockpath){
 
    pgmp->pgm_sockpath = sockpath;
 
-   su_cs_dict_create(&pgmp->pgm_white_ca, a_DICT_WHITE_CA_FLAGS, NIL);
-   su_cs_dict_create(&pgmp->pgm_white_cname, a_DICT_WHITE_CNAME_FLAGS, NIL);
-   rv = a_master__white_setup(pgp, FAL0);
+   su_cs_dict_create(&pgmp->pgm_white.pgwb_ca, a_PG_WB_CA_FLAGS, NIL);
+   su_cs_dict_create(&pgmp->pgm_white.pgwb_cname, a_PG_WB_CNAME_FLAGS, NIL);
+   su_cs_dict_create(&pgmp->pgm_black.pgwb_ca, a_PG_WB_CA_FLAGS, NIL);
+   su_cs_dict_create(&pgmp->pgm_black.pgwb_cname, a_PG_WB_CNAME_FLAGS, NIL);
+   rv = a_master__wb_setup(pgp, FAL0);
 
    if(rv == su_EX_OK)
       a_master__gray_create(pgp);
@@ -852,9 +871,11 @@ a_master__reset(struct a_pg *pgp){
 #if a_DBGIF
    su_cs_dict_gut(&pgmp->pgm_gray);
 
-   a_master__white_reset(pgmp);
-   su_cs_dict_gut(&pgmp->pgm_white_ca);
-   su_cs_dict_gut(&pgmp->pgm_white_cname);
+   a_master__wb_reset(pgmp);
+   su_cs_dict_gut(&pgmp->pgm_black.pgwb_ca);
+   su_cs_dict_gut(&pgmp->pgm_black.pgwb_cname);
+   su_cs_dict_gut(&pgmp->pgm_white.pgwb_ca);
+   su_cs_dict_gut(&pgmp->pgm_white.pgwb_cname);
 #endif
 
    if(su_path_rm(pgmp->pgm_sockpath))
@@ -874,26 +895,28 @@ a_master__reset(struct a_pg *pgp){
 }
 
 static s32
-a_master__white_setup(struct a_pg *pgp, boole reset){
+a_master__wb_setup(struct a_pg *pgp, boole reset){
    struct su_avopt avo;
    s32 rv;
-   BITENUM_IS(u32,a_avo_flags) f;
+   BITENUM_IS(u32,a_pg_avo_flags) f;
    struct a_pg_master *pgmp;
    NYD_IN;
 
    pgmp = pgp->pg_master;
 
    if(reset)
-      a_master__white_reset(pgmp);
+      a_master__wb_reset(pgmp);
 
-   su_cs_dict_add_flags(&pgmp->pgm_white_ca, su_CS_DICT_FROZEN);
-   su_cs_dict_add_flags(&pgmp->pgm_white_cname, su_CS_DICT_FROZEN);
+   su_cs_dict_add_flags(&pgmp->pgm_white.pgwb_ca, su_CS_DICT_FROZEN);
+   su_cs_dict_add_flags(&pgmp->pgm_white.pgwb_cname, su_CS_DICT_FROZEN);
+   su_cs_dict_add_flags(&pgmp->pgm_black.pgwb_ca, su_CS_DICT_FROZEN);
+   su_cs_dict_add_flags(&pgmp->pgm_black.pgwb_cname, su_CS_DICT_FROZEN);
 
    if(reset){
-      a_conf_setup(pgp, a_AVO_RELOAD);
-      f = a_AVO_NONE | a_AVO_RELOAD;
+      a_conf_setup(pgp, a_PG_AVO_RELOAD);
+      f = a_PG_AVO_NONE | a_PG_AVO_RELOAD;
    }else
-      f = a_AVO_FULL | a_AVO_RELOAD;
+      f = a_PG_AVO_FULL | a_PG_AVO_RELOAD;
 jreavo:
    su_avopt_setup(&avo, pgp->pg_argc, C(char const*const*,pgp->pg_argv),
       a_sopts, a_lopts);
@@ -902,7 +925,7 @@ jreavo:
       switch(rv){
       /* In long-option order */
       case '4': case '6':
-      case 'A': case 'a':
+      case 'A': case 'a': case 'F': case 'f':
       case 'c': case 'D': case 'd': case 'G': case 'g': case 'L': case 'l':
       case 't':
       case 'R':
@@ -920,13 +943,15 @@ jreavo:
 
    if(reset){
       reset = FAL0;
-      a_conf_finish(pgp, a_AVO_RELOAD);
-      f = a_AVO_FULL | a_AVO_RELOAD;
+      a_conf_finish(pgp, a_PG_AVO_RELOAD);
+      f = a_PG_AVO_FULL | a_PG_AVO_RELOAD;
       goto jreavo;
    }
 
-   su_cs_dict_balance(&pgmp->pgm_white_ca);
-   su_cs_dict_balance(&pgmp->pgm_white_cname);
+   su_cs_dict_balance(&pgmp->pgm_white.pgwb_ca);
+   su_cs_dict_balance(&pgmp->pgm_white.pgwb_cname);
+   su_cs_dict_balance(&pgmp->pgm_black.pgwb_ca);
+   su_cs_dict_balance(&pgmp->pgm_black.pgwb_cname);
 
    rv = su_EX_OK;
 jleave:
@@ -935,15 +960,17 @@ jleave:
 }
 
 static void
-a_master__white_reset(struct a_pg_master *pgmp){
+a_master__wb_reset(struct a_pg_master *pgmp){
    struct a_pg_srch *pgsp;
    NYD_IN;
 
-   su_cs_dict_clear(&pgmp->pgm_white_ca);
-   su_cs_dict_clear(&pgmp->pgm_white_cname);
+   su_cs_dict_clear(&pgmp->pgm_black.pgwb_ca);
+   su_cs_dict_clear(&pgmp->pgm_black.pgwb_cname);
+   su_cs_dict_clear(&pgmp->pgm_white.pgwb_ca);
+   su_cs_dict_clear(&pgmp->pgm_white.pgwb_cname);
 
-   while((pgsp = pgmp->pgm_white_srch) != NIL){
-      pgmp->pgm_white_srch = pgsp->pgs_next;
+   while((pgsp = pgmp->pgm_white.pgwb_srch) != NIL){
+      pgmp->pgm_white.pgwb_srch = pgsp->pgs_next;
       su_FREE(pgsp);
    }
 
@@ -984,7 +1011,7 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
       /* Recreate whitelists? */
       if(UNLIKELY(a_master_hup)){
          a_master_hup = 0;
-         if((rv = a_master__white_setup(pgp, TRU1)) != su_EX_OK)
+         if((rv = a_master__wb_setup(pgp, TRU1)) != su_EX_OK)
             goto jleave;
       }
 
@@ -998,19 +1025,28 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
       if(UNLIKELY(a_master_usr1)){
          a_master_usr1 = 0;
 
-         for(i = 0, t.pgsp = pgmp->pgm_white_srch; t.pgsp != NIL;
+         for(i = 0, t.pgsp = pgmp->pgm_white.pgwb_srch; t.pgsp != NIL;
                ++i, t.pgsp = t.pgsp->pgs_next){
+         }
+         for(e = 0, t.pgsp = pgmp->pgm_black.pgwb_srch; t.pgsp != NIL;
+               ++e, t.pgsp = t.pgsp->pgs_next){
          }
 
          su_log_write(su_LOG_INFO,
             _("clients %lu;  white: CA %lu/%lu, CNAME %lu/%lu, FUZZY %lu\n"
+              "black: CA %lu/%lu, CNAME %lu/%lu, FUZZY: %lu\n"
               "gray: %lu/%lu, gc_cnt %lu; epoch: %lu, now %lu: %lu"),
             S(ul,pgmp->pgm_cli_no),
-               S(ul,su_cs_dict_count(&pgmp->pgm_white_ca)),
-                  S(ul,su_cs_dict_size(&pgmp->pgm_white_ca)),
-               S(ul,su_cs_dict_count(&pgmp->pgm_white_cname)),
-                  S(ul,su_cs_dict_size(&pgmp->pgm_white_cname)),
+               S(ul,su_cs_dict_count(&pgmp->pgm_white.pgwb_ca)),
+                  S(ul,su_cs_dict_size(&pgmp->pgm_white.pgwb_ca)),
+               S(ul,su_cs_dict_count(&pgmp->pgm_white.pgwb_cname)),
+                  S(ul,su_cs_dict_size(&pgmp->pgm_white.pgwb_cname)),
                S(ul,i),
+            S(ul,su_cs_dict_count(&pgmp->pgm_black.pgwb_ca)),
+                  S(ul,su_cs_dict_size(&pgmp->pgm_black.pgwb_ca)),
+               S(ul,su_cs_dict_count(&pgmp->pgm_black.pgwb_cname)),
+                  S(ul,su_cs_dict_size(&pgmp->pgm_black.pgwb_cname)),
+               S(ul,e),
             S(ul,su_cs_dict_count(&pgmp->pgm_gray)),
                S(ul,su_cs_dict_size(&pgmp->pgm_gray)),
                S(ul,pgmp->pgm_cleanup_cnt),
@@ -1019,9 +1055,13 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
             );
          a_DBG(
             su_log_write(su_LOG_INFO, "WHITE CA:");
-            su_cs_dict_statistics(&pgmp->pgm_white_ca);
+            su_cs_dict_statistics(&pgmp->pgm_white.pgwb_ca);
             su_log_write(su_LOG_INFO, "WHITE CNAME:");
-            su_cs_dict_statistics(&pgmp->pgm_white_cname);
+            su_cs_dict_statistics(&pgmp->pgm_white.pgwb_cname);
+            su_log_write(su_LOG_INFO, "BLACK CA:");
+            su_cs_dict_statistics(&pgmp->pgm_black.pgwb_ca);
+            su_log_write(su_LOG_INFO, "BLACK CNAME:");
+            su_cs_dict_statistics(&pgmp->pgm_black.pgwb_cname);
             su_log_write(su_LOG_INFO, "GRAY:");
             su_cs_dict_statistics(&pgmp->pgm_gray);
          )
@@ -1037,7 +1077,7 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
          maxfd = MAX(maxfd, x);
       }
 
-      if(pgp->pg_flags & a_F_MASTER_ACCEPT_SUSPENDED){
+      if(pgp->pg_flags & a_PG_F_MASTER_ACCEPT_SUSPENDED){
          t.os.tv_sec = 2;
          t.os.tv_nsec = 0;
          tosp = &t.os;
@@ -1078,8 +1118,8 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
          rv = su_EX_IOERR;
          goto jleave;
       }else if(x == 0){
-         if(pgp->pg_flags & a_F_MASTER_ACCEPT_SUSPENDED){
-            pgp->pg_flags &= ~a_F_MASTER_ACCEPT_SUSPENDED;
+         if(pgp->pg_flags & a_PG_F_MASTER_ACCEPT_SUSPENDED){
+            pgp->pg_flags &= ~a_PG_F_MASTER_ACCEPT_SUSPENDED;
             a_DBG( su_log_write(su_LOG_DEBUG, "select: un-suspend"); )
             continue;
          }
@@ -1125,7 +1165,7 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
       if(FD_ISSET(pgp->pg_clima_fd, &rfds)){
          if((x = accept(pgp->pg_clima_fd, NIL, NIL)) == -1){
             /* Just skip this mess for now, and pause accept(2) */
-            pgp->pg_flags |= a_F_MASTER_ACCEPT_SUSPENDED;
+            pgp->pg_flags |= a_PG_F_MASTER_ACCEPT_SUSPENDED;
             a_DBG( su_log_write(su_LOG_DEBUG,
                "accept(2): temporarily suspending: %s", su_err_doc(x)); )
          }else{
@@ -1228,19 +1268,17 @@ jleave:
    NYD_OU;
 } /* }}} */
 
-static boole
+static u8
 a_master__cli_req(struct a_pg *pgp, u32 client, uz len){ /* {{{ */
+   u8 rv;
    u32 r_l, s_l, ca_l, cn_l;
    struct a_pg_master *pgmp;
-   boole rv;
    NYD_IN;
    ASSERT(len > 0);
    ASSERT(pgp->pg_buf[len -1] == '\0');
    UNUSED(client);
    UNUSED(len);
 
-   /* Returns DEFER? (!=TRU1: client shall sleep) */
-   rv = FAL0;
    pgmp = pgp->pg_master;
 
    /* C99 */{
@@ -1275,114 +1313,133 @@ a_master__cli_req(struct a_pg *pgp, u32 client, uz len){ /* {{{ */
       pgmp->pgm_cli_fds[client], S(ul,len), r_l, pgp->pg_r, s_l, pgp->pg_s,
       ca_l, pgp->pg_ca, cn_l, pgp->pg_cname); )
 
+   rv = a_PG_ANSWER_DUNNO;
+   if(a_master__cli_lookup(pgp, &pgmp->pgm_white))
+      goto jleave;
+
+   rv = a_PG_ANSWER_REJECT;
+   if(a_master__cli_lookup(pgp, &pgmp->pgm_black))
+      goto jleave;
+
+   pgp->pg_s[-1] = '/';
+   pgp->pg_ca[-1] = '/';
+   rv = a_master__gray_lookup(pgp, pgp->pg_buf);
+
+jleave:
+   NYD_OU;
+   return rv;
+} /* }}} */
+
+static boole
+a_master__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwbp){ /* {{{ */
+   union a_pg_srch_ip c_sip;
+   int c_af;
+   struct a_pg_srch *pgsp;
+   u32 cn_l, *c_ip;
+   char const *me;
+   boole rv;
+   NYD_IN;
+
+   rv = TRU1;
+   me = (pgwbp == &pgp->pg_master->pgm_white) ? "allow" : "block";
+
    /* */
-   if(su_cs_dict_has_key(&pgmp->pgm_white_ca, pgp->pg_ca)){
-      if(pgp->pg_flags & a_F_V)
-         su_log_write(su_LOG_INFO, "allow address: %s", pgp->pg_ca);
+   if(su_cs_dict_has_key(&pgwbp->pgwb_ca, pgp->pg_ca)){
+      if(pgp->pg_flags & a_PG_F_V)
+         su_log_write(su_LOG_INFO, "%s address: %s", me, pgp->pg_ca);
       goto jleave;
    }
 
-   if(su_cs_dict_has_key(&pgmp->pgm_white_cname, pgp->pg_cname)){
-      if(pgp->pg_flags & a_F_V)
-         su_log_write(su_LOG_INFO, "allow domain: %s", pgp->pg_cname);
+   if(su_cs_dict_has_key(&pgwbp->pgwb_cname, pgp->pg_cname)){
+      if(pgp->pg_flags & a_PG_F_V)
+         su_log_write(su_LOG_INFO, "%s domain: %s", me, pgp->pg_cname);
       goto jleave;
    }
 
-   /* Search the fuzzy whitelist */
-   /* C99 */{
-      union a_srch_ip c_sip;
-      int c_af;
-      u32 *c_ip;
-      struct a_pg_srch *pgsp;
+   /* Search fuzzy */
+   cn_l = su_cs_len(pgp->pg_cname);
+   c_ip = NIL; /* lazy init */
 
-      c_ip = NIL; /* lazy init */
+   for(pgsp = pgwbp->pgwb_srch; pgsp != NIL; pgsp = pgsp->pgs_next){
+      if(pgsp->pgs_flags & a_PG_SRCH_DOMAIN){
+         if(cn_l < pgsp->pgs_len)
+            continue;
 
-      for(pgsp = pgmp->pgm_white_srch; pgsp != NIL; pgsp = pgsp->pgs_next){
-         if(pgsp->pgs_flags & a_SRCH_DOMAIN){
-            if(cn_l < pgsp->pgs_len)
+         if(su_mem_cmp(pgsp->pgs_d, &pgp->pg_cname[cn_l - pgsp->pgs_len],
+               pgsp->pgs_len))
+            continue;
+
+         /* Exact match?  Subdomain match? */
+         if(cn_l == pgsp->pgs_len ||
+               pgp->pg_cname[cn_l - pgsp->pgs_len - 1] == '.'){
+            if(pgp->pg_flags & a_PG_F_V)
+               su_log_write(su_LOG_INFO, "%s wildcard domain: %s",
+                  me, pgp->pg_cname);
+            goto jleave;
+         }
+      }else{
+         u32 *ip, max, m, xm, i;
+
+         if(c_ip == NIL){
+            /* XXX Client had this already, simply binary pass it, too? */
+            c_af = (su_cs_find_c(pgp->pg_ca, ':') != NIL) ? AF_INET6 : AF_INET;
+            if(inet_pton(c_af, pgp->pg_ca,
+                     (c_af == AF_INET ? S(void*,&c_sip.v4)
+                     : S(void*,&c_sip.v6))) != 1){
+               su_log_write(su_LOG_CRIT, _("Cannot re-parse an already "
+                  "prepared IP address?: "), pgp->pg_ca);
                continue;
+            }
+            c_ip = (c_af == AF_INET) ? R(u32*,&c_sip.v4.s_addr)
+                  : R(u32*,c_sip.v6.s6_addr);
+         }
 
-            if(su_mem_cmp(pgsp->pgs_d, &pgp->pg_cname[cn_l - pgsp->pgs_len],
-                  pgsp->pgs_len))
+         /* C99 */{
+            union a_pg_srch_ip *sipp;
+
+            sipp = R(union a_pg_srch_ip*,&pgsp->pgs_d[0]);
+
+            if(c_af == AF_INET){
+               if(!(pgsp->pgs_flags & a_PG_SRCH_IPV4))
+                  continue;
+               ip = R(u32*,&sipp->v4.s_addr);
+               max = 1;
+            }else if(!(pgsp->pgs_flags & a_PG_SRCH_IPV6))
                continue;
+            else{
+               ip = R(u32*,sipp->v6.s6_addr);
+               max = 4;
+            }
+         }
 
-            /* Exact match?  Subdomain match? */
-            if(cn_l == pgsp->pgs_len ||
-                  pgp->pg_cname[cn_l - pgsp->pgs_len - 1] == '.'){
-               if(pgp->pg_flags & a_F_V)
-                  su_log_write(su_LOG_INFO, "allow wildcard domain: %s",
-                     pgp->pg_cname);
+         for(m = pgsp->pgs_mask, i = 0;;){
+            /* If mask worked, quickshot */
+            if((xm = m) == 0)
                goto jleave;
+
+            xm = 0xFFFFFFFFu;
+            if((i + 1) << 5 >= m){
+               if((m &= 31))
+                  xm <<= (32 - m);
+               m = 0;
             }
-         }else{
-            u32 *ip, max, m, xm, i;
+            xm = su_boswap_net_32(xm);
 
-            if(c_ip == NIL){
-               /* XXX Client had this already, simply binary pass it, too? */
-               c_af = (su_cs_find_c(pgp->pg_ca, ':') != NIL) ? AF_INET6
-                     : AF_INET;
-               if(inet_pton(c_af, pgp->pg_ca,
-                        (c_af == AF_INET ? S(void*,&c_sip.v4)
-                        : S(void*,&c_sip.v6))) != 1){
-                  su_log_write(su_LOG_CRIT, _("Cannot re-parse an already "
-                     "prepared IP address?: "), pgp->pg_ca);
-                  continue;
-               }
-               c_ip = (c_af == AF_INET) ? R(u32*,&c_sip.v4.s_addr)
-                     : R(u32*,c_sip.v6.s6_addr);
-            }
+            ASSERT((ip[i] & xm) == ip[i]);
+            if(ip[i] != (c_ip[i] & xm))
+               break;
 
-            /* C99 */{
-               union a_srch_ip *sipp;
-
-               sipp = R(union a_srch_ip*,&pgsp->pgs_d[0]);
-
-               if(c_af == AF_INET){
-                  if(!(pgsp->pgs_flags & a_SRCH_IPV4))
-                     continue;
-                  ip = R(u32*,&sipp->v4.s_addr);
-                  max = 1;
-               }else if(!(pgsp->pgs_flags & a_SRCH_IPV6))
-                  continue;
-               else{
-                  ip = R(u32*,sipp->v6.s6_addr);
-                  max = 4;
-               }
-            }
-
-            for(m = pgsp->pgs_mask, i = 0;;){
-               /* If mask worked, quickshot */
-               if((xm = m) == 0)
-                  goto jleave;
-
-               xm = 0xFFFFFFFFu;
-               if((i + 1) << 5 >= m){
-                  if((m &= 31))
-                     xm <<= (32 - m);
-                  m = 0;
-               }
-               xm = su_boswap_net_32(xm);
-
-               ASSERT((ip[i] & xm) == ip[i]);
-               if(ip[i] != (c_ip[i] & xm))
-                  break;
-
-               if(++i == max){
-                  if(pgp->pg_flags & a_F_V)
-                     su_log_write(su_LOG_INFO,
-                        "allow wildcard address: %s", pgp->pg_ca);
-                  goto jleave;
-               }
+            if(++i == max){
+               if(pgp->pg_flags & a_PG_F_V)
+                  su_log_write(su_LOG_INFO, "%s wildcard address: %s",
+                     me, pgp->pg_ca);
+               goto jleave;
             }
          }
       }
    }
 
-   /* Not whitelisted */
-   pgp->pg_s[-1] = '/';
-   pgp->pg_ca[-1] = '/';
-   rv = a_master__gray_lookup(pgp, pgp->pg_buf);
-
+   rv = FAL0;
 jleave:
    NYD_OU;
    return rv;
@@ -1411,8 +1468,8 @@ a_master__gray_create(struct a_pg *pgp){
    /* Perform the initial allocation without _ERR_PASS so that we panic if we
     * cannot create it, then set _ERR_PASS to handle (ignore) errors */
    su_cs_dict_resize(su_cs_dict_set_min_size(su_cs_dict_set_treshold_shift(
-         su_cs_dict_create(&pgmp->pgm_gray, (a_DICT_FLAGS | su_CS_DICT_FROZEN),
-            NIL), a_DICT_TS), a_DICT_MIN_LIMIT), 1);
+         su_cs_dict_create(&pgmp->pgm_gray, (a_PG_GRAY_FLAGS |
+            su_CS_DICT_FROZEN), NIL), a_PG_GRAY_TS), a_PG_GRAY_MIN_LIMIT), 1);
 
    a_master__gray_load(pgp);
 
@@ -1420,7 +1477,7 @@ a_master__gray_create(struct a_pg *pgp){
    su_cs_dict_add_flags(&pgmp->pgm_gray, su_CS_DICT_ERR_PASS);
    su_cs_dict_clear_flags(&pgmp->pgm_gray, su_CS_DICT_FROZEN);
 
-   if(su_cs_dict_count(&pgmp->pgm_gray) > a_DICT_MIN_LIMIT)
+   if(su_cs_dict_count(&pgmp->pgm_gray) > a_PG_GRAY_MIN_LIMIT)
       su_cs_dict_balance(&pgmp->pgm_gray);
 
    NYD_OU;
@@ -1437,7 +1494,7 @@ a_master__gray_load(struct a_pg *pgp){ /* {{{ */
    void *mbase;
    NYD_IN;
 
-   su_cs_pcopy(su_cs_pcopy(path, pgp->pg_store_path), "/" a_DB_NAME);
+   su_cs_pcopy(su_cs_pcopy(path, pgp->pg_store_path), "/" a_PG_GRAY_DB_NAME);
 
    /* Obtain a memory map on the DB storage */
    mbase = NIL;
@@ -1499,7 +1556,7 @@ a_master__gray_load(struct a_pg *pgp){ /* {{{ */
                (su_state_has(su_STATE_REPRODUCIBLE) ? 1 : su_TIME_MIN_SECS));
 
          if(/*UCMP(16, min, >=, S16_MAX) ||*/ min >= pgp->pg_gc_timeout){
-            if(a_DBGIF || (pgp->pg_flags & a_F_V))
+            if(a_DBGIF || (pgp->pg_flags & a_PG_F_V))
                su_log_write(su_LOG_INFO,
                   _("gray DB content timed out, skipping: %s"), path);
             goto jleave;
@@ -1549,7 +1606,7 @@ jskip:
 jerr:
       su_log_write(su_LOG_WARN, _("DB storage had corruptions: %s"), path);
 
-   if(a_DBGIF || (pgp->pg_flags & a_F_V)){
+   if(a_DBGIF || (pgp->pg_flags & a_PG_F_V)){
       struct su_timespec ts2;
 
       su_timespec_sub(su_timespec_current(&ts2), &ts);
@@ -1578,7 +1635,7 @@ a_master__gray_save(struct a_pg *pgp){ /* {{{ */
    s32 fd;
    NYD_IN;
 
-   su_cs_pcopy(su_cs_pcopy(path, pgp->pg_store_path), "/" a_DB_NAME);
+   su_cs_pcopy(su_cs_pcopy(path, pgp->pg_store_path), "/" a_PG_GRAY_DB_NAME);
 
    fd = open(path, (O_WRONLY | O_CREAT | O_TRUNC
 #ifdef O_NOFOLLOW
@@ -1652,7 +1709,7 @@ a_master__gray_save(struct a_pg *pgp){ /* {{{ */
 jclose:
    close(fd);
 
-   if(a_DBGIF || (pgp->pg_flags & a_F_V)){
+   if(a_DBGIF || (pgp->pg_flags & a_PG_F_V)){
       struct su_timespec ts2;
 
       su_timespec_sub(su_timespec_current(&ts2), &ts);
@@ -1762,7 +1819,7 @@ jdel:
       pgmp->pgm_cleanup_cnt = 0;
    }
 
-   if(a_DBGIF || (pgp->pg_flags & a_F_V)){
+   if(a_DBGIF || (pgp->pg_flags & a_PG_F_V)){
       struct su_timespec ts2;
 
       su_timespec_sub(su_timespec_current(&ts2), &ts);
@@ -1774,17 +1831,17 @@ jdel:
    NYD_OU;
 } /* }}} */
 
-static boole
+static u8
 a_master__gray_lookup(struct a_pg *pgp, char const *key){ /* {{{ */
    struct su_cs_dict_view dv;
    s16 min, xmin;
    up d;
    u16 cnt;
    struct a_pg_master *pgmp;
-   boole rv;
+   u8 rv;
    NYD_IN;
 
-   rv = FAL0;
+   rv = a_PG_ANSWER_DUNNO;
    pgmp = pgp->pg_master;
    cnt = 0;
 
@@ -1794,7 +1851,8 @@ a_master__gray_lookup(struct a_pg *pgp, char const *key){ /* {{{ */
 
 jretry_nent:
       i = su_cs_dict_count(&pgmp->pgm_gray);
-      rv = (i >= pgp->pg_limit_delay) ? TRU2 : TRU1;
+      rv = (i >= pgp->pg_limit_delay) ? a_PG_ANSWER_DEFER_SLEEP
+            : a_PG_ANSWER_DEFER;
 
       /* New entry may be disallowed */
       if(i < pgp->pg_limit){
@@ -1808,16 +1866,16 @@ jretry_nent:
          goto jretry_nent;
       }
 
-      if(!(pgp->pg_flags & a_F_MASTER_LIMIT_EXCESS_LOGGED)){
-         pgp->pg_flags |= a_F_MASTER_LIMIT_EXCESS_LOGGED;
-         /*if(pgp->pg_flags & a_F_V)*/
+      if(!(pgp->pg_flags & a_PG_F_MASTER_LIMIT_EXCESS_LOGGED)){
+         pgp->pg_flags |= a_PG_F_MASTER_LIMIT_EXCESS_LOGGED;
+         /*if(pgp->pg_flags & a_PG_F_V)*/
             su_log_write(su_LOG_WARN,
                _("Reached --limit=%lu, excess not handled; "
                   "condition is logged once only"),
                S(ul,pgp->pg_limit));
       }
       /* XXX Make limit excess return configurable? REJECT?? */
-      rv = FAL0;
+      rv = a_PG_ANSWER_DUNNO;
       goto jleave;
    }
 
@@ -1827,7 +1885,7 @@ jretry_nent:
    /* If yet accepted, update it quick */
    if(d & 0x80000000u){
       a_DBG( su_log_write(su_LOG_DEBUG, "gray up quick: %s", key); )
-      ASSERT(rv == FAL0);
+      ASSERT(rv == a_PG_ANSWER_DUNNO);
       goto jgray_set;
    }
 
@@ -1840,7 +1898,7 @@ jretry_nent:
    if(xmin < pgp->pg_delay_min){
       a_DBG( su_log_write(su_LOG_DEBUG, "gray too soon: %s (%lu,%lu,%lu)",
          key, S(ul,min), S(ul,pgmp->pgm_epoch_min), S(ul,xmin)); )
-      rv = TRU1;
+      rv = a_PG_ANSWER_DEFER;
       goto jleave;
    }
 
@@ -1848,17 +1906,17 @@ jretry_nent:
    if(xmin > pgp->pg_delay_max){
       a_DBG( su_log_write(su_LOG_DEBUG, "gray too late: %s (%lu,%lu,%lu)",
          key, S(ul,min), S(ul,pgmp->pgm_epoch_min), S(ul,xmin)); )
-      rv = TRU1;
+      rv = a_PG_ANSWER_DEFER;
       cnt = 0;
    }
    /* If seen often enough wave through! */
    else if(cnt + 1ul >= pgp->pg_count){
       a_DBG( su_log_write(su_LOG_DEBUG, "gray ok-to-go (%lu): %s",
          S(ul,cnt + 1ul), key); )
-      ASSERT(rv == FAL0);
+      ASSERT(rv == a_PG_ANSWER_DUNNO);
       d |= 0x80000000u;
    }else{
-      rv = TRU1;
+      rv = a_PG_ANSWER_DEFER;
       ++cnt;
       a_DBG( su_log_write(su_LOG_DEBUG, "gray inc count=%lu: %s",
          S(ul,cnt), key); )
@@ -1870,7 +1928,7 @@ jgray_set:
       su_cs_dict_view_set_data(&dv, R(void*,d));
    else{
       a_DBG( su_log_write(su_LOG_DEBUG, "gray new entry: %s", key); )
-      ASSERT(rv != FAL0);
+      ASSERT(rv != a_PG_ANSWER_DUNNO);
       /* Need to handle memory failures */
 jretry_ins:
       if(su_cs_dict_insert(&pgmp->pgm_gray, key, R(void*,d)) > su_ERR_NONE){
@@ -1885,21 +1943,22 @@ jretry_ins:
          if(pgp->pg_limit_delay != 0)
             pgp->pg_limit_delay = pgp->pg_limit - (pgp->pg_limit >> 3);
 
-         if(!(pgp->pg_flags & a_F_MASTER_NOMEM_LOGGED)){
-            pgp->pg_flags |= a_F_MASTER_NOMEM_LOGGED;
-            /*if(pgp->pg_flags & a_F_V)*/
+         if(!(pgp->pg_flags & a_PG_F_MASTER_NOMEM_LOGGED)){
+            pgp->pg_flags |= a_PG_F_MASTER_NOMEM_LOGGED;
+            /*if(pgp->pg_flags & a_PG_F_V)*/
                su_log_write(su_LOG_WARN,
                   _("out-of-memory, reduced limit to %lu; "
                      "condition is logged once only"),
                   S(ul,pgp->pg_limit));
          }
-         rv = FAL0;
+         rv = a_PG_ANSWER_DEFER;
       }
    }
 
 jleave:
-   if(pgp->pg_flags & a_F_V)
-      su_log_write(su_LOG_INFO, "gray (defer=%d): %s", (rv != FAL0), key);
+   if(pgp->pg_flags & a_PG_F_V)
+      su_log_write(su_LOG_INFO, "gray (defer=%d): %s",
+         (rv != a_PG_ANSWER_DUNNO), key);
 
    NYD_OU;
    return rv;
@@ -1909,10 +1968,10 @@ jleave:
 
 /* conf {{{ */
 static void
-a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_avo_flags) f){
+a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
    NYD2_IN;
 
-   pgp->pg_flags &= ~a_F_V_MASK;
+   pgp->pg_flags &= ~a_PG_F_V_MASK;
 
    LCTAV(VAL_4_MASK <= 32);
    LCTAV(VAL_6_MASK <= 128);
@@ -1937,7 +1996,7 @@ a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_avo_flags) f){
    LCTAV(VAL_LIMIT_DELAY <= S32_MAX);
    pgp->pg_limit_delay = U32_MAX;
 
-   if(!(f & a_AVO_RELOAD)){
+   if(!(f & a_PG_AVO_RELOAD)){
       pgp->pg_defer_msg = NIL;
 
       pgp->pg_store_path = NIL;
@@ -1947,7 +2006,7 @@ a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_avo_flags) f){
 }
 
 static void
-a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_avo_flags) f){
+a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
    NYD2_IN;
 
    if(pgp->pg_4_mask == U8_MAX)
@@ -1973,7 +2032,7 @@ a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_avo_flags) f){
    if(pgp->pg_limit_delay == U32_MAX)
       pgp->pg_limit_delay = VAL_LIMIT_DELAY;
 
-   if(!(f & a_AVO_RELOAD)){
+   if(!(f & a_PG_AVO_RELOAD)){
       if(pgp->pg_defer_msg == NIL)
          pgp->pg_defer_msg = (VAL_DEFER_MSG != NIL) ? VAL_DEFER_MSG
                : a_DEFER_MSG;
@@ -1993,8 +2052,8 @@ a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_avo_flags) f){
       *empp = NIL;
 
       for(empp = em_arr; *empp != NIL; ++empp)
-         if(pgp->pg_flags & a_F_TEST_MODE)
-            fprintf(stderr, *empp);
+         if(pgp->pg_flags & a_PG_F_TEST_MODE)
+            fprintf(stderr, "%s", *empp);
          else
             su_log_write(su_LOG_WARN, *empp);
       }
@@ -2036,7 +2095,7 @@ a_conf_list_values(struct a_pg *pgp){
 
 static s32
 a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
-      BITENUM_IS(u32,a_avo_flags) f){
+      BITENUM_IS(u32,a_pg_avo_flags) f){
    union {u8 *i8; u16 *i16; u32 *i32;} p;
    NYD2_IN;
 
@@ -2045,7 +2104,7 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
    switch(o){
    case '4':
    case '6':
-      if(!(f & a_AVO_FULL)){
+      if(!(f & a_PG_AVO_FULL)){
       u8 max;
 
       if(o == '4'){
@@ -2066,15 +2125,28 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
       }break;
 
    case 'A':
-      if(f & a_AVO_FULL)
-         o = a_conf__A(pgp, arg);
+      if(f & a_PG_AVO_FULL)
+         o = a_conf__AB(pgp, arg, ((pgp->pg_flags & a_PG_F_TEST_MODE)
+               ? R(struct a_pg_wb*,0x1) : &pgp->pg_master->pgm_white));
       break;
    case 'a':
-      if(f & a_AVO_FULL)
-         o = a_conf__a(pgp, C(char*,arg)/*, FAL0*/);
+      if(f & a_PG_AVO_FULL)
+         o = a_conf__ab(pgp, C(char*,arg), ((pgp->pg_flags & a_PG_F_TEST_MODE
+               ) ? R(struct a_pg_wb*,0x1) : &pgp->pg_master->pgm_white));
       break;
 
-#define a_X(X) if(!(f & a_AVO_FULL)) break; X;
+   case 'B':
+      if(f & a_PG_AVO_FULL)
+         o = a_conf__AB(pgp, arg, ((pgp->pg_flags & a_PG_F_TEST_MODE) ? NIL
+               : &pgp->pg_master->pgm_black));
+      break;
+   case 'b':
+      if(f & a_PG_AVO_FULL)
+         o = a_conf__ab(pgp, C(char*,arg), ((pgp->pg_flags & a_PG_F_TEST_MODE
+               ) ? NIL : &pgp->pg_master->pgm_black));
+      break;
+
+#define a_X(X) if(!(f & a_PG_AVO_FULL)) break; X;
 
    case 'D': a_X(p.i16 = &pgp->pg_delay_max; goto ji16)
    case 'd': a_X(p.i16 = &pgp->pg_delay_min; goto ji16)
@@ -2092,7 +2164,7 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
    case 'R': o = a_conf__R(pgp, arg, f); break;
 
    case 'm':
-      if(f & (a_AVO_FULL | a_AVO_RELOAD))
+      if(f & (a_PG_AVO_FULL | a_PG_AVO_RELOAD))
          break;
       if(pgp->pg_defer_msg != NIL)
          su_FREE(UNCONST(char*,pgp->pg_defer_msg));
@@ -2100,7 +2172,7 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
       break;
 
    case 's':
-      if(f & (a_AVO_FULL | a_AVO_RELOAD))
+      if(f & (a_PG_AVO_FULL | a_PG_AVO_RELOAD))
          break;
       if(pgp->pg_store_path != NIL)
          su_FREE(UNCONST(char*,pgp->pg_store_path));
@@ -2108,17 +2180,17 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
       break;
 
    case 'v':
-      if(!(f & a_AVO_FULL)){
+      if(!(f & a_PG_AVO_FULL)){
             uz i;
 
-         i = ((pgp->pg_flags << 1) | a_F_V) & a_F_V_MASK;
-         pgp->pg_flags = (pgp->pg_flags & ~a_F_V_MASK) | i;
+         i = ((pgp->pg_flags << 1) | a_PG_F_V) & a_PG_F_V_MASK;
+         pgp->pg_flags = (pgp->pg_flags & ~a_PG_F_V_MASK) | i;
       }break;
    }
 
 jleave:
-   if(o < 0 && (pgp->pg_flags & a_F_TEST_MODE)){
-      pgp->pg_flags |= a_F_TEST_ERRORS;
+   if(o < 0 && (pgp->pg_flags & a_PG_F_TEST_MODE)){
+      pgp->pg_flags |= a_PG_F_TEST_ERRORS;
       o = su_EX_OK;
    }
 
@@ -2149,21 +2221,20 @@ ji32:
 }
 
 static s32
-a_conf__A(struct a_pg *pgp, char const *path){
+a_conf__AB(struct a_pg *pgp, char const *path, struct a_pg_wb *pgwbp){
    char *lnb;
    size_t lnl;
    ssize_t lnr;
    s32 rv;
    FILE *fp;
    NYD2_IN;
-   ASSERT((pgp->pg_flags & a_F_TEST_MODE) || pgp->pg_master != NIL);
 
    if((fp = fopen(path, "r")) == NIL){
       char const *edoc, *emsg;
 
       edoc = su_err_doc(su_err_no_by_errno());
       emsg = _("Cannot open file %s: %s\n");
-      if(pgp->pg_flags & a_F_TEST_MODE)
+      if(pgp->pg_flags & a_PG_F_TEST_MODE)
          fprintf(stderr, emsg, path, edoc);
       else
          su_log_write(su_LOG_ERR, emsg, path, edoc);
@@ -2180,8 +2251,8 @@ a_conf__A(struct a_pg *pgp, char const *path){
       while(lnr > 0 && lnb[lnr - 1] == '\n')
          lnb[--lnr] = '\0';
 
-      if((rv = a_conf__a(pgp, lnb/*, TRU1*/)) != su_EX_OK &&
-            !(pgp->pg_flags & a_F_TEST_MODE))
+      if((rv = a_conf__ab(pgp, lnb, pgwbp)) != su_EX_OK &&
+            !(pgp->pg_flags & a_PG_F_TEST_MODE))
          break;
       rv = su_EX_OK;
    }
@@ -2199,14 +2270,13 @@ jleave:
 }
 
 static s32
-a_conf__a(struct a_pg *pgp, char *entry/*, boole maybe_comment*/){
-   union a_srch_ip sip;
+a_conf__ab(struct a_pg *pgp, char *entry, struct a_pg_wb *pgwbp){
+   union a_pg_srch_ip sip;
    struct a_pg_srch *pgsp;
    u32 m;
    char c, *cp;
    s32 rv;
    NYD2_IN;
-   ASSERT((pgp->pg_flags & a_F_TEST_MODE) || pgp->pg_master != NIL);
 
    rv = su_EX_OK;
 
@@ -2273,7 +2343,7 @@ jleave:
    return rv;
 
 jedata:
-   if(pgp->pg_flags & a_F_TEST_MODE)
+   if(pgp->pg_flags & a_PG_F_TEST_MODE)
       fprintf(stderr, V_(sip.cp), entry, cp);
    else
       su_log_write(su_LOG_ERR, V_(sip.cp), entry, cp);
@@ -2288,24 +2358,27 @@ jcname:
       cp = pgp->pg_cname;
       pgp->pg_cname = sip.cp;
 
-      if(!(pgp->pg_flags & a_F_TEST_MODE)){
+      if(!(pgp->pg_flags & a_PG_F_TEST_MODE)){
          if(m == 0)
-            su_cs_dict_insert(&pgp->pg_master->pgm_white_cname, cp, NIL);
+            su_cs_dict_insert(&pgwbp->pgwb_cname, cp, NIL);
          else{
             m = su_cs_len(cp) +1;
 
             pgsp = S(struct a_pg_srch*,
                   su_ALLOC(VSTRUCT_SIZEOF(struct a_pg_srch,pgs_d) + m));
-            pgsp->pgs_next = pgp->pg_master->pgm_white_srch;
-            pgp->pg_master->pgm_white_srch = pgsp;
-            pgsp->pgs_flags = a_SRCH_DOMAIN;
+            pgsp->pgs_next = pgwbp->pgwb_srch;
+            pgwbp->pgwb_srch = pgsp;
+            pgsp->pgs_flags = a_PG_SRCH_DOMAIN;
             pgsp->pgs_len = m - 1;
             su_mem_copy(&pgsp->pgs_d[0], cp, m);
          }
       }else{
+         char const *me;
+
+         me = (pgwbp == NIL) ? "!" : su_empty;
          /* xxx could use C++ dns hostname check */
-         fprintf(stdout, "%c %s%s\n",
-            (m == 0 ? '=' : '~'),
+         fprintf(stdout, "%s%c %s%s\n",
+            me, (m == 0 ? '=' : '~'),
             (m == 0 ? su_empty : "(*.)?"), cp);
       }
    }else{
@@ -2374,7 +2447,7 @@ jca:/* C99 */{
 
    /* We need to normalize through the system's C library to match it!
     * This only for exact match or test mode, however */
-   if((exact || (pgp->pg_flags & a_F_TEST_MODE)) &&
+   if((exact || (pgp->pg_flags & a_PG_F_TEST_MODE)) &&
          inet_ntop(rv, (rv == AF_INET ? S(void*,&sip.v4) : S(void*,&sip.v6)),
             buf, INET6_ADDRSTRLEN) == NIL){
       sip.cp = N_("Invalid internet address: %s\n");
@@ -2382,31 +2455,35 @@ jca:/* C99 */{
       goto jedata;
    }
 
-   if(!(pgp->pg_flags & a_F_TEST_MODE)){
+   if(!(pgp->pg_flags & a_PG_F_TEST_MODE)){
       if(exact)
-         su_cs_dict_insert(&pgp->pg_master->pgm_white_ca, buf, NIL);
+         su_cs_dict_insert(&pgwbp->pgwb_ca, buf, NIL);
       else{
          ASSERT(m != U32_MAX);
          pgsp = S(struct a_pg_srch*,
                su_ALLOC(VSTRUCT_SIZEOF(struct a_pg_srch,pgs_d) + sizeof(sip)));
-         pgsp->pgs_next = pgp->pg_master->pgm_white_srch;
-         pgp->pg_master->pgm_white_srch = pgsp;
-         pgsp->pgs_flags = (rv == AF_INET) ? a_SRCH_IPV4 : a_SRCH_IPV6;
+         pgsp->pgs_next = pgwbp->pgwb_srch;
+         pgwbp->pgwb_srch = pgsp;
+         pgsp->pgs_flags = (rv == AF_INET) ? a_PG_SRCH_IPV4 : a_PG_SRCH_IPV6;
          pgsp->pgs_mask = S(u8,m);
          su_mem_copy(&pgsp->pgs_d[0], &sip, sizeof(sip));
       }
    }else{
+      char const *me;
+
+      me = (pgwbp == NIL) ? "!" : su_empty;
       if(exact)
-         fprintf(stdout, "= %s (/%lu)\n", buf, S(ul,g_m));
+         fprintf(stdout, "%s= %s (/%lu)\n", me, buf, S(ul,g_m));
       else
-         fprintf(stdout, "~ %s/%lu\n", buf, S(ul,m));
+         fprintf(stdout, "%s~ %s/%lu\n", me, buf, S(ul,m));
    }
    rv = su_EX_OK;
    }goto jleave;
 }
 
 static s32
-a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_avo_flags) f){
+a_conf__R(struct a_pg *pgp, char const *path,
+      BITENUM_IS(u32,a_pg_avo_flags) f){
    struct su_avopt avo;
    char *lnb;
    size_t lnl;
@@ -2419,8 +2496,8 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_avo_flags) f){
    lnb = NIL;/* XXX lnb+lnl : su_cstr */
 
    if((fp = fopen(path, "r")) == NIL){
-      if(pgp->pg_flags & a_F_TEST_MODE)
-         pgp->pg_flags |= a_F_TEST_ERRORS;
+      if(pgp->pg_flags & a_PG_F_TEST_MODE)
+         pgp->pg_flags |= a_PG_F_TEST_ERRORS;
       mpv = su_err_no_by_errno();
       fprintf(stderr, _("Cannot open --resource-file %s: %s\n"),
          path, su_err_doc(mpv));
@@ -2446,7 +2523,7 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_avo_flags) f){
       switch((mpv = su_avopt_parse_line(&avo, cp))){
       /* In long-option order */
       case '4': case '6':
-      case 'A': case 'a':
+      case 'A': case 'a': case 'B': case 'b':
       case 'c': case 'D': case 'd': case 'G': case 'g': case 'L': case 'l':
       case 't':
       case 'R':
@@ -2454,7 +2531,7 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_avo_flags) f){
       case 's':
       case 'v':
          if((mpv = a_conf__arg(pgp, mpv, avo.avo_current_arg, f)) < 0 &&
-               !(pgp->pg_flags & a_F_TEST_MODE)){
+               !(pgp->pg_flags & a_PG_F_TEST_MODE)){
             mpv = -mpv;
             goto jleave;
          }
@@ -2464,8 +2541,8 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_avo_flags) f){
          fprintf(stderr,
             _("Option unknown or not usable in --resource-file: %s: %s\n"),
             path, cp);
-         if(pgp->pg_flags & a_F_TEST_MODE){
-            pgp->pg_flags |= a_F_TEST_ERRORS;
+         if(pgp->pg_flags & a_PG_F_TEST_MODE){
+            pgp->pg_flags |= a_PG_F_TEST_ERRORS;
             break;
          }
          mpv = su_EX_USAGE;
@@ -2497,7 +2574,7 @@ a_conf_chdir_store_path(struct a_pg *pgp){
       edoc = su_err_doc(-1);
       emsg = _("cannot change directory to %s: %s\n");
 
-      if(pgp->pg_flags & a_F_TEST_MODE)
+      if(pgp->pg_flags & a_PG_F_TEST_MODE)
          fprintf(stderr, emsg, pgp->pg_store_path, edoc);
       else
          su_log_write(su_LOG_CRIT, emsg, pgp->pg_store_path, edoc);
@@ -2619,7 +2696,7 @@ jleave:
 
 static boole
 a_norm_triple_ca(struct a_pg *pgp){
-   union a_srch_ip a;
+   union a_pg_srch_ip a;
    u32 *ip, mask, max, i;
    char *ca, *cp;
    NYD2_IN;
@@ -2765,7 +2842,7 @@ a_main_log_write(u32 lvl_a_flags, char const *msg, uz len){
       msg = xb;
    }
 
-   syslog(S(int,lvl_a_flags & su_LOG_PRIMASK), msg);
+   syslog(S(int,lvl_a_flags & su_LOG_PRIMASK), "%s", msg);
 jleave:;
 }
 
@@ -2775,7 +2852,7 @@ a_main_usage(FILE *fp){
    uz i;
    NYD2_IN;
 
-   i = su_cs_len(su_program);
+   i = (su_program != NIL) ? su_cs_len(su_program) : 0;
    i = MIN(i, sizeof(buf) -1);
    if(i > 0)
       su_mem_set(buf, ' ', i);
@@ -2823,7 +2900,7 @@ main(int argc, char *argv[]){ /* {{{ */
    struct su_avopt avo;
    struct a_pg pg;
    boole list_values;
-   BITENUM_IS(u32,a_avo_flags) f;
+   BITENUM_IS(u32,a_pg_avo_flags) f;
    s32 mpv;
 
    mpv = (getenv("SOURCE_DATE_EPOCH") == NIL); /* xxx su_env_get? */
@@ -2835,13 +2912,13 @@ main(int argc, char *argv[]){ /* {{{ */
       su_STATE_ERR_NOPASS);
 
    STRUCT_ZERO(struct a_pg, &pg);
-   a_conf_setup(&pg, a_AVO_NONE);
+   a_conf_setup(&pg, a_PG_AVO_NONE);
    pg.pg_argc = (argc > 0) ? --argc : argc;
    pg.pg_argv = ++argv;
 
    /* To avoid that clients do not parse too much we may have to parse ARGV
     * several times instead */
-   f = a_AVO_NONE;
+   f = a_PG_AVO_NONE;
    list_values = FAL0;
 jreavo:
    su_avopt_setup(&avo, pg.pg_argc, C(char const*const*,pg.pg_argv),
@@ -2852,16 +2929,16 @@ jreavo:
 
       switch(mpv){
       case '#':
-         pg.pg_flags |= a_F_TEST_MODE;
+         pg.pg_flags |= a_PG_F_TEST_MODE;
          break;
 
       case '.':
-         pg.pg_flags |= a_F_CLIENT_SHUTDOWN_MODE;
+         pg.pg_flags |= a_PG_F_CLIENT_SHUTDOWN_MODE;
          break;
 
       /* In long-option order */
       case '4': case '6':
-      case 'A': case 'a':
+      case 'A': case 'a': case 'B': case 'b':
       case 'c': case 'D': case 'd': case 'G': case 'g': case 'L': case 'l':
       case 't':
       case 'R':
@@ -2875,7 +2952,7 @@ jreavo:
          break;
 
       case -2:
-         if(f & a_AVO_FULL)
+         if(f & a_PG_AVO_FULL)
             goto jlv;
          list_values = TRU1;
          break;
@@ -2897,11 +2974,11 @@ jreavo:
       case su_AVOPT_STATE_ERR_OPT:
             emsg = su_avopt_fmt_err_opt;
          }
-         if(!(f & a_AVO_FULL))
+         if(!(f & a_PG_AVO_FULL))
             fprintf(stderr, V_(emsg), avo.avo_current_err_opt);
 
-         if(pg.pg_flags & a_F_TEST_MODE){
-            pg.pg_flags |= a_F_TEST_ERRORS;
+         if(pg.pg_flags & a_PG_F_TEST_MODE){
+            pg.pg_flags |= a_PG_F_TEST_ERRORS;
             break;
          }
 jeusage:
@@ -2911,27 +2988,27 @@ jeusage:
       }
    }
 
-   if(!(f & a_AVO_FULL)){
+   if(!(f & a_PG_AVO_FULL)){
       if(avo.avo_argc != 0){
          fprintf(stderr, _("Excess arguments given\n"));
-         if(!(pg.pg_flags & a_F_TEST_MODE))
+         if(!(pg.pg_flags & a_PG_F_TEST_MODE))
             goto jeusage;
-         pg.pg_flags |= a_F_TEST_ERRORS;
+         pg.pg_flags |= a_PG_F_TEST_ERRORS;
       }
 
-      a_conf_finish(&pg, a_AVO_NONE);
+      a_conf_finish(&pg, a_PG_AVO_NONE);
    }
 
-   if(!list_values && !(pg.pg_flags & a_F_TEST_MODE))
+   if(!list_values && !(pg.pg_flags & a_PG_F_TEST_MODE))
       mpv = a_client(&pg);
-   else if(!(f & a_AVO_FULL)){
-      f = a_AVO_FULL;
+   else if(!(f & a_PG_AVO_FULL)){
+      f = a_PG_AVO_FULL;
       goto jreavo;
    }else{
 jlv:
       fprintf(stdout, "# # #\n");
       a_conf_list_values(&pg);
-      mpv = (pg.pg_flags & a_F_TEST_ERRORS) ? su_EX_USAGE : su_EX_OK;
+      mpv = (pg.pg_flags & a_PG_F_TEST_ERRORS) ? su_EX_USAGE : su_EX_OK;
    }
 
 jleave:
