@@ -487,11 +487,10 @@ jshutdown:{
 
 static s32
 a_client__loop(struct a_pg *pgp){
-   char inst_buf[128], *lnb, *bp, *cp;
+   char *lnb, *bp, *cp;
    ssize_t lnr;
-   boole use_this, seen_any, seen_inst;
+   boole use_this, seen_any;
    size_t lnl;
-   uz inst_len;
    s32 rv;
    NYD_IN;
 
@@ -504,14 +503,13 @@ a_client__loop(struct a_pg *pgp){
 
    /* Main loop: while we receive policy queries, collect the triple(s) we are
     * looking for, ask our master what he thinks about that, act accordingly */
-   inst_len = 0;
    lnl = 0;
    lnb = NIL;/* XXX lnb+lnl : su_cstr */
 jblock:
    bp = pgp->pg_buf;
    pgp->pg_r = pgp->pg_s = pgp->pg_ca = pgp->pg_cname = NIL;
    use_this = TRU1;
-   seen_any = seen_inst = FAL0;
+   seen_any = FAL0;
 
    while((lnr = getline(&lnb, &lnl, stdin)) != -1){
       cp = lnb;
@@ -558,28 +556,7 @@ jblock:
          i = P2UZ(xcp++ - cp);
          lnr -= i + 1;
 
-         if(i == sizeof("instance") -1 &&
-               !su_mem_cmp(cp, "instance", sizeof("instance") -1)){
-            /* Ignore any but the first block for an "instance".  Instance
-             * handling is solely up to the client as per SMTPD_POLICY_README:
-             *    [Instance] can be used to correlate different requests
-             *    regarding the same message delivery. These requests are sent
-             *    over the same policy connection (unless the policy daemon
-             *    terminates the connection).  Once Postfix sends a query with
-             *    a different instance attribute over that same policy
-             *    connection, the previous message delivery is either completed
-             *    or aborted. */
-            seen_inst = TRU1;
-            lnr = MIN(S(uz,lnr), sizeof(inst_buf));
-            if(UCMP(z, lnr, ==, inst_len) &&
-                  !su_mem_cmp(xcp, inst_buf, inst_len)){
-               a_DBG( su_log_write(su_LOG_DEBUG,
-                  "client got same instance= block (-> DUNNO)"); )
-               use_this = FAL0;
-            }else
-               su_mem_copy(inst_buf, xcp, inst_len = lnr);
-            continue;
-         }else if(i == sizeof("request") -1 &&
+         if(i == sizeof("request") -1 &&
                !su_mem_cmp(cp, "request", sizeof("request") -1)){
             if(lnr != sizeof("smtpd_access_policy") -1 ||
                   su_mem_cmp(xcp, "smtpd_access_policy",
@@ -588,11 +565,6 @@ jblock:
                a_DBG( su_log_write(su_LOG_DEBUG,
                   "client got wrong request=%s (-> DUNNO)", xcp); )
                use_this = FAL0;
-               /* ..but another block for the same instance may be ok */
-               if(seen_inst){
-                  seen_inst = FAL0;
-                  inst_len = 0;
-               }
                continue;
             }
          }else if(i == sizeof("recipient") -1 &&

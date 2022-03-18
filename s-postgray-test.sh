@@ -630,7 +630,7 @@ action=DUNNO
 
 action=$DEFER_MSG
 
-action=DUNNO
+action=$DEFER_MSG
 
 _EOT
 
