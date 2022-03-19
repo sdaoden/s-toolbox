@@ -380,9 +380,38 @@ eval $PG -R ./x.rc --shutdown $REDIR
 
 < ./4.x eval $PG -R ./y.rc -t 1 > ./4.1 $REDIR
 cmp -s 4.1 4.1x || exit 101
+[ -n "$REDIR" ] || echo ok 4.1
+
 eval $PG -R ./x.rc --shutdown $REDIR
 [ $? -ne 75 ] || exit 102
-[ -n "$REDIR" ] || echo ok 4.1
+
+printf \
+   'recipient=x@y\nsender=y@z\nclient_address=200.200.200.200\n'\
+'client_name=and.subdomain\n\n'\
+   | eval $PG -R ./x.rc > ./4.2 $REDIR
+printf 'action='"$DEFER_MSG"'\n\n' >> ./4.2x
+cmp -s ./4.2 ./4.2x || exit 101
+[ -n "$REDIR" ] || echo ok 4.2
+
+printf \
+   'recipient=x@y\nsender=y@z\nclient_address=200.200.201.200\n'\
+'client_name=subdomain.\n\n'\
+   | eval $PG -R ./x.rc > ./4.3 $REDIR
+printf 'action='"$DEFER_MSG"'\n\n' >> ./4.3x
+cmp -s ./4.3 ./4.3x || exit 101
+[ -n "$REDIR" ] || echo ok 4.3
+
+# root label -> error
+printf \
+   'recipient=x@y\nsender=y@z\nclient_address=200.200.202.200\n'\
+'client_name=.\n\n'\
+   | eval $PG -R ./x.rc > ./4.4 $REDIR
+printf 'action=DUNNO\n\n' >> ./4.4x
+cmp -s ./4.4 ./4.4x || exit 101
+[ -n "$REDIR" ] || echo ok 4.4
+
+eval $PG -R ./x.rc --shutdown $REDIR
+[ $? -ne 75 ] || exit 102
 fi
 # }}}
 

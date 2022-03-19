@@ -84,6 +84,7 @@
 /* */
 #define a_DBGIF 1
 #define a_DBG(X) X
+#define a_DBG2(X) /* TODO more of those */
 
 /* -- >8 -- 8< -- */
 
@@ -178,9 +179,8 @@ enum a_pg_answer{
 /* Fuzzy search */
 enum a_pg_srch_flags{
    a_PG_SRCH_NONE,
-   a_PG_SRCH_DOMAIN = 1u<<0,
-   a_PG_SRCH_IPV4 = 1u<<1,
-   a_PG_SRCH_IPV6 = 1u<<2
+   a_PG_SRCH_IPV4 = 1u<<0,
+   a_PG_SRCH_IPV6 = 1u<<1
 };
 
 union a_pg_srch_ip{
@@ -197,16 +197,14 @@ struct a_pg_srch{
    struct a_pg_srch *pgs_next;
    BITENUM_IS(u8,a_pg_srch_flags) pgs_flags;
    u8 pgs_mask; /* SRCH_IP*: CIDR mask */
-   u8 pgs__pad[2];
-   u32 pgs_len; /* SRCH_DOMAIN: hostname len */
-   /* Really is a srch_ip but for SRCH_DOMAIN: string */
-   char pgs_d[su_VFIELD_SIZE(0)];
+   u8 pgs__pad[su_6432(2,6)];
+   union a_pg_srch_ip pgs_ip;
 };
 
 struct a_pg_wb{
-   struct a_pg_srch *pgwb_srch; /* ca/cname list, fuzzy */
+   struct a_pg_srch *pgwb_srch; /* ca list, fuzzy */
    struct su_cs_dict pgwb_ca; /* client_address=, exact */
-   struct su_cs_dict pgwb_cname; /* client_name=, exac) */
+   struct su_cs_dict pgwb_cname; /* client_name=, exact + fuzzy */
 };
 
 struct a_pg_master{
@@ -1005,27 +1003,27 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
          }
 
          su_log_write(su_LOG_INFO,
-            _("clients %lu;  white: CA %lu/%lu, CNAME %lu/%lu, FUZZY %lu\n"
-              "black: CA %lu/%lu, CNAME %lu/%lu, FUZZY: %lu\n"
+            _("clients %lu;  white: CA %lu/%lu (fuzzy %lu), CNAME %lu/%lu\n"
+              "black: CA %lu/%lu (fuzzy %lu), CNAME %lu/%lu\n"
               "gray: %lu/%lu, gc_cnt %lu; epoch: %lu, now %lu: %lu"),
             S(ul,pgmp->pgm_cli_no),
                S(ul,su_cs_dict_count(&pgmp->pgm_white.pgwb_ca)),
                   S(ul,su_cs_dict_size(&pgmp->pgm_white.pgwb_ca)),
+               S(ul,i),
                S(ul,su_cs_dict_count(&pgmp->pgm_white.pgwb_cname)),
                   S(ul,su_cs_dict_size(&pgmp->pgm_white.pgwb_cname)),
-               S(ul,i),
             S(ul,su_cs_dict_count(&pgmp->pgm_black.pgwb_ca)),
                   S(ul,su_cs_dict_size(&pgmp->pgm_black.pgwb_ca)),
+               S(ul,e),
                S(ul,su_cs_dict_count(&pgmp->pgm_black.pgwb_cname)),
                   S(ul,su_cs_dict_size(&pgmp->pgm_black.pgwb_cname)),
-               S(ul,e),
             S(ul,su_cs_dict_count(&pgmp->pgm_gray)),
                S(ul,su_cs_dict_size(&pgmp->pgm_gray)),
                S(ul,pgmp->pgm_cleanup_cnt),
                S(ul,pgmp->pgm_base_epoch),
                S(ul,pgmp->pgm_epoch), S(ul,pgmp->pgm_epoch_min)
             );
-         a_DBG(
+         a_DBG2(
             su_log_write(su_LOG_INFO, "WHITE CA:");
             su_cs_dict_statistics(&pgmp->pgm_white.pgwb_ca);
             su_log_write(su_LOG_INFO, "WHITE CNAME:");
@@ -1056,9 +1054,9 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
          /* Had accept(2) failure, have no clients: only sleep a bit */
          if(maxfd < 0){
             rfdsp = NIL;
-            a_DBG( su_log_write(su_LOG_DEBUG, "select: suspend,sleep"); )
+            a_DBG2( su_log_write(su_LOG_DEBUG, "select: suspend,sleep"); )
          }else{
-            a_DBG( su_log_write(su_LOG_DEBUG, "select: suspend,maxfd=%d",
+            a_DBG2( su_log_write(su_LOG_DEBUG, "select: suspend,maxfd=%d",
                maxfd); )
          }
       }else if(pgmp->pgm_cli_no < a_CLIENTS_MAX){
@@ -1074,7 +1072,7 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
          FD_SET(x, rfdsp);
          maxfd = MAX(maxfd, x);
 
-         a_DBG( su_log_write(su_LOG_DEBUG,
+         a_DBG2( su_log_write(su_LOG_DEBUG,
             "select: maxfd=%d timeout=%d (%lu)",
             maxfd, (tosp != NIL), (tosp != NIL ? S(ul,tosp->tv_sec) : 0)); )
       }else{
@@ -1142,7 +1140,7 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
                "accept(2): temporarily suspending: %s", su_err_doc(x)); )
          }else{
             pgmp->pgm_cli_fds[pgmp->pgm_cli_no++] = x;
-            a_DBG( su_log_write(su_LOG_DEBUG, "accepted client=%u fd=%d",
+            a_DBG2( su_log_write(su_LOG_DEBUG, "accepted client=%u fd=%d",
                pgmp->pgm_cli_no, x); )
          }
          /* XXX non-empty accept queue MUST cause more select(2) wakes */
@@ -1200,7 +1198,7 @@ jcli_err:
       close(pgmp->pgm_cli_fds[client]);
       goto jcli_del;
    }else if(osx == 0){
-      a_DBG( su_log_write(su_LOG_DEBUG,
+      a_DBG2( su_log_write(su_LOG_DEBUG,
          "client fd=%d disconnected, %u remain",
          pgmp->pgm_cli_fds[client], pgmp->pgm_cli_no - 1); )
 jcli_del:
@@ -1217,7 +1215,7 @@ jcli_del:
 
       /* Is it a forced SHUTDOWN request? */
       if(all == 2){
-         a_DBG( su_log_write(su_LOG_DEBUG, "client fd=%d shutdown request",
+         a_DBG2( su_log_write(su_LOG_DEBUG, "client fd=%d shutdown request",
             pgmp->pgm_cli_fds[client]); )
          a_pgm = NIL;
          goto jleave;
@@ -1304,10 +1302,6 @@ jleave:
 
 static boole
 a_master__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwbp){ /* {{{ */
-   union a_pg_srch_ip c_sip;
-   int c_af;
-   struct a_pg_srch *pgsp;
-   u32 cn_l, *c_ip;
    char const *me;
    boole rv;
    NYD_IN;
@@ -1322,66 +1316,56 @@ a_master__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwbp){ /* {{{ */
       goto jleave;
    }
 
-   if(su_cs_dict_has_key(&pgwbp->pgwb_cname, pgp->pg_cname)){
-      if(pgp->pg_flags & a_PG_F_V)
-         su_log_write(su_LOG_INFO, "%s domain: %s", me, pgp->pg_cname);
-      goto jleave;
-   }
+   /* C99 */{
+      char const *cp;
+      boole first;
 
-   /* Search fuzzy */
-   cn_l = su_cs_len(pgp->pg_cname);
-   c_ip = NIL; /* lazy init */
+      for(first = TRU1, cp = pgp->pg_cname;; first = FAL0){
+         union {void *p; up v;} u;
 
-   for(pgsp = pgwbp->pgwb_srch; pgsp != NIL; pgsp = pgsp->pgs_next){
-      if(pgsp->pgs_flags & a_PG_SRCH_DOMAIN){
-         if(cn_l < pgsp->pgs_len)
-            continue;
-
-         if(su_mem_cmp(pgsp->pgs_d, &pgp->pg_cname[cn_l - pgsp->pgs_len],
-               pgsp->pgs_len))
-            continue;
-
-         /* Exact match?  Subdomain match? */
-         if(cn_l == pgsp->pgs_len ||
-               pgp->pg_cname[cn_l - pgsp->pgs_len - 1] == '.'){
+         if((u.p = su_cs_dict_lookup(&pgwbp->pgwb_cname, cp)) != NIL &&
+               (first || u.v != TRU1)){
             if(pgp->pg_flags & a_PG_F_V)
-               su_log_write(su_LOG_INFO, "%s wildcard domain: %s",
-                  me, pgp->pg_cname);
+               su_log_write(su_LOG_INFO, "%s %sdomain: %s",
+                  me, (first ? su_empty : _("wildcard")), cp);
             goto jleave;
          }
-      }else{
+
+         if((cp = su_cs_find_c(cp, '.')) == NIL || *++cp == '\0')
+            break;
+      }
+   }
+
+   /* Fuzzy IP search */{
+      union a_pg_srch_ip c_sip;
+      struct a_pg_srch *pgsp;
+      u32 *c_ip;
+      int c_af;
+
+      /* xxx Client had this already, simply binary pass it, too? */
+      c_af = (su_cs_find_c(pgp->pg_ca, ':') != NIL) ? AF_INET6 : AF_INET;
+      if(inet_pton(c_af, pgp->pg_ca, (c_af == AF_INET ? S(void*,&c_sip.v4)
+               : S(void*,&c_sip.v6))) != 1){
+         su_log_write(su_LOG_CRIT, _("Cannot re-parse an already "
+            "prepared IP address?: "), pgp->pg_ca);
+         goto jleave0;
+      }
+      c_ip = (c_af == AF_INET) ? R(u32*,&c_sip.v4.s_addr)
+            : R(u32*,c_sip.v6.s6_addr);
+
+      for(pgsp = pgwbp->pgwb_srch; pgsp != NIL; pgsp = pgsp->pgs_next){
          u32 *ip, max, m, xm, i;
 
-         if(c_ip == NIL){
-            /* XXX Client had this already, simply binary pass it, too? */
-            c_af = (su_cs_find_c(pgp->pg_ca, ':') != NIL) ? AF_INET6 : AF_INET;
-            if(inet_pton(c_af, pgp->pg_ca,
-                     (c_af == AF_INET ? S(void*,&c_sip.v4)
-                     : S(void*,&c_sip.v6))) != 1){
-               su_log_write(su_LOG_CRIT, _("Cannot re-parse an already "
-                  "prepared IP address?: "), pgp->pg_ca);
+         if(c_af == AF_INET){
+            if(!(pgsp->pgs_flags & a_PG_SRCH_IPV4))
                continue;
-            }
-            c_ip = (c_af == AF_INET) ? R(u32*,&c_sip.v4.s_addr)
-                  : R(u32*,c_sip.v6.s6_addr);
-         }
-
-         /* C99 */{
-            union a_pg_srch_ip *sipp;
-
-            sipp = R(union a_pg_srch_ip*,&pgsp->pgs_d[0]);
-
-            if(c_af == AF_INET){
-               if(!(pgsp->pgs_flags & a_PG_SRCH_IPV4))
-                  continue;
-               ip = R(u32*,&sipp->v4.s_addr);
-               max = 1;
-            }else if(!(pgsp->pgs_flags & a_PG_SRCH_IPV6))
-               continue;
-            else{
-               ip = R(u32*,sipp->v6.s6_addr);
-               max = 4;
-            }
+            ip = R(u32*,&pgsp->pgs_ip.v4.s_addr);
+            max = 1;
+         }else if(!(pgsp->pgs_flags & a_PG_SRCH_IPV6))
+            continue;
+         else{
+            ip = R(u32*,pgsp->pgs_ip.v6.s6_addr);
+            max = 4;
          }
 
          for(m = pgsp->pgs_mask, i = 0;;){
@@ -1411,6 +1395,7 @@ a_master__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwbp){ /* {{{ */
       }
    }
 
+jleave0:
    rv = FAL0;
 jleave:
    NYD_OU;
@@ -1568,6 +1553,10 @@ a_master__gray_load(struct a_pg *pgp){ /* {{{ */
                path);
             goto jleave;
          }
+
+         a_DBG( su_log_write(su_LOG_DEBUG,
+            "load: acc=%d, count=%d min=%hd: %s",
+            !!(d & 0x80000000), S(ul,(d & 0x7FFF0000) >> 16), nmin, key); )
       }
 
 jskip:
@@ -1676,6 +1665,11 @@ a_master__gray_save(struct a_pg *pgp){ /* {{{ */
          goto jerr;
       xlen += i;
       ++cnt;
+
+      a_DBG( su_log_write(su_LOG_DEBUG,
+         "save: acc=%d, count=%d nmin=%hd: %s",
+         !!(d & 0x80000000), S(ul,(d & 0x7FFF0000) >> 16), nmin,
+         su_cs_dict_view_key(&dv)); )
    }
 
 jclose:
@@ -1771,23 +1765,12 @@ jdel:
       gc_any = TRU1;
    }
 
-   a_DBG( su_log_write(su_LOG_DEBUG, "gc: end epoch=%lu",
-      S(ul,su_timespec_current(&ts)->ts_sec)); )
-
    if(gc_any && (gc_any = (++pgmp->pgm_cleanup_cnt >= pgp->pg_gc_rebalance))){
+      su_cs_dict_balance(&pgmp->pgm_gray);
       a_DBG( su_log_write(su_LOG_DEBUG,
-         "gc: rebalance after %u: count=%u size=%u",
+         "gc: rebalance after %u: count=%u, new size=%u",
          pgmp->pgm_cleanup_cnt, su_cs_dict_count(&pgmp->pgm_gray),
          su_cs_dict_size(&pgmp->pgm_gray)); )
-
-      su_cs_dict_balance(&pgmp->pgm_gray);
-
-      a_DBG( su_log_write(su_LOG_DEBUG,
-         "gc: after rebalance: count=%u size=%u epoch=%lu",
-         su_cs_dict_count(&pgmp->pgm_gray),
-         su_cs_dict_size(&pgmp->pgm_gray),
-         S(ul,su_timespec_current(&ts)->ts_sec)); )
-
       pgmp->pgm_cleanup_cnt = 0;
    }
 
@@ -1796,7 +1779,8 @@ jdel:
 
       su_timespec_sub(su_timespec_current(&ts2), &ts);
       su_log_write(su_LOG_INFO,
-         _("gray DB garbage collection took %lu:%lu (sec:nano), balanced: %d"),
+         _("gray DB: count=%u: GC took %lu:%lu (sec:nano), balanced: %d"),
+         su_cs_dict_count(&pgmp->pgm_gray),
          S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), gc_any);
    }
 
@@ -2331,19 +2315,10 @@ jcname:
       pgp->pg_cname = sip.cp;
 
       if(!(pgp->pg_flags & a_PG_F_TEST_MODE)){
-         if(m == 0)
-            su_cs_dict_insert(&pgwbp->pgwb_cname, cp, NIL);
-         else{
-            m = su_cs_len(cp) +1;
+         union {void *p; up v;} u;
 
-            pgsp = S(struct a_pg_srch*,
-                  su_ALLOC(VSTRUCT_SIZEOF(struct a_pg_srch,pgs_d) + m));
-            pgsp->pgs_next = pgwbp->pgwb_srch;
-            pgwbp->pgwb_srch = pgsp;
-            pgsp->pgs_flags = a_PG_SRCH_DOMAIN;
-            pgsp->pgs_len = m - 1;
-            su_mem_copy(&pgsp->pgs_d[0], cp, m);
-         }
+         u.v = (m == 0) ? TRU1 : TRU2; /* "is exact" */
+         su_cs_dict_insert(&pgwbp->pgwb_cname, cp, u.p);
       }else{
          char const *me;
 
@@ -2432,13 +2407,12 @@ jca:/* C99 */{
          su_cs_dict_insert(&pgwbp->pgwb_ca, buf, NIL);
       else{
          ASSERT(m != U32_MAX);
-         pgsp = S(struct a_pg_srch*,
-               su_ALLOC(VSTRUCT_SIZEOF(struct a_pg_srch,pgs_d) + sizeof(sip)));
+         pgsp = su_TALLOC(struct a_pg_srch, 1);
          pgsp->pgs_next = pgwbp->pgwb_srch;
          pgwbp->pgwb_srch = pgsp;
          pgsp->pgs_flags = (rv == AF_INET) ? a_PG_SRCH_IPV4 : a_PG_SRCH_IPV6;
          pgsp->pgs_mask = S(u8,m);
-         su_mem_copy(&pgsp->pgs_d[0], &sip, sizeof(sip));
+         su_mem_copy(&pgsp->pgs_ip, &sip, sizeof(sip));
       }
    }else{
       char const *me;
@@ -2747,6 +2721,7 @@ jleave:
 
 static boole
 a_norm_triple_cname(struct a_pg *pgp){
+   /* This bails for the root label . */
    char *cn, *cp, *ds, c;
    NYD2_IN;
 

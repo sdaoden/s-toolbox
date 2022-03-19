@@ -7,7 +7,7 @@ VAL_NAME = s-postgray
 
 # Directory for permanent (DB) storage and client/master socket.
 # Must be writable by the spawn(8) defined user/group.
-VAL_STORE_PATH = /tmp
+VAL_STORE_PATH = /var/lib/postfix-lmdb
 
 ##
 
@@ -16,7 +16,7 @@ VAL_4_MASK = 24
 VAL_6_MASK = 64
 
 # ..; NIL for DEFER_MSG means the builtin default (also see manual)
-VAL_COUNT = 3
+VAL_COUNT = 2
 VAL_DEFER_MSG = NIL
 VAL_DELAY_MAX = 720
 VAL_DELAY_MIN = 5
@@ -26,19 +26,19 @@ VAL_LIMIT = 242000
 VAL_LIMIT_DELAY = 221000
 
 # --master-timeout (0: never)
-VAL_MASTER_TIMEOUT = 1
+VAL_MASTER_TIMEOUT = 10
 
 ##
 
-#CMODE = -DNDEBUG -O2
-CMODE = -O1 -g #-fsanitize=address
+CMODE = -DNDEBUG -O2
+#CMODE = -O1 -g #-fsanitize=address
 PREFIX = /usr
 
 DESTDIR =
 
 ## >8 -- 8<
 
-SULIB = -lsu-dvldbg#-asan
+SULIB = -lsu#-dvldbg#-asan
 SUFLAGS =
 
 SBINDIR = $(DESTDIR)$(PREFIX)/sbin
@@ -51,9 +51,9 @@ CFLAGS = $(CMODE) \
 	-fno-asynchronous-unwind-tables -fno-unwind-tables \
 	-fno-common \
 	-fstrict-aliasing -fstrict-overflow \
-	-fstack-protector-strong -D_FORTIFY_SOURCE=2 #-fPIE
+	-fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE
 LDFLAGS = -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
-	-Wl,--enable-new-dtags #--pie
+	-Wl,--enable-new-dtags --pie
 
 INSTALL = install
 MKDIR = mkdir
