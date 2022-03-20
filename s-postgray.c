@@ -251,8 +251,8 @@ static char const a_sopts[] =
       "4:6:" "A:a:B:b:" "c:D:d:G:g:L:l:" "t:" "R:" "m:" "s:"
       "#" "." "vHh";
 static char const * const a_lopts[] = {
-   "4-mask:;4;" N_("IPv4 mask to strip off gray addresses before match"),
-   "6-mask:;6;" N_("IPv6 mask to strip off gray addresses before match"),
+   "4-mask:;4;" N_("IPv4 mask to strip off addresses before match"),
+   "6-mask:;6;" N_("IPv6 mask to strip off addresses before match"),
 
    "allow-file:;A;" N_("load a file of whitelist entries (order matters)"),
    "allow:;a;" N_("add domain/address/CIDR to whitelist (order matters)"),
@@ -280,7 +280,7 @@ static char const * const a_lopts[] = {
 
    "list-values;-2;" N_("show (current) values of the above, then exit"),
 
-   "allow-check;#;" N_("check following -A and -a options, then exit"),
+   "allow-check;#;" N_("check following -A, -a, -B and -b options, then exit"),
 
    "shutdown;.;"
       N_("force a running master to exit, synchronize on that, then exit"),
@@ -494,6 +494,7 @@ a_client__loop(struct a_pg *pgp){
 
    /* Ignore signals that may happen */
    signal(SIGCHLD, SIG_IGN);
+   signal(SIGHUP, SIG_IGN);
    signal(SIGUSR1, SIG_IGN);
    signal(SIGUSR2, SIG_IGN);
 
@@ -993,7 +994,12 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
 
       /* Log status */
       if(UNLIKELY(a_master_usr1)){
+         enum su_log_level olvl;
+
          a_master_usr1 = 0;
+
+         olvl = su_log_get_level();
+         su_log_set_level(su_LOG_INFO);
 
          for(i = 0, t.pgsp = pgmp->pgm_white.pgwb_srch; t.pgsp != NIL;
                ++i, t.pgsp = t.pgsp->pgs_next){
@@ -1035,6 +1041,8 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
             su_log_write(su_LOG_INFO, "GRAY:");
             su_cs_dict_statistics(&pgmp->pgm_gray);
          )
+
+         su_log_set_level(olvl);
       }
 
       FD_ZERO(rfdsp = &rfds);
@@ -1673,6 +1681,7 @@ a_master__gray_save(struct a_pg *pgp){ /* {{{ */
    }
 
 jclose:
+   fsync(fd);
    close(fd);
 
    if(a_DBGIF || (pgp->pg_flags & a_PG_F_V)){
@@ -2326,7 +2335,7 @@ jcname:
          /* xxx could use C++ dns hostname check */
          fprintf(stdout, "%s%c %s%s\n",
             me, (m == 0 ? '=' : '~'),
-            (m == 0 ? su_empty : "(*.)?"), cp);
+            (m == 0 ? su_empty : "(.+\\.)?"), cp);
       }
    }else{
       pgp->pg_cname = sip.cp;
@@ -2459,12 +2468,18 @@ a_conf__R(struct a_pg *pgp, char const *path,
       while(lnr > 0 && su_cs_is_space(*cp))
          ++cp, --lnr;
 
+      if(lnr == 0)
+         continue;
+
       /* We do support comments */
       if(*cp == '#')
          continue;
 
       while(lnr > 0 && su_cs_is_space(cp[lnr - 1]))
          cp[--lnr] = '\0';
+
+      if(lnr == 0)
+         continue;
 
       switch((mpv = su_avopt_parse_line(&avo, cp))){
       /* In long-option order */
@@ -2852,7 +2867,7 @@ main(int argc, char *argv[]){ /* {{{ */
 
    mpv = (getenv("SOURCE_DATE_EPOCH") == NIL); /* xxx su_env_get? */
    su_state_create(su_STATE_CREATE_RANDOM, (mpv ? NIL : VAL_NAME),
-      (DVLDBGOR(su_LOG_DEBUG, (mpv ? su_LOG_CRIT : su_LOG_DEBUG)) |
+      (DVLDBGOR(su_LOG_DEBUG, (mpv ? su_LOG_ERR : su_LOG_DEBUG)) |
          DVL( su_STATE_DEBUG | )
          (mpv ? (0 /*| su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID*/)
             : (su_STATE_LOG_SHOW_PID | su_STATE_REPRODUCIBLE))),

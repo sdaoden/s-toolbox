@@ -206,8 +206,8 @@ echo '=3: allow and block, check=' # {{{
 cat > ./3.zz <<'_EOT'
 = exact.match
 = also.exact.match
-~ (*.)?domain.and.subdomain
-~ (*.)?d.a.s
+~ (.+\.)?domain.and.subdomain
+~ (.+\.)?d.a.s
 = 127.0.0.0 (/24)
 ~ 2a03:2880:20:4f00::/56
 = 2a03:2880:20:6f06:: (/64)

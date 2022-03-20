@@ -18,7 +18,7 @@ VAL_6_MASK = 64
 # ..; NIL for DEFER_MSG means the builtin default (also see manual)
 VAL_COUNT = 2
 VAL_DEFER_MSG = NIL
-VAL_DELAY_MAX = 720
+VAL_DELAY_MAX = 300
 VAL_DELAY_MIN = 5
 VAL_GC_REBALANCE = 3
 VAL_GC_TIMEOUT = 10080
@@ -26,7 +26,7 @@ VAL_LIMIT = 242000
 VAL_LIMIT_DELAY = 221000
 
 # --master-timeout (0: never)
-VAL_MASTER_TIMEOUT = 10
+VAL_MASTER_TIMEOUT = 30
 
 ##
 
