@@ -1,15 +1,23 @@
-/*@ s-postgray(8) - postfix protocol policy (graylisting) server.
+/*@ s-postgray(8) - postfix protocol policy (RFC 6647 graylisting) server.
  *@ We assume postfix protocol constraints:
  *@ - No whitespace (at BOL and EOL, nor) in between key, =, and value.
  *@ - Lowercase keys.
  *@ - XXX-1 VERP delimiters are +=, and are not configurable.
  *@ - XXX-2 We assume numeric IDs in VERP addresses come after the delimiter.
  *@ - XXX-3 E-Mail addresses should be normalized and stripped of comments etc.
- *@ - We may want to make the server startable on its own?
- *@ - May want to make policy return on ENOMEM/limit excess configurable?
  *@
  *@ Further:
- *@ . With $SOURCE_DATE_EPOCH "minutes" are indeed "seconds".
+ *@ - With $SOURCE_DATE_EPOCH "minutes" are indeed "seconds".
+ *@
+ *@ Possible improvements:
+ *@ - We may want to make the server startable on its own?
+ *@ - May want to make policy return on ENOMEM/limit excess configurable?
+ *@ - Could offer delay-progressive: delay-min*=2 until count is reached.
+ *@   (But not going >= delay-max.)
+ *@ - We could add a in-between-delay counter, and if more than X messages
+ *@   come in before the next delay expires, we could auto-blacklist.
+ *@   Just extend the DB format to a 64-bit integer, and use bits 32..48.
+ *@   (Adding this feature should work with existing DBs.)
  *
  * Copyright (c) 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -29,7 +37,7 @@
 #define su_FILE s_postgray
 
 /* */
-#define a_VERSION "0.0.1"
+#define a_VERSION "0.4.0"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* Concurrent clients before stopping accept(2)ion */
@@ -53,7 +61,8 @@
    (Z_ALIGN(INET6_ADDRSTRLEN +1) + ((64 + 256 +1) * 3) +\
     1 + su_IENC_BUFFER_SIZE + 1)
 
-/* Minimum number of minutes in between DB cleanup runs */
+/* Minimum number of minutes in between DB cleanup runs.
+ * Together with --limit-delay this forms a barrier against limit excess */
 #define a_DB_CLEANUP_MIN_DELAY (1 * su_TIME_HOUR_MINS)
 
 /* The default built-in defer message.
@@ -82,8 +91,8 @@
 #define a_OPENLOG_FLAGS (LOG_NDELAY | LOG_PID)
 
 /* */
-#define a_DBGIF 1
-#define a_DBG(X) X
+#define a_DBGIF 0
+#define a_DBG(X)
 #define a_DBG2(X) /* TODO more of those */
 
 /* -- >8 -- 8< -- */
@@ -152,15 +161,20 @@ enum a_pg_flags{
    a_PG_F_VV = 1u<<7, /* xxx unused */
    a_PG_F_V_MASK = a_PG_F_V | a_PG_F_VV,
 
+   /* */
+   a_PG_F_NOFREE_DEFER_MSG = 1u<<8,
+   a_PG_F_NOFREE_STORE_PATH = 1u<<9,
+
    /* Client */
    a_PG_F_CLIENT_NONE,
-   a_PG_F_CLIENT_SHUTDOWN_MODE = 1u<<8,
+   a_PG_F_CLIENT_ONCE_MODE = 1u<<16,
+   a_PG_F_CLIENT_SHUTDOWN_MODE = 1u<<17,
 
    /* Master */
    a_PG_F_MASTER_NONE = 0,
-   a_PG_F_MASTER_ACCEPT_SUSPENDED = 1u<<8,
-   a_PG_F_MASTER_LIMIT_EXCESS_LOGGED = 1u<<9,
-   a_PG_F_MASTER_NOMEM_LOGGED = 1u<<10
+   a_PG_F_MASTER_ACCEPT_SUSPENDED = 1u<<16,
+   a_PG_F_MASTER_LIMIT_EXCESS_LOGGED = 1u<<17,
+   a_PG_F_MASTER_NOMEM_LOGGED = 1u<<18
 };
 
 enum a_pg_avo_args{
@@ -197,7 +211,7 @@ struct a_pg_srch{
    struct a_pg_srch *pgs_next;
    BITENUM_IS(u8,a_pg_srch_flags) pgs_flags;
    u8 pgs_mask; /* SRCH_IP*: CIDR mask */
-   u8 pgs__pad[su_6432(2,6)];
+   u8 pgs__pad[su_6432(6,2)];
    union a_pg_srch_ip pgs_ip;
 };
 
@@ -237,19 +251,19 @@ struct a_pg{
    char const *pg_defer_msg;
    char const *pg_store_path;
    char **pg_argv;
-   s32 pg_argc;
+   u32 pg_argc;
    s32 pg_clima_fd; /* Client/Master comm fd */
    /* Triple data plus client_name, pointing into .pg_buf */
    char *pg_r;
    char *pg_s;
    char *pg_ca;
    char *pg_cname;
-   char pg_buf[a_BUF_SIZE];
+   char pg_buf[Z_ALIGN(a_BUF_SIZE)];
 };
 
 static char const a_sopts[] =
       "4:6:" "A:a:B:b:" "c:D:d:G:g:L:l:" "t:" "R:" "m:" "s:"
-      "#" "." "vHh";
+      "#" "o" "." "vHh";
 static char const * const a_lopts[] = {
    "4-mask:;4;" N_("IPv4 mask to strip off addresses before match"),
    "6-mask:;6;" N_("IPv6 mask to strip off addresses before match"),
@@ -282,6 +296,8 @@ static char const * const a_lopts[] = {
 
    "allow-check;#;" N_("check following -A, -a, -B and -b options, then exit"),
 
+   "once;o;" N_("process only one request in this client invocation"),
+
    "shutdown;.;"
       N_("force a running master to exit, synchronize on that, then exit"),
 
@@ -312,15 +328,15 @@ static s32 a_master__wb_setup(struct a_pg *pgp, boole reset);
 static void a_master__wb_reset(struct a_pg_master *pgmp);
 static s32 a_master__loop(struct a_pg *pgp);
 static void a_master__cli_ready(struct a_pg *pgp, u32 client);
-static u8 a_master__cli_req(struct a_pg *pgp, u32 client, uz len);
+static char a_master__cli_req(struct a_pg *pgp, u32 client, uz len);
 static boole a_master__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwp);
 static void a_master__on_sig(int sig);
 
 static void a_master__gray_create(struct a_pg *pgp);
 static void a_master__gray_load(struct a_pg *pgp);
 static void a_master__gray_save(struct a_pg *pgp);
-static void a_master__gray_cleanup(struct a_pg *pgp);
-static u8 a_master__gray_lookup(struct a_pg *pgp, char const *key);
+static void a_master__gray_cleanup(struct a_pg *pgp, boole force);
+static char a_master__gray_lookup(struct a_pg *pgp, char const *key);
 
 /* conf; _conf__(arg|A|a)() return a negative exit status on error */
 static void a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f);
@@ -434,7 +450,7 @@ jretry_socket:
          goto jleave_close;
       }
    }
-   erefused = 0;
+   /*erefused = 0;*/
 
    if(pgp->pg_flags & a_PG_F_CLIENT_SHUTDOWN_MODE)
       goto jshutdown;
@@ -455,13 +471,11 @@ jleave:
    NYD_OU;
    return rv;
 
-jshutdown:{
-   ssize_t srvx;
-
+jshutdown:
    for(;;){
       static char const nulnul[2] = {'\0','\0'};
 
-      if((srvx = write(pgp->pg_clima_fd, nulnul, 2)) == -1){
+      if(write(pgp->pg_clima_fd, nulnul, 2) == -1){
          if(su_err_no_by_errno() == su_ERR_INTR)/* xxx why? */
             continue;
          rv = su_EX_IOERR;
@@ -472,7 +486,7 @@ jshutdown:{
 
    /* Blocks until descriptor goes away */
    for(;;){
-      if((srvx = read(pgp->pg_clima_fd, &soaun, 1)) == -1){
+      if(read(pgp->pg_clima_fd, &soaun, 1) == -1){
          if(su_err_no_by_errno() == su_ERR_INTR)/* xxx why? */
             continue;
       }
@@ -480,7 +494,7 @@ jshutdown:{
    }
 
    rv = su_EX_OK;
-   }goto jleave;
+   goto jleave;
 }
 
 static s32
@@ -534,6 +548,9 @@ jblock:
                break;
             }
          }
+
+         if(pgp->pg_flags & a_PG_F_CLIENT_ONCE_MODE)
+            break;
          goto jblock;
       }else{
          /* We assume no WS at BOL and EOL, nor in between key, =, and value.
@@ -622,8 +639,7 @@ a_client__req(struct a_pg *pgp){
    struct iovec iov[5], *iovp;
    u8 resp;
    ssize_t srvx;
-   uz c;
-   s32 rv;
+   s32 rv, c;
    NYD_IN;
 
    rv = su_EX_OK;
@@ -663,7 +679,7 @@ jredo_write:
       for(; c > 0; ++iovp, --c){
          if(UCMP(z, srvx, <, iovp->iov_len)){
             iovp->iov_base = S(char*,iovp->iov_base) + srvx;
-            iovp->iov_len -= srvx;
+            iovp->iov_len -= S(uz,srvx);
             goto jredo_write;
          }
          srvx -= iovp->iov_len;
@@ -699,7 +715,7 @@ jex_dunno:
       break;
    case a_PG_ANSWER_DEFER_SLEEP:
       su_time_msleep(a_LIMIT_DELAY_SECS * su_TIMESPEC_SEC_MILLIS, TRU1);
-      /* FALLTHRU */
+      FALLTHRU
    case a_PG_ANSWER_DEFER:
       a_DBG( su_log_write(su_LOG_DEBUG, "answer %s", pgp->pg_defer_msg); )
       srvx = (fprintf(stdout, "action=%s\n\n", pgp->pg_defer_msg) < 0
@@ -1097,7 +1113,7 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
          goto jleave;
       }else if(x == 0){
          if(pgp->pg_flags & a_PG_F_MASTER_ACCEPT_SUSPENDED){
-            pgp->pg_flags &= ~a_PG_F_MASTER_ACCEPT_SUSPENDED;
+            pgp->pg_flags &= ~S(uz,a_PG_F_MASTER_ACCEPT_SUSPENDED);
             a_DBG( su_log_write(su_LOG_DEBUG, "select: un-suspend"); )
             continue;
          }
@@ -1158,11 +1174,11 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
       ASSERT(pgmp->pgm_epoch_min ==
          S(u16,(pgmp->pgm_epoch - pgmp->pgm_base_epoch) /
             (su_state_has(su_STATE_REPRODUCIBLE) ? 1 : su_TIME_MIN_SECS)));
-      i = pgmp->pgm_epoch_min;
+      i = S(u16,pgmp->pgm_epoch_min);
       if(i >= pgp->pg_gc_timeout >> 1 || (i >= su_TIME_DAY_MINS &&
             su_cs_dict_count(&pgmp->pgm_gray) >= pgp->pg_limit - (
                pgp->pg_limit >> 2)))
-         a_master__gray_cleanup(pgp);
+         a_master__gray_cleanup(pgp, FAL0);
    }
 
 jleave:
@@ -1216,7 +1232,7 @@ jcli_del:
          (--pgmp->pgm_cli_no - client) * sizeof(pgmp->pgm_cli_fds[0]));
    }else{
       all += osx;
-      rem -= osx; /* (always sufficiently spaced */
+      rem -= S(uz,osx); /* (always sufficiently spaced */
       if(all < 2 ||
             pgp->pg_buf[all - 1] != '\0' || pgp->pg_buf[all - 2] != '\0')
          goto jredo;
@@ -1246,9 +1262,9 @@ jleave:
    NYD_OU;
 } /* }}} */
 
-static u8
+static char
 a_master__cli_req(struct a_pg *pgp, u32 client, uz len){ /* {{{ */
-   u8 rv;
+   char rv;
    u32 r_l, s_l, ca_l, cn_l;
    struct a_pg_master *pgmp;
    NYD_IN;
@@ -1372,13 +1388,13 @@ a_master__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwbp){ /* {{{ */
          }else if(!(pgsp->pgs_flags & a_PG_SRCH_IPV6))
             continue;
          else{
-            ip = R(u32*,pgsp->pgs_ip.v6.s6_addr);
+            ip = S(u32*,R(void*,pgsp->pgs_ip.v6.s6_addr));
             max = 4;
          }
 
          for(m = pgsp->pgs_mask, i = 0;;){
             /* If mask worked, quickshot */
-            if((xm = m) == 0)
+            if(m == 0)
                goto jleave;
 
             xm = 0xFFFFFFFFu;
@@ -1484,7 +1500,7 @@ a_master__gray_load(struct a_pg *pgp){ /* {{{ */
    if(fstat(i, &st) == -1)
       su_log_write(su_LOG_ERR, _("cannot fstat(2) gray DB storage: %s: %s"),
          path, su_err_doc(su_err_no_by_errno()));
-   else if((p.v = mmap(NIL, st.st_size, PROT_READ, MAP_SHARED, i, 0)) == NIL)
+   else if((p.v = mmap(NIL, S(uz,st.st_size), PROT_READ, MAP_SHARED, i, 0)) == NIL)
       su_log_write(su_LOG_ERR, _("cannot mmap(2) gray DB storage: %s: %s"),
          path, su_err_doc(su_err_no_by_errno()));
 
@@ -1495,12 +1511,13 @@ a_master__gray_load(struct a_pg *pgp){ /* {{{ */
 
    pgp->pg_master->pgm_base_epoch = su_timespec_current(&ts)->ts_sec;
 
-   /* (Saving DB stops before S32_MAX) */
-   for(min = S16_MAX, base = p.c, i = MIN(S32_MAX, st.st_size); i > 0;
-         ++p.c, --i){
+   /* (Saving DB stops before S32_MAX bytes) */
+   for(min = S16_MAX, base = p.c, i = MIN(S32_MAX, S(s32,st.st_size));
+         i > 0; ++p.c, --i){
       s64 ibuf;
       union {u32 f; uz z;} u;
 
+      /* Complete a line first */
       if(*p.c != '\n')
          continue;
 
@@ -1512,7 +1529,7 @@ a_master__gray_load(struct a_pg *pgp){ /* {{{ */
       if((u.f & su_IDEC_STATE_EMASK) || UCMP(64, ibuf, >, U32_MAX))
          goto jerr;
 
-      /* The first line is the base epoch */
+      /* The first line is only base epoch */
       if(min == S16_MAX){
          if(*base != '\n')
             goto jerr;
@@ -1587,7 +1604,7 @@ jerr:
 
 jleave:
    if(mbase != NIL)
-      munmap(mbase, st.st_size);
+      munmap(mbase, S(uz,st.st_size));
 
    NYD_OU;
    return;
@@ -1600,7 +1617,7 @@ a_master__gray_save(struct a_pg *pgp){ /* {{{ */
    struct su_timespec ts;
    struct su_cs_dict_view dv;
    s16 min;
-   uz xlen, cnt;
+   uz cnt, xlen;
    s32 fd;
    NYD_IN;
 
@@ -1621,6 +1638,7 @@ a_master__gray_save(struct a_pg *pgp){ /* {{{ */
    }
 
    su_timespec_current(&ts);
+   cnt = 0;
 
    cp = su_ienc_s64(pgp->pg_buf, ts.ts_sec, 10);
    xlen = su_cs_len(cp);
@@ -1631,7 +1649,6 @@ a_master__gray_save(struct a_pg *pgp){ /* {{{ */
    min = S(s16,(ts.ts_sec - pgp->pg_master->pgm_base_epoch) /
          (su_state_has(su_STATE_REPRODUCIBLE) ? 1 : su_TIME_MIN_SECS));
 
-   cnt = 0;
    su_CS_DICT_FOREACH(&pgp->pg_master->pgm_gray, &dv){
       /* (see cleanup() for comments) */
       uz i, j;
@@ -1709,14 +1726,28 @@ jerr:
 } /* }}} */
 
 static void
-a_master__gray_cleanup(struct a_pg *pgp){ /* {{{ */
+a_master__gray_cleanup(struct a_pg *pgp, boole force){ /* {{{ */
    struct su_timespec ts;
    struct su_cs_dict_view dv;
    struct a_pg_master *pgmp;
+   u32 c_75, c_88;
+   u16 t, t_75, t_88;
    boole gc_any;
    NYD_IN;
 
    gc_any = FAL0;
+   t = pgp->pg_gc_timeout;
+
+   /* We may need to cleanup more, check some tresholds */
+   UNINIT(c_88 = c_75, 0);
+   UNINIT(t_88 = t_75, 0);
+   if(force){
+      force = TRUM1;
+      c_88 = c_75 = 0;
+      t_88 = t_75 = t;
+      t_75 -= t >> 2;
+      t_88 -= t >> 3;
+   }
 
    pgmp = pgp->pg_master;
    pgmp->pgm_epoch = su_timespec_current(&ts)->ts_sec;
@@ -1725,9 +1756,11 @@ a_master__gray_cleanup(struct a_pg *pgp){ /* {{{ */
 
    pgmp->pgm_base_epoch = pgmp->pgm_epoch;
 
-   a_DBG( su_log_write(su_LOG_DEBUG, "gc: start epoch=%lu min=%d",
+   a_DBG( su_log_write(su_LOG_DEBUG, "gc: start%s epoch=%lu min=%d",
+      (force ? _(" in force mode") : su_empty),
       S(ul,pgmp->pgm_epoch), pgmp->pgm_epoch_min); )
 
+jredo:
    su_cs_dict_view_setup(&dv, &pgmp->pgm_gray);
    for(su_cs_dict_view_begin(&dv); su_cs_dict_view_is_valid(&dv);){
       s16 nmin;
@@ -1741,10 +1774,10 @@ a_master__gray_cleanup(struct a_pg *pgp){ /* {{{ */
          nmin = -nmin;
 
          /* GC garbage */
-         if(nmin >= pgp->pg_gc_timeout){
+         if(nmin >= t){
             a_DBG( su_log_write(su_LOG_DEBUG,
-               "gc: del acc >=gc-timeout min=%d: %s",
-               -nmin, su_cs_dict_view_key(&dv)); )
+               "gc: del acc >=gc-timeout (force=%d) min=%d: %s",
+               -nmin, (force > 0), su_cs_dict_view_key(&dv)); )
             goto jdel;
          }
 
@@ -1757,6 +1790,13 @@ a_master__gray_cleanup(struct a_pg *pgp){ /* {{{ */
                   -nmin, su_cs_dict_view_key(&dv)); )
                goto jdel;
             }
+         }
+
+         if(force < 0){
+            if(nmin >= t_88)
+               ++c_88;
+            else if(nmin >= t_75)
+               ++c_75;
          }
 
          nmin = -nmin;
@@ -1774,6 +1814,29 @@ jdel:
       gc_any = TRU1;
    }
 
+   /* In force mode try to give back more, if necessary */
+   if(force < 0){
+      u32 l, c;
+
+      l = pgp->pg_limit - (pgp->pg_limit >> 2);
+      c = su_cs_dict_count(&pgmp->pgm_gray);
+
+      if(c > l){
+         if(c - c_88 <= l)
+            t = t_88;
+         else if(c - c_75 <= l)
+            t = t_75;
+         else
+            t >>= 1;
+         /* else we cannot help it, really */
+         a_DBG( su_log_write(su_LOG_DEBUG,
+            "gc: forced and still too large, restart with %s gc-timeout",
+            (t == t_88 ? "88%" : (t == t_75) ? "75%" : "50%")); )
+         force = TRU1;
+         goto jredo;
+      }
+   }
+
    if(gc_any && (gc_any = (++pgmp->pgm_cleanup_cnt >= pgp->pg_gc_rebalance))){
       su_cs_dict_balance(&pgmp->pgm_gray);
       a_DBG( su_log_write(su_LOG_DEBUG,
@@ -1788,22 +1851,23 @@ jdel:
 
       su_timespec_sub(su_timespec_current(&ts2), &ts);
       su_log_write(su_LOG_INFO,
-         _("gray DB: count=%u: GC took %lu:%lu (sec:nano), balanced: %d"),
+         _("gray DB: count=%u: %sGC took %lu:%lu (sec:nano), balanced: %d"),
          su_cs_dict_count(&pgmp->pgm_gray),
+         (force == TRU1 ? _("two round ") : su_empty),
          S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), gc_any);
    }
 
    NYD_OU;
 } /* }}} */
 
-static u8
+static char
 a_master__gray_lookup(struct a_pg *pgp, char const *key){ /* {{{ */
    struct su_cs_dict_view dv;
    s16 min, xmin;
    up d;
    u16 cnt;
    struct a_pg_master *pgmp;
-   u8 rv;
+   char rv;
    NYD_IN;
 
    rv = a_PG_ANSWER_DUNNO;
@@ -1827,7 +1891,7 @@ jretry_nent:
 
       /* We ran against this wall, try a cleanup if allowed */
       if(UCMP(16, pgmp->pgm_epoch_min, >=, a_DB_CLEANUP_MIN_DELAY)){
-         a_master__gray_cleanup(pgp);
+         a_master__gray_cleanup(pgp, TRU1);
          goto jretry_nent;
       }
 
@@ -1899,7 +1963,7 @@ jretry_ins:
       if(su_cs_dict_insert(&pgmp->pgm_gray, key, R(void*,d)) > su_ERR_NONE){
          /* We ran against this wall, try a cleanup if allowed */
          if(UCMP(16, pgmp->pgm_epoch_min, >=, a_DB_CLEANUP_MIN_DELAY)){
-            a_master__gray_cleanup(pgp);
+            a_master__gray_cleanup(pgp, TRU1);
             goto jretry_ins;
          }
 
@@ -1936,7 +2000,7 @@ static void
 a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
    NYD2_IN;
 
-   pgp->pg_flags &= ~a_PG_F_V_MASK;
+   pgp->pg_flags &= ~S(uz,a_PG_F_V_MASK);
 
    LCTAV(VAL_4_MASK <= 32);
    LCTAV(VAL_6_MASK <= 128);
@@ -1998,12 +2062,16 @@ a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
       pgp->pg_limit_delay = VAL_LIMIT_DELAY;
 
    if(!(f & a_PG_AVO_RELOAD)){
-      if(pgp->pg_defer_msg == NIL)
+      if(pgp->pg_defer_msg == NIL){
          pgp->pg_defer_msg = (VAL_DEFER_MSG != NIL) ? VAL_DEFER_MSG
                : a_DEFER_MSG;
+         pgp->pg_flags |= a_PG_F_NOFREE_DEFER_MSG;
+      }
 
-      if(pgp->pg_store_path == NIL)
+      if(pgp->pg_store_path == NIL){
          pgp->pg_store_path = VAL_STORE_PATH;
+         pgp->pg_flags |= a_PG_F_NOFREE_STORE_PATH;
+      }
    }
 
    /* */
@@ -2139,6 +2207,12 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
    case 's':
       if(f & (a_PG_AVO_FULL | a_PG_AVO_RELOAD))
          break;
+      if(su_cs_len(arg) + sizeof("/" a_PG_GRAY_DB_NAME) >= PATH_MAX){
+         fprintf(stderr,
+            _("-s / --store-path argument is a path too long: %s\n"), arg);
+         o = -su_EX_USAGE;
+         break;
+      }
       if(pgp->pg_store_path != NIL)
          su_FREE(UNCONST(char*,pgp->pg_store_path));
       pgp->pg_store_path = su_cs_dup(arg, su_STATE_ERR_NOPASS);
@@ -2146,10 +2220,10 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
 
    case 'v':
       if(!(f & a_PG_AVO_FULL)){
-            uz i;
+         uz i;
 
          i = ((pgp->pg_flags << 1) | a_PG_F_V) & a_PG_F_V_MASK;
-         pgp->pg_flags = (pgp->pg_flags & ~a_PG_F_V_MASK) | i;
+         pgp->pg_flags = (pgp->pg_flags & ~S(uz,a_PG_F_V_MASK)) | i;
       }break;
    }
 
@@ -2464,9 +2538,8 @@ a_conf__R(struct a_pg *pgp, char const *path,
    while((lnr = getline(&lnb, &lnl, fp)) != -1){
       char *cp;
 
-      cp = lnb;
-      while(lnr > 0 && su_cs_is_space(*cp))
-         ++cp, --lnr;
+      for(cp = lnb; lnr > 0 && su_cs_is_space(*cp); ++cp, --lnr){
+      }
 
       if(lnr == 0)
          continue;
@@ -2582,7 +2655,7 @@ a_norm_triple_r(struct a_pg *pgp){ /* XXX-3 should normalize addresses */
    /* "Normalize" domain */
    ue = cp;
    while((c = *cp) != '\0')
-      *cp++ = su_cs_to_lower(c);
+      *cp++ = S(char,su_cs_to_lower(c));
 
    if(&ue[1] >= cp)
       r = NIL;
@@ -2640,7 +2713,7 @@ a_norm_triple_s(struct a_pg *pgp){ /* XXX-3 should normalize addresses */
    /* "Normalize" domain */
    d = ++cp;
    while((c = *cp) != '\0')
-      *cp++ = su_cs_to_lower(c);
+      *cp++ = S(char,su_cs_to_lower(c));
 
    /* Now fill the hole */
    if(d < cp)
@@ -2662,7 +2735,7 @@ a_norm_triple_ca(struct a_pg *pgp){
    char *ca, *cp;
    NYD2_IN;
 
-   cp = ca = pgp->pg_ca;
+   cp = pgp->pg_ca;
 
    while(su_cs_is_space(*cp))
       ++cp;
@@ -2758,7 +2831,7 @@ a_norm_triple_cname(struct a_pg *pgp){
    /* "Normalize" domain */
    ds = cp;
    while((c = *cp) != '\0')
-      *cp++ = su_cs_to_lower(c);
+      *cp++ = S(char,su_cs_to_lower(c));
 
    if(&ds[1] >= cp)
       cn = NIL;
@@ -2842,10 +2915,11 @@ a_main_dump_doc(up cookie, boole has_arg, char const *sopt, char const *lopt,
    /* I18N: separating command line options: opening for short option */
    x2 = (sopt[0] != '\0') ? _(", ") : sopt;
 
-   if(has_arg)
+   if(has_arg){
       /* I18N: describing arguments to command line options */
-      x1 = _("=ARG"), x3 = (x2 != sopt) ? _(" ARG") : sopt;
-   else
+      x1 = _("=ARG");
+      x3 = (x2 != sopt) ? _(" ARG") : sopt;
+   }else
       x1 = x3 = su_empty;
 
    /* I18N: long option[=ARG][ short option [ARG]]: doc */
@@ -2875,7 +2949,7 @@ main(int argc, char *argv[]){ /* {{{ */
 
    STRUCT_ZERO(struct a_pg, &pg);
    a_conf_setup(&pg, a_PG_AVO_NONE);
-   pg.pg_argc = (argc > 0) ? --argc : argc;
+   pg.pg_argc = S(u32,(argc > 0) ? --argc : argc);
    pg.pg_argv = ++argv;
 
    /* To avoid that clients do not parse too much we may have to parse ARGV
@@ -2894,6 +2968,9 @@ jreavo:
          pg.pg_flags |= a_PG_F_TEST_MODE;
          break;
 
+      case 'o':
+         pg.pg_flags |= a_PG_F_CLIENT_ONCE_MODE;
+         break;
       case '.':
          pg.pg_flags |= a_PG_F_CLIENT_SHUTDOWN_MODE;
          break;
@@ -2931,11 +3008,10 @@ jreavo:
 
       case su_AVOPT_STATE_ERR_ARG:
          emsg = su_avopt_fmt_err_arg;
-         if(0){
-            /* FALLTHRU */
+         goto jerropt;
       case su_AVOPT_STATE_ERR_OPT:
-            emsg = su_avopt_fmt_err_opt;
-         }
+         emsg = su_avopt_fmt_err_opt;
+jerropt:
          if(!(f & a_PG_AVO_FULL))
             fprintf(stderr, V_(emsg), avo.avo_current_err_opt);
 
@@ -2974,6 +3050,11 @@ jlv:
    }
 
 jleave:
+   if(!(pg.pg_flags & a_PG_F_NOFREE_DEFER_MSG))
+      su_FREE(UNCONST(char*,pg.pg_defer_msg));
+   if(!(pg.pg_flags & a_PG_F_NOFREE_STORE_PATH))
+      su_FREE(C(char*,pg.pg_store_path));
+
    su_state_gut(mpv == su_EX_OK
       ? su_STATE_GUT_ACT_NORM /*DVL( | su_STATE_GUT_MEM_TRACE )*/
       : su_STATE_GUT_ACT_QUICK);

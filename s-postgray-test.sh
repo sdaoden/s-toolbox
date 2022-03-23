@@ -412,6 +412,20 @@ cmp -s ./4.4 ./4.4x || exit 101
 
 eval $PG -R ./x.rc --shutdown $REDIR
 [ $? -ne 75 ] || exit 102
+
+# Let's just test --once mode here and now
+printf \
+   'recipient=x@y\nsender=y@z\nclient_address=200.200.202.200\n'\
+'client_name=.\n\n'\
+   'recipient=x@y\nsender=y@z\nclient_address=200.200.203.200\n'\
+'client_name=.\n\n'\
+   | eval $PG -R ./x.rc --once > ./4.5 $REDIR
+printf 'action=DUNNO\n\n' >> ./4.5x
+cmp -s ./4.5 ./4.5x || exit 101
+[ -n "$REDIR" ] || echo ok 4.5
+
+eval $PG -R ./x.rc --shutdown $REDIR
+[ $? -ne 75 ] || exit 102
 fi
 # }}}
 
@@ -772,7 +786,6 @@ while :; do
    delay
 done
 
-echo ===================DONE WAITING
 i=0
 while [ $i -lt $max1 ]; do
    cmp -s ./6.$i ./6.${i}x || exit 101
