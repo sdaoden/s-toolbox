@@ -57,9 +57,9 @@ fi
 echo '=def: calibration=' # {{{
 
 eval $PGX $LV > ./tdef1 || exit 1
-sed '/^defer-msg/,$d' < def > ./defx || exit 2
-echo 'defer-msg='"$DEFER_MSG" >> ./defx
+sed '/^store-path/,$d' < def > ./defx || exit 2
 echo 'store-path='"$pwd"'' >> ./defx
+echo 'defer-msg='"$DEFER_MSG" >> ./defx
 cmp -s tdef1 defx || exit 3
 
 eval $PGx $LV > ./tdef2 || exit 4
@@ -82,11 +82,13 @@ delay-min 1
 gc-rebalance 2
 gc-timeout 7
 limit 10
+   # Comment
 allow-file=x.a2
-limit-delay 8
-master-timeout 5
-defer-msg=$DEFER_MSG
-store-path=$pwd
+   limit-delay 8    
+server-timeout 5
+ defer-msg=$DEFER_MSG 
+   # Comment
+	store-path=$pwd	
 _EOT
 
 cat > ./x.a1 <<'_EOT'; cat > ./x.a2 <<'_EOT'
@@ -99,12 +101,14 @@ cat > ./x.a1 <<'_EOT'; cat > ./x.a2 <<'_EOT'
     2a03:2880:20:4f06:face:b00c:0:14/56       
 
 	2a03:2880:20:6f06:face:b00c:0:14/66	
+	2a03:2880:20:8f06:face:b00c:0:14/128
 		# Comment		
 _EOT
 2a03:2880:33:5f06::
    # Comment !!
 193.92.150.2/24
 193.95.150.100/28
+  195.90.112.99/32  
 195.90.111.99/22
 _EOT
 # }}}
@@ -151,8 +155,8 @@ t 1.16 limit 333333 -L 333333
 t 1.17 limit-delay 300000 --limit-delay 300000
 t 1.18 limit-delay 333333 -l 333333
 
-t 1.19 master-timeout 0 --master-timeout=0
-t 1.20 master-timeout 5 -t 5
+t 1.19 server-timeout 0 --server-timeout=0
+t 1.20 server-timeout 5 -t 5
 # }}}
 
 ##
@@ -184,7 +188,7 @@ limit-delay=10405
 _EOT
 delay-max=5
 limit=11000
-master-timeout=9
+server-timeout=9
 #comment3
 _EOT
 
@@ -195,7 +199,7 @@ eval $PGX -R 2.rc1 -t 10 $LV > ./2.0 $REDIR
       delay-max 5 delay-min 4 \
       gc-rebalance 2 gc-timeout 7200 \
       limit 11000 limit-delay 10405 \
-      master-timeout 10 || exit $?
+      server-timeout 10 || exit $?
 eval $PGx --shutdown $REDIR
 [ $? -eq 75 ] || exit 101
 # }}}
@@ -211,9 +215,11 @@ cat > ./3.zz <<'_EOT'
 = 127.0.0.0 (/24)
 ~ 2a03:2880:20:4f00::/56
 = 2a03:2880:20:6f06:: (/64)
+= 2a03:2880:20:8f06:: (/64)
 = 2a03:2880:33:5f06:: (/64)
 = 193.92.150.0 (/24)
 = 193.95.150.0 (/24)
+= 195.90.112.0 (/24)
 ~ 195.90.108.0/22
 _EOT
 
@@ -222,7 +228,7 @@ sed -e 's/^/!/' < ./3.zz > ./3.2x
 cat defx >> ./3.2x
 
 ab() {
-   eval $PGX --allow-check --4-mask 24 --6-mask 64 \
+   eval $PGX --test-mode --4-mask 24 --6-mask 64 \
       -$2 exact.match \
       --$3 also.exact.match \
       -${2}.domain.and.subdomain \
@@ -230,9 +236,11 @@ ab() {
       -$2 127.0.0.1 \
       -$2 2a03:2880:20:4f06:face:b00c:0:14/56 \
       -$2 2a03:2880:20:6f06:face:b00c:0:14/66 \
+      -$2 2a03:2880:20:8f06:face:b00c:0:14/128 \
       -$2 2a03:2880:33:5f06:: \
       -$2 193.92.150.2/24 \
       -$2 193.95.150.100/28 \
+      -$2 195.90.112.99/32 \
       -$2 195.90.111.99/22 \
       \
       $LV > ./3.$1 $REDIR
@@ -242,7 +250,7 @@ ab() {
    [ -n "$REDIR" ] || echo ok 3.${1}
 
    i=$(($1 + 1))
-   eval $PGX --allow-check -424 -664 -$4 x.a1 -$4 x.a2 $LV > ./3.$i $REDIR
+   eval $PGX --test-mode -424 -664 -$4 x.a1 -$4 x.a2 $LV > ./3.$i $REDIR
    cmp -s 3.$i 3.${1}x || exit 101
    eval $PGX --shutdown $REDIR
    [ $? -eq 75 ] || exit 102
@@ -256,7 +264,7 @@ echo 'allow-file=x.a1' >> ./defx
 echo 'resource-file=3.r1' >> ./defx
 echo 'allow-file=x.a2' >> ./3.r1
 
-eval $PGX --allow-check -R ./defx --4-mask=24 --6-mask 64 $LV > ./3.4 $REDIR
+eval $PGX --test-mode -R ./defx --4-mask=24 --6-mask 64 $LV > ./3.4 $REDIR
 cmp -s 3.4 3.0x || exit 101
 eval $PGX --shutdown $REDIR
 [ $? -eq 75 ] || exit 102
@@ -496,7 +504,7 @@ _EOT
 cmp -s ./5.2 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.2
 
-# Force master restart, gray DB load
+# Force server restart, gray DB load
 eval $PG -R ./x.rc --shutdown $REDIR
 [ $? -eq 0 ] || exit 101
 # ..but sleep a bit so times are adjusted!
@@ -713,7 +721,7 @@ defer-msg=all the same
 delay-min 2
 delay-max 720
 gc-timeout 1440
-master-timeout 720
+server-timeout 720
 store-path=$pwd
 limit $((max2 * max1))
 _EOT

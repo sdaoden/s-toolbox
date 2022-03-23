@@ -1,4 +1,4 @@
-.\"@ s-postgray - postfix policy (gray list) server.
+.\"@ s-postgray - postfix policy (graylisting) server.
 .\"
 .\" Copyright (c) 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
 .\" SPDX-License-Identifier: ISC
@@ -15,111 +15,316 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd March 18, 2022
-.Dt S_POSTGRAY 8
+.Dd March 23, 2022
+.ds VV \\%v0.4.0
+.
+.Dt S-POSTGRAY 8
 .Os
+.Mx -enable
 .
 .
 .Sh NAME
-.Nm s-postgray
-.Nd postfix graylist policy server
+.Nm s-postgray \%[\*(VV]
+.Nd postfix RFC 6647 graylisting policy server
 .
 .
 .Sh SYNOPSIS
 .
 .Nm
-.Op h
+.Op options
+.Nm
+.Op options
+.Fl Fl shutdown
+.Nm
+.Op options
+.Fl Fl list-values
+.Nm
+.Op options
+.Fl Fl test-mode
+.Op options
 .
 .
 .Sh DESCRIPTION
 .
 .Nm
-is a simple
-.Xr postfix 8
-graylist policy server.
+is a
+.Xr postfix 1
+RFC 6647 graylisting policy server, following the recommendet practice
+of the standard document.
+It supports client allow (white) and block (black) lists (blocking
+should be done earlier in the processing chain, though) of domain names
+(exact and wildcard) as well as IPv4 and IPv6 addresses (exact or in
+CIDR notation).
+It aims in being fast: all the data is stored in main memory,
+synchronization with backing store is only performed when the server
+process is started or stopped.
+.
+.Pp
+.Nm
+clients are intented to be started via the
+.Xr postfix 1
+.Xr spawn 8
+daemon, they will automatically start the server as necessary.
+The server lifetime is configurable, by (compile-time) default it will
+terminate itself after some time without any client connection.
+Sending the server a
+.Ql SIGHUP
+signal will re-evaluate its configuration, sending it
+.Ql SIGUSR2
+will save the graylist database,
+whereas sending
+.Ql SIGUSR1
+will write some statistics to the log file.
+A synchronized server
+.Fl Fl shutdown
+can be enforced, or an asynchronous termination by sending the server a
+.Ql SIGTERM
+signal.
+A configuration example; in
+.Xr postfix 1 Ns s
+.Pa main.cf :
+.
+.Bd -literal -offset indent
+default_privs = ANON-USR
 
-
-
-Minutes have a limit a S16_MAX
-
-
-
-whitelisted recipients are not supported;
-  since these are immutable from our point of view, simply use
-    smtpd_recipient_restrictions =
-      ...
-      check_recipient_access
-      ...
-      POSTGRAY
-  ie before the graylist daemon, if you really need it
-
-
-
-
-
-
-
-memory failure upon startup are not handled, only for graylist at runtime
-
-USR1 reload white lists: panic on memory excess!!!
-
-
-
-
-useradd  -U -d /var/lib/_postfix_gray -s /bin/false _postfix_gray
-passwd -l _postfix_gray
-
-
-#postgray unix - n n - - spawn
-#  user=nobody argv=
-#       user=_postfix_gray  argv=/tmp/postgray
-
-
-
-
-# Usage: greylist.pl [-v]
-#
-# Demo delegated Postfix SMTPD policy server. This server implements
-# greylisting. State is kept in a Berkeley DB database.  Logging is
-# sent to syslogd.
-#
-# How it works: each time a Postfix SMTP server process is started
-# it connects to the policy service socket, and Postfix runs one
-# instance of this PERL script.  By default, a Postfix SMTP server
-# process terminates after 100 seconds of idle time, or after serving
-# 100 clients. Thus, the cost of starting this PERL script is smoothed
-# out over time.
-#
-# To run this from /etc/postfix/master.cf:
-#
-#    NAME  unix  -       n       n       -       -       spawn
-#      user=nobody argv=/usr/bin/perl /usr/libexec/postfix/greylist.pl
-#
-# To use this from Postfix SMTPD, use in /etc/postfix/main.cf:
-#
-#    smtpd_recipient_restrictions =
-#       ...
-#       reject_unauth_destination
-#       check_policy_service unix:PATH/NAME
-#       ...
-#
-# NOTE: specify check_policy_service AFTER reject_unauth_destination
-# or else your system can become an open relay.
-#
-
-
-
-
-
-
-
-
-
+# RCPT TO checks, spam blocking policy (assumes
+# reject_unauth_destination part of smtpd_relay_restrictions)
+smtpd_recipient_restrictions =
+  permit_mynetworks,
+  reject_unknown_sender_domain,
+  reject_unknown_reverse_client_hostname,
+  check_policy_service unix:private/postgray
+  permit
+.Ed
+.
+.Pp
+And in the
+.Pa master.cf
+(user is just an example):
+.
+.Bd -literal -offset indent
+postgray unix - n n - - spawn
+  user=ANON-USR argv=/usr/libexec/s-postgray -R /etc/postgray.rc
+.Ed
+.
+.Ss "Options"
+.
+Options may be given in short or long form.
+Resource files only support the long option form,
+and only a (logical) subset of the following options.
+The minute limit is 32767 (15-bit), the maximum duration is thus 22 days.
+Other numbers have a limit of 31-bit (2147483647).
+.Fl Fl test-mode
+performs a dry-run configuration syntax test.
+All values have compile-time built-in defaults,
+.Fl Fl list-values
+shows settings at this point in the command line option list, and exits.
+In the following DB means database, and GC garbage collection.
+.
+.Bl -tag -width ".It Fl BaNg"
+.Mx Fl 4-mask
+.It Fl Fl 4-mask Ar mask , Fl 4 Ar mask
+IPv4 mask to strip off addresses before match.
+For example a mask of 24 all addresses in between 127.0.0.0 and
+127.0.0.255 would be treated equally.
+This is desirable since in practice MX farms are used, and/or IP
+addresses are selected from a pool.
+.
+.Mx Fl 6-mask
+.It Fl Fl 6-mask Ar mask , Fl 6 Ar mask
+IPv6 mask to strip off addresses before match.
+Using a mask of 64 seems to be good practice (see
+.Fl Fl 4-mask ) .
+.
+.Mx Fl allow-file
+.It Fl Fl allow-file Ar path , Fl A Ar path
+Load a file of whitelist entries in the syntax described for
+.Fl Fl allow .
+Each line forms an entry, leading and trailing whitespace is removed.
+If thereafter the first character is the number-sign
+.Ql #
+the line is a comment and discarded.
+.
+.Mx Fl allow
+.It Fl Fl allow Ar spec , Fl a Ar spec
+Add a domain name or an IPv4 or IPv6 internet address, optionally in
+RFC 1519 CIDR notation, to the list of allowed clients (whitelist).
+Domain names are matched exactly unless the first character is a period
+.Ql \&. ,
+in which case the given domain and all its subdomains will match.
+IP addresses (mostly) define an exact match unless a CIDR notation has
+been used which defines an address range.
+Mostly only, because
+.Fl Fl 4-mask
+and
+.Fl Fl 6-mask
+always kick in on top.
+.Bd -literal -offset indent
+exact.match
+also.exact.match
+# This matches d.a.s but also a.b.c.d.a.s
+\&.d.a.s	 
+# with --4-mask=24 instead 127.0.0.0/24
+127.0.0.1 
+# with --6-mask=64 nonetheless 2a03:2880:20:4f00::/56
+2a03:2880:20:4f06:face:b00c:0:14/56       
+# with --6-mask=64 instead 2a03:2880:20:6f06::/64
+2a03:2880:20:6f06:face:b00c:0:14/66	
+.Ed
+.
+.Mx Fl block-file
+.It Fl Fl block-file Ar path , Fl B Ar path
+Load a file of blacklist entries in the syntax described for
+.Fl Fl allow-file .
+.
+.Mx Fl block
+.It Fl Fl block Ar spec , Fl b Ar spec
+Add a blacklist entry, syntax identical to
+.Fl Fl allow .
+.
+.Mx Fl count
+.It Fl Fl count Ar no , Fl c Ar no
+Number of SMTP message delivery retries before it is accepted.
+.
+.Mx Fl delay-max
+.It Fl Fl delay-max Ar mins , Fl D Ar mins
+Duration until a message
+.Dq is no longer a retry ,
+but interpreted as a new one with a reset
+.Fl Fl count .
+.
+.Mx Fl delay-min
+.It Fl Fl delay-min Ar mins , Fl d Ar mins
+Duration until a message
+.Dq is a retry .
+Those which come sooner do not increment
+.Fl Fl count .
+.
+.Mx Fl gc-rebalance
+.It Fl Fl gc-rebalance Ar no , Fl G Ar no
+Number of DB GC runs before rebalancing occurs.
+.
+.Mx Fl gc-timeout
+.It Fl Fl gc-timeout Ar mins , Fl g Ar mins
+Duration until a DB entry is seen as unused and removed.
+Each time an entry is used the timeout is reset.
+This timeout is also an indication for how often a GC shall be
+performed, but GC happens due to circumstances, too.
+.
+.Mx Fl limit
+.It Fl Fl limit Ar no , Fl L Ar no
+Number of DB entries until new ones are not handled,
+effectively turning them into whitelist members.
+.
+.Mx Fl limit-delay
+.It Fl Fl limit-delay Ar no , Fl l Ar no
+Smaller than
+.Fl Fl limit ,
+this number describes a limit after which creation of a new (yet
+unknown) entry is delayed by a one second sleep for throttling purposes.
+By choosing the right settings for
+.Fl Fl limit ,
+.Fl Fl limit-delay
+and
+.Fl Fl gc-timeout
+it should be impossible to reach the graylist bypass limit.
+.
+.Mx Fl server-timeout
+.It Fl Fl server-timeout Ar mins , Fl t Ar mins
+Duration until a
+.Nm
+server which does not serve any clients terminates.
+Using a duration of 0 disables auto-termination.
+.
+.Mx Fl resource-file
+.It Fl Fl resource-file Ar path , Fl R Ar path
+.Pa path
+to a configuration file with long options.
+Each line forms an entry, leading and trailing whitespace is removed.
+If thereafter the first character is the number-sign
+.Ql #
+the line is a comment and discarded.
+.
+.Mx Fl store-path
+.It Fl Fl store-path Ar path , Fl s Ar path
+.Pa path
+to a directory where the DB and the server/client communication socket
+will be created.
+The server will change its current to this directory.
+This setting cannot be changed at runtime.
+.
+.Mx Fl defer-msg
+.It Fl Fl defer-msg Ar msg , Fl m Ar msg
+The defer_if_permit message
+.Xr postfix 1
+expects for not yet accepted messages.
+This setting cannot be changed at runtime.
+The default is
+.Ql DEFER_IF_PERMIT 4.2.0 Service temporarily faded to Gray ,
+of which only
+.Ql DEFER_IF_PERMIT
+is not optional; it uses an RFC 1893 extended status code:
+.Bd -literal -offset indent
+# [4.2.0]
+4.X.X Persistent Transient Failure
+x.2.X Mailbox Status
+X.2.0 Other or undefined mailbox status
+# [4.7.1 (seen in wild; less friendly and portable!)]
+x.7.X Security or Policy Status
+x.7.0 Other or undefined security status
+x.7.1 Delivery not authorized, message refused
+      This is useful only as a permanent error.
+.Ed
+.
+.Mx Fl list-values
+.It Fl Fl list-values
+Show the values of the above at the current point of command line
+argument processing, then exit.
+.
+.Mx Fl once
+.It Fl Fl once , Fl o
+If given the client part will only process one message.
+The server process functions as usual.
+.
+.Mx Fl shutdown
+.It Fl Fl shutdown , Fl \&.
+Force a running server process to exit.
+The client synchronizes on the server exit before its terminating.
+It exits EX_TEMPFAIL (75) when no server is running.
+.
+.Mx Fl test-mode
+.It Fl Fl test-mode , Fl #
+Enable test mode: all following options are syntax-checked, also
+.Fl Fl allow-file ,
+.Fl Fl allow ,
+.Fl Fl block-file
+and
+.Fl Fl block ,
+which are normally processed by only the server.
+Once the command line is worked, a listing of all white- and blacklists
+as well as the normal
+.Fl Fl list-values
+output is produced.
+It is highly recommendet to use this for configuration checks.
+.
+.Mx Fl verbose
+.It Fl Fl verbose , Fl v
+Increase log verbosity a little bit.
+.
+.Mx Fl long-help
+.It Fl Fl long-help , Fl H
+A long help listing.
+.
+.Mx Fl help
+.It Fl Fl help , Fl h
+A short help listing; not really useful for this software.
+.El
 .
 .
 .Sh "SEE ALSO"
 .
-.Xr postfix 8
+.Xr postfix 1 ,
+.Xr spawn 8
 .
 .
 .Sh AUTHORS

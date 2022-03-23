@@ -18,6 +18,7 @@
  *@   come in before the next delay expires, we could auto-blacklist.
  *@   Just extend the DB format to a 64-bit integer, and use bits 32..48.
  *@   (Adding this feature should work with existing DBs.)
+ *@ - We could add more overall statistics (that many DUNNO .. etc).
  *
  * Copyright (c) 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -44,7 +45,7 @@
 #define a_CLIENTS_MAX 32
 
 /* Maximum accept(2) backlog */
-#define a_MASTER_LISTEN 5
+#define a_SERVER_LISTEN 5
 
 /**/
 
@@ -244,7 +245,7 @@ struct a_pg{
    u16 pg_delay_max;
    u16 pg_gc_rebalance;
    u16 pg_gc_timeout;
-   u16 pg_master_timeout;
+   u16 pg_server_timeout;
    u32 pg_count;
    u32 pg_limit;
    u32 pg_limit_delay;
@@ -262,8 +263,8 @@ struct a_pg{
 };
 
 static char const a_sopts[] =
-      "4:6:" "A:a:B:b:" "c:D:d:G:g:L:l:" "t:" "R:" "m:" "s:"
-      "#" "o" "." "vHh";
+      "4:6:" "A:a:B:b:" "c:D:d:G:g:L:l:" "t:" "R:" "s:" "m:"
+      "o" "." "#" "vHh";
 static char const * const a_lopts[] = {
    "4-mask:;4;" N_("IPv4 mask to strip off addresses before match"),
    "6-mask:;6;" N_("IPv6 mask to strip off addresses before match"),
@@ -281,25 +282,25 @@ static char const * const a_lopts[] = {
    "limit:;L;" N_("DB entries after which new ones are not handled"),
    "limit-delay:;l;" N_("DB entries after which new ones cause sleeps"),
 
-   "master-timeout:;t;"
-      N_("until client-less master exits (0=never; minutes)"),
+   "server-timeout:;t;"
+      N_("until client-less server exits (0=never; minutes)"),
 
    "resource-file:;R;" N_("path to configuration file with long options"),
 
-   "defer-msg:;m;" N_("defer_if_permit message (read manual; not SIGHUP)"),
+   "store-path:;s;" N_("DB and server/client socket directory (not SIGHUP)"),
 
-   "store-path:;s;" N_("DB and master/client socket directory (not SIGHUP)"),
+   "defer-msg:;m;" N_("defer_if_permit message (read manual; not SIGHUP)"),
 
    /**/
 
    "list-values;-2;" N_("show (current) values of the above, then exit"),
 
-   "allow-check;#;" N_("check following -A, -a, -B and -b options, then exit"),
-
    "once;o;" N_("process only one request in this client invocation"),
 
    "shutdown;.;"
-      N_("force a running master to exit, synchronize on that, then exit"),
+      N_("force a running server to exit, synchronize on that, then exit"),
+
+   "test-mode;#;" N_("check following -A, -a, -B and -b options, then exit"),
 
    "verbose;v;" N_("increase syslog verbosity (multiply for more verbosity)"),
    "long-help;H;" N_("this listing"),
@@ -308,9 +309,9 @@ static char const * const a_lopts[] = {
 };
 
 static struct a_pg_master ATOMIC *a_pgm; /* xxx only used as on/off: s32? */
-static s32 ATOMIC a_master_hup;
-static s32 ATOMIC a_master_usr1;
-static s32 ATOMIC a_master_usr2;
+static s32 ATOMIC a_server_hup;
+static s32 ATOMIC a_server_usr1;
+static s32 ATOMIC a_server_usr2;
 /* }}} */
 
 /* client */
@@ -319,24 +320,24 @@ static s32 a_client(struct a_pg *pgp);
 static s32 a_client__loop(struct a_pg *pgp);
 static s32 a_client__req(struct a_pg *pgp);
 
-/* master */
-static s32 a_master(struct a_pg *pgp, char const *sockpath);
+/* server */
+static s32 a_server(struct a_pg *pgp, char const *sockpath);
 
-static s32 a_master__setup(struct a_pg *pgp, char const *sockpath);
-static s32 a_master__reset(struct a_pg *pgp);
-static s32 a_master__wb_setup(struct a_pg *pgp, boole reset);
-static void a_master__wb_reset(struct a_pg_master *pgmp);
-static s32 a_master__loop(struct a_pg *pgp);
-static void a_master__cli_ready(struct a_pg *pgp, u32 client);
-static char a_master__cli_req(struct a_pg *pgp, u32 client, uz len);
-static boole a_master__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwp);
-static void a_master__on_sig(int sig);
+static s32 a_server__setup(struct a_pg *pgp, char const *sockpath);
+static s32 a_server__reset(struct a_pg *pgp);
+static s32 a_server__wb_setup(struct a_pg *pgp, boole reset);
+static void a_server__wb_reset(struct a_pg_master *pgmp);
+static s32 a_server__loop(struct a_pg *pgp);
+static void a_server__cli_ready(struct a_pg *pgp, u32 client);
+static char a_server__cli_req(struct a_pg *pgp, u32 client, uz len);
+static boole a_server__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwp);
+static void a_server__on_sig(int sig);
 
-static void a_master__gray_create(struct a_pg *pgp);
-static void a_master__gray_load(struct a_pg *pgp);
-static void a_master__gray_save(struct a_pg *pgp);
-static void a_master__gray_cleanup(struct a_pg *pgp, boole force);
-static char a_master__gray_lookup(struct a_pg *pgp, char const *key);
+static void a_server__gray_create(struct a_pg *pgp);
+static void a_server__gray_load(struct a_pg *pgp);
+static void a_server__gray_save(struct a_pg *pgp);
+static void a_server__gray_cleanup(struct a_pg *pgp, boole force);
+static char a_server__gray_lookup(struct a_pg *pgp, char const *key);
 
 /* conf; _conf__(arg|A|a)() return a negative exit status on error */
 static void a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f);
@@ -403,7 +404,7 @@ jretry_socket:
    }
 
    if((pgp->pg_clima_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1){
-      su_log_write(su_LOG_CRIT, _("cannot open client/master socket(): %s"),
+      su_log_write(su_LOG_CRIT, _("cannot open client/server socket(): %s"),
          su_err_doc(su_err_no_by_errno()));
       rv = su_EX_NOINPUT;
       goto jleave;
@@ -412,7 +413,7 @@ jretry_socket:
    rv = su_EX_IOERR;
 
    if(bind(pgp->pg_clima_fd, R(struct sockaddr const*,&soaun), sizeof(soaun))){
-      /* The master may be running yet */
+      /* The server may be running yet */
       if(su_err_no_by_errno() != su_ERR_ADDRINUSE){
          su_log_write(su_LOG_CRIT, _("cannot bind() socket: %s"),
             su_err_doc(-1));
@@ -425,8 +426,8 @@ jretry_socket:
          goto jleave_close;
       }
 
-      /* We are responsible for starting up the master! */
-      if((rv = a_master(pgp, soaun.sun_path)) != su_EX_OK)
+      /* We are responsible for starting up the server! */
+      if((rv = a_server(pgp, soaun.sun_path)) != su_EX_OK)
          goto jleave; /* (socket closed there then) */
       goto jretry_socket;
    }
@@ -515,7 +516,7 @@ a_client__loop(struct a_pg *pgp){
    rv = su_EX_OK;
 
    /* Main loop: while we receive policy queries, collect the triple(s) we are
-    * looking for, ask our master what he thinks about that, act accordingly */
+    * looking for, ask our server what he thinks about that, act accordingly */
    lnl = 0;
    lnb = NIL;/* XXX lnb+lnl : su_cstr */
 jblock:
@@ -533,7 +534,7 @@ jblock:
 
       /* Until an empty line ends one block, collect data */
       if(lnr == 0){
-         /* Query complete?  Normalize data and ask master about triple */
+         /* Query complete?  Normalize data and ask server about triple */
          if(use_this &&
                pgp->pg_r != NIL && pgp->pg_s != NIL && pgp->pg_ca != NIL &&
                pgp->pg_cname != NIL){
@@ -697,7 +698,7 @@ jioerr:
       su_log_write(su_LOG_ERR,
          _("client PID %d has server communication I/O: %s"),
          getpid(), su_err_doc(rv));
-      /* If the master is gone, then restart cycle from our point of view */
+      /* If the server is gone, then restart cycle from our point of view */
       rv = (rv == su_ERR_PIPE) ? -su_EX_IOERR : su_EX_IOERR;
       goto jex_dunno;
    }else if(UCMP(z, srvx, !=, sizeof(resp))){
@@ -735,24 +736,24 @@ jex_dunno:
 }
 /* }}} */
 
-/* master {{{ */
+/* server {{{ */
 static s32
-a_master(struct a_pg *pgp, char const *sockpath){
+a_server(struct a_pg *pgp, char const *sockpath){
    struct a_pg_master pgm;
    s32 rv;
    NYD_IN;
 
-   /* We listen(2) before we fork(2) the master so the client can directly
+   /* We listen(2) before we fork(2) the server so the client can directly
     * connect(2) on the socket without getting ECONNREFUSED while at the same
-    * time acting as a proper synchronization with master startup */
-   if(listen(pgp->pg_clima_fd, a_MASTER_LISTEN)){
-      su_log_write(su_LOG_CRIT, _("cannot listen() on master socket: %s"),
+    * time acting as a proper synchronization with server startup */
+   if(listen(pgp->pg_clima_fd, a_SERVER_LISTEN)){
+      su_log_write(su_LOG_CRIT, _("cannot listen() on server socket: %s"),
          su_err_doc(su_err_no_by_errno()));
       rv = su_EX_IOERR;
    }else switch(fork()){
    case -1:
       /* Error */
-      su_log_write(su_LOG_CRIT, _("cannot start master process: %s"),
+      su_log_write(su_LOG_CRIT, _("cannot start server process: %s"),
          su_err_doc(su_err_no_by_errno()));
       rv = su_EX_OSERR;
       break;
@@ -763,7 +764,7 @@ a_master(struct a_pg *pgp, char const *sockpath){
       break;
 
    case 0:
-      /* Child (master) */
+      /* Child (server) */
       /* Close the channels postfix(8)s spawn(8) opened for us; in test mode we
        * need to keep STDERR open, of course */
       close(STDIN_FILENO);
@@ -771,22 +772,22 @@ a_master(struct a_pg *pgp, char const *sockpath){
 
       if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE))){
          closelog();
-         openlog(VAL_NAME "/master", a_OPENLOG_FLAGS, LOG_MAIL);
+         openlog(VAL_NAME "/server", a_OPENLOG_FLAGS, LOG_MAIL);
 
          close(STDERR_FILENO);
 
          setsid();
       }else
-         su_program = VAL_NAME "/master";
+         su_program = VAL_NAME "/server";
 
       pgp->pg_master = &pgm;
-      if((rv = a_master__setup(pgp, sockpath)) == su_EX_OK)
-         rv = a_master__loop(pgp);
+      if((rv = a_server__setup(pgp, sockpath)) == su_EX_OK)
+         rv = a_server__loop(pgp);
 
       /* C99 */{
          s32 xrv;
 
-         xrv = a_master__reset(pgp);
+         xrv = a_server__reset(pgp);
          if(rv == su_EX_OK)
             rv = xrv;
       }
@@ -812,7 +813,7 @@ a_master(struct a_pg *pgp, char const *sockpath){
 
 /* __(white_)(setup|reset)?() {{{ */
 static s32
-a_master__setup(struct a_pg *pgp, char const *sockpath){
+a_server__setup(struct a_pg *pgp, char const *sockpath){
    sigset_t ssn, sso;
    s32 rv;
    struct a_pg_master *pgmp;
@@ -830,10 +831,10 @@ a_master__setup(struct a_pg *pgp, char const *sockpath){
    su_cs_dict_create(&pgmp->pgm_white.pgwb_cname, a_PG_WB_CNAME_FLAGS, NIL);
    su_cs_dict_create(&pgmp->pgm_black.pgwb_ca, a_PG_WB_CA_FLAGS, NIL);
    su_cs_dict_create(&pgmp->pgm_black.pgwb_cname, a_PG_WB_CNAME_FLAGS, NIL);
-   rv = a_master__wb_setup(pgp, FAL0);
+   rv = a_server__wb_setup(pgp, FAL0);
 
    if(rv == su_EX_OK)
-      a_master__gray_create(pgp);
+      a_server__gray_create(pgp);
 
    sigprocmask(SIG_SETMASK, &sso, NIL);
 
@@ -842,7 +843,7 @@ a_master__setup(struct a_pg *pgp, char const *sockpath){
 }
 
 static s32
-a_master__reset(struct a_pg *pgp){
+a_server__reset(struct a_pg *pgp){
    sigset_t ssn, sso;
    s32 rv;
    struct a_pg_master *pgmp;
@@ -858,7 +859,7 @@ a_master__reset(struct a_pg *pgp){
 #if a_DBGIF
    su_cs_dict_gut(&pgmp->pgm_gray);
 
-   a_master__wb_reset(pgmp);
+   a_server__wb_reset(pgmp);
    su_cs_dict_gut(&pgmp->pgm_black.pgwb_ca);
    su_cs_dict_gut(&pgmp->pgm_black.pgwb_cname);
    su_cs_dict_gut(&pgmp->pgm_white.pgwb_ca);
@@ -868,7 +869,7 @@ a_master__reset(struct a_pg *pgp){
    if(su_path_rm(pgmp->pgm_sockpath))
       rv = su_EX_OK;
    else{
-      su_log_write(su_LOG_CRIT, _("cannot remove master socket %s/%s: %s"),
+      su_log_write(su_LOG_CRIT, _("cannot remove server socket %s/%s: %s"),
          pgp->pg_store_path, pgmp->pgm_sockpath, su_err_doc(-1));
       rv = su_EX_IOERR;
    }
@@ -882,7 +883,7 @@ a_master__reset(struct a_pg *pgp){
 }
 
 static s32
-a_master__wb_setup(struct a_pg *pgp, boole reset){
+a_server__wb_setup(struct a_pg *pgp, boole reset){
    struct su_avopt avo;
    s32 rv;
    BITENUM_IS(u32,a_pg_avo_flags) f;
@@ -892,7 +893,7 @@ a_master__wb_setup(struct a_pg *pgp, boole reset){
    pgmp = pgp->pg_master;
 
    if(reset)
-      a_master__wb_reset(pgmp);
+      a_server__wb_reset(pgmp);
 
    su_cs_dict_add_flags(&pgmp->pgm_white.pgwb_ca, su_CS_DICT_FROZEN);
    su_cs_dict_add_flags(&pgmp->pgm_white.pgwb_cname, su_CS_DICT_FROZEN);
@@ -947,7 +948,7 @@ jleave:
 }
 
 static void
-a_master__wb_reset(struct a_pg_master *pgmp){
+a_server__wb_reset(struct a_pg_master *pgmp){
    struct a_pg_srch *pgsp;
    NYD_IN;
 
@@ -966,7 +967,7 @@ a_master__wb_reset(struct a_pg_master *pgmp){
 /* }}} */
 
 static s32
-a_master__loop(struct a_pg *pgp){ /* {{{ */
+a_server__loop(struct a_pg *pgp){ /* {{{ */
    fd_set rfds;
    sigset_t psigset, psigseto;
    union {struct timespec os; struct su_timespec s; struct a_pg_srch *pgsp;} t;
@@ -977,10 +978,10 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
    rv = su_EX_OK;
    a_pgm = S(struct a_pg_master ATOMIC*,pgmp = pgp->pg_master);
 
-   signal(SIGHUP, &a_master__on_sig);
-   signal(SIGTERM, &a_master__on_sig);
-   signal(SIGUSR1, &a_master__on_sig);
-   signal(SIGUSR2, &a_master__on_sig);
+   signal(SIGHUP, &a_server__on_sig);
+   signal(SIGTERM, &a_server__on_sig);
+   signal(SIGUSR1, &a_server__on_sig);
+   signal(SIGUSR2, &a_server__on_sig);
 
    sigemptyset(&psigset);
    sigaddset(&psigset, SIGHUP);
@@ -996,23 +997,23 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
       fd_set *rfdsp;
 
       /* Recreate whitelists? */
-      if(UNLIKELY(a_master_hup)){
-         a_master_hup = 0;
-         if((rv = a_master__wb_setup(pgp, TRU1)) != su_EX_OK)
+      if(UNLIKELY(a_server_hup)){
+         a_server_hup = 0;
+         if((rv = a_server__wb_setup(pgp, TRU1)) != su_EX_OK)
             goto jleave;
       }
 
       /* Save gray list */
-      if(UNLIKELY(a_master_usr2)){
-         a_master_usr2 = 0;
-         a_master__gray_save(pgp);
+      if(UNLIKELY(a_server_usr2)){
+         a_server_usr2 = 0;
+         a_server__gray_save(pgp);
       }
 
       /* Log status */
-      if(UNLIKELY(a_master_usr1)){
+      if(UNLIKELY(a_server_usr1)){
          enum su_log_level olvl;
 
-         a_master_usr1 = 0;
+         a_server_usr1 = 0;
 
          olvl = su_log_get_level();
          su_log_set_level(su_LOG_INFO);
@@ -1084,8 +1085,8 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
                maxfd); )
          }
       }else if(pgmp->pgm_cli_no < a_CLIENTS_MAX){
-         if(maxfd < 0 && pgp->pg_master_timeout != 0){
-            t.os.tv_sec = pgp->pg_master_timeout;
+         if(maxfd < 0 && pgp->pg_server_timeout != 0){
+            t.os.tv_sec = pgp->pg_server_timeout;
             if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE)))
                t.os.tv_sec *= su_TIME_MIN_SECS;
             t.os.tv_nsec = 0;
@@ -1147,7 +1148,7 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
       /* */
       for(i = 0; i < pgmp->pgm_cli_no; ++i)
          if(FD_ISSET(pgmp->pgm_cli_fds[i], &rfds)){
-            a_master__cli_ready(pgp, i);
+            a_server__cli_ready(pgp, i);
             if(a_pgm == NIL)
                goto jleave;
          }
@@ -1178,11 +1179,11 @@ a_master__loop(struct a_pg *pgp){ /* {{{ */
       if(i >= pgp->pg_gc_timeout >> 1 || (i >= su_TIME_DAY_MINS &&
             su_cs_dict_count(&pgmp->pgm_gray) >= pgp->pg_limit - (
                pgp->pg_limit >> 2)))
-         a_master__gray_cleanup(pgp, FAL0);
+         a_server__gray_cleanup(pgp, FAL0);
    }
 
 jleave:
-   a_master__gray_save(pgp);
+   a_server__gray_save(pgp);
 
    sigprocmask(SIG_SETMASK, &psigseto, NIL);
 
@@ -1198,7 +1199,7 @@ jleave:
 } /* }}} */
 
 static void
-a_master__cli_ready(struct a_pg *pgp, u32 client){ /* {{{ */
+a_server__cli_ready(struct a_pg *pgp, u32 client){ /* {{{ */
    /* xxx should use FIONREAD nonetheless, or O_NONBLOCK.
     * xxx (On the other hand .. clear postfix protocol etc etc) */
    ssize_t all, osx;
@@ -1245,7 +1246,7 @@ jcli_del:
          goto jleave;
       }
 
-      pgp->pg_buf[0] = a_master__cli_req(pgp, client, S(uz,all));
+      pgp->pg_buf[0] = a_server__cli_req(pgp, client, S(uz,all));
 
       for(;;){
          if(write(pgmp->pgm_cli_fds[client], pgp->pg_buf,
@@ -1263,7 +1264,7 @@ jleave:
 } /* }}} */
 
 static char
-a_master__cli_req(struct a_pg *pgp, u32 client, uz len){ /* {{{ */
+a_server__cli_req(struct a_pg *pgp, u32 client, uz len){ /* {{{ */
    char rv;
    u32 r_l, s_l, ca_l, cn_l;
    struct a_pg_master *pgmp;
@@ -1308,16 +1309,16 @@ a_master__cli_req(struct a_pg *pgp, u32 client, uz len){ /* {{{ */
       ca_l, pgp->pg_ca, cn_l, pgp->pg_cname); )
 
    rv = a_PG_ANSWER_DUNNO;
-   if(a_master__cli_lookup(pgp, &pgmp->pgm_white))
+   if(a_server__cli_lookup(pgp, &pgmp->pgm_white))
       goto jleave;
 
    rv = a_PG_ANSWER_REJECT;
-   if(a_master__cli_lookup(pgp, &pgmp->pgm_black))
+   if(a_server__cli_lookup(pgp, &pgmp->pgm_black))
       goto jleave;
 
    pgp->pg_s[-1] = '/';
    pgp->pg_ca[-1] = '/';
-   rv = a_master__gray_lookup(pgp, pgp->pg_buf);
+   rv = a_server__gray_lookup(pgp, pgp->pg_buf);
 
 jleave:
    NYD_OU;
@@ -1325,7 +1326,7 @@ jleave:
 } /* }}} */
 
 static boole
-a_master__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwbp){ /* {{{ */
+a_server__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwbp){ /* {{{ */
    char const *me;
    boole rv;
    NYD_IN;
@@ -1427,20 +1428,20 @@ jleave:
 } /* }}} */
 
 static void
-a_master__on_sig(int sig){
+a_server__on_sig(int sig){
    if(sig == SIGHUP)
-      a_master_hup = 1;
+      a_server_hup = 1;
    else if(sig == SIGTERM)
       a_pgm = NIL;
    else if(sig == SIGUSR1)
-      a_master_usr1 = 1;
+      a_server_usr1 = 1;
    else if(sig == SIGUSR2)
-      a_master_usr2 = 1;
+      a_server_usr2 = 1;
 }
 
 /* gray {{{ */
 static void
-a_master__gray_create(struct a_pg *pgp){
+a_server__gray_create(struct a_pg *pgp){
    struct a_pg_master *pgmp;
    NYD_IN;
 
@@ -1452,7 +1453,7 @@ a_master__gray_create(struct a_pg *pgp){
          su_cs_dict_create(&pgmp->pgm_gray, (a_PG_GRAY_FLAGS |
             su_CS_DICT_FROZEN), NIL), a_PG_GRAY_TS), a_PG_GRAY_MIN_LIMIT), 1);
 
-   a_master__gray_load(pgp);
+   a_server__gray_load(pgp);
 
    /* Finally enable automatic memory management, balance as necessary */
    su_cs_dict_add_flags(&pgmp->pgm_gray, su_CS_DICT_ERR_PASS);
@@ -1465,7 +1466,7 @@ a_master__gray_create(struct a_pg *pgp){
 }
 
 static void
-a_master__gray_load(struct a_pg *pgp){ /* {{{ */
+a_server__gray_load(struct a_pg *pgp){ /* {{{ */
    char path[PATH_MAX], *base;
    struct su_timespec ts;
    struct stat st;
@@ -1611,7 +1612,7 @@ jleave:
 } /* }}} */
 
 static void
-a_master__gray_save(struct a_pg *pgp){ /* {{{ */
+a_server__gray_save(struct a_pg *pgp){ /* {{{ */
    char path[PATH_MAX], *cp;
    /* Signals are blocked */
    struct su_timespec ts;
@@ -1726,7 +1727,7 @@ jerr:
 } /* }}} */
 
 static void
-a_master__gray_cleanup(struct a_pg *pgp, boole force){ /* {{{ */
+a_server__gray_cleanup(struct a_pg *pgp, boole force){ /* {{{ */
    struct su_timespec ts;
    struct su_cs_dict_view dv;
    struct a_pg_master *pgmp;
@@ -1861,7 +1862,7 @@ jdel:
 } /* }}} */
 
 static char
-a_master__gray_lookup(struct a_pg *pgp, char const *key){ /* {{{ */
+a_server__gray_lookup(struct a_pg *pgp, char const *key){ /* {{{ */
    struct su_cs_dict_view dv;
    s16 min, xmin;
    up d;
@@ -1891,7 +1892,7 @@ jretry_nent:
 
       /* We ran against this wall, try a cleanup if allowed */
       if(UCMP(16, pgmp->pgm_epoch_min, >=, a_DB_CLEANUP_MIN_DELAY)){
-         a_master__gray_cleanup(pgp, TRU1);
+         a_server__gray_cleanup(pgp, TRU1);
          goto jretry_nent;
       }
 
@@ -1963,7 +1964,7 @@ jretry_ins:
       if(su_cs_dict_insert(&pgmp->pgm_gray, key, R(void*,d)) > su_ERR_NONE){
          /* We ran against this wall, try a cleanup if allowed */
          if(UCMP(16, pgmp->pgm_epoch_min, >=, a_DB_CLEANUP_MIN_DELAY)){
-            a_master__gray_cleanup(pgp, TRU1);
+            a_server__gray_cleanup(pgp, TRU1);
             goto jretry_ins;
          }
 
@@ -2015,8 +2016,8 @@ a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
    pgp->pg_gc_rebalance = U16_MAX;
    LCTAV(VAL_GC_TIMEOUT <= S16_MAX);
    pgp->pg_gc_timeout = U16_MAX;
-   LCTAV(VAL_MASTER_TIMEOUT <= S16_MAX);
-   pgp->pg_master_timeout = U16_MAX;
+   LCTAV(VAL_SERVER_TIMEOUT <= S16_MAX);
+   pgp->pg_server_timeout = U16_MAX;
 
    LCTAV(VAL_COUNT <= S32_MAX);
    pgp->pg_count = U32_MAX;
@@ -2051,8 +2052,8 @@ a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
       pgp->pg_gc_rebalance = VAL_GC_REBALANCE;
    if(pgp->pg_gc_timeout == U16_MAX)
       pgp->pg_gc_timeout = VAL_GC_TIMEOUT;
-   if(pgp->pg_master_timeout == U16_MAX)
-      pgp->pg_master_timeout = VAL_MASTER_TIMEOUT;
+   if(pgp->pg_server_timeout == U16_MAX)
+      pgp->pg_server_timeout = VAL_SERVER_TIMEOUT;
 
    if(pgp->pg_count == U32_MAX)
       pgp->pg_count = VAL_COUNT;
@@ -2110,17 +2111,17 @@ a_conf_list_values(struct a_pg *pgp){
          "gc-timeout=%lu\n"
          "limit=%lu\n"
          "limit-delay=%lu\n"
-      "master-timeout=%lu\n"
-      "defer-msg=%s\n"
+      "server-timeout=%lu\n"
       "store-path=%s\n"
+      "defer-msg=%s\n"
       ,
       S(ul,pgp->pg_4_mask), S(ul,pgp->pg_6_mask),
       S(ul,pgp->pg_count), S(ul,pgp->pg_delay_max), S(ul,pgp->pg_delay_min),
          S(ul,pgp->pg_gc_rebalance), S(ul,pgp->pg_gc_timeout),
          S(ul,pgp->pg_limit), S(ul,pgp->pg_limit_delay),
-      S(ul,pgp->pg_master_timeout),
-      pgp->pg_defer_msg,
-      pgp->pg_store_path
+      S(ul,pgp->pg_server_timeout),
+      pgp->pg_store_path,
+      pgp->pg_defer_msg
       );
 
    NYD2_OU;
@@ -2133,7 +2134,7 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
    NYD2_IN;
 
    /* In long-option order; we always need to parse what is needed in the
-    * client, anything else we only need in test mode or in the master */
+    * client, anything else we only need in test mode or in the server */
    switch(o){
    case '4':
    case '6':
@@ -2186,7 +2187,7 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
    case 'G': a_X(p.i16 = &pgp->pg_gc_rebalance; goto ji16)
    case 'g': a_X(p.i16 = &pgp->pg_gc_timeout; goto ji16)
 
-   case 't': a_X(p.i16 = &pgp->pg_master_timeout; goto ji16)
+   case 't': a_X(p.i16 = &pgp->pg_server_timeout; goto ji16)
 
    case 'c': a_X(p.i32 = &pgp->pg_count; goto ji32)
    case 'L': a_X(p.i32 = &pgp->pg_limit; goto ji32)
@@ -2963,19 +2964,18 @@ jreavo:
    while((mpv = su_avopt_parse(&avo)) != su_AVOPT_STATE_DONE){
       char const *emsg;
 
+      /* In long-option order (mostly) */
       switch(mpv){
-      case '#':
-         pg.pg_flags |= a_PG_F_TEST_MODE;
-         break;
-
       case 'o':
          pg.pg_flags |= a_PG_F_CLIENT_ONCE_MODE;
          break;
       case '.':
          pg.pg_flags |= a_PG_F_CLIENT_SHUTDOWN_MODE;
          break;
+      case '#':
+         pg.pg_flags |= a_PG_F_TEST_MODE;
+         break;
 
-      /* In long-option order */
       case '4': case '6':
       case 'A': case 'a': case 'B': case 'b':
       case 'c': case 'D': case 'd': case 'G': case 'g': case 'L': case 'l':

@@ -8,7 +8,7 @@ PREFIX = /usr
 # What is "libexec"?  ("sbin" maybe not?)
 LIBEXEC = libexec
 
-# Directory for permanent (DB) storage and client/master socket.
+# Directory for permanent (DB) storage and client/server socket.
 # Must be writable by the spawn(8) defined user/group.
 VAL_STORE_PATH = /var/lib/postfix-lmdb
 
@@ -31,8 +31,8 @@ VAL_GC_TIMEOUT = 10080
 VAL_LIMIT = 242000
 VAL_LIMIT_DELAY = 221000
 
-# --master-timeout (0: never)
-VAL_MASTER_TIMEOUT = 30
+# --server-timeout (0: never)
+VAL_SERVER_TIMEOUT = 30
 
 ##
 
@@ -92,7 +92,7 @@ $(VAL_NAME): s-postgray.c
 		-DVAL_LIMIT=$(VAL_LIMIT) \
 		-DVAL_LIMIT_DELAY=$(VAL_LIMIT_DELAY) \
 		\
-		-DVAL_MASTER_TIMEOUT=$(VAL_MASTER_TIMEOUT) \
+		-DVAL_SERVER_TIMEOUT=$(VAL_SERVER_TIMEOUT) \
 		\
 		\
 		$(CFLAGS) $(SUFLAGS) $(LDFLAGS) \
