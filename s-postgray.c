@@ -159,6 +159,7 @@ enum a_pg_flags{
    a_PG_F_NONE,
    a_PG_F_TEST_MODE = 1u<<1, /* -# */
    a_PG_F_TEST_ERRORS = 1u<<2,
+   a_PG_F_LIST_MODE = 1u<<3, /* --list-values */
 
    a_PG_F_V = 1u<<6, /* Verbosity */
    a_PG_F_VV = 1u<<7, /* xxx unused */
@@ -2962,7 +2963,6 @@ int
 main(int argc, char *argv[]){ /* {{{ */
    struct su_avopt avo;
    struct a_pg pg;
-   boole list_values;
    BITENUM_IS(u32,a_pg_avo_flags) f;
    s32 mpv;
 
@@ -2982,7 +2982,6 @@ main(int argc, char *argv[]){ /* {{{ */
    /* To avoid that clients do not parse too much we may have to parse ARGV
     * several times instead */
    f = a_PG_AVO_NONE;
-   list_values = FAL0;
 jreavo:
    su_avopt_setup(&avo, pg.pg_argc, C(char const*const*,pg.pg_argv),
       a_sopts, a_lopts);
@@ -2992,6 +2991,9 @@ jreavo:
 
       /* In long-option order (mostly) */
       switch(mpv){
+      case -2:
+         pg.pg_flags |= a_PG_F_LIST_MODE;
+         goto javo_after;
       case 'o':
          pg.pg_flags |= a_PG_F_CLIENT_ONCE_MODE;
          break;
@@ -3014,12 +3016,6 @@ jreavo:
             mpv = -mpv;
             goto jleave;
          }
-         break;
-
-      case -2:
-         if(f & a_PG_AVO_FULL)
-            goto jlv;
-         list_values = TRU1;
          break;
 
       case 'H':
@@ -3051,6 +3047,7 @@ jeusage:
          goto jleave;
       }
    }
+javo_after:
 
    if(!(f & a_PG_AVO_FULL)){
       if(avo.avo_argc != 0){
@@ -3063,9 +3060,11 @@ jeusage:
       a_conf_finish(&pg, a_PG_AVO_NONE);
    }
 
-   if(!list_values && !(pg.pg_flags & a_PG_F_TEST_MODE))
+   if(pg.pg_flags & a_PG_F_LIST_MODE)
+      goto jlv;
+   if(!(pg.pg_flags & a_PG_F_TEST_MODE))
       mpv = a_client(&pg);
-   else if(!(f & a_PG_AVO_FULL)){
+   else if(!!(f & a_PG_AVO_FULL)){
       f = a_PG_AVO_FULL;
       goto jreavo;
    }else{
