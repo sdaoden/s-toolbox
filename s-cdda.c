@@ -1,4 +1,4 @@
-/*@ s-cdda: access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
+/*@ s-cdda: access digital audio CDs.
  *@ Developed in 2020 on then-current operating-systems and hardware.
  *@ Thanks to Thomas Schmitt (libburnia) for cdrom-cookbook.txt and cdtext.txt.
  *@ According to SCSI Multimedia Commands - 3 (MMC-3, Revision 10g).

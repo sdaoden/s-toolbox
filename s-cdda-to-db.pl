@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 require 5.008_008; # ${^UTF8LOCALE}
 my $SELF = 's-cdda-to-db';
-my $ABSTRACT = 'Read and encode audio CDs, integrated in S-Music DB.';
+my $ABSTRACT = 'integrate audio CDs into directory pool.';
 #@ Web: https://www.sdaoden.eu/code.html
 #@ Requirements:
 #@ - s-cdda for CD-ROM access (https://ftp.sdaoden.eu/s-cdda-latest.tar.gz).

@@ -1,4 +1,4 @@
-.\"@ s-cdda: access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
+.\"@ s-cdda: access digital audio CDs.
 .\"
 .\" Copyright (c) 2020 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
 .\" SPDX-License-Identifier: ISC
@@ -16,14 +16,16 @@
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
 .Dd January 28, 2021
+.ds VV \\%v0.8.5
+.
 .Dt S-CDDA 1
 .Os
 .Mx -enable
 .
 .
 .Sh NAME
-.Nm s-cdda
-.Nd access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks)
+.Nm s-cdda \%[\*(VV]
+.Nd access digital audio CDs
 .
 .
 .Sh SYNOPSIS
@@ -69,10 +71,8 @@
 .Sh DESCRIPTION
 .
 .Nm
-is a simple tool to query information, like table-of-contents, from
-audio CD-ROMs.
-It can also be used to read audio tracks, and store them as WAVE audio
-files.
+queries information, like the table-of-contents, from audio CD-ROMs.
+It also reads audio tracks to store them as WAVE audio files.
 It only works with SCSI MMC-3 aware cdrom/drivers.
 .
 .

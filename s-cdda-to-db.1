@@ -1,4 +1,4 @@
-.\"@ s-cdda-to-db: Read and encode audio CDs, integrated in S-Music DB.
+.\"@ s-cdda-to-db: integrate audio CDs into directory pool.
 .\"
 .\" Copyright (c) 1998 - 2003, 2010 - 2014, 2016 - 2018,
 .\"               2020 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
@@ -17,14 +17,16 @@
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
 .Dd June 18, 2021
+.ds VV \\%v0.8.0
+.
 .Dt S-CDDA-TO-DB 1
 .Os
 .Mx -enable
 .
 .
 .Sh NAME
-.Nm s-cdda-to-db
-.Nd read and encode audio CDs, integrated in S-Music DB
+.Nm s-cdda-to-db \%[\*(VV]
+.Nd integrate audio CDs into directory pool
 .
 .
 .Sh SYNOPSIS
@@ -200,15 +202,6 @@ and
 .Xr flac 1 )
 support command line options to (further) suppress character set
 conversions.
-.
-.Mx
-.It Ev PERL5OPT
-Should be set to
-.Ql -C
-in an Unicode environment in order to configure
-.Xr perl 1
-for UTF-8 input and output; also see
-.Xr perlrun 1 .
 .
 .Mx
 .It Ev S_MUSIC_DB
