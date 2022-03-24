@@ -44,6 +44,9 @@
 .Op options
 .
 .
+.Mx -toc -tree html pdf ps xhtml
+.
+.
 .Sh DESCRIPTION
 .
 .Nm
@@ -125,8 +128,7 @@ In the following DB means database, and GC garbage collection.
 .Mx Fl 4-mask
 .It Fl Fl 4-mask Ar mask , Fl 4 Ar mask
 IPv4 mask to strip off addresses before match.
-For example a mask of 24 all addresses in between 127.0.0.0 and
-127.0.0.255 would be treated equally.
+For example 24 masks all addresses in between 127.0.0.0 and 127.0.0.255.
 This is desirable since in practice MX farms are used, and/or IP
 addresses are selected from a pool.
 .
@@ -162,13 +164,18 @@ always kick in on top.
 .Bd -literal -offset indent
 exact.match
 also.exact.match
+
 # This matches d.a.s but also a.b.c.d.a.s
 \&.d.a.s	 
-# with --4-mask=24 instead 127.0.0.0/24
+
+# with --4-mask=24 this really is 127.0.0.0/24!
 127.0.0.1 
+
 # with --6-mask=64 nonetheless 2a03:2880:20:4f00::/56
 2a03:2880:20:4f06:face:b00c:0:14/56       
-# with --6-mask=64 instead 2a03:2880:20:6f06::/64
+
+# with --6-mask=64 really 2a03:2880:20:6f06::/64
+# instead of 2a03:2880:20:6f06:c000::/66!
 2a03:2880:20:6f06:face:b00c:0:14/66	
 .Ed
 .
@@ -203,6 +210,11 @@ Those which come sooner do not increment
 .Mx Fl gc-rebalance
 .It Fl Fl gc-rebalance Ar no , Fl G Ar no
 Number of DB GC runs before rebalancing occurs.
+Value 0 turns rebalancing off.
+Rebalancing only affects shrinking of the dictionary table,
+is is grown automatically as necessary, so a carefully chosen
+.Fl Fl limit
+may render rebalancing undesired.
 .
 .Mx Fl gc-timeout
 .It Fl Fl gc-timeout Ar mins , Fl g Ar mins
@@ -215,6 +227,10 @@ performed, but GC happens due to circumstances, too.
 .It Fl Fl limit Ar no , Fl L Ar no
 Number of DB entries until new ones are not handled,
 effectively turning them into whitelist members.
+Data is stored compact, and the size depends on email message data,
+but accounting 100 bytes per entry might be a guideline.
+In addition the dictionary table resides in one large contiguous memory
+chunk, accounting 1 MB per 10000000 entries may be proper.
 .
 .Mx Fl limit-delay
 .It Fl Fl limit-delay Ar no , Fl l Ar no
@@ -294,12 +310,12 @@ It exits EX_TEMPFAIL (75) when no server is running.
 .
 .Mx Fl test-mode
 .It Fl Fl test-mode , Fl #
-Enable test mode: all following options are syntax-checked, also
+Enable test mode: all following options are syntax-checked, including
 .Fl Fl allow-file ,
 .Fl Fl allow ,
 .Fl Fl block-file
 and
-.Fl Fl block ,
+.Fl Fl block
 which are normally processed by only the server.
 Once the command line is worked, a listing of all white- and blacklists
 as well as the normal
@@ -310,6 +326,9 @@ It is highly recommendet to use this for configuration checks.
 .Mx Fl verbose
 .It Fl Fl verbose , Fl v
 Increase log verbosity a little bit.
+This might be of interest to improve configuration of
+.Nm ,
+for example it will log how long it takes to save and load the DB.
 .
 .Mx Fl long-help
 .It Fl Fl long-help , Fl H

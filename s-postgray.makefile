@@ -22,7 +22,7 @@ VAL_4_MASK = 24
 VAL_6_MASK = 64
 
 # ..; NIL for DEFER_MSG means the builtin default (also see manual)
-VAL_COUNT = 2
+VAL_COUNT = 3
 VAL_DEFER_MSG = NIL
 VAL_DELAY_MAX = 300
 VAL_DELAY_MIN = 5

@@ -146,7 +146,9 @@
 #define a_PG_WB_CA_FLAGS (su_CS_DICT_HEAD_RESORT)
 #define a_PG_WB_CNAME_FLAGS (su_CS_DICT_HEAD_RESORT)
 
-/* Gray list; that is balanced() after resize; no _ERR_PASS, set later on! */
+/* Gray list; that is balanced() after resize; no _ERR_PASS, set later on!
+ * It is always in FROZEN state to delay resize costs to balance()!
+ * MIN_LIMIT is also used for considering whether _this_ balance() is needed */
 #define a_PG_GRAY_FLAGS \
    (su_CS_DICT_HEAD_RESORT | su_CS_DICT_STRONG /*| su_CS_DICT_ERR_PASS*/)
 #define a_PG_GRAY_TS 4
@@ -971,12 +973,15 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
    fd_set rfds;
    sigset_t psigset, psigseto;
    union {struct timespec os; struct su_timespec s; struct a_pg_srch *pgsp;} t;
+   u32 ograycnt;
    struct a_pg_master *pgmp;
    s32 rv;
    NYD_IN;
 
    rv = su_EX_OK;
    a_pgm = S(struct a_pg_master ATOMIC*,pgmp = pgp->pg_master);
+   ograycnt = su_cs_dict_count(&pgmp->pgm_gray) + a_PG_GRAY_MIN_LIMIT;
+   ASSERT(su_cs_dict_flags(&pgmp->pgm_gray) & su_CS_DICT_FROZEN);
 
    signal(SIGHUP, &a_server__on_sig);
    signal(SIGTERM, &a_server__on_sig);
@@ -1046,6 +1051,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
                S(ul,pgmp->pgm_base_epoch),
                S(ul,pgmp->pgm_epoch), S(ul,pgmp->pgm_epoch_min)
             );
+#if DVLDBGOR(1, 0)
          a_DBG2(
             su_log_write(su_LOG_INFO, "WHITE CA:");
             su_cs_dict_statistics(&pgmp->pgm_white.pgwb_ca);
@@ -1058,6 +1064,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
             su_log_write(su_LOG_INFO, "GRAY:");
             su_cs_dict_statistics(&pgmp->pgm_gray);
          )
+#endif
 
          su_log_set_level(olvl);
       }
@@ -1180,6 +1187,15 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
             su_cs_dict_count(&pgmp->pgm_gray) >= pgp->pg_limit - (
                pgp->pg_limit >> 2)))
          a_server__gray_cleanup(pgp, FAL0);
+      /* Otherwise we may need to allow the dict to grow; it is frozen all the
+       * time to move expensive growing out of the way of waiting clients.
+       * (Of course some may wait now, too.)  Misuse MIN_LIMIT for that! */
+      else if(su_cs_dict_count(&pgmp->pgm_gray) > ograycnt){
+         ograycnt = su_cs_dict_count(&pgmp->pgm_gray) + a_PG_GRAY_MIN_LIMIT;
+         pgmp->pgm_cleanup_cnt = 0;
+         su_cs_dict_add_flags(su_cs_dict_balance(&pgmp->pgm_gray),
+            su_CS_DICT_FROZEN);
+      }
    }
 
 jleave:
@@ -1457,10 +1473,9 @@ a_server__gray_create(struct a_pg *pgp){
 
    /* Finally enable automatic memory management, balance as necessary */
    su_cs_dict_add_flags(&pgmp->pgm_gray, su_CS_DICT_ERR_PASS);
-   su_cs_dict_clear_flags(&pgmp->pgm_gray, su_CS_DICT_FROZEN);
-
    if(su_cs_dict_count(&pgmp->pgm_gray) > a_PG_GRAY_MIN_LIMIT)
-      su_cs_dict_balance(&pgmp->pgm_gray);
+      su_cs_dict_add_flags(su_cs_dict_balance(&pgmp->pgm_gray),
+         su_CS_DICT_FROZEN);
 
    NYD_OU;
 }
@@ -1761,6 +1776,7 @@ a_server__gray_cleanup(struct a_pg *pgp, boole force){ /* {{{ */
       (force ? _(" in force mode") : su_empty),
       S(ul,pgmp->pgm_epoch), pgmp->pgm_epoch_min); )
 
+   ASSERT(su_cs_dict_flags(&pgmp->pgm_gray) & su_CS_DICT_FROZEN);
 jredo:
    su_cs_dict_view_setup(&dv, &pgmp->pgm_gray);
    for(su_cs_dict_view_begin(&dv); su_cs_dict_view_is_valid(&dv);){
@@ -1838,13 +1854,23 @@ jdel:
       }
    }
 
-   if(gc_any && (gc_any = (++pgmp->pgm_cleanup_cnt >= pgp->pg_gc_rebalance))){
-      su_cs_dict_balance(&pgmp->pgm_gray);
-      a_DBG( su_log_write(su_LOG_DEBUG,
-         "gc: rebalance after %u: count=%u, new size=%u",
-         pgmp->pgm_cleanup_cnt, su_cs_dict_count(&pgmp->pgm_gray),
-         su_cs_dict_size(&pgmp->pgm_gray)); )
-      pgmp->pgm_cleanup_cnt = 0;
+   if(pgmp->pgm_cleanup_cnt < S16_MAX)
+      ++pgmp->pgm_cleanup_cnt;
+
+   /* Do not balance when force mode is on, client is waiting */
+   if(gc_any){
+      gc_any = FAL0; /* -> "was balanced" */
+      if(pgmp->pgm_cleanup_cnt >= pgp->pg_gc_rebalance &&
+            pgp->pg_gc_rebalance != 0 && !force){
+         su_cs_dict_add_flags(su_cs_dict_balance(&pgmp->pgm_gray),
+            su_CS_DICT_FROZEN);
+         a_DBG( su_log_write(su_LOG_DEBUG,
+            "gc: rebalance after %u: count=%u, new size=%u",
+            pgmp->pgm_cleanup_cnt, su_cs_dict_count(&pgmp->pgm_gray),
+            su_cs_dict_size(&pgmp->pgm_gray)); )
+         pgmp->pgm_cleanup_cnt = 0;
+         gc_any = TRU1;
+      }
    }
 
    if(a_DBGIF || (pgp->pg_flags & a_PG_F_V)){
