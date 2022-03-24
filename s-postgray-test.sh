@@ -243,14 +243,14 @@ ab() {
       -$2 195.90.112.99/32 \
       -$2 195.90.111.99/22 \
       \
-      $LV > ./3.$1 $REDIR
+      > ./3.$1 $REDIR
    cmp -s 3.$1 3.${1}x || exit 101
    eval $PGX --shutdown $REDIR
    [ $? -eq 75 ] || exit 102
    [ -n "$REDIR" ] || echo ok 3.${1}
 
    i=$(($1 + 1))
-   eval $PGX --test-mode -424 -664 -$4 x.a1 -$4 x.a2 $LV > ./3.$i $REDIR
+   eval $PGX --test-mode -424 -664 -$4 x.a1 -$4 x.a2 > ./3.$i $REDIR
    cmp -s 3.$i 3.${1}x || exit 101
    eval $PGX --shutdown $REDIR
    [ $? -eq 75 ] || exit 102
@@ -264,7 +264,7 @@ echo 'allow-file=x.a1' >> ./defx
 echo 'resource-file=3.r1' >> ./defx
 echo 'allow-file=x.a2' >> ./3.r1
 
-eval $PGX --test-mode -R ./defx --4-mask=24 --6-mask 64 $LV > ./3.4 $REDIR
+eval $PGX --test-mode -R ./defx --4-mask=24 --6-mask 64 > ./3.4 $REDIR
 cmp -s 3.4 3.0x || exit 101
 eval $PGX --shutdown $REDIR
 [ $? -eq 75 ] || exit 102

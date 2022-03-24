@@ -159,7 +159,6 @@ enum a_pg_flags{
    a_PG_F_NONE,
    a_PG_F_TEST_MODE = 1u<<1, /* -# */
    a_PG_F_TEST_ERRORS = 1u<<2,
-   a_PG_F_LIST_MODE = 1u<<3, /* --list-values */
 
    a_PG_F_V = 1u<<6, /* Verbosity */
    a_PG_F_VV = 1u<<7, /* xxx unused */
@@ -183,8 +182,9 @@ enum a_pg_flags{
 
 enum a_pg_avo_args{
    a_PG_AVO_NONE,
-   a_PG_AVO_FULL = 1u<<0,
-   a_PG_AVO_RELOAD = 1u<<1
+   a_PG_AVO_FULLER = 1u<<0, /* Like _FULL less AaBb */
+   a_PG_AVO_FULL = 1u<<1,
+   a_PG_AVO_RELOAD = 1u<<2
 };
 
 enum a_pg_answer{
@@ -2207,7 +2207,7 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
                ) ? NIL : &pgp->pg_master->pgm_black));
       break;
 
-#define a_X(X) if(!(f & a_PG_AVO_FULL)) break; X;
+#define a_X(X) if(!(f & (a_PG_AVO_FULLER | a_PG_AVO_FULL))) break; X;
 
    case 'D': a_X(p.i16 = &pgp->pg_delay_max; goto ji16)
    case 'd': a_X(p.i16 = &pgp->pg_delay_min; goto ji16)
@@ -2991,17 +2991,11 @@ jreavo:
 
       /* In long-option order (mostly) */
       switch(mpv){
-      case -2:
-         pg.pg_flags |= a_PG_F_LIST_MODE;
-         goto javo_after;
       case 'o':
          pg.pg_flags |= a_PG_F_CLIENT_ONCE_MODE;
          break;
       case '.':
          pg.pg_flags |= a_PG_F_CLIENT_SHUTDOWN_MODE;
-         break;
-      case '#':
-         pg.pg_flags |= a_PG_F_TEST_MODE;
          break;
 
       case '4': case '6':
@@ -3028,6 +3022,15 @@ jreavo:
          mpv = su_EX_OK;
          goto jleave;
 
+      case -2:
+         if(!(f ^= a_PG_AVO_FULLER))
+            goto jlv;
+         a_conf_finish(&pg, a_PG_AVO_NONE);
+         goto jreavo;
+      case '#':
+         pg.pg_flags |= a_PG_F_TEST_MODE;
+         break;
+
       case su_AVOPT_STATE_ERR_ARG:
          emsg = su_avopt_fmt_err_arg;
          goto jerropt;
@@ -3047,7 +3050,6 @@ jeusage:
          goto jleave;
       }
    }
-javo_after:
 
    if(!(f & a_PG_AVO_FULL)){
       if(avo.avo_argc != 0){
@@ -3060,11 +3062,9 @@ javo_after:
       a_conf_finish(&pg, a_PG_AVO_NONE);
    }
 
-   if(pg.pg_flags & a_PG_F_LIST_MODE)
-      goto jlv;
    if(!(pg.pg_flags & a_PG_F_TEST_MODE))
       mpv = a_client(&pg);
-   else if(!!(f & a_PG_AVO_FULL)){
+   else if(!(f & a_PG_AVO_FULL)){
       f = a_PG_AVO_FULL;
       goto jreavo;
    }else{
