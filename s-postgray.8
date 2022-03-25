@@ -72,7 +72,8 @@ The server lifetime is configurable, by (compile-time) default it will
 terminate itself after some time without any client connection.
 Sending the server a
 .Ql SIGHUP
-signal will re-evaluate its configuration, sending it
+signal will re-evaluate its configuration (which may result in program
+panic if a file disappeared or memory failures occur), sending it
 .Ql SIGUSR2
 will save the graylist database,
 whereas sending
@@ -254,6 +255,13 @@ By choosing the right settings for
 and
 .Fl Fl gc-timeout ,
 it should be impossible to reach the graylist bypass limit.
+.
+.Mx Fl server-queue
+.It Fl Fl server-queue Ar no , Fl q Ar no
+The number of concurrent clients a server can handle before
+.Xr accept 2 Ns
+ing new ones is suspended.
+This setting cannot be changed at runtime.
 .
 .Mx Fl server-timeout
 .It Fl Fl server-timeout Ar mins , Fl t Ar mins

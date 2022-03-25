@@ -30,8 +30,7 @@ VAL_GC_REBALANCE = 3
 VAL_GC_TIMEOUT = 10080
 VAL_LIMIT = 242000
 VAL_LIMIT_DELAY = 221000
-
-# --server-timeout (0: never)
+VAL_SERVER_QUEUE = 64
 VAL_SERVER_TIMEOUT = 30
 
 ##
@@ -55,14 +54,13 @@ SUFWW=-Weverything \
 	-Wno-reserved-macro-identifier \
 	-Wno-unused-macros
 
-#SUFW=$(SUFWW) -W -Wall -pedantic
+#$(SUFWW)
 SUFW=-W -Wall -pedantic \
 	-Wno-uninitialized -Wno-unused-result -Wno-unused-value \
 	-fno-common \
 	-fstrict-aliasing -fstrict-overflow \
 
-SUFS=-fstack-protector-strong -D_FORTIFY_SOURCE=2 \
-	-fPIE #-fsanitize=address
+SUFS=-fPIE #-fstack-protector-strong -D_FORTIFY_SOURCE=2 #-fsanitize=address
 
 CFLAGS+=$(SUFLVLC) $(SUFW) $(SUFS) $(SUFOPT)
 
@@ -95,7 +93,7 @@ $(VAL_NAME): s-postgray.c
 		-DVAL_GC_TIMEOUT=$(VAL_GC_TIMEOUT) \
 		-DVAL_LIMIT=$(VAL_LIMIT) \
 		-DVAL_LIMIT_DELAY=$(VAL_LIMIT_DELAY) \
-		\
+		-DVAL_SERVER_QUEUE=$(VAL_SERVER_QUEUE) \
 		-DVAL_SERVER_TIMEOUT=$(VAL_SERVER_TIMEOUT) \
 		\
 		\

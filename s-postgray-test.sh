@@ -568,8 +568,6 @@ printf \
 cmp -s ./5.8 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.8
 
-delay
-
 printf \
    'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
    | eval $PG -R ./x.rc > ./5.9 $REDIR

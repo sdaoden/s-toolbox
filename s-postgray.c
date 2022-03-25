@@ -1,5 +1,5 @@
 /*@ s-postgray(8) - postfix protocol policy (RFC 6647 graylisting) server.
- *@ We assume postfix protocol constraints:
+ *@ We assume postfix(1) protocol constraints:
  *@ - No whitespace (at BOL and EOL, nor) in between key, =, and value.
  *@ - Lowercase keys.
  *@ - XXX-1 VERP delimiters are +=, and are not configurable.
@@ -41,9 +41,6 @@
 /* */
 #define a_VERSION "0.5.0"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
-
-/* Concurrent clients before stopping accept(2)ion */
-#define a_CLIENTS_MAX 32
 
 /* Maximum accept(2) backlog */
 #define a_SERVER_LISTEN 5
@@ -231,6 +228,7 @@ struct a_pg_wb{
 
 struct a_pg_master{
    char const *pgm_sockpath;
+   s32 *pgm_cli_fds;
    u32 pgm_cli_no;
    u16 pgm_cleanup_cnt;
    s16 pgm_epoch_min; /* Relative minutes of .pgm_base_epoch .. .pgm_epoch */
@@ -239,7 +237,6 @@ struct a_pg_master{
    struct a_pg_wb pgm_white;
    struct a_pg_wb pgm_black;
    struct su_cs_dict pgm_gray;
-   s32 pgm_cli_fds[a_CLIENTS_MAX];
 };
 
 struct a_pg{
@@ -253,11 +250,14 @@ struct a_pg{
    u16 pg_gc_rebalance;
    u16 pg_gc_timeout;
    u16 pg_server_timeout;
+   su_64( u8 pg__pad[4]; )
    u32 pg_count;
    u32 pg_limit;
    u32 pg_limit_delay;
+   u32 pg_server_queue;
    char const *pg_defer_msg;
    char const *pg_store_path;
+   /**/
    char **pg_argv;
    u32 pg_argc;
    s32 pg_clima_fd; /* Client/Master comm fd */
@@ -270,7 +270,7 @@ struct a_pg{
 };
 
 static char const a_sopts[] =
-      "4:6:" "A:a:B:b:" "c:D:d:pG:g:L:l:" "t:" "R:" "s:" "m:"
+      "4:6:" "A:a:B:b:" "c:D:d:pG:g:L:l:" "q:t:" "R:" "s:" "m:"
       "o" "." "#" "vHh";
 static char const * const a_lopts[] = {
    "4-mask:;4;" N_("IPv4 mask to strip off addresses before match"),
@@ -291,6 +291,7 @@ static char const * const a_lopts[] = {
    "limit:;L;" N_("DB entries after which new ones are not handled"),
    "limit-delay:;l;" N_("DB entries after which new ones cause sleeps"),
 
+   "server-queue:;q;" N_("number of concurrent clients a server can handle"),
    "server-timeout:;t;"
       N_("until client-less server exits (0=never; minutes)"),
 
@@ -845,6 +846,7 @@ a_server__setup(struct a_pg *pgp, char const *sockpath){
    STRUCT_ZERO(struct a_pg_master, pgmp);
 
    pgmp->pgm_sockpath = sockpath;
+   pgmp->pgm_cli_fds = su_TALLOC(s32, pgp->pg_server_queue);
 
    su_cs_dict_create(&pgmp->pgm_white.pgwb_ca, a_PG_WB_CA_FLAGS, NIL);
    su_cs_dict_create(&pgmp->pgm_white.pgwb_cname, a_PG_WB_CNAME_FLAGS, NIL);
@@ -883,6 +885,8 @@ a_server__reset(struct a_pg *pgp){
    su_cs_dict_gut(&pgmp->pgm_black.pgwb_cname);
    su_cs_dict_gut(&pgmp->pgm_white.pgwb_ca);
    su_cs_dict_gut(&pgmp->pgm_white.pgwb_cname);
+
+   su_FREE(pgmp->pgm_cli_fds);
 #endif
 
    if(su_path_rm(pgmp->pgm_sockpath))
@@ -935,10 +939,10 @@ jreavo:
       case 'A': case 'a': case 'F': case 'f':
       case 'c': case 'D': case 'd': case 'p':
          case 'G': case 'g': case 'L': case 'l':
-      case 't':
+      case 'q': case 't':
       case 'R':
-      case 'm':
       case 's':
+      case 'm':
       case 'v':
          if((rv = a_conf__arg(pgp, rv, avo.avo_current_arg, f)) < 0){
             rv = -rv;
@@ -960,6 +964,9 @@ jreavo:
    su_cs_dict_balance(&pgmp->pgm_white.pgwb_cname);
    su_cs_dict_balance(&pgmp->pgm_black.pgwb_ca);
    su_cs_dict_balance(&pgmp->pgm_black.pgwb_cname);
+
+   if(pgp->pg_flags & a_PG_F_VV)
+      su_log_write(su_LOG_INFO, "reloaded configuration");
 
    rv = su_EX_OK;
 jleave:
@@ -1049,11 +1056,12 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
          }
 
          su_log_write(su_LOG_INFO,
-            _("clients %lu;  white: CA %lu/%lu (fuzzy %lu), CNAME %lu/%lu\n"
+            _("clients %lu of %lu\n"
+              "white: CA %lu/%lu (fuzzy %lu), CNAME %lu/%lu\n"
               "black: CA %lu/%lu (fuzzy %lu), CNAME %lu/%lu\n"
               "gray: %lu/%lu, gc_cnt %lu; epoch: %lu, now %lu: %lu"),
-            S(ul,pgmp->pgm_cli_no),
-               S(ul,su_cs_dict_count(&pgmp->pgm_white.pgwb_ca)),
+            S(ul,pgmp->pgm_cli_no), S(ul,pgp->pg_server_queue),
+            S(ul,su_cs_dict_count(&pgmp->pgm_white.pgwb_ca)),
                   S(ul,su_cs_dict_size(&pgmp->pgm_white.pgwb_ca)),
                S(ul,i),
                S(ul,su_cs_dict_count(&pgmp->pgm_white.pgwb_cname)),
@@ -1109,7 +1117,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
             a_DBG2( su_log_write(su_LOG_DEBUG, "select: suspend,maxfd=%d",
                maxfd); )
          }
-      }else if(pgmp->pgm_cli_no < a_CLIENTS_MAX){
+      }else if(pgmp->pgm_cli_no < pgp->pg_server_queue){
          if(maxfd < 0 && pgp->pg_server_timeout != 0){
             t.os.tv_sec = pgp->pg_server_timeout;
             if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE)))
@@ -1127,7 +1135,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
             maxfd, (tosp != NIL), (tosp != NIL ? S(ul,tosp->tv_sec) : 0)); )
       }else{
          a_DBG( su_log_write(su_LOG_DEBUG,
-            "select: reached CLIENTS_MAX=%d, no accept-waiting", maxfd); )
+            "select: reached server_queue=%d, no accept-waiting", maxfd); )
       }
 
       /* Poll descriptors interruptable */
@@ -2074,6 +2082,9 @@ a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
    pgp->pg_limit_delay = U32_MAX;
 
    if(!(f & a_PG_AVO_RELOAD)){
+      LCTAV(VAL_SERVER_QUEUE <= S32_MAX);
+      pgp->pg_server_queue = U32_MAX;
+
       pgp->pg_defer_msg = NIL;
 
       pgp->pg_store_path = NIL;
@@ -2110,6 +2121,9 @@ a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
       pgp->pg_limit_delay = VAL_LIMIT_DELAY;
 
    if(!(f & a_PG_AVO_RELOAD)){
+      if(pgp->pg_server_queue == U32_MAX)
+         pgp->pg_server_queue = VAL_SERVER_QUEUE;
+
       if(pgp->pg_defer_msg == NIL){
          pgp->pg_defer_msg = (VAL_DEFER_MSG != NIL) ? VAL_DEFER_MSG
                : a_DEFER_MSG;
@@ -2124,22 +2138,35 @@ a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
 
    /* */
    /* C99 */{
-      char const *em_arr[4], **empp = em_arr;
+      char const *em_arr[5], **empp = em_arr;
 
-      if(pgp->pg_delay_min >= pgp->pg_delay_max)
+      if(pgp->pg_delay_min >= pgp->pg_delay_max){
          *empp++ = _("delay-min is >= delay-max\n");
+         pgp->pg_delay_min = pgp->pg_delay_max;
+      }
       if((pgp->pg_flags & a_PG_F_MASTER_DELAY_PROGRESSIVE) &&
-            S(uz,pgp->pg_delay_min) * pgp->pg_count >= S(uz,pgp->pg_delay_max))
-         *empp++ = _("delay-progressive: delay-min*count is >= delay-max\n");
-      if(pgp->pg_limit_delay >= pgp->pg_limit)
+            S(uz,pgp->pg_delay_min) * pgp->pg_count >=
+               S(uz,pgp->pg_delay_max)){
+         *empp++ = _("delay-min*count is >= delay-max: -delay-progressive\n");
+         pgp->pg_flags ^= a_PG_F_MASTER_DELAY_PROGRESSIVE;
+      }
+
+      if(pgp->pg_limit_delay >= pgp->pg_limit){
          *empp++ = _("limit-delay is >= limit\n");
+         pgp->pg_limit_delay = 0;
+      }
+      if(pgp->pg_server_queue == 0){
+         *empp++ = _("server-queue must be greater than 0\n");
+         pgp->pg_server_queue = 1;
+      }
+
       *empp = NIL;
 
       for(empp = em_arr; *empp != NIL; ++empp)
          if(pgp->pg_flags & a_PG_F_TEST_MODE)
-            fprintf(stderr, "%s", *empp);
+            fprintf(stderr, "%s", V_(*empp));
          else
-            su_log_write(su_LOG_WARN, *empp);
+            su_log_write(su_LOG_WARN, "%s", V_(*empp));
 
       if(empp != em_arr)
          pgp->pg_flags |= a_PG_F_TEST_ERRORS;
@@ -2164,7 +2191,8 @@ a_conf_list_values(struct a_pg *pgp){
          "gc-timeout=%lu\n"
          "limit=%lu\n"
          "limit-delay=%lu\n"
-      "server-timeout=%lu\n"
+      "server-queue=%lu\n"
+         "server-timeout=%lu\n"
       "store-path=%s\n"
       "defer-msg=%s\n"
       ,
@@ -2174,7 +2202,7 @@ a_conf_list_values(struct a_pg *pgp){
             ? "delay-progressive\n" : su_empty),
          S(ul,pgp->pg_gc_rebalance), S(ul,pgp->pg_gc_timeout),
          S(ul,pgp->pg_limit), S(ul,pgp->pg_limit_delay),
-      S(ul,pgp->pg_server_timeout),
+      S(ul,pgp->pg_server_queue), S(ul,pgp->pg_server_timeout),
       pgp->pg_store_path,
       pgp->pg_defer_msg
       );
@@ -2188,8 +2216,7 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
    union {u8 *i8; u16 *i16; u32 *i32;} p;
    NYD2_IN;
 
-   /* In long-option order; we always need to parse what is needed in the
-    * client, anything else we only need in test mode or in the server */
+   /* In long-option order */
    switch(o){
    case '4':
    case '6':
@@ -2235,27 +2262,23 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
                ) ? NIL : &pgp->pg_master->pgm_black));
       break;
 
+   case 'c': p.i32 = &pgp->pg_count; goto ji32;
    case 'D': p.i16 = &pgp->pg_delay_max; goto ji16;
    case 'd': p.i16 = &pgp->pg_delay_min; goto ji16;
    case 'p': pgp->pg_flags |= a_PG_F_MASTER_DELAY_PROGRESSIVE; break;
    case 'G': p.i16 = &pgp->pg_gc_rebalance; goto ji16;
    case 'g': p.i16 = &pgp->pg_gc_timeout; goto ji16;
-
-   case 't': p.i16 = &pgp->pg_server_timeout; goto ji16;
-
-   case 'c': p.i32 = &pgp->pg_count; goto ji32;
    case 'L': p.i32 = &pgp->pg_limit; goto ji32;
    case 'l': p.i32 = &pgp->pg_limit_delay; goto ji32;
 
-   case 'R': o = a_conf__R(pgp, arg, f); break;
-
-   case 'm':
-      if(f & (a_PG_AVO_FULL | a_PG_AVO_RELOAD))
+   case 'q':
+      if(f & a_PG_AVO_RELOAD)
          break;
-      if(pgp->pg_defer_msg != NIL)
-         su_FREE(UNCONST(char*,pgp->pg_defer_msg));
-      pgp->pg_defer_msg = su_cs_dup(arg, su_STATE_ERR_NOPASS);
-      break;
+      p.i32 = &pgp->pg_server_queue;
+      goto ji32;
+   case 't': p.i16 = &pgp->pg_server_timeout; goto ji16;
+
+   case 'R': o = a_conf__R(pgp, arg, f); break;
 
    case 's':
       if(f & (a_PG_AVO_FULL | a_PG_AVO_RELOAD))
@@ -2269,6 +2292,14 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
       if(pgp->pg_store_path != NIL)
          su_FREE(UNCONST(char*,pgp->pg_store_path));
       pgp->pg_store_path = su_cs_dup(arg, su_STATE_ERR_NOPASS);
+      break;
+
+   case 'm':
+      if(f & (a_PG_AVO_FULL | a_PG_AVO_RELOAD))
+         break;
+      if(pgp->pg_defer_msg != NIL)
+         su_FREE(UNCONST(char*,pgp->pg_defer_msg));
+      pgp->pg_defer_msg = su_cs_dup(arg, su_STATE_ERR_NOPASS);
       break;
 
    case 'v':
@@ -2613,10 +2644,10 @@ a_conf__R(struct a_pg *pgp, char const *path,
       case 'A': case 'a': case 'B': case 'b':
       case 'c': case 'D': case 'd': case 'p':
          case 'G': case 'g': case 'L': case 'l':
-      case 't':
+      case 'q': case 't':
       case 'R':
-      case 'm':
       case 's':
+      case 'm':
       case 'v':
          if((mpv = a_conf__arg(pgp, mpv, avo.avo_current_arg, f)) < 0 &&
                !(pgp->pg_flags & a_PG_F_TEST_MODE)){
@@ -3094,10 +3125,10 @@ jreavo:
       case 'A': case 'a': case 'B': case 'b':
       case 'c': case 'D': case 'd': case 'p':
          case 'G': case 'g': case 'L': case 'l':
-      case 't':
+      case 'q': case 't':
       case 'R':
-      case 'm':
       case 's':
+      case 'm':
       case 'v':
          if((mpv = a_conf__arg(&pg, mpv, avo.avo_current_arg, f)) < 0){
             mpv = -mpv;
