@@ -75,6 +75,7 @@ eval $PGx --shutdown $REDIR
 cat > ./x.rc <<_EOT
 4-mask 24
 6-mask 64
+
 count 2
 delay-max 3
 allow-file=x.a1
@@ -85,6 +86,7 @@ limit 10
    # Comment
 allow-file=x.a2
    limit-delay 8    
+
 server-timeout 5
  defer-msg=$DEFER_MSG 
    # Comment
@@ -97,6 +99,7 @@ cat > ./x.a1 <<'_EOT'; cat > ./x.a2 <<'_EOT'
    also.exact.match
 .domain.and.subdomain 
       		.d.a.s	 
+
    127.0.0.1 
     2a03:2880:20:4f06:face:b00c:0:14/56       
 
@@ -210,8 +213,8 @@ echo '=3: allow and block, check=' # {{{
 cat > ./3.zz <<'_EOT'
 = exact.match
 = also.exact.match
-~ (.+\.)?domain.and.subdomain
-~ (.+\.)?d.a.s
+~ {*.,}domain.and.subdomain
+~ {*.,}d.a.s
 = 127.0.0.0 (/24)
 ~ 2a03:2880:20:4f00::/56
 = 2a03:2880:20:6f06:: (/64)
@@ -565,6 +568,8 @@ printf \
 cmp -s ./5.8 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.8
 
+delay
+
 printf \
    'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
    | eval $PG -R ./x.rc > ./5.9 $REDIR
@@ -724,6 +729,7 @@ gc-timeout 1440
 server-timeout 720
 store-path=$pwd
 limit $((max2 * max1))
+limit-delay=0
 _EOT
 
 i=0

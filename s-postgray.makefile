@@ -36,18 +36,16 @@ VAL_SERVER_TIMEOUT = 30
 
 ##
 
-CMODE = -DNDEBUG -O2
-#CMODE = -O1 -g #-fsanitize=address
+SULIB = -lsu-dvldbg#-asan
+SUFLVLC=#-std=c89
+SUFOPT=-O1 -g
+#SUFOPT=-O2
 
 ## >8 -- 8<
-
-SULIB = -lsu#-dvldbg#-asan
-SUFLAGS =
 
 LIBEXECDIR = $(DESTDIR)$(PREFIX)/$(LIBEXEC)
 MANDIR = $(DESTDIR)$(PREFIX)/share/man/man8
 
-CC = cc
 SUFWW=-Weverything \
 	-Wno-atomic-implicit-seq-cst \
 	-Wno-c++98-compat \
@@ -56,16 +54,22 @@ SUFWW=-Weverything \
 	-Wno-reserved-identifier \
 	-Wno-reserved-macro-identifier \
 	-Wno-unused-macros
-CFLAGS = $(CMODE) \
-	-W -Wall -Wextra -pedantic \
+
+#SUFW=$(SUFWW) -W -Wall -pedantic
+SUFW=-W -Wall -pedantic \
 	-Wno-uninitialized -Wno-unused-result -Wno-unused-value \
-	-fno-asynchronous-unwind-tables -fno-unwind-tables \
 	-fno-common \
 	-fstrict-aliasing -fstrict-overflow \
-	-fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE
-LDFLAGS = -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
+
+SUFS=-fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+	-fPIE #-fsanitize=address
+
+CFLAGS+=$(SUFLVLC) $(SUFW) $(SUFS) $(SUFOPT)
+
+LDFLAGS+=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
 	-Wl,--enable-new-dtags -fpie
 
+CC = cc
 INSTALL = install
 MKDIR = mkdir
 RM = rm

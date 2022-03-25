@@ -12,13 +12,14 @@
  *@ Possible improvements:
  *@ - We may want to make the server startable on its own?
  *@ - May want to make policy return on ENOMEM/limit excess configurable?
- *@ - Could offer delay-progressive: delay-min*=2 until count is reached.
- *@   (But not going >= delay-max.)
  *@ - We could add a in-between-delay counter, and if more than X messages
  *@   come in before the next delay expires, we could auto-blacklist.
  *@   Just extend the DB format to a 64-bit integer, and use bits 32..48.
  *@   (Adding this feature should work with existing DBs.)
  *@ - We could add more overall statistics (that many DUNNO .. etc).
+ *@ - XXX-ARGS May want to do parsing like in first draft: just parse it :),
+ *@   keep [AaBb] in an allocated list, parse that in server or in --test-mode.
+ *@   Currently -R is parsed two times.
  *
  * Copyright (c) 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -38,7 +39,7 @@
 #define su_FILE s_postgray
 
 /* */
-#define a_VERSION "0.4.0"
+#define a_VERSION "0.5.0"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* Concurrent clients before stopping accept(2)ion */
@@ -95,6 +96,7 @@
 #define a_DBGIF 0
 #define a_DBG(X)
 #define a_DBG2(X) /* TODO more of those */
+#define a_NYD_FILE "/tmp/" VAL_NAME ".dat"
 
 /* -- >8 -- 8< -- */
 
@@ -158,20 +160,22 @@
 enum a_pg_flags{
    a_PG_F_NONE,
    a_PG_F_TEST_MODE = 1u<<1, /* -# */
-   a_PG_F_TEST_ERRORS = 1u<<2,
-
+   a_PG_F_CLIENT_ONCE_MODE = 1u<<2, /* -o */
+   a_PG_F_CLIENT_SHUTDOWN_MODE = 1u<<3, /* -. */
+   a_PG_F_MASTER_DELAY_PROGRESSIVE = 1u<<4, /* -p */
    a_PG_F_V = 1u<<6, /* Verbosity */
-   a_PG_F_VV = 1u<<7, /* xxx unused */
+   a_PG_F_VV = 1u<<7,
    a_PG_F_V_MASK = a_PG_F_V | a_PG_F_VV,
 
+   a_PG_F_SETUP_MASK = 0xFFu,
+
    /* */
-   a_PG_F_NOFREE_DEFER_MSG = 1u<<8,
-   a_PG_F_NOFREE_STORE_PATH = 1u<<9,
+   a_PG_F_TEST_ERRORS = 1u<<13,
+   a_PG_F_NOFREE_DEFER_MSG = 1u<<14,
+   a_PG_F_NOFREE_STORE_PATH = 1u<<15,
 
    /* Client */
    a_PG_F_CLIENT_NONE,
-   a_PG_F_CLIENT_ONCE_MODE = 1u<<16,
-   a_PG_F_CLIENT_SHUTDOWN_MODE = 1u<<17,
 
    /* Master */
    a_PG_F_MASTER_NONE = 0,
@@ -266,7 +270,7 @@ struct a_pg{
 };
 
 static char const a_sopts[] =
-      "4:6:" "A:a:B:b:" "c:D:d:G:g:L:l:" "t:" "R:" "s:" "m:"
+      "4:6:" "A:a:B:b:" "c:D:d:pG:g:L:l:" "t:" "R:" "s:" "m:"
       "o" "." "#" "vHh";
 static char const * const a_lopts[] = {
    "4-mask:;4;" N_("IPv4 mask to strip off addresses before match"),
@@ -280,6 +284,8 @@ static char const * const a_lopts[] = {
    "count:;c;" N_("of SMTP retries before accepting sender"),
    "delay-max:;D;" N_("until an email \"is not a retry\" but new (minutes)"),
    "delay-min:;d;" N_("before an email \"is a retry\" (minutes)"),
+   "delay-progressive;p;"
+      N_("double delay-min for each retry until count is reached"),
    "gc-rebalance:;G;" N_("of GC DB cleanup runs before rebalance"),
    "gc-timeout:;g;" N_("until unused gray DB entry is removed (minutes)"),
    "limit:;L;" N_("DB entries after which new ones are not handled"),
@@ -371,6 +377,11 @@ static void a_main_log_write(u32 lvl_a_flags, char const *msg, uz len);
 static void a_main_usage(FILE *fp);
 static boole a_main_dump_doc(up cookie, boole has_arg, char const *sopt,
       char const *lopt, char const *doc);
+
+#if a_DBGIF
+static void a_main_oncrash(int signo);
+static void a_main_oncrash__dump(up cookie, char const *buf, uz blen);
+#endif
 
 /* client {{{ */
 static s32
@@ -576,6 +587,9 @@ jblock:
          i = P2UZ(xcp++ - cp);
          lnr -= i + 1;
 
+         if(lnr == 0)
+            continue;
+
          if(i == sizeof("request") -1 &&
                !su_mem_cmp(cp, "request", sizeof("request") -1)){
             if(lnr != sizeof("smtpd_access_policy") -1 ||
@@ -628,7 +642,8 @@ jblock:
          }
       }
    }
-   if(rv == su_EX_OK && !feof(stdin))
+   if(rv == su_EX_OK && !feof(stdin) &&
+         !(pgp->pg_flags & a_PG_F_CLIENT_ONCE_MODE))
       rv = su_EX_IOERR;
 
    if(lnb != NIL)
@@ -664,12 +679,13 @@ a_client__req(struct a_pg *pgp){
    iov[4].iov_base = UNCONST(char*,su_empty);
    iov[4].iov_len = sizeof(su_empty[0]);
 
-   a_DBG( su_log_write(su_LOG_DEBUG,
-      "asking R=%u<%s> S=%u<%s> CA=%u<%s> CNAME=%u<%s>",
-      iov[0].iov_len -1, iov[0].iov_base,
-      iov[1].iov_len -1, iov[1].iov_base,
-      iov[2].iov_len -1, iov[2].iov_base,
-      iov[3].iov_len -1, iov[3].iov_base); )
+   if(pgp->pg_flags & a_PG_F_VV)
+      su_log_write(su_LOG_INFO,
+         "asking R=%u<%s> S=%u<%s> CA=%u<%s> CNAME=%u<%s>",
+         iov[0].iov_len -1, iov[0].iov_base,
+         iov[1].iov_len -1, iov[1].iov_base,
+         iov[2].iov_len -1, iov[2].iov_base,
+         iov[3].iov_len -1, iov[3].iov_base);
 
    iovp = iov;
    c = NELEM(iov);
@@ -917,7 +933,8 @@ jreavo:
       /* In long-option order */
       case '4': case '6':
       case 'A': case 'a': case 'F': case 'f':
-      case 'c': case 'D': case 'd': case 'G': case 'g': case 'L': case 'l':
+      case 'c': case 'D': case 'd': case 'p':
+         case 'G': case 'g': case 'L': case 'l':
       case 't':
       case 'R':
       case 'm':
@@ -1320,10 +1337,12 @@ a_server__cli_req(struct a_pg *pgp, u32 client, uz len){ /* {{{ */
 
       ASSERT(cp == &pgp->pg_buf[len -2]);
    }
-   a_DBG( su_log_write(su_LOG_DEBUG,
-      "client fd=%d bytes=%lu R=%u<%s> S=%u<%s> CA=%u<%s> CNAME=%u<%s>",
-      pgmp->pgm_cli_fds[client], S(ul,len), r_l, pgp->pg_r, s_l, pgp->pg_s,
-      ca_l, pgp->pg_ca, cn_l, pgp->pg_cname); )
+
+   if(pgp->pg_flags & a_PG_F_VV)
+      su_log_write(su_LOG_INFO,
+         "client fd=%d bytes=%lu R=%u<%s> S=%u<%s> CA=%u<%s> CNAME=%u<%s>",
+         pgmp->pgm_cli_fds[client], S(ul,len), r_l, pgp->pg_r, s_l, pgp->pg_s,
+         ca_l, pgp->pg_ca, cn_l, pgp->pg_cname);
 
    rv = a_PG_ANSWER_DUNNO;
    if(a_server__cli_lookup(pgp, &pgmp->pgm_white))
@@ -1369,7 +1388,7 @@ a_server__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwbp){ /* {{{ */
                (first || u.v != TRU1)){
             if(pgp->pg_flags & a_PG_F_V)
                su_log_write(su_LOG_INFO, "%s %sdomain: %s",
-                  me, (first ? su_empty : _("wildcard")), cp);
+                  me, (first ? su_empty : _("wildcard ")), cp);
             goto jleave;
          }
 
@@ -1908,8 +1927,8 @@ a_server__gray_lookup(struct a_pg *pgp, char const *key){ /* {{{ */
 
 jretry_nent:
       i = su_cs_dict_count(&pgmp->pgm_gray);
-      rv = (i >= pgp->pg_limit_delay) ? a_PG_ANSWER_DEFER_SLEEP
-            : a_PG_ANSWER_DEFER;
+      rv = (pgp->pg_limit_delay != 0 && i >= pgp->pg_limit_delay)
+            ? a_PG_ANSWER_DEFER_SLEEP : a_PG_ANSWER_DEFER;
 
       /* New entry may be disallowed */
       if(i < pgp->pg_limit){
@@ -1943,16 +1962,18 @@ jretry_nent:
    if(d & 0x80000000u){
       a_DBG( su_log_write(su_LOG_DEBUG, "gray up quick: %s", key); )
       ASSERT(rv == a_PG_ANSWER_DUNNO);
+      ASSERT(cnt == 0);
       goto jgray_set;
    }
 
    min = S(s16,d & U16_MAX);
-   cnt = S(u16,(d >> 16) & S16_MAX);
+   cnt = S(u16,(d >> 16) & S16_MAX) + 1;
 
    xmin = pgmp->pgm_epoch_min - min;
 
    /* Totally ignore it if not enough time passed */
-   if(xmin < pgp->pg_delay_min){
+   if(xmin < (pgp->pg_delay_min *
+         (pgp->pg_flags & a_PG_F_MASTER_DELAY_PROGRESSIVE ? cnt : 1))){
       a_DBG( su_log_write(su_LOG_DEBUG, "gray too soon: %s (%lu,%lu,%lu)",
          key, S(ul,min), S(ul,pgmp->pgm_epoch_min), S(ul,xmin)); )
       rv = a_PG_ANSWER_DEFER;
@@ -1967,14 +1988,13 @@ jretry_nent:
       cnt = 0;
    }
    /* If seen often enough wave through! */
-   else if(cnt + 1ul >= pgp->pg_count){
+   else if(cnt >= pgp->pg_count){
       a_DBG( su_log_write(su_LOG_DEBUG, "gray ok-to-go (%lu): %s",
-         S(ul,cnt + 1ul), key); )
+         S(ul,cnt), key); )
       ASSERT(rv == a_PG_ANSWER_DUNNO);
       d |= 0x80000000u;
    }else{
       rv = a_PG_ANSWER_DEFER;
-      ++cnt;
       a_DBG( su_log_write(su_LOG_DEBUG, "gray inc count=%lu: %s",
          S(ul,cnt), key); )
    }
@@ -2028,7 +2048,7 @@ static void
 a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
    NYD2_IN;
 
-   pgp->pg_flags &= ~S(uz,a_PG_F_V_MASK);
+   pgp->pg_flags &= ~S(uz,a_PG_F_SETUP_MASK);
 
    LCTAV(VAL_4_MASK <= 32);
    LCTAV(VAL_6_MASK <= 128);
@@ -2104,11 +2124,14 @@ a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
 
    /* */
    /* C99 */{
-      char const *em_arr[3], **empp = em_arr;
+      char const *em_arr[4], **empp = em_arr;
 
       if(pgp->pg_delay_min >= pgp->pg_delay_max)
          *empp++ = _("delay-min is >= delay-max\n");
-      if(pgp->pg_limit_delay >= pgp->pg_limit){
+      if((pgp->pg_flags & a_PG_F_MASTER_DELAY_PROGRESSIVE) &&
+            S(uz,pgp->pg_delay_min) * pgp->pg_count >= S(uz,pgp->pg_delay_max))
+         *empp++ = _("delay-progressive: delay-min*count is >= delay-max\n");
+      if(pgp->pg_limit_delay >= pgp->pg_limit)
          *empp++ = _("limit-delay is >= limit\n");
       *empp = NIL;
 
@@ -2117,7 +2140,9 @@ a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
             fprintf(stderr, "%s", *empp);
          else
             su_log_write(su_LOG_WARN, *empp);
-      }
+
+      if(empp != em_arr)
+         pgp->pg_flags |= a_PG_F_TEST_ERRORS;
    }
 
    NYD2_OU;
@@ -2134,6 +2159,7 @@ a_conf_list_values(struct a_pg *pgp){
       "count=%lu\n"
          "delay-max=%lu\n"
          "delay-min=%lu\n"
+         "%s"
          "gc-rebalance=%lu\n"
          "gc-timeout=%lu\n"
          "limit=%lu\n"
@@ -2144,6 +2170,8 @@ a_conf_list_values(struct a_pg *pgp){
       ,
       S(ul,pgp->pg_4_mask), S(ul,pgp->pg_6_mask),
       S(ul,pgp->pg_count), S(ul,pgp->pg_delay_max), S(ul,pgp->pg_delay_min),
+         (pgp->pg_flags & a_PG_F_MASTER_DELAY_PROGRESSIVE
+            ? "delay-progressive\n" : su_empty),
          S(ul,pgp->pg_gc_rebalance), S(ul,pgp->pg_gc_timeout),
          S(ul,pgp->pg_limit), S(ul,pgp->pg_limit_delay),
       S(ul,pgp->pg_server_timeout),
@@ -2207,20 +2235,17 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
                ) ? NIL : &pgp->pg_master->pgm_black));
       break;
 
-#define a_X(X) if(!(f & (a_PG_AVO_FULLER | a_PG_AVO_FULL))) break; X;
+   case 'D': p.i16 = &pgp->pg_delay_max; goto ji16;
+   case 'd': p.i16 = &pgp->pg_delay_min; goto ji16;
+   case 'p': pgp->pg_flags |= a_PG_F_MASTER_DELAY_PROGRESSIVE; break;
+   case 'G': p.i16 = &pgp->pg_gc_rebalance; goto ji16;
+   case 'g': p.i16 = &pgp->pg_gc_timeout; goto ji16;
 
-   case 'D': a_X(p.i16 = &pgp->pg_delay_max; goto ji16)
-   case 'd': a_X(p.i16 = &pgp->pg_delay_min; goto ji16)
-   case 'G': a_X(p.i16 = &pgp->pg_gc_rebalance; goto ji16)
-   case 'g': a_X(p.i16 = &pgp->pg_gc_timeout; goto ji16)
+   case 't': p.i16 = &pgp->pg_server_timeout; goto ji16;
 
-   case 't': a_X(p.i16 = &pgp->pg_server_timeout; goto ji16)
-
-   case 'c': a_X(p.i32 = &pgp->pg_count; goto ji32)
-   case 'L': a_X(p.i32 = &pgp->pg_limit; goto ji32)
-   case 'l': a_X(p.i32 = &pgp->pg_limit_delay; goto ji32)
-
-#undef a_X
+   case 'c': p.i32 = &pgp->pg_count; goto ji32;
+   case 'L': p.i32 = &pgp->pg_limit; goto ji32;
+   case 'l': p.i32 = &pgp->pg_limit_delay; goto ji32;
 
    case 'R': o = a_conf__R(pgp, arg, f); break;
 
@@ -2437,7 +2462,7 @@ jcname:
          /* xxx could use C++ dns hostname check */
          fprintf(stdout, "%s%c %s%s\n",
             me, (m == 0 ? '=' : '~'),
-            (m == 0 ? su_empty : "(.+\\.)?"), cp);
+            (m == 0 ? su_empty : "{*.,}"), cp);
       }
    }else{
       pgp->pg_cname = sip.cp;
@@ -2553,8 +2578,7 @@ a_conf__R(struct a_pg *pgp, char const *path,
    lnb = NIL;/* XXX lnb+lnl : su_cstr */
 
    if((fp = fopen(path, "r")) == NIL){
-      if(pgp->pg_flags & a_PG_F_TEST_MODE)
-         pgp->pg_flags |= a_PG_F_TEST_ERRORS;
+      pgp->pg_flags |= a_PG_F_TEST_ERRORS;
       mpv = su_err_no_by_errno();
       fprintf(stderr, _("Cannot open --resource-file %s: %s\n"),
          path, su_err_doc(mpv));
@@ -2579,6 +2603,7 @@ a_conf__R(struct a_pg *pgp, char const *path,
       while(lnr > 0 && su_cs_is_space(cp[lnr - 1]))
          cp[--lnr] = '\0';
 
+      /* Empty lines are ignored */
       if(lnr == 0)
          continue;
 
@@ -2586,7 +2611,8 @@ a_conf__R(struct a_pg *pgp, char const *path,
       /* In long-option order */
       case '4': case '6':
       case 'A': case 'a': case 'B': case 'b':
-      case 'c': case 'D': case 'd': case 'G': case 'g': case 'L': case 'l':
+      case 'c': case 'D': case 'd': case 'p':
+         case 'G': case 'g': case 'L': case 'l':
       case 't':
       case 'R':
       case 'm':
@@ -2600,9 +2626,10 @@ a_conf__R(struct a_pg *pgp, char const *path,
          break;
 
       default:
-         fprintf(stderr,
-            _("Option unknown or not usable in --resource-file: %s: %s\n"),
-            path, cp);
+         if(f & a_PG_AVO_FULL)
+            fprintf(stderr,
+               _("Option unknown or not usable in --resource-file: %s: %s\n"),
+               path, cp);
          if(pgp->pg_flags & a_PG_F_TEST_MODE){
             pgp->pg_flags |= a_PG_F_TEST_ERRORS;
             break;
@@ -2661,9 +2688,8 @@ a_norm_triple_r(struct a_pg *pgp){ /* XXX-3 should normalize addresses */
       ++r;
 
    cp = r;
+   cp += su_cs_len(cp);
 
-   while(*cp != '\0')
-      ++cp;
    while(cp > r && su_cs_is_space(cp[-1]))
       --cp;
    *cp = '\0';
@@ -2706,9 +2732,8 @@ a_norm_triple_s(struct a_pg *pgp){ /* XXX-3 should normalize addresses */
       ++s;
 
    cp = s;
+   cp += su_cs_len(cp);
 
-   while(*cp != '\0')
-      ++cp;
    while(cp > s && su_cs_is_space(cp[-1]))
       --cp;
    *cp = '\0';
@@ -2739,6 +2764,7 @@ a_norm_triple_s(struct a_pg *pgp){ /* XXX-3 should normalize addresses */
    }
 
    /* "Normalize" domain */
+   ASSERT(*cp != '\0');
    d = ++cp;
    while((c = *cp) != '\0')
       *cp++ = S(char,su_cs_to_lower(c));
@@ -2769,9 +2795,8 @@ a_norm_triple_ca(struct a_pg *pgp){
       ++cp;
 
    ca = cp;
+   cp += su_cs_len(cp);
 
-   while(*cp != '\0')
-      ++cp;
    while(cp > ca && su_cs_is_space(cp[-1]))
       --cp;
    *cp = '\0';
@@ -2847,9 +2872,8 @@ a_norm_triple_cname(struct a_pg *pgp){
       ++cn;
 
    cp = cn;
+   cp += su_cs_len(cp);
 
-   while(*cp != '\0')
-      ++cp;
    while(cp > cn && su_cs_is_space(cp[-1]))
       --cp;
    *cp = '\0';
@@ -2957,6 +2981,64 @@ a_main_dump_doc(up cookie, boole has_arg, char const *sopt, char const *lopt,
    NYD2_OU;
    return TRU1;
 }
+
+#if a_DBGIF
+static void
+a_main_oncrash(int signo){
+   char s2ibuf[32], *cp;
+   int fd;
+   uz i;
+
+   su_nyd_set_disabled(TRU1);
+
+   if((fd = open(a_NYD_FILE, O_WRONLY | O_CREAT | O_EXCL, 0666)) == -1)
+      fd = STDERR_FILENO;
+
+# undef _X
+# define _X(X) X, sizeof(X) -1
+
+   write(fd, _X("\n\nNYD: program dying due to signal "));
+
+   cp = &s2ibuf[sizeof(s2ibuf) -1];
+   *cp = '\0';
+   i = signo;
+   do{
+      *--cp = "0123456789"[i % 10];
+      i /= 10;
+   }while(i != 0);
+   write(fd, cp, P2UZ(&s2ibuf[sizeof(s2ibuf) -1] - cp));
+
+   write(fd, _X(":\n"));
+
+   su_nyd_dump(&a_main_oncrash__dump, S(uz,S(u32,fd)));
+
+   write(fd, _X("-----\nCome up to the lab and see what's on the slab\n"));
+
+   /* C99 */{
+      struct sigaction xact;
+      sigset_t xset;
+
+      xact.sa_handler = SIG_DFL;
+      sigemptyset(&xact.sa_mask);
+      xact.sa_flags = 0;
+      sigaction(signo, &xact, NIL);
+
+      sigemptyset(&xset);
+      sigaddset(&xset, signo);
+      sigprocmask(SIG_UNBLOCK, &xset, NIL);
+
+      kill(getpid(), signo);
+
+      for(;;)
+         _exit(su_EX_ERR);
+   }
+}
+
+static void
+a_main_oncrash__dump(up cookie, char const *buf, uz blen){
+   write(S(int,cookie), buf, blen);
+}
+#endif /* a_DBGIF */
 /* }}} */
 
 int
@@ -2973,6 +3055,16 @@ main(int argc, char *argv[]){ /* {{{ */
          (mpv ? (0 /*| su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID*/)
             : (su_STATE_LOG_SHOW_PID | su_STATE_REPRODUCIBLE))),
       su_STATE_ERR_NOPASS);
+
+#if a_DBGIF
+   signal(SIGABRT, &a_main_oncrash);
+#  ifdef SIGBUS
+   signal(SIGBUS, &a_main_oncrash);
+#  endif
+   signal(SIGFPE, &a_main_oncrash);
+   signal(SIGILL, &a_main_oncrash);
+   signal(SIGSEGV, &a_main_oncrash);
+#endif
 
    STRUCT_ZERO(struct a_pg, &pg);
    a_conf_setup(&pg, a_PG_AVO_NONE);
@@ -3000,7 +3092,8 @@ jreavo:
 
       case '4': case '6':
       case 'A': case 'a': case 'B': case 'b':
-      case 'c': case 'D': case 'd': case 'G': case 'g': case 'L': case 'l':
+      case 'c': case 'D': case 'd': case 'p':
+         case 'G': case 'g': case 'L': case 'l':
       case 't':
       case 'R':
       case 'm':

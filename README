@@ -79,7 +79,7 @@ s-cdda-to-db.pl (manual in s-cdda-to-db.1; s-cdda-to-db.makefile) v0.8.0:
                The latter roots in old habits originating in perl(1) evolution
                problems  Y2K2-3 (5.8.0 and 5.8.1).   Time to move on: v0.8.0.
 
-s-postgray.c (plus support):
+s-postgray.c (plus support) v0.5.0:
    postfix(1) graylisting policy daemon.  See its manual for more.
 
 You likely do not wanna know:
