@@ -35,10 +35,10 @@ VAL_SERVER_TIMEOUT = 30
 
 ##
 
-SULIB = -lsu-dvldbg#-asan
+SULIB = -lsu#-dvldbg#-asan
 SUFLVLC=#-std=c89
-SUFOPT=-O1 -g
-#SUFOPT=-O2
+#SUFOPT=-O1 -g -Dsu_HAVE_DEVEL -Dsu_HAVE_DEBUG
+SUFOPT=-O2
 
 ## >8 -- 8<
 

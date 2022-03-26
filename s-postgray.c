@@ -19,7 +19,7 @@
  *@ - We could add more overall statistics (that many DUNNO .. etc).
  *@ - XXX-ARGS May want to do parsing like in first draft: just parse it :),
  *@   keep [AaBb] in an allocated list, parse that in server or in --test-mode.
- *@   Currently -R is parsed two times.
+ *@   Currently -R is parsed two times.  (I messed it now it is weird.)
  *
  * Copyright (c) 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -130,9 +130,11 @@
 #include <su/path.h>
 #include <su/time.h>
 
-/*#define NYDPROF_ENABLE*/
-/*#define NYD_ENABLE*/
-/*#define NYD2_ENABLE*/
+#if a_DBGIF
+/*# define NYDPROF_ENABLE*/
+# define NYD_ENABLE
+# define NYD2_ENABLE
+#endif
 #include "su/code-in.h"
 
 /* defines, enums, types, rodata, bss {{{ */
@@ -575,7 +577,7 @@ jblock:
          uz i;
          char *xcp;
 
-         seen_any |= (lnr > 0);
+         seen_any = TRU1;
 
          if(!use_this)
             continue;
@@ -2613,6 +2615,7 @@ a_conf__R(struct a_pg *pgp, char const *path,
       mpv = su_err_no_by_errno();
       fprintf(stderr, _("Cannot open --resource-file %s: %s\n"),
          path, su_err_doc(mpv));
+      mpv = -mpv;
       goto jleave;
    }
 
@@ -2650,10 +2653,8 @@ a_conf__R(struct a_pg *pgp, char const *path,
       case 'm':
       case 'v':
          if((mpv = a_conf__arg(pgp, mpv, avo.avo_current_arg, f)) < 0 &&
-               !(pgp->pg_flags & a_PG_F_TEST_MODE)){
-            mpv = -mpv;
+               !(pgp->pg_flags & a_PG_F_TEST_MODE))
             goto jleave;
-         }
          break;
 
       default:
@@ -2665,7 +2666,7 @@ a_conf__R(struct a_pg *pgp, char const *path,
             pgp->pg_flags |= a_PG_F_TEST_ERRORS;
             break;
          }
-         mpv = su_EX_USAGE;
+         mpv = -su_EX_USAGE;
          goto jleave;
       }
    }
@@ -2770,24 +2771,26 @@ a_norm_triple_s(struct a_pg *pgp){ /* XXX-3 should normalize addresses */
    *cp = '\0';
 
    cp = s;
+   ue = NIL;
 
    /* Skip over local-part.
     * XXX-1 We take anything to the first VERP delimiter or start of domain
     * XXX-2 We also assume VERP does things like
     *    dev-commits-src-all+bounces-6241-steffen=sdaoden.eu@FreeBSD.org
     *    owner-source-changes+M161144=steffen=sdaoden.eu@openbsd.org
-    * that is, numeric IDs etc after the VERP delimiter: do not care */
-   for(ue = NIL;; ++cp){
+    * that is, numeric IDs etc after the VERP delimiter: do not care.
+    * Note openwall (ezmlm)
+    *    oss-security-return-27633-steffen=sdaoden.eu@lists.openwall.com
+    * It is not possible to deal with that but on a per-message base.
+    */
+   for(;; ++cp){
       if((c = *cp) == '\0'){
          s = NIL;
          goto jleave;
       }
 
-      if(c == '@'){
-         if(ue == NIL)
-            ue = cp;
+      if(c == '@')
          break;
-      }
       if(c == '+' || c == '='){
          if(ue == NIL)
             *(ue = cp) = '@';
@@ -2801,9 +2804,11 @@ a_norm_triple_s(struct a_pg *pgp){ /* XXX-3 should normalize addresses */
       *cp++ = S(char,su_cs_to_lower(c));
 
    /* Now fill the hole */
-   if(d < cp)
-      su_mem_copy(&ue[1], d, P2UZ(++cp - d));
-   else
+   if(d < cp){
+      /* To avoid overzealous fortify implementations, use _move() */
+      if(ue != NIL)
+         su_mem_move(&ue[1], d, P2UZ(++cp - d));
+   }else
       s = NIL;
 
 jleave:
@@ -3199,9 +3204,9 @@ jlv:
    }
 
 jleave:
-   if(!(pg.pg_flags & a_PG_F_NOFREE_DEFER_MSG))
+   if(!(pg.pg_flags & a_PG_F_NOFREE_DEFER_MSG) && pg.pg_defer_msg != NIL)
       su_FREE(UNCONST(char*,pg.pg_defer_msg));
-   if(!(pg.pg_flags & a_PG_F_NOFREE_STORE_PATH))
+   if(!(pg.pg_flags & a_PG_F_NOFREE_STORE_PATH) && pg.pg_store_path != NIL)
       su_FREE(C(char*,pg.pg_store_path));
 
    su_state_gut(mpv == su_EX_OK
