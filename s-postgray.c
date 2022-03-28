@@ -64,24 +64,8 @@
  * Together with --limit-delay this forms a barrier against limit excess */
 #define a_DB_CLEANUP_MIN_DELAY (1 * su_TIME_HOUR_MINS)
 
-/* The default built-in defer message.
- * Use RFC 1893 extended status code, just in case it matters:
- *    4.X.X Persistent Transient Failure
- *    x.2.X Mailbox Status
- *    X.2.0 Other or undefined mailbox status
- * Or (@vger.kernel.org used 451 4.7.1)
- *    x.7.X Security or Policy Status
- *    x.7.0 Other or undefined security status
- *    x.7.1 Delivery not authorized, message refused
- *          [Note:] This is useful only as a permanent error.
- * P.S.: on emailcore@ietf.org 63A85DB56EF53CDF75DDC353@PSB read
- *    I think the A/S probably should say something about enhanced status
- *    codes.  What it could say (carefully avoiding 2119/8174 terminology
- *    for the moment) could be anything from "these seemed like a good idea
- *    at the time but they are not being widely enough supported to be
- *    useful" [..] */
-#define a_DEFER_MSG \
-   "DEFER_IF_PERMIT 4.2.0 Service temporarily faded to Gray"
+/* The default built-in defer message (see manual) */
+#define a_DEFER_MSG "DEFER_IF_PERMIT 4.2.0 Service temporarily faded to Gray"
 
 /* When hitting limit, new entries are delayed that long */
 #define a_LIMIT_DELAY_SECS 1 /* xxx configurable? */
@@ -92,7 +76,7 @@
 /* */
 #define a_DBGIF 0
 #define a_DBG(X)
-#define a_DBG2(X) /* TODO more of those */
+#define a_DBG2(X)
 #define a_NYD_FILE "/tmp/" VAL_NAME ".dat"
 
 /* -- >8 -- 8< -- */
@@ -278,10 +262,10 @@ static char const * const a_lopts[] = {
    "4-mask:;4;" N_("IPv4 mask to strip off addresses before match"),
    "6-mask:;6;" N_("IPv6 mask to strip off addresses before match"),
 
-   "allow-file:;A;" N_("load a file of whitelist entries (order matters)"),
-   "allow:;a;" N_("add domain/address/CIDR to whitelist (order matters)"),
-   "block-file:;B;" N_("load a file of blacklist entries (order matters)"),
-   "block:;b;" N_("add domain/address/CIDR to blacklist (order matters)"),
+   "allow-file:;A;" N_("load a file of whitelist entries"),
+   "allow:;a;" N_("add domain/address/CIDR to whitelist"),
+   "block-file:;B;" N_("load a file of blacklist entries"),
+   "block:;b;" N_("add domain/address/CIDR to blacklist"),
 
    "count:;c;" N_("of SMTP retries before accepting sender"),
    "delay-max:;D;" N_("until an email \"is not a retry\" but new (minutes)"),
@@ -967,7 +951,7 @@ jreavo:
    su_cs_dict_balance(&pgmp->pgm_black.pgwb_ca);
    su_cs_dict_balance(&pgmp->pgm_black.pgwb_cname);
 
-   if(pgp->pg_flags & a_PG_F_VV)
+   if(reset && (pgp->pg_flags & a_PG_F_VV))
       su_log_write(su_LOG_INFO, "reloaded configuration");
 
    rv = su_EX_OK;
@@ -1383,7 +1367,7 @@ a_server__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwbp){ /* {{{ */
    /* */
    if(su_cs_dict_has_key(&pgwbp->pgwb_ca, pgp->pg_ca)){
       if(pgp->pg_flags & a_PG_F_V)
-         su_log_write(su_LOG_INFO, "%s address: %s", me, pgp->pg_ca);
+         su_log_write(su_LOG_INFO, "### %s address: %s", me, pgp->pg_ca);
       goto jleave;
    }
 
@@ -1397,7 +1381,7 @@ a_server__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwbp){ /* {{{ */
          if((u.p = su_cs_dict_lookup(&pgwbp->pgwb_cname, cp)) != NIL &&
                (first || u.v != TRU1)){
             if(pgp->pg_flags & a_PG_F_V)
-               su_log_write(su_LOG_INFO, "%s %sdomain: %s",
+               su_log_write(su_LOG_INFO, "### %s %sdomain: %s",
                   me, (first ? su_empty : _("wildcard ")), cp);
             goto jleave;
          }
@@ -1458,7 +1442,7 @@ a_server__cli_lookup(struct a_pg *pgp, struct a_pg_wb *pgwbp){ /* {{{ */
 
             if(++i == max){
                if(pgp->pg_flags & a_PG_F_V)
-                  su_log_write(su_LOG_INFO, "%s wildcard address: %s",
+                  su_log_write(su_LOG_INFO, "### %s wildcard address: %s",
                      me, pgp->pg_ca);
                goto jleave;
             }
@@ -2044,8 +2028,8 @@ jretry_ins:
 
 jleave:
    if(pgp->pg_flags & a_PG_F_V)
-      su_log_write(su_LOG_INFO, "gray (defer=%d): %s",
-         (rv != a_PG_ANSWER_DUNNO), key);
+      su_log_write(su_LOG_INFO, "### gray (defer=%d, count=%lu): %s",
+         (rv != a_PG_ANSWER_DUNNO), S(ul,cnt), key);
 
    NYD_OU;
    return rv;

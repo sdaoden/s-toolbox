@@ -15,8 +15,8 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd March 25, 2022
-.ds VV \\%v0.5.0
+.Dd March 29, 2022
+.ds VV \\%v0.6.0
 .
 .Dt S-POSTGRAY 8
 .Os
@@ -84,32 +84,80 @@ A synchronized server
 can be enforced, or an asynchronous termination by sending the server a
 .Ql SIGTERM
 signal.
-A configuration example; in
-.Xr postfix 1 Ns s
-.Pa main.cf :
+An excessively lengthly configuration example:
 .
 .Bd -literal -offset indent
+#@ /etc/postfix/master.cf:
+\&...
+
+postgray unix - n n - - spawn
+  user=ANON-USR argv=/usr/libexec/s-postgray -vvR /etc/postgray.rc
+
+\&...
+
+#@ /etc/postfix/main.cf:
+\&...
+
 default_privs = ANON-USR
 
-# RCPT TO checks, spam blocking policy (assumes
-# reject_unauth_destination part of smtpd_relay_restrictions)
+# Clients connection checks
+smtpd_client_restrictions =
+   permit_mynetworks,
+#RELAY   permit_tls_clientcerts,
+#[RELAY]  permit_sasl_authenticated,
+   reject_unknown_client_hostname,
+   reject_unauth_pipelining,
+   permit
+
+smtpd_data_restrictions =
+   reject_unauth_pipelining,
+   permit
+
+smtpd_helo_restrictions =
+   permit_mynetworks,
+#RELAY   permit_tls_clientcerts,
+#[RELAY]  permit_sasl_authenticated,
+   reject_invalid_helo_hostname,
+   reject_non_fqdn_helo_hostname,
+   reject_unknown_helo_hostname
+
+# MAIL FROM Checks
+smtpd_sender_restrictions =
+   permit_mynetworks,
+#RELAY   permit_tls_clientcerts,
+#[RELAY]  permit_sasl_authenticated,
+    # Total no-goes database, eg: qq.com reject
+#   check_sender_access lmdb:/etc/postfix/sender_restrict,
+   reject_unknown_sender_domain,
+   permit
+
+smtpd_relay_before_recipient_restrictions = yes
+
+# RCPT TO checks, relay policy
+# Local+auth clients may specify any destination domain
+smtpd_relay_restrictions =
+   permit_mynetworks,
+#RELAY   permit_tls_clientcerts,
+#[RELAY]  permit_sasl_authenticated,
+   reject_non_fqdn_sender,
+   reject_non_fqdn_recipient,
+   reject_unauth_destination,
+   permit
+
+# RCPT TO checks, spam blocking policy
 smtpd_recipient_restrictions =
   permit_mynetworks,
+#RELAY   permit_tls_clientcerts,
+#[RELAY]  permit_sasl_authenticated,
   reject_unknown_sender_domain,
   reject_unknown_reverse_client_hostname,
+  reject_unknown_recipient_domain,
   check_policy_service unix:private/postgray
   permit
+
+\&...
 .Ed
 .
-.Pp
-And in the
-.Pa master.cf
-(user is just an example):
-.
-.Bd -literal -offset indent
-postgray unix - n n - - spawn
-  user=ANON-USR argv=/usr/libexec/s-postgray -R /etc/postgray.rc
-.Ed
 .
 .Ss "Options"
 .
@@ -151,35 +199,61 @@ Empty lines are ignored.
 .
 .Mx Fl allow
 .It Fl Fl allow Ar spec , Fl a Ar spec
-Add a domain name, or an IPv4 or IPv6 internet address (optionally in
-RFC 1519 CIDR notation), to the list of allowed clients (whitelist).
+Add a domain name or an IPv4 or IPv6 internet address, optionally in
+RFC 1519 CIDR notation with network mask, to the list of allowed
+clients (whitelist).
 Domain names are matched exactly unless the first character is a period
 .Ql \&. ,
 in which case the given domain and all its subdomains will match.
-IP addresses (mostly) define an exact match unless a CIDR notation has
-been used which defines an address range.
-Mostly only, because
+For IP addresses the global masks
 .Fl Fl 4-mask
 and
 .Fl Fl 6-mask
-always kick in on top.
+normalize the given address (range) if applicable.
+All constructs are matched via dictionary, except for CIDR ranges with
+masks smaller than the global ones, they are matched in the given order.
 .Bd -literal -offset indent
 exact.match
 also.exact.match
 
 # This matches d.a.s but also a.b.c.d.a.s
-\&.d.a.s	 
+\&.d.a.s
 
 # with --4-mask=24 this really is 127.0.0.0/24!
-127.0.0.1 
-
-# with --6-mask=64 nonetheless 2a03:2880:20:4f00::/56
-2a03:2880:20:4f06:face:b00c:0:14/56       
+127.0.0.1
 
 # with --6-mask=64 really 2a03:2880:20:6f06::/64
 # instead of 2a03:2880:20:6f06:c000::/66!
-2a03:2880:20:6f06:face:b00c:0:14/66	
+2a03:2880:20:6f06:face:b00c:0:14/66
+
+# with --6-mask=64 nonetheless 2a03:2880:20:4f00::/56
+2a03:2880:20:4f06:face:b00c:0:14/56
 .Ed
+.Pp
+If whitelisting is really performed that late in the processing chain
+it should include all big players and all normally expected endpoints;
+it may be useful to run for a few days with a low or even 0
+.Fl Fl count
+and inspect the gray DB in order to fill in the white list.
+Some MTAs are picky, so driving for a while with a low count and in
+.Fl Fl verbose
+mode to collect more data before increasing count etc. is worthwile.
+.Pp
+It should be noted that
+.Nm
+only understands the two VERP (variable envelope return path addresses)
+delimiters plus sign
+.Ql +
+and equal sign
+.Ql = .
+Mailing list software which chooses the hyphen-minus
+.Ql -
+as a VERP delimiter (ezmlm instances are known which do) take
+a particularly bad choice because many mailing-lists have a hyphen-minus
+as a regular part of their name, so no automatic differentiation in
+between the customized address part and the regular address is possible:
+such addresses can only be placed in the whitelist, otherwise each and
+every received message will be gray listed.
 .
 .Mx Fl block-file
 .It Fl Fl block-file Ar path , Fl B Ar path
@@ -222,7 +296,7 @@ is reached.
 Number of DB GC runs before rebalancing occurs.
 Value 0 turns rebalancing off.
 Rebalancing only affects shrinking of the dictionary table,
-is is grown automatically as necessary, so a carefully chosen
+it is grown automatically as necessary, so a carefully chosen
 .Fl Fl limit
 may render rebalancing undesired.
 .
@@ -311,13 +385,6 @@ x.7.1 Delivery not authorized, message refused
       This is useful only as a permanent error.
 .Ed
 .
-.Mx Fl list-values
-.It Fl Fl list-values
-Show the values of the above at the current point of command line
-argument processing, then exit.
-Note errors may not show up, for checks use
-.Fl Fl test-mode .
-.
 .Mx Fl once
 .It Fl Fl once , Fl o
 If given the client part will only process one message.
@@ -338,10 +405,8 @@ Enable test mode: all options are evaluated, including
 and
 .Fl Fl block
 which are normally processed by only the server.
-Once the command line is worked, a listing of all white- and blacklists
-as well as the normal
-.Fl Fl list-values
-output is produced.
+Once the command line is worked the content of all white- and blacklists
+is shown as well as the final settings of above variables.
 The exit status indicates error.
 It is highly recommendet to use this for configuration checks.
 .
