@@ -38,10 +38,9 @@ pwd=$(pwd) || exit 3
 
 ### First of all fetch+adjust compile time defaults, create some resources {{{
 
-$PG --list-values > ./def || exit 4
+$PG --test-mode > ./def || exit 4
 PGX="$PG --store-path='$pwd' --defer-msg='$DEFER_MSG'"
 PGx="$PG -s'$pwd' -m '$DEFER_MSG'"
-LV=--list-values
 
 __xsleep=
 if ( sleep .1 ) >/dev/null 2>&1; then
@@ -56,13 +55,13 @@ fi
 
 echo '=def: calibration=' # {{{
 
-eval $PGX $LV > ./tdef1 || exit 1
+eval $PGX -# > ./tdef1 || exit 1
 sed '/^store-path/,$d' < def > ./defx || exit 2
 echo 'store-path='"$pwd"'' >> ./defx
 echo 'defer-msg='"$DEFER_MSG" >> ./defx
 cmp -s tdef1 defx || exit 3
 
-eval $PGx $LV > ./tdef2 || exit 4
+eval $PGx -# > ./tdef2 || exit 4
 cmp -s tdef2 defx || exit 5
 
 echo '=def: shutdown request without server='
@@ -129,9 +128,9 @@ adj_def() {
 t() {
    t=$1 o=$2 v=$3
    shift 3
-   eval "$PGX" "$@" "$LV" > ./$t $REDIR; adj_def $o $v $t || exit $?
+   eval "$PGX" "$@" -# > ./$t $REDIR; adj_def $o $v $t || exit $?
    [ -n "$REDIR" ] || echo ok $t
-   eval "$PGX" -R ./defx "$@" "$LV" > ./$t.2 $REDIR;\
+   eval "$PGX" -R ./defx "$@" -# > ./$t.2 $REDIR;\
       adj_def $o $v $t.2 || exit $?
    eval $PGx --shutdown $REDIR
    [ $? -eq 75 ] || exit 101
@@ -195,7 +194,7 @@ server-timeout=9
 #comment3
 _EOT
 
-eval $PGX -R 2.rc1 -t 10 $LV > ./2.0 $REDIR
+eval $PGX -R 2.rc1 -t 10 -# > ./2.0 $REDIR
    adj_def 2.0 \
       4-mask 31 6-mask 127 \
       count 3 \

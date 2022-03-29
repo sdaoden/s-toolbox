@@ -1,0 +1,35 @@
+S - p o s t g r a y
+===================
+
+A postfix RFC 6647 graylisting policy server.
+Please see the manual for more.
+
+To build this software simply run "make install".  At the top of the
+makefile there are some variables, they can be overwritten from the
+command line:
+
+   $ make DESTDIR=.xxx PREFIX=/usr LIBEXEC=sbin \
+      VAL_STORE_PATH=/var/lib/postfix \
+      install
+
+This will build and install the binary under [.xxx]/usr/sbin, and the
+default built-in path for database storage and the client/server
+communication socket will be /var/lib/postfix.
+
+NOTE
+----
+
+The test script *may* fail on slow systems: in order not to take
+too long it uses very narrow time limits, and on slow systems errors
+can happen (in particular 5.9).  Since this only has been seen on an
+elder OpenBSD KVM on Linux kernel 5.15 with PREEMPT=y (shall that
+matter) it was decided not to change the entire test timings.
+
+P.S.
+----
+
+For now the build system is rudimentary.  Either it works, then
+the software should, too, or it will not.  This will surely change in
+the future.
+
+# s-ts-mode

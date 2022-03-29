@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd March 29, 2022
+.Dd March 30, 2022
 .ds VV \\%v0.6.0
 .
 .Dt S-POSTGRAY 8
@@ -35,9 +35,6 @@
 .Nm
 .Op options
 .Fl Fl shutdown
-.Nm
-.Op options
-.Fl Fl list-values
 .Nm
 .Op options
 .Fl Fl test-mode
@@ -84,14 +81,15 @@ A synchronized server
 can be enforced, or an asynchronous termination by sending the server a
 .Ql SIGTERM
 signal.
-An excessively lengthly configuration example:
+An excessively lengthy configuration example:
 .
 .Bd -literal -offset indent
 #@ /etc/postfix/master.cf:
 \&...
 
 postgray unix - n n - - spawn
-  user=ANON-USR argv=/usr/libexec/s-postgray -vvR /etc/postgray.rc
+  user=ANON-USR
+  argv=/usr/libexec/s-postgray -vvR /etc/postgray.rc -c 0
 
 \&...
 
@@ -167,10 +165,7 @@ and only a (logical) subset of the following options.
 The minute limit is 32767 (15-bit), the maximum duration is thus 22 days.
 Other numbers have a limit of 31-bit (2147483647).
 .Fl Fl test-mode
-performs a dry-run configuration syntax test.
-All values have compile-time built-in defaults,
-.Fl Fl list-values
-shows settings at this point in the command line option list, and exits.
+performs a dry-run configuration syntax test, and virtualizes it.
 In the following DB means database, and GC garbage collection.
 .
 .Bl -tag -width ".It Fl BaNg"
@@ -227,6 +222,7 @@ also.exact.match
 2a03:2880:20:6f06:face:b00c:0:14/66
 
 # with --6-mask=64 nonetheless 2a03:2880:20:4f00::/56
+# This will _not_ be matched by dictionary but in order
 2a03:2880:20:4f06:face:b00c:0:14/56
 .Ed
 .Pp
@@ -234,10 +230,10 @@ If whitelisting is really performed that late in the processing chain
 it should include all big players and all normally expected endpoints;
 it may be useful to run for a few days with a low or even 0
 .Fl Fl count
-and inspect the gray DB in order to fill in the white list.
+and inspect the log order to fill in the white list.
 Some MTAs are picky, so driving for a while with a low count and in
 .Fl Fl verbose
-mode to collect more data before increasing count etc. is worthwile.
+mode to collect more data before increasing count etc. is worthwhile.
 .Pp
 It should be noted that
 .Nm
@@ -253,7 +249,7 @@ a particularly bad choice because many mailing-lists have a hyphen-minus
 as a regular part of their name, so no automatic differentiation in
 between the customized address part and the regular address is possible:
 such addresses can only be placed in the whitelist, otherwise each and
-every received message will be gray listed.
+every received message will be graylisted.
 .
 .Mx Fl block-file
 .It Fl Fl block-file Ar path , Fl B Ar path
@@ -268,6 +264,11 @@ Add a blacklist entry, syntax identical to
 .Mx Fl count
 .It Fl Fl count Ar no , Fl c Ar no
 Number of SMTP message delivery retries before it is accepted.
+The special value 0 will accept messages immediately, and change the
+behaviour of some other settings, like
+.Fl Fl limit-delay ;
+it may be useful when setting up the configuration and the whitelist.
+(Once regular usage begins that DB should possibly be removed.)
 .
 .Mx Fl delay-max
 .It Fl Fl delay-max Ar mins , Fl D Ar mins
@@ -285,7 +286,7 @@ Those which come sooner do not increment
 .
 .Mx Fl delay-progressive
 .It Fl Fl delay-progressive , Fl p
-If set each retry doubles
+If set each counted retry doubles
 .Fl Fl delay-min
 for the next one until
 .Fl Fl count
@@ -312,7 +313,7 @@ performed, but GC happens due to circumstances, too.
 Number of DB entries until new ones are not handled,
 effectively turning them into whitelist members.
 Data is stored compact, and the size depends on email message data,
-but accounting 100 bytes per entry might be a guideline.
+but accounting say 128 bytes per entry might be a guideline.
 In addition the dictionary table resides in one large contiguous memory
 chunk, accounting 1 MB per 10000000 entries may be proper.
 .
@@ -329,6 +330,9 @@ By choosing the right settings for
 and
 .Fl Fl gc-timeout ,
 it should be impossible to reach the graylist bypass limit.
+Note this is not honoured if
+.Fl Fl count
+is 0.
 .
 .Mx Fl server-queue
 .It Fl Fl server-queue Ar no , Fl q Ar no
@@ -346,20 +350,23 @@ The value 0 disables auto-termination.
 .
 .Mx Fl resource-file
 .It Fl Fl resource-file Ar path , Fl R Ar path
-.Pa path
-to a configuration file with long options.
+A configuration file with long options.
 Each line forms an entry, leading and trailing whitespace is removed.
 If thereafter the first character is the number-sign
 .Ql #
 the line is a comment and discarded.
 Empty lines are ignored.
+The server parses the configuration a second time, and from within
+.Fl Fl store-path !
 .
 .Mx Fl store-path
 .It Fl Fl store-path Ar path , Fl s Ar path
+An accessible
 .Pa path
-to a directory where the DB and the server/client communication socket
+to which
+.Nm
+will change, and where the DB and the server/client communication socket
 will be created.
-The server will change its current to this directory.
 This setting cannot be changed at runtime.
 .
 .Mx Fl defer-msg
@@ -415,7 +422,11 @@ It is highly recommendet to use this for configuration checks.
 Increase log verbosity (two levels).
 This might be of interest to improve configuration of
 .Nm ,
-for example it will log how long it takes to save and load the DB.
+for example data suitable for
+.Fl Fl allow
+and
+.Fl Fl block
+is logged, as is the time necessary to save and load the DB.
 .
 .Mx Fl long-help
 .It Fl Fl long-help , Fl H

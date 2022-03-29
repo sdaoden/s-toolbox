@@ -3,7 +3,7 @@
 #@ NOTE: for now requires bundled SU tools that are part of S-nail!!
 
 DESTDIR =
-PREFIX = /usr
+PREFIX = /usr/local
 
 # What is "libexec"?  ("sbin" maybe not?)
 LIBEXEC = libexec
@@ -12,7 +12,7 @@ LIBEXEC = libexec
 # Must be writable by the spawn(8) defined user/group.
 VAL_STORE_PATH = /var/lib/postfix-lmdb
 
-# Our name
+# Our name (test script and manual do not adapt!)
 VAL_NAME = s-postgray
 
 ##
@@ -22,7 +22,7 @@ VAL_4_MASK = 24
 VAL_6_MASK = 64
 
 # ..; NIL for DEFER_MSG means the builtin default (also see manual)
-VAL_COUNT = 3
+VAL_COUNT = 2
 VAL_DEFER_MSG = NIL
 VAL_DELAY_MAX = 300
 VAL_DELAY_MIN = 5
@@ -35,10 +35,11 @@ VAL_SERVER_TIMEOUT = 30
 
 ##
 
-SULIB = -lsu#-dvldbg#-asan
+SULIB = -lsu-dvldbg#-asan
 SUFLVLC=#-std=c89
-#SUFOPT=-O1 -g -Dsu_HAVE_DEVEL -Dsu_HAVE_DEBUG
-SUFOPT=-O2
+SUFOPT=-O1 -g -Dsu_HAVE_DEVEL -Dsu_HAVE_DEBUG
+#SUFOPT=-O2
+SUFS=-fPIE -fstack-protector-strong -D_FORTIFY_SOURCE=2 #-fsanitize=address
 
 ## >8 -- 8<
 
@@ -60,12 +61,11 @@ SUFW=-W -Wall -pedantic \
 	-fno-common \
 	-fstrict-aliasing -fstrict-overflow \
 
-SUFS=-fPIE #-fstack-protector-strong -D_FORTIFY_SOURCE=2 #-fsanitize=address
-
 CFLAGS+=$(SUFLVLC) $(SUFW) $(SUFS) $(SUFOPT)
 
 LDFLAGS+=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
-	-Wl,--enable-new-dtags -fpie
+	-Wl,--enable-new-dtags \
+	-fpie
 
 CC = cc
 INSTALL = install
