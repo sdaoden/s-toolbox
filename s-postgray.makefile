@@ -35,16 +35,21 @@ VAL_SERVER_TIMEOUT = 30
 
 ##
 
-SULIB = -lsu-dvldbg#-asan
+#SULIB=$(SULIB_TARGET)
+SULIB=-lsu-dvldbg#-asan
+SULIB_BLD=#$(SULIB_TARGET)
 SUFLVLC=#-std=c89
-SUFOPT=-O1 -g -Dsu_HAVE_DEVEL -Dsu_HAVE_DEBUG
-#SUFOPT=-O2
-SUFS=-fPIE -fstack-protector-strong -D_FORTIFY_SOURCE=2 #-fsanitize=address
+SUFOPT=-O1 -g -Dsu_HAVE_DEVEL -Dsu_HAVE_DEBUG #-I./include
+#SUFOPT=-O2 #-I./include
+SUFS=-fPIE -fstack-protector-strong #-D_FORTIFY_SOURCE=2 #-fsanitize=address
+STRIP=#strip
 
 ## >8 -- 8<
 
 LIBEXECDIR = $(DESTDIR)$(PREFIX)/$(LIBEXEC)
 MANDIR = $(DESTDIR)$(PREFIX)/share/man/man8
+
+SULIB_TARGET=./libsu.a
 
 SUFWW=-Weverything \
 	-Wno-atomic-implicit-seq-cst \
@@ -73,9 +78,13 @@ MKDIR = mkdir
 RM = rm
 
 .PHONY: all clean distclean install uninstall
-all: $(VAL_NAME)
+all: $(SULIB_BLD) $(VAL_NAME)
 
-$(VAL_NAME): s-postgray.c
+$(SULIB_TARGET):
+	cd src/su && $(MAKE) -f .makefile &&\
+	$(INSTALL) -m 0644 .clib.a ../../$(SULIB_TARGET)
+
+$(VAL_NAME): $(SULIB_BLD) s-postgray.c
 	$(CC) \
 		-DVAL_NAME="\"$(VAL_NAME)\"" \
 		\
@@ -101,17 +110,21 @@ $(VAL_NAME): s-postgray.c
 		-o $(@) s-postgray.c $(SULIB)
 
 clean:
-	$(RM) -f $(VAL_NAME)
+	if [ -n "$(SULIB_BLD)" ]; then \
+		cd src/su && $(MAKE) -f .makefile clean rm="$(RM)" CC="$(CC)";\
+	fi
+	$(RM) -f $(SULIB_TARGET) "$(VAL_NAME)"
 
 distclean: clean
 
 install: all
-	$(MKDIR) -p -m 0755 $(LIBEXECDIR)
-	$(INSTALL) -m 0755 $(VAL_NAME) $(LIBEXECDIR)/
-	$(MKDIR) -p -m 0755 $(MANDIR)
-	$(INSTALL) -m 0644 s-postgray.8 $(MANDIR)/$(VAL_NAME).8
+	$(MKDIR) -p -m 0755 "$(LIBEXECDIR)"
+	$(INSTALL) -m 0755 "$(VAL_NAME)" "$(LIBEXECDIR)"/
+	if [ -n "$(STRIP)" ]; then $(STRIP) "$(LIBEXECDIR)/$(VAL_NAME)"; fi
+	$(MKDIR) -p -m 0755 "$(MANDIR)"
+	$(INSTALL) -m 0644 s-postgray.8 "$(MANDIR)/$(VAL_NAME).8"
 
 uninstall:
-	$(RM) -f $(LIBEXECDIR)/$(VAL_NAME) $(MANDIR)/$(VAL_NAME).8
+	$(RM) -f "$(LIBEXECDIR)/$(VAL_NAME)" "$(MANDIR)/$(VAL_NAME).8"
 
 # s-mk-mode

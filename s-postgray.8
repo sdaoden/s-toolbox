@@ -15,27 +15,30 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd March 30, 2022
+.Dd March 31, 2022
 .ds VV \\%v0.6.0
+.ds XX \\%S-POSTGRAY
+.ds Xx \\%S-postgray
+.ds xx \\%s-postgray
 .
-.Dt S-POSTGRAY 8
+.Dt \*(XX 8
 .Os
 .Mx -enable
 .
 .
 .Sh NAME
-.Nm s-postgray \%[\*(VV]
+.Nm \*(Xx \%[\*(VV]
 .Nd postfix RFC 6647 graylisting policy server
 .
 .
 .Sh SYNOPSIS
 .
-.Nm
+.Nm \*(xx
 .Op options
-.Nm
+.Nm \*(xx
 .Op options
 .Fl Fl shutdown
-.Nm
+.Nm \*(xx
 .Op options
 .Fl Fl test-mode
 .Op options
@@ -46,8 +49,7 @@
 .
 .Sh DESCRIPTION
 .
-.Nm
-is a
+\*(Xx is a
 .Xr postfix 1
 RFC 6647 graylisting policy server, following the recommendet practice
 noted in the standard document.
@@ -55,13 +57,13 @@ It supports client allow (white) and block (black) lists (blocking
 should be done earlier in the processing chain, though) of domain names
 (exact and wildcard) as well as IPv4 and IPv6 addresses (exact or in
 CIDR notation).
-It aims in being fast: all the data is stored in main memory,
+It aims in being fast and secure: all the data is stored in main memory,
 synchronization with backing store is only performed when the server
-process is started or stopped.
+process is started or stopped, and the graylist database which needs
+to handle network data uses a cryptographically secure hash function.
 .
 .Pp
-.Nm
-clients are intented to be started via the
+\*(Xx clients are intented to be started via the
 .Xr postfix 1
 .Xr spawn 8
 daemon, they will automatically start the server as necessary.
@@ -81,7 +83,7 @@ A synchronized server
 can be enforced, or an asynchronous termination by sending the server a
 .Ql SIGTERM
 signal.
-An excessively lengthy configuration example:
+An excessively lengthy but minimal configuration example:
 .
 .Bd -literal -offset indent
 #@ /etc/postfix/master.cf:
@@ -235,16 +237,14 @@ Some MTAs are picky, so driving for a while with a low count and in
 .Fl Fl verbose
 mode to collect more data before increasing count etc. is worthwhile.
 .Pp
-It should be noted that
-.Nm
-only understands the two VERP (variable envelope return path addresses)
-delimiters plus sign
+It should be noted that only the two VERP (variable envelope return path
+addresses) delimiters plus sign
 .Ql +
 and equal sign
-.Ql = .
-Mailing list software which chooses the hyphen-minus
+.Ql =
+are understood \(em mailing list software which chooses the hyphen-minus
 .Ql -
-as a VERP delimiter (ezmlm instances are known which do) take
+as a VERP delimiter (ezmlm instances are known which do) make
 a particularly bad choice because many mailing-lists have a hyphen-minus
 as a regular part of their name, so no automatic differentiation in
 between the customized address part and the regular address is possible:
@@ -343,9 +343,7 @@ This setting cannot be changed at runtime.
 .
 .Mx Fl server-timeout
 .It Fl Fl server-timeout Ar mins , Fl t Ar mins
-Duration until a
-.Nm
-server which does not serve any clients terminates.
+Duration until a \*(Xx server which does not serve any clients terminates.
 The value 0 disables auto-termination.
 The statistics dumped on the signal
 .Ql SIGUSR1
@@ -366,10 +364,8 @@ The server parses the configuration a second time, and from within
 .It Fl Fl store-path Ar path , Fl s Ar path
 An accessible
 .Pa path
-to which
-.Nm
-will change, and where the DB and the server/client communication socket
-will be created.
+to which \*(Xx will change, and where the DB and the server/client
+communication socket will be created.
 This setting cannot be changed at runtime.
 .
 .Mx Fl defer-msg
@@ -423,8 +419,7 @@ It is highly recommendet to use this for configuration checks.
 .Mx Fl verbose
 .It Fl Fl verbose , Fl v
 Increase log verbosity (two levels).
-This might be of interest to improve configuration of
-.Nm ,
+This might be of interest to improve the configuration,
 for example data suitable for
 .Fl Fl allow
 and
