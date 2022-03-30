@@ -347,6 +347,9 @@ Duration until a
 .Nm
 server which does not serve any clients terminates.
 The value 0 disables auto-termination.
+The statistics dumped on the signal
+.Ql SIGUSR1
+are not saved in the DB, they only reflect the current server lifetime.
 .
 .Mx Fl resource-file
 .It Fl Fl resource-file Ar path , Fl R Ar path

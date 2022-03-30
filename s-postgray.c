@@ -2,9 +2,11 @@
  *@ We assume postfix(1) protocol constraints:
  *@ - No whitespace (at BOL and EOL, nor) in between key, =, and value.
  *@ - Lowercase keys.
- *@ - XXX-1 VERP delimiters are +=, and are not configurable.
- *@ - XXX-2 We assume numeric IDs in VERP addresses come after the delimiter.
- *@ - XXX-3 E-Mail addresses should be normalized and stripped of comments etc.
+ *@ - XXX-1 - VERP delimiters are +=, and are not configurable.
+ *@ - XXX-2 - We assume numeric IDs in VERP addresses come after the delimiter.
+ *@ - XXX-3 - E-Mail addresses must be normalized and stripped of comments etc.
+ *@ - XXX-MONO - We use CLOCK_REALTIME and 0 negative drifts; instead we could
+ *@   XXX-MONO   use CLOCK_MONOTONIC and _REALTIME only when saving/loading.
  *@
  *@ Further:
  *@ - With $SOURCE_DATE_EPOCH "minutes" are indeed "seconds".
@@ -16,7 +18,6 @@
  *@   come in before the next delay expires, we could auto-blacklist.
  *@   Just extend the DB format to a 64-bit integer, and use bits 32..48.
  *@   (Adding this feature should work with existing DBs.)
- *@ - We could add more overall statistics (that many DUNNO .. etc).
  *@ - XXX-ARGS May want to do parsing like in first draft: just parse it :),
  *@   keep [AaBb] in an allocated list, parse that in server or in --test-mode.
  *@   Currently -R is parsed two times.  (I messed it now it is weird.)
@@ -952,8 +953,8 @@ jreavo:
          break;
       }
 
-   if(reset){
-      reset = FAL0;
+   if(reset > FAL0){
+      reset = TRUM1;
       a_conf_finish(pgp, a_PG_AVO_RELOAD);
       f = a_PG_AVO_FULL | a_PG_AVO_RELOAD;
       goto jreavo;
@@ -1110,8 +1111,18 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
          pgmp->pgm_base_epoch = pgmp->pgm_epoch;
          i = 0;
       }else{
+         /* XXX-MONO */
+         s64 be;
+
+         be = pgmp->pgm_base_epoch;
+         if(t.s.ts_sec < be){
+            pgmp->pgm_base_epoch = t.s.ts_sec;
+            be = 0;
+         }else
+            be = t.s.ts_sec - be;
+
          /* Suspension excessed datatype storage / --gc-timeout: clear */
-         i = S(u32,(pgmp->pgm_epoch - pgmp->pgm_base_epoch) /
+         i = S(u32,be /
                (su_state_has(su_STATE_REPRODUCIBLE) ? 1 : su_TIME_MIN_SECS));
          if(i > S16_MAX){
             a_DBG( su_log_write(su_LOG_DEBUG,
@@ -1122,8 +1133,8 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
             pgmp->pgm_base_epoch = pgmp->pgm_epoch;
             i = 0;
          }
+         pgmp->pgm_epoch_min = S(s16,i);
       }
-      pgmp->pgm_epoch_min = S(s16,i);
 
       /* */
       for(i = 0; i < pgmp->pgm_cli_no; ++i)
@@ -1210,9 +1221,9 @@ a_server__log_stat(struct a_pg *pgp){ /* {{{ */
    su_log_write(su_LOG_INFO,
       _("clients %lu of %lu\n"
         "white: CA %lu/%lu (fuzzy %lu), CNAME %lu/%lu\n"
-        "-hits: CA %lu + fuzzy %lu, CNAME %lu + subdomain %lu\n"
+        "-hits: CA exact %lu / fuzzy %lu, CNAME exact %lu / fuzzy %lu\n"
         "black: CA %lu/%lu (fuzzy %lu), CNAME %lu/%lu\n"
-        "-hits: CA %lu + fuzzy %lu, CNAME %lu + subdomain %lu\n"
+        "-hits: CA exact %lu / fuzzy %lu, CNAME exact %lu / fuzzy %lu\n"
         "gray: %lu/%lu, gc_cnt %lu; epoch: %lu, now %lu: %lu\n"
         "-hits: new %lu, defer %lu, pass %lu"),
       S(ul,pgmp->pgm_cli_no), S(ul,pgp->pg_server_queue),
@@ -1716,8 +1727,19 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
    if(UCMP(z, write(fd, cp, xlen), !=, xlen))
       goto jerr;
 
-   min = S(s16,(ts.ts_sec - pgp->pg_master->pgm_base_epoch) /
-         (su_state_has(su_STATE_REPRODUCIBLE) ? 1 : su_TIME_MIN_SECS));
+   /* XXX-MONO */
+   /* C99 */{
+      s64 be;
+
+      be = pgp->pg_master->pgm_base_epoch;
+      if(ts.ts_sec < be){
+         pgp->pg_master->pgm_base_epoch = be;
+         be = 0;
+      }else
+         be = ts.ts_sec - be;
+      min = S(s16,be /
+            (su_state_has(su_STATE_REPRODUCIBLE) ? 1 : su_TIME_MIN_SECS));
+   }
 
    su_CS_DICT_FOREACH(&pgp->pg_master->pgm_gray, &dv){
       /* (see cleanup() for comments) */
@@ -1820,11 +1842,21 @@ a_server__gray_cleanup(struct a_pg *pgp, boole force){ /* {{{ */
    }
 
    pgmp = pgp->pg_master;
-   pgmp->pgm_epoch = su_timespec_current(&ts)->ts_sec;
-   pgmp->pgm_epoch_min = S(s16,(pgmp->pgm_epoch - pgmp->pgm_base_epoch) /
-         (su_state_has(su_STATE_REPRODUCIBLE) ? 1 : su_TIME_MIN_SECS));
 
-   pgmp->pgm_base_epoch = pgmp->pgm_epoch;
+   /* XXX-MONO */
+   /* C99 */{
+      s64 be;
+
+      be = pgmp->pgm_base_epoch;
+      pgmp->pgm_base_epoch =
+      pgmp->pgm_epoch = su_timespec_current(&ts)->ts_sec;
+      if(ts.ts_sec < be)
+         be = 0;
+      else
+         be = ts.ts_sec - be;
+      pgmp->pgm_epoch_min = S(s16,be /
+            (su_state_has(su_STATE_REPRODUCIBLE) ? 1 : su_TIME_MIN_SECS));
+   }
 
    a_DBG( su_log_write(su_LOG_DEBUG, "gc: start%s epoch=%lu min=%d",
       (force ? _(" in force mode") : su_empty),
@@ -1966,7 +1998,7 @@ jretry_nent:
 
       /* New entry may be disallowed */
       if(i < pgp->pg_limit){
-         d = 0;
+         d = (pgp->pg_count == 0) ? 0x80000000u : 0;
          goto jgray_set;
       }
 
@@ -1984,6 +2016,7 @@ jretry_nent:
                   "condition is logged once only"),
                S(ul,pgp->pg_limit));
       }
+
       /* XXX Make limit excess return configurable? REJECT?? */
       rv = a_PG_ANSWER_DUNNO;
       goto jleave;
@@ -2026,7 +2059,7 @@ jretry_nent:
       a_DBG( su_log_write(su_LOG_DEBUG, "gray ok-to-go (%lu): %s",
          S(ul,cnt), key); )
       ASSERT(rv == a_PG_ANSWER_DUNNO);
-      d |= 0x80000000u;
+      d = 0x80000000u;
    }else{
       rv = a_PG_ANSWER_DEFER;
       a_DBG( su_log_write(su_LOG_DEBUG, "gray inc count=%lu: %s",
@@ -2043,12 +2076,11 @@ jgray_set:
       ASSERT(rv != a_PG_ANSWER_DUNNO);
 
       /* Need to handle memory failures */
-jretry_ins:
-      if(su_cs_dict_insert(&pgmp->pgm_gray, key, R(void*,d)) > su_ERR_NONE){
+      while(su_cs_dict_insert(&pgmp->pgm_gray, key, R(void*,d)) > su_ERR_NONE){
          /* We ran against this wall, try a cleanup if allowed */
          if(UCMP(16, pgmp->pgm_epoch_min, >=, a_DB_CLEANUP_MIN_DELAY)){
             a_server__gray_cleanup(pgp, TRU1);
-            goto jretry_ins;
+            continue;
          }
 
          /* XXX What if new pg_limit is ... 0 ? */
@@ -2064,9 +2096,14 @@ jretry_ins:
                      "condition is logged once only"),
                   S(ul,pgp->pg_limit));
          }
+
+         /* XXX Make limit excess return configurable? REJECT?? */
+         rv = a_PG_ANSWER_DUNNO;
+         break;
       }
 
-      rv = (pgp->pg_count == 0) ? a_PG_ANSWER_DUNNO : a_PG_ANSWER_DEFER;
+      if(pgp->pg_count == 0)
+         rv = a_PG_ANSWER_DUNNO;
    }
 
 jleave:
