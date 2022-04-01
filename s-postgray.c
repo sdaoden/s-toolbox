@@ -14,6 +14,11 @@
  *@ Possible improvements:
  *@ - We may want to make the server startable on its own?
  *@ - May want to make policy return on ENOMEM/limit excess configurable?
+ *@ - We do not sleep per policy instance=, but per-question.
+ *@   This could add a lot of delay per-message.  Restore instance= handling
+ *@   from git history, and sleep only once per instance?  The documented "it
+ *@   should be impossible to reach the graylist bypass limit" no longer true!
+ *@   calculation is no longer true then however, since one mes
  *@ - We could add a in-between-delay counter, and if more than X messages
  *@   come in before the next delay expires, we could auto-blacklist.
  *@   Just extend the DB format to a 64-bit integer, and use bits 32..48.
@@ -40,7 +45,7 @@
 #define su_FILE s_postgray
 
 /* */
-#define a_VERSION "0.6.0"
+#define a_VERSION "0.7.0"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* Maximum accept(2) backlog */
@@ -2043,6 +2048,7 @@ jretry_nent:
          (pgp->pg_flags & a_PG_F_MASTER_DELAY_PROGRESSIVE ? cnt : 1))){
       a_DBG( su_log_write(su_LOG_DEBUG, "gray too soon: %s (%lu,%lu,%lu)",
          key, S(ul,min), S(ul,pgmp->pgm_epoch_min), S(ul,xmin)); )
+      --cnt; /* (Logging) */
       rv = a_PG_ANSWER_DEFER;
       goto jleave;
    }
@@ -2059,6 +2065,7 @@ jretry_nent:
       a_DBG( su_log_write(su_LOG_DEBUG, "gray ok-to-go (%lu): %s",
          S(ul,cnt), key); )
       ASSERT(rv == a_PG_ANSWER_DUNNO);
+      cnt = 0; /* (Logging: does no longer matter) */
       d = 0x80000000u;
    }else{
       rv = a_PG_ANSWER_DEFER;
@@ -3042,7 +3049,6 @@ a_main_usage(FILE *fp){
       VAL_NAME, a_VERSION);
    fprintf(fp, _(
          ". Please use --long-help (-H) for option summary\n"
-         ". SIGHUP does not affect --defer-msg (-m) and --store-path (-s)\n"
          ". Bugs/Contact via " a_CONTACT "\n"));
 
    NYD2_OU;

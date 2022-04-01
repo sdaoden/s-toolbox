@@ -16,7 +16,7 @@
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
 .Dd March 31, 2022
-.ds VV \\%v0.6.0
+.ds VV \\%v0.7.0
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
 .ds xx \\%s-postgray
@@ -230,7 +230,7 @@ also.exact.match
 .Pp
 If whitelisting is really performed that late in the processing chain
 it should include all big players and all normally expected endpoints;
-it may be useful to run for a few days with a low or even 0
+it may be useful to run for a few days with the special 0
 .Fl Fl count
 and inspect the log order to fill in the white list.
 Some MTAs are picky, so driving for a while with a low count and in
@@ -351,7 +351,8 @@ are not saved in the DB, they only reflect the current server lifetime.
 .
 .Mx Fl resource-file
 .It Fl Fl resource-file Ar path , Fl R Ar path
-A configuration file with long options.
+A configuration file with long options (without double hyphen-minus
+.Ql - ) .
 Each line forms an entry, leading and trailing whitespace is removed.
 If thereafter the first character is the number-sign
 .Ql #
@@ -412,7 +413,7 @@ and
 .Fl Fl block
 which are normally processed by only the server.
 Once the command line is worked the content of all white- and blacklists
-is shown as well as the final settings of above variables.
+is shown, as well as the final settings of above variables.
 The exit status indicates error.
 It is highly recommendet to use this for configuration checks.
 .
