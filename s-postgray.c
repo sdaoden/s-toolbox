@@ -1129,9 +1129,9 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
          /* Suspension excessed datatype storage / --gc-timeout: clear */
          i = S(u32,be /
                (su_state_has(su_STATE_REPRODUCIBLE) ? 1 : su_TIME_MIN_SECS));
-         if(i > S16_MAX){
+         if(i >= pgp->gc_timeout){
             a_DBG( su_log_write(su_LOG_DEBUG,
-               "select(2) suspension > S16_MAX mins: clearing gray dict"); )
+               "select(2) suspension >= gc_timeout: clearing gray DB"); )
             /* xxx The balance() could fail to reallocate the base array!
              * xxx Since we handle insertion failures it is ugly but ..ok */
             su_cs_dict_balance(su_cs_dict_clear(&pgmp->pgm_gray));

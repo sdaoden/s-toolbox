@@ -371,7 +371,9 @@ This setting cannot be changed at runtime.
 .
 .Mx Fl defer-msg
 .It Fl Fl defer-msg Ar msg , Fl m Ar msg
-The defer_if_permit message
+The message in
+.Xr access 5
+format that
 .Xr postfix 1
 expects for not yet accepted messages.
 This setting cannot be changed at runtime.
@@ -379,7 +381,7 @@ The default is
 .Ql DEFER_IF_PERMIT 4.2.0 Service temporarily faded to Gray ,
 of which only
 .Ql DEFER_IF_PERMIT
-is not optional; it uses an RFC 1893 extended status code:
+is not optional; it uses an RFC 3463 extended status code:
 .Bd -literal -offset indent
 # [4.2.0]
 4.X.X Persistent Transient Failure
@@ -391,6 +393,14 @@ x.7.0 Other or undefined security status
 x.7.1 Delivery not authorized, message refused
       This is useful only as a permanent error.
 .Ed
+.Pp
+If
+.Xr postfix 1
+address verification is used in addition, it may be better to use
+graylisting (maybe second-last and) before it, and return
+.Ql DEFER 4.2.0
+instead, so that the more expensive address verification is performed
+only when graylisting permits continuation.
 .
 .Mx Fl once
 .It Fl Fl once , Fl o
