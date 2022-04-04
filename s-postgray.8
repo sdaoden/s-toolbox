@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd March 31, 2022
+.Dd April 4, 2022
 .ds VV \\%v0.7.0
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
@@ -189,7 +189,7 @@ Using a mask of 64 seems to be good practice (see
 Load a file of whitelist entries in the syntax described for
 .Fl Fl allow .
 Each line forms an entry, leading and trailing whitespace is removed.
-If thereafter the first character is the number-sign
+If the first non-whitespace character is the number-sign
 .Ql #
 the line is a comment and discarded.
 Empty lines are ignored.
@@ -232,7 +232,7 @@ If whitelisting is really performed that late in the processing chain
 it should include all big players and all normally expected endpoints;
 it may be useful to run for a few days with the special 0
 .Fl Fl count
-and inspect the log order to fill in the white list.
+and inspect the log in order to create a whitelist.
 Some MTAs are picky, so driving for a while with a low count and in
 .Fl Fl verbose
 mode to collect more data before increasing count etc. is worthwhile.
@@ -352,9 +352,9 @@ are not saved in the DB, they only reflect the current server lifetime.
 .Mx Fl resource-file
 .It Fl Fl resource-file Ar path , Fl R Ar path
 A configuration file with long options (without double hyphen-minus
-.Ql - ) .
+.Ql Fl Fl Ns ) .
 Each line forms an entry, leading and trailing whitespace is removed.
-If thereafter the first character is the number-sign
+If the first non-whitespace character is the number-sign
 .Ql #
 the line is a comment and discarded.
 Empty lines are ignored.
