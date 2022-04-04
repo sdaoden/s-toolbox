@@ -2544,11 +2544,10 @@ jcname:
       }else{
          char const *me;
 
-         me = (pgwbp == NIL) ? "!" : su_empty;
-         /* xxx could use C++ dns hostname check */
-         fprintf(stdout, "%s%c %s%s\n",
-            me, (m == 0 ? '=' : '~'),
-            (m == 0 ? su_empty : "{*.,}"), cp);
+         /* xxx could use C++ dns hostname check, too */
+         me = (pgwbp != NIL) ? "allow" : "block";
+         fprintf(stdout, "%s %s%s\n",
+            me, (m == 0 ? su_empty : "."), cp);
       }
    }else{
       pgp->pg_cname = sip.cp;
@@ -2639,11 +2638,11 @@ jca:/* C99 */{
    }else{
       char const *me;
 
-      me = (pgwbp == NIL) ? "!" : su_empty;
+      me = (pgwbp != NIL) ? "allow" : "block";
       if(exact)
-         fprintf(stdout, "%s= %s (/%lu)\n", me, buf, S(ul,g_m));
+         fprintf(stdout, "%s %s\n", me, buf);
       else
-         fprintf(stdout, "%s~ %s/%lu\n", me, buf, S(ul,m));
+         fprintf(stdout, "%s %s/%lu\n", me, buf, S(ul,m));
    }
    rv = su_EX_OK;
    }goto jleave;
@@ -3252,7 +3251,7 @@ jeusage:
       f = a_PG_AVO_FULL;
       goto jreavo;
    }else{
-      fprintf(stdout, "# # #\n");
+      fprintf(stdout, _("# Configuration (evaluated first!) #\n"));
       a_conf_list_values(&pg);
       mpv = (pg.pg_flags & a_PG_F_TEST_ERRORS) ? su_EX_USAGE : su_EX_OK;
    }

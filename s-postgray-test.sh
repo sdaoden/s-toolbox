@@ -210,23 +210,23 @@ eval $PGx --shutdown $REDIR
 echo '=3: allow and block, check=' # {{{
 
 cat > ./3.zz <<'_EOT'
-= exact.match
-= also.exact.match
-~ {*.,}domain.and.subdomain
-~ {*.,}d.a.s
-= 127.0.0.0 (/24)
-~ 2a03:2880:20:4f00::/56
-= 2a03:2880:20:6f06:: (/64)
-= 2a03:2880:20:8f06:: (/64)
-= 2a03:2880:33:5f06:: (/64)
-= 193.92.150.0 (/24)
-= 193.95.150.0 (/24)
-= 195.90.112.0 (/24)
-~ 195.90.108.0/22
+allow exact.match
+allow also.exact.match
+allow .domain.and.subdomain
+allow .d.a.s
+allow 127.0.0.0
+allow 2a03:2880:20:4f00::/56
+allow 2a03:2880:20:6f06::
+allow 2a03:2880:20:8f06::
+allow 2a03:2880:33:5f06::
+allow 193.92.150.0
+allow 193.95.150.0
+allow 195.90.112.0
+allow 195.90.108.0/22
 _EOT
 
 cat 3.zz defx > ./3.0x
-sed -e 's/^/!/' < ./3.zz > ./3.2x
+sed -e 's/^allow /block /' < ./3.zz > ./3.2x
 cat defx >> ./3.2x
 
 ab() {
