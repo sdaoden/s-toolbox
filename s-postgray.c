@@ -17,8 +17,8 @@
  *@ - We do not sleep per policy instance=, but per-question.
  *@   This could add a lot of delay per-message.  Restore instance= handling
  *@   from git history, and sleep only once per instance?  The documented "it
- *@   should be impossible to reach the graylist bypass limit" no longer true!
- *@   calculation is no longer true then however, since one mes
+ *@   should be impossible to reach the graylist bypass limit" calculation is
+ *@   no longer true then however.
  *@ - We could add a in-between-delay counter, and if more than X messages
  *@   come in before the next delay expires, we could auto-blacklist.
  *@   Just extend the DB format to a 64-bit integer, and use bits 32..48.
@@ -1129,7 +1129,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
          /* Suspension excessed datatype storage / --gc-timeout: clear */
          i = S(u32,be /
                (su_state_has(su_STATE_REPRODUCIBLE) ? 1 : su_TIME_MIN_SECS));
-         if(i >= pgp->gc_timeout){
+         if(i >= pgp->pg_gc_timeout){
             a_DBG( su_log_write(su_LOG_DEBUG,
                "select(2) suspension >= gc_timeout: clearing gray DB"); )
             /* xxx The balance() could fail to reallocate the base array!
