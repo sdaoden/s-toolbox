@@ -12,6 +12,8 @@
  *@ - With $SOURCE_DATE_EPOCH "minutes" are indeed "seconds".
  *@
  *@ Possible improvements:
+ *@ - Add recipient whitelist?
+ *@ - Add sender whitelist??  (In combination with DKIM etc thinkable?)
  *@ - We may want to make the server startable on its own?
  *@ - May want to make policy return on ENOMEM/limit excess configurable?
  *@ - We do not sleep per policy instance=, but per-question.
