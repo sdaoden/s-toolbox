@@ -1,5 +1,8 @@
 #!/bin/sh -
 #@ Create BTRFS filesystem snapshots, send them to a ball, trim them down.
+#@ This script assumes a BTRFS master volume under which some subvolumes exist
+#@ as mount points, and a snapshots/ at the first level under which all those
+#@ subvolumes are mirrored.  Otherwise the_worker() must be adjusted.
 #@ The configuration is read from $BTRFS_SNAPSHOT, ./btrfs-snapshot, or
 #@ otherwise /root/hosts/$HOSTNAME/btrfs-snapshot.  It must contain:
 #@
@@ -7,9 +10,10 @@
 #@   THEVOL=/media/btrfs-master
 #@
 #@   # the mount points within; we cd(1) to $THEVOL, these need to be relative.
+#@   # Note whitespace and other shell quoting issues are not handled!
 #@   DIRS='home x/doc x/m x/m-mp4 x/os x/p x/src var/cache/apk'
 #@
-#@   # ACCUDIR: where everything is stored, including the final target
+#@   # (balls-related only) ACCUDIR: where work and final balls are written to
 #@   ACCUDIR=/media/btrfs-master
 #@
 #@   # If set, no real action is performed
@@ -24,18 +28,14 @@
 #@ Synopsis: btrfs-snapshot.sh receive-balls [:BALL:]
 #@ Synopsis: btrfs-snapshot.sh clone-to-cwd|sync-to-cwd
 #@
-#@ This script assumes a BTRFS master volume under which some subvolumes exist
-#@ as mount points, and a snapshots/ at the first level under which all those
-#@ subvolumes are mirrored.  Otherwise the_worker() must be adjusted.
-#@
 #@ - "create-dir-tree" creates all $DIRS and their snapshot mirrors,
 #@   as necessary, in and under CWD.  It does not remove surplus directories.
-#@   Any further synchronization can then be performed via
+#@   All further synchronizations can then be performed via
 #@      cd WHEREVER && btrfs-snapshot.sh sync-to-cwd
 #@
-#@ - "create" creates snapshots/ of all $DIRS.
+#@ - "create" creates a new snapshots/ of all $DIRS.
 #@
-#@ - "trim" deletes all but the last snaphost of each folder under snapshots/.
+#@ - "trim" deletes all but the last snapshot of each folder under snapshots/.
 #@   It also removes anything (!) in .old/.
 #@
 #@ - "setvols" moves any existing $DIRS (subvolumes) to $THEVOL/.old/$now/
@@ -52,7 +52,7 @@
 #@   created by "create-balls", and merges them in snapshots/.
 #@   Ball must refer to a .snap-ISODATE super-directory, and the path must
 #@   be absolute.  (If realpath(1) is available we use it though.)
-#@   If the filename of a BALL is =, "trim" is executed.
+#@   If the filename of a BALL is equal-sign =, "trim" is executed.
 #@
 #@ - "clone-to-cwd" and "sync-to-cwd" need one existing snapshot (series),
 #@   and will clone all the latest snapshots to the current-working-directory.
@@ -60,7 +60,7 @@
 #@   non-existing directories.
 #@   Only the difference to the last snapshot which is present in both trees is
 #@   synchronized: for the target this must be the last.
-#@   Be aware that $DIRS etc. still corresponds to $HOSTNAME!
+#@   Note $DIRS etc. still corresponds to what came in via configuration!
 #@
 #@ + the_worker() drives the logic, and may become adjusted, if simply
 #@   setting other values for $THEVOL, $DIRS and $ACCUDIR does not suffice.
@@ -68,37 +68,37 @@
 # 2019 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain
 
-: ${HOSTNAME:=`uname -n`}
+: ${HOSTNAME:=$(uname -n)}
 
-if [ -f "${BTRFS_SNAPSHOT}" ]; then
-   . "${BTRFS_SNAPSHOT}"
+if [ -f "$BTRFS_SNAPSHOT" ]; then
+   . "$BTRFS_SNAPSHOT"
 elif [ -f ./btrfs-snapshot ]; then
    . ./btrfs-snapshot
-elif [ -f /root/hosts/${HOSTNAME}/btrfs-snapshot ]; then
-   . /root/hosts/${HOSTNAME}/btrfs-snapshot
+elif [ -f /root/hosts/$HOSTNAME/btrfs-snapshot ]; then
+   . /root/hosts/$HOSTNAME/btrfs-snapshot
 else
    logger -s -t /root/bin/btrfs-snapshot.sh \
-      "no config ./btrfs-snapshot, nor /root/hosts/${HOSTNAME}/btrfs-snapshot"
+      "no config ./btrfs-snapshot, nor /root/hosts/$HOSTNAME/btrfs-snapshot"
    exit 1
 fi
-: ${ZSTD_LEVEL:=-5}
+: ${ZSTD_LEVEL=-5}
 
 # Non-empty and we will not act().
-: ${DEBUG:=}
+: ${DEBUG=}
 
 ## >8 -- 8<
 
 # Will be set by "receive-balls"
 BALLS=
 
-the_worker() { # Will run in subshell!
+the_worker() ( # (output redirected)
    if [ $1 = clone-to-cwd ] || [ $1 = sync-to-cwd ]; then
-      CLONEDIR=`pwd`
+      CLONEDIR=$(pwd)
    fi
 
-   if grep -q -E ' '$THEVOL /etc/mtab; then
+   if mountpoint -q "$THEVOL"; then
       echo '= '$THEVOL' is already mounted'
-      UMOUNT=cd
+      UMOUNT=:
    else
       echo '= Mounting '$THEVOL
       if cd && mount "$THEVOL"; then :; else
@@ -132,14 +132,11 @@ the_worker() { # Will run in subshell!
    elif [ $1 = create-balls ]; then
       create_setup
       echo '= Creating balls in '$ACCUDIR/.snap-$now
-
       act mkdir "$ACCUDIR"/.snap-$now
       trap "cd; rm -rf \"$ACCUDIR\"/.snap-$now; $UMOUNT" EXIT
-
       for d in $DIRS; do
          create_ball "$d"
       done
-
       trap "$UMOUNT" EXIT
    elif [ $1 = receive-balls ]; then
       echo '= Working balls'
@@ -149,7 +146,7 @@ the_worker() { # Will run in subshell!
             if [ "$b" = = ]; then
                trim_one "$d" y
             else
-               receive_one "$d" "$b"
+               receive_ball "$d" "$b"
             fi
          done
       done
@@ -170,7 +167,7 @@ the_worker() { # Will run in subshell!
       create_setup
       echo '= Checking .old mirrors for '$DIRS
       for d in $DIRS; do
-         dx=`dirname "$d"`
+         dx=$(dirname "$d")
          check_mirror "$dx" ".old/$now" y
       done
       echo '= Setting '$DIRS' to newest snapshots'
@@ -190,19 +187,19 @@ the_worker() { # Will run in subshell!
    fi
    trap "" EXIT
    echo '= Done'
-}
+)
 
 ## >8 -- -- 8<
 
 act() {
    if [ -n "$DEBUG" ]; then
       echo eval "$@"
-      return
-   fi
-   eval "$@"
-   if [ $? -ne 0 ]; then
-      echo 'PANIC: '$*
-      exit 1
+   else
+      eval "$@"
+      if [ $? -ne 0 ]; then
+         echo 'PANIC: '$*
+         exit 1
+      fi
    fi
 }
 
@@ -211,14 +208,14 @@ check_mirror() {
       if [ -n "$3" ]; then
          act mkdir -p "$1" "$2"/"$1"
       else
-         echo 'PANIC: cannot handle '$1
+         echo 'PANIC: cannot handle DIR ('$2'/) '$1
          exit 1
       fi
    fi
 }
 
 create_setup() {
-   now=`date +%Y%m%dT%H%M%S`
+   now=$(date +%Y%m%dT%H%M%S)
 }
 
 create_one() {
@@ -231,40 +228,41 @@ create_ball() {
    mydir=$1
    cd snapshots/"$mydir" || exit 11
 
-   set -- `find . -maxdepth 1 -type d -not -path . | sort`
+   set -- $(find . -maxdepth 1 -type d -not -path . | sort)
    if [ $# -eq 0 ]; then
       echo '== No snapshots to send in snapshots/'$mydir
       exit 0
    fi
-   while [ $# -gt 2 ]; do
-      shift
-   done
+
+   # Shift all but two
+   i=$((-(2 - $#)))
+   [ $i -gt 0 ] && shift $i
 
    # The send stream
    if [ $# -eq 1 ]; then
       parent=
       i='without parent'
-      this=`basename "$1"`
+      this=$(basename "$1")
    else
-      parent=`basename "$1"`
+      parent=$(basename "$1")
       i='with parent '$parent
       parent=' -p '$parent
-      this=`basename "$2"`
+      this=$(basename "$2")
    fi
    target="$ACCUDIR"/.snap-$now/"$mydir" #/"$this"
 
    echo '== '$mydir': '$i' to '$target
 
    act mkdir -p "$target"
-   act btrfs send $parent "$this" "|" \
-      zstd -zc -T0 ${ZSTD_LEVEL} "|" \
-      '(cd '"$target"' &&
-        echo '"$this"' > .stamp &&
-        split -a 4 -b 2000000000 -d -)'
+   act btrfs send $parent "$this" '|' \
+      zstd -zc -T0 $ZSTD_LEVEL '|' \
+      '('cd "$target" '&&' \
+        echo "$this" '>' .stamp '&&' \
+        split -a 4 -b 2000000000 -d -')'
    ) || exit $?
 }
 
-receive_one() {
+receive_ball() {
    (
    mydir=$1
    ball=$2
@@ -282,7 +280,7 @@ receive_one() {
       exit 1
    done
    if [ -f "$ball"/"$mydir"/.stamp ]; then
-      snap=`cat "$ball"/"$mydir"/.stamp`
+      snap=$(cat "$ball"/"$mydir"/.stamp)
    else
       echo '=== '$mydir': invalid content, missing .stamp file'
       exit 1
@@ -307,7 +305,7 @@ trim_one() {
    dosync=$2
    cd snapshots/"$mydir" || exit 11
 
-   set -- `find . -maxdepth 1 -type d -not -path . | sort`
+   set -- $(find . -maxdepth 1 -type d -not -path . | sort)
    if [ $# -le 1 ]; then
       echo '== No snapshots to trim in snapshots/'$mydir
       exit 0
@@ -345,14 +343,15 @@ setvol_one() {
    mydir=$1
    cd snapshots/"$mydir" || exit 11
 
-   set -- `find . -maxdepth 1 -type d -not -path . | sort`
+   set -- $(find . -maxdepth 1 -type d -not -path . | sort)
    if [ $# -eq 0 ]; then
       echo '== No volume to set from snapshots/'$mydir
       exit 0
    fi
-   while [ $# -gt 1 ]; do
-      shift
-   done
+
+   # Shift all but one
+   i=$((-(1 - $#)))
+   [ $i -gt 0 ] && shift $i
 
    echo '== Setting '$mydir' to '$1
    if [ -d "$THEVOL/$mydir" ]; then
@@ -390,15 +389,15 @@ clone_to_cwd() {
       (
       act cd "$target"
 
-      set -- `find . -maxdepth 1 -type d -not -path . | sort`
-      while [ $# -gt 1 ]; do
-         shift
-      done
+      set -- $(find . -maxdepth 1 -type d -not -path . | sort)
+      # Shift all but one
+      i=$((-(1 - $#)))
+      [ $i -gt 0 ] && shift $i
       lastsync=$1
 
       act cd "$THEVOL"/snapshots/"$d"
 
-      set -- `find . -maxdepth 1 -type d -not -path . | sort`
+      set -- $(find . -maxdepth 1 -type d -not -path . | sort)
       if [ $# -eq 0 ]; then
          echo '== No snapshot to clone in snapshots/'$d
          exit 0
@@ -463,7 +462,7 @@ mytee() {
 }
 
 mymail() {
-   if [ -n "$DEBUG" ]; then
+   if [ -n "$DEBUG" ] || ! command -v mail >/dev/null 2>&1; then
       cat
    else
       mail -s 'BTRFS snapshot management: '"$cmd ${DEBUG:+ (DEBUG MODE)}" root
@@ -476,6 +475,8 @@ syno() {
    echo 'Synopsis: btrfs-snapshot.sh create-balls'
    echo 'Synopsis: btrfs-snapshot.sh receive-balls [:BALL:]'
    echo 'Synopsis: btrfs-snapshot.sh clone-to-cwd|sync-to-cwd'
+   echo
+   echo 'See script head for documentation: '$0
    exit $1
 }
 
@@ -489,7 +490,7 @@ if [ "$cmd" = receive-balls ]; then
       if  [ "$b" = = ]; then
          BALLS="$BALLS $b"
       elif [ -d "$b" ]; then
-         [ -n "$rp" ] && b=`$rp "$b"`
+         [ -n "$rp" ] && b=$($rp "$b")
          BALLS="$BALLS $b" # XXX quoting
       else
          echo 'No such ball to receive: '$b
@@ -508,6 +509,6 @@ else
    esac
 fi
 
-( the_worker "$cmd" ) 2>&1 | mytee | mymail
+the_worker "$cmd" 2>&1 | mytee | mymail
 
 # s-sh-mode
