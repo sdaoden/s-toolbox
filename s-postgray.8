@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd April 4, 2022
+.Dd April 7, 2022
 .ds VV \\%v0.7.0
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
@@ -53,7 +53,15 @@
 .Xr postfix 1
 RFC 6647 graylisting policy server, following the recommendet practice
 noted in the standard document.
-It supports client allow (white) and block (black) lists (blocking
+Graylisting defers message acceptance a configurable number of times
+via a standardized SMTP response (see RFC 5321,
+.Xr allow 5 )  ,
+which does not prevent message delivery from SMTP
+M(ail) T(ransfer) A(gent)s, but can help against simple spam producing
+programs.
+.
+.Pp
+\*(Xx supports client allow (white) and block (black) lists (blocking
 should be done earlier in the processing chain, though) of domain names
 (exact and wildcard) as well as IPv4 and IPv6 addresses (exact or in
 CIDR notation).
@@ -83,7 +91,11 @@ A synchronized server
 can be enforced, or an asynchronous termination by sending the server a
 .Ql SIGTERM
 signal.
-An excessively lengthy but minimal configuration example:
+.
+.Pp
+Here is an excessively lengthy but minimal configuration example.
+(Especially address and DNS hostname checks and verifications are
+performed before the policy server is involved in the decision process.)
 .
 .Bd -literal -offset indent
 #@ /etc/postfix/master.cf:
