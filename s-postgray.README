@@ -2,7 +2,11 @@ S - p o s t g r a y
 ===================
 
 A postfix RFC 6647 graylisting policy server that aims in being fast
-and secure.  Please see the manual for more.
+and secure.  Graylisting defers message acceptance a configurable number
+of times via a standardized SMTP response (see RFC 5321, access(5)),
+which does not prevent message delivery from SMTP M(ail) T(ransfer)
+A(gent)s, but can help against simple spam producing programs.
+Please see the manual for more.
 
 To build this software simply run "make install".  At the top of the
 makefile there are some variables, they can be overwritten from the
