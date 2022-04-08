@@ -12,30 +12,6 @@ entropy-saver.c:
    2022-02-23: work when /proc/sys/kernel/random/entropy_avail is not de-
                cremented when reading /dev/random.
 
-find-command.sh:
-   Find an executable command within a POSIX shell.
-   which(1) is not standardized, and command(1) -v may return non-executable,
-   so here is how it is possible to really find a usable executable file.
-   Thanks to Robert Elz (kre).
-
-   2021-12-16: allow prefilled variables with spaces, no longer find
-               commands with spaces: $VAR (not "$VAR") now always correct.
-
-git-topic-creator.pl:
-   To ease maintaining of topic branches i use a linear history, so
-   that i can use ``$ git rebase -i`` for fixups and squashes, without
-   having to worry about recreation of topic branches.  Instead i tag
-   commit messages, and use this script to create the topics once i am
-   finished.  Read the --help output for more, and make use of verbosity
-   when you use it first.
-
-   2013-09-13: newer git(1) reverse ``rev-parse`` output: adjusted.
-
-gmane-fetch.pl:
-   Download NNTP articles from Gmane.org and Gwene.org, incrementally, and
-   store them in (append them to) a local MBOX.
-   Read and adjust the script header for documentation and configuration.
-
 pam_xdg.c (manual in pam_xdg.8; pam_xdg.makefile) v0.8.0:
    XDG Base Directories support via PAM: creation of $XDG_RUNTIME_DIRs,
    injection of environment variables into sessions.  libpam and OpenPAM.
@@ -45,12 +21,6 @@ pam_xdg.c (manual in pam_xdg.8; pam_xdg.makefile) v0.8.0:
    2021-08-31: Review; do not fail when pam_putenv() fails, even without
                session handling.  Make a ball release v0.8.0 (Jan Beich)!
    2021-09-16: Allow non-XDG-standard paths via make options (Jan Beich)
-
-quote-rndtrip.sh:
-   Round trip quote strings in POSIX (and elder) shell(s).
-   Thanks to Robert Elz (kre).
-
-   2019-05-27: ensure outer driver(s) do not leak variabes. (Steven Penny)
 
 s-cdda.c (manual in s-cdda.1; s-cdda.makefile) v0.8.5:
    Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
@@ -116,6 +86,15 @@ fan-adaptive.sh:
    fancontrol.sh.  For now with simulator and MacBook Air model support.
    See the script header for more.
 
+find-command.sh:
+   Find an executable command within a POSIX shell.
+   which(1) is not standardized, and command(1) -v may return non-executable,
+   so here is how it is possible to really find a usable executable file.
+   Thanks to Robert Elz (kre).
+
+   2021-12-16: allow prefilled variables with spaces, no longer find
+               commands with spaces: $VAR (not "$VAR") now always correct.
+
 gen-uushar-wrapper:
    Creates a shell archive similar to uushar as below, except that the
    archive (1) consists only of executable file members, and (2) will
@@ -125,8 +104,29 @@ gen-uushar-wrapper:
    Without arguments it shows its contents and the creation date.
    Simply execute it, it guides through the archive creation process.
 
+git-topic-creator.pl:
+   To ease maintaining of topic branches i use a linear history, so
+   that i can use ``$ git rebase -i`` for fixups and squashes, without
+   having to worry about recreation of topic branches.  Instead i tag
+   commit messages, and use this script to create the topics once i am
+   finished.  Read the --help output for more, and make use of verbosity
+   when you use it first.
+
+   2013-09-13: newer git(1) reverse ``rev-parse`` output: adjusted.
+
+gmane-fetch.pl:
+   Download NNTP articles from Gmane.org and Gwene.org, incrementally, and
+   store them in (append them to) a local MBOX.
+   Read and adjust the script header for documentation and configuration.
+
+quote-rndtrip.sh:
+   Round trip quote strings in POSIX (and elder) shell(s).
+   Thanks to Robert Elz (kre).
+
+   2019-05-27: ensure outer driver(s) do not leak variabes. (Steven Penny)
+
 real-periodic.sh:
-   A _real_ periodic for NetBSD, FreeBSD, DragonFly BSD and OpenBSD that
+   A real periodic for NetBSD, FreeBSD, DragonFly BSD and OpenBSD that
    ensures that the daily/weekly/monthly maintenance stuff is executed,
    even if your laptop is running only one hour a day.  Invoke this once
    per hour in the roots crontab and disable the usual periodic stuff of
