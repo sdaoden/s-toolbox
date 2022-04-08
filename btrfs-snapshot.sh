@@ -509,6 +509,8 @@ else
    esac
 fi
 
-the_worker "$cmd" 2>&1 | mytee | mymail
+#(set -o pipefail) >/dev/null 2>&1 && set -o pipefail
+es=$(exec 3>&1 1>&2; { the_worker "$cmd"; echo $? >&3; } | mytee | mymail)
 
+exit $es
 # s-sh-mode
