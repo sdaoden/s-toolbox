@@ -1,17 +1,6 @@
 A repo of some small tools
 ==========================
 
-Somewhat useful:
-
-entropy-saver.c:
-   Linux: for my use cases i find it annoying that "entropy_avail" is not
-   incremented when i restore the saved random seed that machines have
-   collected so hard.  This little program touches this count also.
-   (Thanks Bernd Petrovitsch for pointing out EAGAIN and EBUSY.)
-   ...
-   2022-02-23: work when /proc/sys/kernel/random/entropy_avail is not de-
-               cremented when reading /dev/random.
-
 pam_xdg.c (manual in pam_xdg.8; pam_xdg.makefile) v0.8.0:
    XDG Base Directories support via PAM: creation of $XDG_RUNTIME_DIRs,
    injection of environment variables into sessions.  libpam and OpenPAM.
@@ -25,7 +14,7 @@ pam_xdg.c (manual in pam_xdg.8; pam_xdg.makefile) v0.8.0:
 s-cdda.c (manual in s-cdda.1; s-cdda.makefile) v0.8.5:
    Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
    Developed in 2020 on then current operating-systems and hardware.
-   Not tested with CD-Extra etc (only proofed logically.  Linux and *BSD.
+   Not tested with CD-Extra etc (only proofed logically).  Linux and *BSD.
 
 s-cdda-to-db.pl (manual in s-cdda-to-db.1; s-cdda-to-db.makefile) v0.8.0:
    Queries the content and data of audio CDs through s-cdda(1), collects
@@ -52,7 +41,7 @@ s-cdda-to-db.pl (manual in s-cdda-to-db.1; s-cdda-to-db.makefile) v0.8.0:
 s-postgray.c (plus support) v0.6.0:
    postfix(1) graylisting policy daemon.  See its manual for more.
 
-You likely do not wanna know:
+Not for the masses:
 
 arena-manager:
    Offers some automatized operations on revision control repositories,
@@ -80,6 +69,18 @@ cdoc-freebsd.S:
    newer ones, but have not tried it in a while.  It had 416 object
    file bytes when everything was placed in ``.text`` (no .EH frames
    back then).
+
+entropy-saver.c:
+   Linux: for my use cases i find it annoying that "entropy_avail" is not
+   incremented when i restore the saved random seed that machines have
+   collected so hard.  This little program touches this count also.
+   (Thanks Bernd Petrovitsch for pointing out EAGAIN and EBUSY.)
+   ...
+   2022-02-23: work when /proc/sys/kernel/random/entropy_avail is not de-
+               cremented when reading /dev/random.
+   2022-04-20: Jason Donenfeld wrote something more generic that made it
+               into busybox etc, and is therefore preferable:
+                  https://git.zx2c4.com/seedrng/plain/seedrng.c
 
 fan-adaptive.sh:
    "Adaptive", more generic, and much more easily adaptable successor of
