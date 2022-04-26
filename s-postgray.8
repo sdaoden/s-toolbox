@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd April 7, 2022
+.Dd April 26, 2022
 .ds VV \\%v0.7.0
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
@@ -54,9 +54,9 @@
 RFC 6647 graylisting policy server, following the recommendet practice
 noted in the standard document.
 Graylisting defers message acceptance a configurable number of times
-via a standardized SMTP response (see RFC 5321,
-.Xr allow 5 )  ,
-which does not prevent message delivery from SMTP
+via a standardized SMTP response (see
+.Xr allow 5 ,
+RFC 5321), which does not prevent message delivery from SMTP
 M(ail) T(ransfer) A(gent)s, but can help against simple spam producing
 programs.
 .
@@ -93,9 +93,22 @@ can be enforced, or an asynchronous termination by sending the server a
 signal.
 .
 .Pp
-Here is an excessively lengthy but minimal configuration example.
+Here is an excessively lengthy but minimal
+.Xr postfix 1
+configuration example.
 (Especially address and DNS hostname checks and verifications are
 performed before the policy server is involved in the decision process.)
+It shall be noted that the
+.Ql DEFER_IF_PERMIT
+.Fl Fl defer-msg
+used to signal actual graylisting to
+.Xr postfix 1
+is counted against the
+.Xr postconf 5
+parameters
+.Ql smtpd_hard_error_limit
+and
+.Ql smtpd_soft_error_limit .
 .
 .Bd -literal -offset indent
 #@ /etc/postfix/master.cf:
@@ -112,7 +125,7 @@ postgray unix - n n - - spawn
 
 default_privs = ANON-USR
 
-# Clients connection checks
+# Client connection checks
 smtpd_client_restrictions =
    permit_mynetworks,
 #RELAY   permit_tls_clientcerts,
@@ -131,7 +144,8 @@ smtpd_helo_restrictions =
 #[RELAY]  permit_sasl_authenticated,
    reject_invalid_helo_hostname,
    reject_non_fqdn_helo_hostname,
-   reject_unknown_helo_hostname
+   reject_unknown_helo_hostname,
+   permit
 
 # MAIL FROM Checks
 smtpd_sender_restrictions =
@@ -173,9 +187,9 @@ smtpd_recipient_restrictions =
 .
 .Ss "Options"
 .
-Options may be given in short or long form.
-Resource files only support the long option form,
-and only a (logical) subset of the following options.
+Options may be given in short or long form,
+.Fl Fl resource-file Ns
+s only support the long form, and only a (logical) option subset.
 The minute limit is 32767 (15-bit), the maximum duration is thus 22 days.
 Other numbers have a limit of 31-bit (2147483647).
 .Fl Fl test-mode
