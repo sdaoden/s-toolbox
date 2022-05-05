@@ -5,7 +5,10 @@ KEEP_TESTS=
 REDIR= #'2>/dev/null'
 
 PG=../s-postgray
-DEFER_MSG='DEFER_IF_PERMIT 4.2.0 Cannot hurry love'
+
+MSG_ALLOW=xDUNNO
+MSG_BLOCK=xREJECT
+MSG_DEFER='DEFER_IF_PERMIT 4.2.0 Cannot hurry love'
 
 ###
 
@@ -39,8 +42,12 @@ pwd=$(pwd) || exit 3
 ### First of all fetch+adjust compile time defaults, create some resources {{{
 
 $PG --test-mode > ./def || exit 4
-PGX="$PG --store-path='$pwd' --defer-msg='$DEFER_MSG'"
-PGx="$PG -s'$pwd' -m '$DEFER_MSG'"
+PGX="$PG --store-path='$pwd' "\
+"--msg-allow='$MSG_ALLOW' "\
+"--msg-block='$MSG_BLOCK' "\
+"--msg-defer='$MSG_DEFER'"
+PGx="$PG -s'$pwd' -m '$MSG_DEFER' "\
+"--msg-allow='$MSG_ALLOW' --msg-block='$MSG_BLOCK'"
 
 __xsleep=
 if ( sleep .1 ) >/dev/null 2>&1; then
@@ -58,7 +65,9 @@ echo '=def: calibration=' # {{{
 eval $PGX -# > ./tdef1 || exit 1
 sed '/^store-path/,$d' < def > ./defx || exit 2
 echo 'store-path='"$pwd"'' >> ./defx
-echo 'defer-msg='"$DEFER_MSG" >> ./defx
+echo 'msg-allow='"$MSG_ALLOW" >> ./defx
+echo 'msg-block='"$MSG_BLOCK" >> ./defx
+echo 'msg-defer='"$MSG_DEFER" >> ./defx
 cmp -s tdef1 defx || exit 3
 
 eval $PGx -# > ./tdef2 || exit 4
@@ -87,7 +96,9 @@ allow-file=x.a2
    limit-delay 8    
 
 server-timeout 5
- defer-msg=$DEFER_MSG 
+ msg-block=$MSG_BLOCK
+ msg-defer=$MSG_DEFER
+ msg-allow=$MSG_ALLOW
    # Comment
 	store-path=$pwd	
 _EOT
@@ -128,9 +139,9 @@ adj_def() {
 t() {
    t=$1 o=$2 v=$3
    shift 3
-   eval "$PGX" "$@" -# > ./$t $REDIR; adj_def $o $v $t || exit $?
+   eval "$PGX" -# "$@" > ./$t $REDIR; adj_def $o $v $t || exit $?
    [ -n "$REDIR" ] || echo ok $t
-   eval "$PGX" -R ./defx "$@" -# > ./$t.2 $REDIR;\
+   eval "$PGX" -# -R ./defx "$@" > ./$t.2 $REDIR;\
       adj_def $o $v $t.2 || exit $?
    eval $PGx --shutdown $REDIR
    [ $? -eq 75 ] || exit 101
@@ -194,7 +205,7 @@ server-timeout=9
 #comment3
 _EOT
 
-eval $PGX -R 2.rc1 -t 10 -# > ./2.0 $REDIR
+eval $PGX -# -R 2.rc1 -t 10 > ./2.0 $REDIR
    adj_def 2.0 \
       4-mask 31 6-mask 127 \
       count 3 \
@@ -375,8 +386,8 @@ _EOT
 
 i=0
 while [ $i -lt 17 ]; do
-   printf 'action=DUNNO\n\n' >> ./4.0x
-   printf 'action=REJECT\n\n' >> ./4.1x
+   printf 'action=xDUNNO\n\n' >> ./4.0x
+   printf 'action=xREJECT\n\n' >> ./4.1x
    i=$((i + 1))
 done
 
@@ -399,7 +410,7 @@ printf \
    'recipient=x@y\nsender=y@z\nclient_address=200.200.200.200\n'\
 'client_name=and.subdomain\n\n'\
    | eval $PG -R ./x.rc > ./4.2 $REDIR
-printf 'action='"$DEFER_MSG"'\n\n' >> ./4.2x
+printf 'action='"$MSG_DEFER"'\n\n' >> ./4.2x
 cmp -s ./4.2 ./4.2x || exit 101
 [ -n "$REDIR" ] || echo ok 4.2
 
@@ -407,11 +418,11 @@ printf \
    'recipient=x@y\nsender=y@z\nclient_address=200.200.201.200\n'\
 'client_name=subdomain.\n\n'\
    | eval $PG -R ./x.rc > ./4.3 $REDIR
-printf 'action='"$DEFER_MSG"'\n\n' >> ./4.3x
+printf 'action='"$MSG_DEFER"'\n\n' >> ./4.3x
 cmp -s ./4.3 ./4.3x || exit 101
 [ -n "$REDIR" ] || echo ok 4.3
 
-# root label -> error
+# root label -> error (aka unhandled aka DUNNO)
 printf \
    'recipient=x@y\nsender=y@z\nclient_address=200.200.202.200\n'\
 'client_name=.\n\n'\
@@ -458,9 +469,9 @@ client_address=127.1.2.3
 client_name=xy
 
 _EOT
-action=$DEFER_MSG
+action=$MSG_DEFER
 
-action=$DEFER_MSG
+action=$MSG_DEFER
 
 _EOT
 
@@ -681,9 +692,9 @@ action=DUNNO
 
 action=DUNNO
 
-action=$DEFER_MSG
+action=$MSG_DEFER
 
-action=$DEFER_MSG
+action=$MSG_DEFER
 
 _EOT
 
@@ -719,7 +730,7 @@ max1=4 max2=24
 cat > ./6.rc <<_EOT
 4-mask 24
 count 1
-defer-msg=all the same
+msg-defer=all the same
 delay-min 2
 delay-max 720
 gc-timeout 1440

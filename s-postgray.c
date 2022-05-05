@@ -56,7 +56,7 @@
 /**/
 
 /* Maximum size of the triple recipient/sender/client_address we look out for,
- * anything beyond is DUNNO.  RFC 5321 limits:
+ * anything beyond is _ANSWER_NODEFER.  RFC 5321 limits:
  *    4.5.3.1.1.  Local-part
  *    The maximum total length of a user name or other local-part is 64 octets.
  *    4.5.3.1.2.  Domain
@@ -72,8 +72,11 @@
  * Together with --limit-delay this forms a barrier against limit excess */
 #define a_DB_CLEANUP_MIN_DELAY (1 * su_TIME_HOUR_MINS)
 
-/* The default built-in defer message (see manual) */
-#define a_DEFER_MSG "DEFER_IF_PERMIT 4.2.0 Service temporarily faded to Gray"
+/* The default built-in messages (see manual) */
+#define a_MSG_ALLOW "DUNNO" /* "OK" */
+#define a_MSG_BLOCK "REJECT" /* "5.7.1 Please go away" */
+#define a_MSG_DEFER "DEFER_IF_PERMIT 4.2.0 Service temporarily faded to Gray"
+#define a_MSG_NODEFER "DUNNO"
 
 /* When hitting limit, new entries are delayed that long */
 #define a_LIMIT_DELAY_SECS 1 /* xxx configurable? */
@@ -162,9 +165,11 @@ enum a_pg_flags{
    a_PG_F_SETUP_MASK = 0xFFu,
 
    /* */
-   a_PG_F_TEST_ERRORS = 1u<<13,
-   a_PG_F_NOFREE_DEFER_MSG = 1u<<14,
-   a_PG_F_NOFREE_STORE_PATH = 1u<<15,
+   a_PG_F_TEST_ERRORS = 1u<<8,
+   a_PG_F_NOFREE_MSG_ALLOW = 1u<<9,
+   a_PG_F_NOFREE_MSG_BLOCK = 1u<<10,
+   a_PG_F_NOFREE_MSG_DEFER = 1u<<11,
+   a_PG_F_NOFREE_STORE_PATH = 1u<<12,
 
    /* Client */
    a_PG_F_CLIENT_NONE,
@@ -184,10 +189,11 @@ enum a_pg_avo_args{
 };
 
 enum a_pg_answer{
-   a_PG_ANSWER_DUNNO,
-   a_PG_ANSWER_DEFER,
+   a_PG_ANSWER_ALLOW,
+   a_PG_ANSWER_BLOCK,
    a_PG_ANSWER_DEFER_SLEEP,
-   a_PG_ANSWER_REJECT
+   a_PG_ANSWER_DEFER,
+   a_PG_ANSWER_NODEFER
 };
 
 /* Fuzzy search */
@@ -262,7 +268,9 @@ struct a_pg{
    u32 pg_limit;
    u32 pg_limit_delay;
    u32 pg_server_queue;
-   char const *pg_defer_msg;
+   char const *pg_msg_allow;
+   char const *pg_msg_block;
+   char const *pg_msg_defer;
    char const *pg_store_path;
    /**/
    char **pg_argv;
@@ -277,7 +285,7 @@ struct a_pg{
 };
 
 static char const a_sopts[] =
-      "4:6:" "A:a:B:b:" "c:D:d:pG:g:L:l:" "q:t:" "R:" "s:" "m:"
+      "4:6:" "A:a:B:b:" "c:D:d:pG:g:L:l:" "q:t:" "R:" "s:" "m:~:!:"
       "o" "." "#" "vHh";
 static char const * const a_lopts[] = {
    "4-mask:;4;" N_("IPv4 mask to strip off addresses before match"),
@@ -307,7 +315,10 @@ static char const * const a_lopts[] = {
 
    "store-path:;s;" N_("DB and server/client socket directory (not SIGHUP)"),
 
-   "defer-msg:;m;" N_("defer_if_permit message (read manual; not SIGHUP)"),
+   "msg-allow:;~;" N_("whitelist message (read manual; not SIGHUP)"),
+   "msg-block:;!;" N_("blacklist message (\")"),
+   "msg-defer:;m;" N_("defer_if_permit message (\")"),
+   "defer-msg:;m;" N_("OBSOLETE compatibility for --msg-defer"),
 
    /**/
    "once;o;" N_("process only one request in this client invocation"),
@@ -566,7 +577,7 @@ jblock:
          }else if(seen_any){
             ssize_t srvx;
 
-            srvx = fputs("action=DUNNO\n\n", stdout);
+            srvx = fputs("action=" a_MSG_NODEFER "\n\n", stdout);
             if(srvx == EOF || fflush(stdout) == EOF){
                rv = su_EX_IOERR;
                break;
@@ -665,6 +676,7 @@ jblock:
 static s32
 a_client__req(struct a_pg *pgp){
    struct iovec iov[5], *iovp;
+   char const *cp;
    u8 resp;
    ssize_t srvx;
    s32 rv, c;
@@ -673,13 +685,13 @@ a_client__req(struct a_pg *pgp){
    rv = su_EX_OK;
 
    if(!a_norm_triple_r(pgp))
-      goto jex_dunno;
+      goto jex_nodefer;
    if(!a_norm_triple_s(pgp))
-      goto jex_dunno;
+      goto jex_nodefer;
    if(!a_norm_triple_ca(pgp))
-      goto jex_dunno;
+      goto jex_nodefer;
    if(!a_norm_triple_cname(pgp))
-      goto jex_dunno;
+      goto jex_nodefer;
 
    iov[0].iov_len = su_cs_len(iov[0].iov_base = pgp->pg_r) +1;
    iov[1].iov_len = su_cs_len(iov[1].iov_base = pgp->pg_s) +1;
@@ -727,7 +739,7 @@ jioerr:
          su_err_doc(rv));
       /* If the server is gone, then restart cycle from our point of view */
       rv = (rv == su_ERR_PIPE) ? -su_EX_IOERR : su_EX_IOERR;
-      goto jex_dunno;
+      goto jex_nodefer;
    }else if(UCMP(z, srvx, !=, sizeof(resp))){
       /* This cannot happen here */
       rv = su_ERR_AGAIN;
@@ -736,24 +748,25 @@ jioerr:
    rv = su_EX_OK;
 
    switch(resp){
-   case a_PG_ANSWER_DUNNO:
-jex_dunno:
-      a_DBG( su_log_write(su_LOG_DEBUG, "answer DUNNO"); )
-      srvx = fputs("action=DUNNO\n\n", stdout);
+   case a_PG_ANSWER_ALLOW:
+      cp = pgp->pg_msg_allow;
+      break;
+   case a_PG_ANSWER_BLOCK:
+      cp = pgp->pg_msg_block;
       break;
    case a_PG_ANSWER_DEFER_SLEEP:
       su_time_msleep(a_LIMIT_DELAY_SECS * su_TIMESPEC_SEC_MILLIS, TRU1);
       FALLTHRU
    case a_PG_ANSWER_DEFER:
-      a_DBG( su_log_write(su_LOG_DEBUG, "answer %s", pgp->pg_defer_msg); )
-      srvx = (fprintf(stdout, "action=%s\n\n", pgp->pg_defer_msg) < 0
-            ) ? EOF : 0;
+      cp = pgp->pg_msg_defer;
       break;
-   case a_PG_ANSWER_REJECT:
-      a_DBG( su_log_write(su_LOG_DEBUG, "answer REJECT"); )
-      srvx = fputs("action=REJECT\n\n", stdout);
+   case a_PG_ANSWER_NODEFER:
+jex_nodefer:
+      cp = a_MSG_NODEFER;
       break;
    }
+   a_DBG( su_log_write(su_LOG_DEBUG, "answer %s", cp); )
+   srvx = (fprintf(stdout, "action=%s\n\n", cp) < 0) ? EOF : 0;
 
    if(srvx == EOF || fflush(stdout) == EOF)
       rv = su_EX_IOERR;
@@ -949,7 +962,7 @@ jreavo:
       case 'q': case 't':
       case 'R':
       case 's':
-      case 'm':
+      case 'm': case '~': case '!':
       case 'v':
          if((rv = a_conf__arg(pgp, rv, avo.avo_current_arg, f)) < 0){
             rv = -rv;
@@ -1389,11 +1402,11 @@ a_server__cli_req(struct a_pg *pgp, u32 client, uz len){ /* {{{ */
          pgmp->pgm_cli_fds[client], S(ul,len), r_l, pgp->pg_r, s_l, pgp->pg_s,
          ca_l, pgp->pg_ca, cn_l, pgp->pg_cname);
 
-   rv = a_PG_ANSWER_DUNNO;
+   rv = a_PG_ANSWER_ALLOW;
    if(a_server__cli_lookup(pgp, &pgmp->pgm_white, &pgmp->pgm_cnt_white))
       goto jleave;
 
-   rv = a_PG_ANSWER_REJECT;
+   rv = a_PG_ANSWER_BLOCK;
    if(a_server__cli_lookup(pgp, &pgmp->pgm_black, &pgmp->pgm_cnt_black))
       goto jleave;
 
@@ -1990,7 +2003,7 @@ a_server__gray_lookup(struct a_pg *pgp, char const *key){ /* {{{ */
    char rv;
    NYD_IN;
 
-   rv = a_PG_ANSWER_DUNNO;
+   rv = a_PG_ANSWER_NODEFER;
    pgmp = pgp->pg_master;
    cnt = 0;
 
@@ -2025,7 +2038,7 @@ jretry_nent:
       }
 
       /* XXX Make limit excess return configurable? REJECT?? */
-      rv = a_PG_ANSWER_DUNNO;
+      rv = a_PG_ANSWER_NODEFER;
       goto jleave;
    }
 
@@ -2035,7 +2048,7 @@ jretry_nent:
    /* If yet accepted, update it quick */
    if(d & 0x80000000u){
       a_DBG( su_log_write(su_LOG_DEBUG, "gray up quick: %s", key); )
-      ASSERT(rv == a_PG_ANSWER_DUNNO);
+      ASSERT(rv == a_PG_ANSWER_NODEFER);
       ASSERT(cnt == 0);
       goto jgray_set;
    }
@@ -2066,7 +2079,7 @@ jretry_nent:
    else if(cnt >= pgp->pg_count){
       a_DBG( su_log_write(su_LOG_DEBUG, "gray ok-to-go (%lu): %s",
          S(ul,cnt), key); )
-      ASSERT(rv == a_PG_ANSWER_DUNNO);
+      ASSERT(rv == a_PG_ANSWER_NODEFER);
       cnt = 0; /* (Logging: does no longer matter) */
       d = 0x80000000u;
    }else{
@@ -2082,7 +2095,7 @@ jgray_set:
    else{
       ++pgmp->pgm_cnt_gray_new;
       a_DBG( su_log_write(su_LOG_DEBUG, "gray new entry: %s", key); )
-      ASSERT(rv != a_PG_ANSWER_DUNNO);
+      ASSERT(rv != a_PG_ANSWER_NODEFER);
 
       /* Need to handle memory failures */
       while(su_cs_dict_insert(&pgmp->pgm_gray, key, R(void*,d)) > su_ERR_NONE){
@@ -2107,22 +2120,22 @@ jgray_set:
          }
 
          /* XXX Make limit excess return configurable? REJECT?? */
-         rv = a_PG_ANSWER_DUNNO;
+         rv = a_PG_ANSWER_NODEFER;
          break;
       }
 
       if(pgp->pg_count == 0)
-         rv = a_PG_ANSWER_DUNNO;
+         rv = a_PG_ANSWER_NODEFER;
    }
 
 jleave:
-   if(rv != a_PG_ANSWER_DUNNO)
+   if(rv != a_PG_ANSWER_NODEFER)
       ++pgmp->pgm_cnt_gray_defer;
    else
       ++pgmp->pgm_cnt_gray_pass;
    if(pgp->pg_flags & a_PG_F_V)
       su_log_write(su_LOG_INFO, "### gray (defer=%d, count=%lu): %s",
-         (rv != a_PG_ANSWER_DUNNO), S(ul,cnt), key);
+         (rv != a_PG_ANSWER_NODEFER), S(ul,cnt), key);
 
    NYD_OU;
    return rv;
@@ -2164,8 +2177,7 @@ a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
       LCTAV(VAL_SERVER_QUEUE <= S32_MAX);
       pgp->pg_server_queue = U32_MAX;
 
-      pgp->pg_defer_msg = NIL;
-
+      pgp->pg_msg_allow = pgp->pg_msg_block = pgp->pg_msg_defer = NIL;
       pgp->pg_store_path = NIL;
    }
 
@@ -2203,10 +2215,20 @@ a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
       if(pgp->pg_server_queue == U32_MAX)
          pgp->pg_server_queue = VAL_SERVER_QUEUE;
 
-      if(pgp->pg_defer_msg == NIL){
-         pgp->pg_defer_msg = (VAL_DEFER_MSG != NIL) ? VAL_DEFER_MSG
-               : a_DEFER_MSG;
-         pgp->pg_flags |= a_PG_F_NOFREE_DEFER_MSG;
+      if(pgp->pg_msg_allow == NIL){
+         pgp->pg_msg_allow = (VAL_MSG_ALLOW != NIL) ? VAL_MSG_ALLOW
+               : a_MSG_ALLOW;
+         pgp->pg_flags |= a_PG_F_NOFREE_MSG_ALLOW;
+      }
+      if(pgp->pg_msg_block == NIL){
+         pgp->pg_msg_block = (VAL_MSG_BLOCK != NIL) ? VAL_MSG_BLOCK
+               : a_MSG_BLOCK;
+         pgp->pg_flags |= a_PG_F_NOFREE_MSG_BLOCK;
+      }
+      if(pgp->pg_msg_defer == NIL){
+         pgp->pg_msg_defer = (VAL_MSG_DEFER != NIL) ? VAL_MSG_DEFER
+               : a_MSG_DEFER;
+         pgp->pg_flags |= a_PG_F_NOFREE_MSG_DEFER;
       }
 
       if(pgp->pg_store_path == NIL){
@@ -2267,7 +2289,9 @@ a_conf_list_values(struct a_pg *pgp){
       "server-queue=%lu\n"
          "server-timeout=%lu\n"
       "store-path=%s\n"
-      "defer-msg=%s\n"
+      "msg-allow=%s\n"
+         "msg-block=%s\n"
+         "msg-defer=%s\n"
       ,
       S(ul,pgp->pg_4_mask), S(ul,pgp->pg_6_mask),
       S(ul,pgp->pg_count), S(ul,pgp->pg_delay_max), S(ul,pgp->pg_delay_min),
@@ -2277,7 +2301,7 @@ a_conf_list_values(struct a_pg *pgp){
          S(ul,pgp->pg_limit), S(ul,pgp->pg_limit_delay),
       S(ul,pgp->pg_server_queue), S(ul,pgp->pg_server_timeout),
       pgp->pg_store_path,
-      pgp->pg_defer_msg
+      pgp->pg_msg_allow, pgp->pg_msg_block, pgp->pg_msg_defer
       );
 
    NYD2_OU;
@@ -2286,7 +2310,7 @@ a_conf_list_values(struct a_pg *pgp){
 static s32
 a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
       BITENUM_IS(u32,a_pg_avo_flags) f){
-   union {u8 *i8; u16 *i16; u32 *i32;} p;
+   union {u8 *i8; u16 *i16; u32 *i32; char const **cpp;} p;
    NYD2_IN;
 
    /* In long-option order */
@@ -2368,13 +2392,9 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
       pgp->pg_store_path = su_cs_dup(arg, su_STATE_ERR_NOPASS);
       break;
 
-   case 'm':
-      if(f & (a_PG_AVO_FULL | a_PG_AVO_RELOAD))
-         break;
-      if(pgp->pg_defer_msg != NIL)
-         su_FREE(UNCONST(char*,pgp->pg_defer_msg));
-      pgp->pg_defer_msg = su_cs_dup(arg, su_STATE_ERR_NOPASS);
-      break;
+   case 'm': p.cpp = &pgp->pg_msg_defer; goto jmsg;
+   case '~': p.cpp = &pgp->pg_msg_allow; goto jmsg;
+   case '!': p.cpp = &pgp->pg_msg_block; goto jmsg;
 
    case 'v':
       if(!(f & a_PG_AVO_FULL)){
@@ -2412,6 +2432,14 @@ jeiuse:
    a_conf_error(pgp, _("Invalid number or limit excess of -%c argument: %s\n"),
       o, arg);
    o = -su_EX_USAGE;
+   goto jleave;
+
+jmsg:
+   if(f & (a_PG_AVO_FULL | a_PG_AVO_RELOAD))
+      goto jleave;
+   if(*p.cpp != NIL)
+      su_FREE(UNCONST(char*,*p.cpp));
+   *p.cpp = su_cs_dup(arg, su_STATE_ERR_NOPASS);
    goto jleave;
 }
 
@@ -2707,7 +2735,7 @@ a_conf__R(struct a_pg *pgp, char const *path,
       case 'q': case 't':
       case 'R':
       case 's':
-      case 'm':
+      case 'm': case '~': case '!':
       case 'v':
          if((mpv = a_conf__arg(pgp, mpv, avo.avo_current_arg, f)) < 0 &&
                !(pgp->pg_flags & a_PG_F_TEST_MODE))
@@ -3198,7 +3226,7 @@ jreavo:
       case 'q': case 't':
       case 'R':
       case 's':
-      case 'm':
+      case 'm': case '~': case '!':
       case 'v':
          if((mpv = a_conf__arg(&pg, mpv, avo.avo_current_arg, f)) < 0){
             mpv = -mpv;
@@ -3259,8 +3287,13 @@ jeusage:
    }
 
 jleave:
-   if(!(pg.pg_flags & a_PG_F_NOFREE_DEFER_MSG) && pg.pg_defer_msg != NIL)
-      su_FREE(UNCONST(char*,pg.pg_defer_msg));
+   if(!(pg.pg_flags & a_PG_F_NOFREE_MSG_ALLOW) && pg.pg_msg_allow != NIL)
+      su_FREE(UNCONST(char*,pg.pg_msg_allow));
+   if(!(pg.pg_flags & a_PG_F_NOFREE_MSG_BLOCK) && pg.pg_msg_block != NIL)
+      su_FREE(UNCONST(char*,pg.pg_msg_block));
+   if(!(pg.pg_flags & a_PG_F_NOFREE_MSG_DEFER) && pg.pg_msg_defer != NIL)
+      su_FREE(UNCONST(char*,pg.pg_msg_defer));
+
    if(!(pg.pg_flags & a_PG_F_NOFREE_STORE_PATH) && pg.pg_store_path != NIL)
       su_FREE(C(char*,pg.pg_store_path));
 
