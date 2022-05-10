@@ -1040,9 +1040,9 @@ __EOT__
          print
             "! Failed loading HTTP::Tiny and/or XML::Parser perl module(s).\n",
             "!   We could use the MusicBrainz CD information Web-Service.\n",
-            "!   Are they installed?  (Install them via CPAN?)\n",
+            "!   Are they installed?  (Maybe install them via CPAN?)\n",
             '!   Confirm to again try to use them, otherwise we skip this: ';
-         return unless user_confirm();
+         return unless ::user_confirm();
          $MBRAINZ_QUERY = 1;
          return $self->create_db()
       }
