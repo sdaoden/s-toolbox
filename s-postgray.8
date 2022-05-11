@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd May 5, 2022
+.Dd May 13, 2022
 .ds VV \\%v0.7.0
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
@@ -51,7 +51,7 @@
 .
 \*(Xx is a
 .Xr postfix 1
-RFC 6647 graylisting policy server, following the recommendet practice
+RFC 6647 graylisting policy server, following the recommended practice
 noted in the standard document.
 Graylisting defers message acceptance (for a specific recipient / sender
 / client_address value tuple) a configurable number of times
@@ -214,7 +214,9 @@ Using a mask of 64 seems to be good practice (see
 .Mx Fl allow-file
 .It Fl Fl allow-file Ar path , Fl A Ar path
 Load a file of whitelist entries in the syntax described for
-.Fl Fl allow .
+.Fl Fl allow
+from within the server or
+.Fl Fl test-mode .
 Each line forms an entry, leading and trailing whitespace is removed.
 If the first non-whitespace character is the number-sign
 .Ql #
@@ -282,7 +284,9 @@ every received message will be graylisted.
 .Mx Fl block-file
 .It Fl Fl block-file Ar path , Fl B Ar path
 Load a file of blacklist entries in the syntax described for
-.Fl Fl allow-file .
+.Fl Fl allow-file
+from within the server or
+.Fl Fl test-mode .
 .
 .Mx Fl block
 .It Fl Fl block Ar spec , Fl b Ar spec
@@ -498,7 +502,7 @@ which are normally processed by only the server.
 Once the command line is worked the content of all white- and blacklists
 is shown, as well as the final settings of above variables.
 The exit status indicates error.
-It is highly recommendet to use this for configuration checks.
+It is highly recommended to use this for configuration checks.
 .
 .Mx Fl verbose
 .It Fl Fl verbose , Fl v
