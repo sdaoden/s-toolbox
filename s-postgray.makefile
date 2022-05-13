@@ -1,4 +1,5 @@
 #@ Makefile for s-postgray(8).
+#@ Pass outer CFLAGS/LDFLAGS via EXTRA_CFLAGS/EXTRA_LDFLAGS.
 #@ For example "$ make -f s-postgray.makefile DESTDIR=.x CC=clang".
 #@ NOTE: for now requires bundled SU tools that are part of S-nail!!
 
@@ -68,11 +69,10 @@ SUFW=-W -Wall -pedantic \
 	-fno-common \
 	-fstrict-aliasing -fstrict-overflow \
 
-CFLAGS+=$(SUFLVLC) $(SUFW) $(SUFS) $(SUFOPT)
-
-LDFLAGS+=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
+CFLAGS=$(SUFLVLC) $(SUFW) $(SUFS) $(SUFOPT) $(EXTRA_CFLAGS)
+LDFLAGS=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
 	-Wl,--enable-new-dtags \
-	-fpie
+	-fpie $(EXTRA_LDFLAGS)
 
 CC = cc
 INSTALL = install
@@ -110,7 +110,7 @@ $(VAL_NAME): $(SULIB_BLD) s-postgray.c
 		-DVAL_SERVER_TIMEOUT=$(VAL_SERVER_TIMEOUT) \
 		\
 		\
-		$(CFLAGS) $(SUFLAGS) $(LDFLAGS) \
+		$(CFLAGS) $(LDFLAGS) \
 		-o $(@) s-postgray.c $(SULIB)
 
 clean:

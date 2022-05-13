@@ -1,4 +1,6 @@
 #@ Makefile for S-cdda(1).
+#@ Pass outer CFLAGS/LDFLAGS via EXTRA_CFLAGS/EXTRA_LDFLAGS.
+#@ For example "$ make -f s-cdda.makefile DESTDIR=.x CC=clang".
 
 PREFIX = /usr/local
 DESTDIR =
@@ -13,9 +15,11 @@ CFLAGS = -DNDEBUG \
 	-fno-asynchronous-unwind-tables -fno-unwind-tables \
 	-fno-common \
 	-fstrict-aliasing -fstrict-overflow \
-	-fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE
+	-fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE \
+	$(EXTRA_CFLAGS)
 LDFLAGS = -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
 	-Wl,--enable-new-dtags -pie \
+	$(EXTRA_LDFLAGS) \
 	`os=\`uname -s|tr [[:upper:]] [[:lower:]]\`;\
 	if [ "$$os" = freebsd ] || [ "$$os" = dragonfly ]; then \
 		printf -- -lcam;\
