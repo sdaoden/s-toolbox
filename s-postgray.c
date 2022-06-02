@@ -959,7 +959,7 @@ jreavo:
       switch(rv){
       /* In long-option order */
       case '4': case '6':
-      case 'A': case 'a': case 'F': case 'f':
+      case 'A': case 'a': case 'B': case 'b':
       case 'c': case 'D': case 'd': case 'p':
          case 'G': case 'g': case 'L': case 'l':
       case 'q': case 't':
