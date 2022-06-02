@@ -337,6 +337,18 @@ static char const * const a_lopts[] = {
    NIL
 };
 
+#define a_PG_AVOPT_CASES \
+   /* In long-option order */\
+   case '4': case '6':\
+   case 'A': case 'a': case 'B': case 'b':\
+   case 'c': case 'D': case 'd':\
+      case 'p': case 'G': case 'g': case 'L': case 'l':\
+   case 'q': case 't':\
+   case 'R':\
+   case 's':\
+   case '~': case '!': case 'm':\
+   case 'v':
+
 static struct a_pg_master ATOMIC *a_pgm; /* xxx only used as on/off: s32? */
 static s32 ATOMIC a_server_hup;
 static s32 ATOMIC a_server_usr1;
@@ -965,7 +977,7 @@ jreavo:
       case 'q': case 't':
       case 'R':
       case 's':
-      case 'm': case '~': case '!':
+      case '~': case '!': case 'm':
       case 'v':
          if((rv = a_conf__arg(pgp, rv, avo.avo_current_arg, f)) < 0){
             rv = -rv;
@@ -2730,16 +2742,7 @@ a_conf__R(struct a_pg *pgp, char const *path,
          continue;
 
       switch((mpv = su_avopt_parse_line(&avo, cp))){
-      /* In long-option order */
-      case '4': case '6':
-      case 'A': case 'a': case 'B': case 'b':
-      case 'c': case 'D': case 'd': case 'p':
-         case 'G': case 'g': case 'L': case 'l':
-      case 'q': case 't':
-      case 'R':
-      case 's':
-      case 'm': case '~': case '!':
-      case 'v':
+      a_PG_AVOPT_CASES
          if((mpv = a_conf__arg(pgp, mpv, avo.avo_current_arg, f)) < 0 &&
                !(pgp->pg_flags & a_PG_F_MODE_TEST))
             goto jleave;
@@ -3222,15 +3225,7 @@ jreavo:
          pg.pg_flags |= a_PG_F_MODE_TEST;
          break;
 
-      case '4': case '6':
-      case 'A': case 'a': case 'B': case 'b':
-      case 'c': case 'D': case 'd': case 'p':
-         case 'G': case 'g': case 'L': case 'l':
-      case 'q': case 't':
-      case 'R':
-      case 's':
-      case 'm': case '~': case '!':
-      case 'v':
+      a_PG_AVOPT_CASES
          if((mpv = a_conf__arg(&pg, mpv, avo.avo_current_arg, f)) < 0){
             mpv = -mpv;
             goto jleave;
