@@ -154,9 +154,11 @@
 
 enum a_pg_flags{
    a_PG_F_NONE,
-   a_PG_F_TEST_MODE = 1u<<1, /* -# */
-   a_PG_F_CLIENT_ONCE_MODE = 1u<<2, /* -o */
-   a_PG_F_CLIENT_SHUTDOWN_MODE = 1u<<3, /* -. */
+
+   /* Setup: command line option and shared persistant flags */
+   a_PG_F_MODE_TEST = 1u<<1, /* -# */
+   a_PG_F_MODE_CLIENT_ONCE = 1u<<2, /* -o */
+   a_PG_F_MODE_CLIENT_SHUTDOWN = 1u<<3, /* -. */
    a_PG_F_MASTER_DELAY_PROGRESSIVE = 1u<<4, /* -p */
    a_PG_F_V = 1u<<6, /* Verbosity */
    a_PG_F_VV = 1u<<7,
@@ -431,7 +433,7 @@ jretry_socket:
       ) >= sizeof(VAL_NAME) -1 + sizeof(".socket"));
    su_cs_pcopy(su_cs_pcopy(soaun.sun_path, VAL_NAME), ".socket");
 
-   if((pgp->pg_flags & a_PG_F_CLIENT_SHUTDOWN_MODE) &&
+   if((pgp->pg_flags & a_PG_F_MODE_CLIENT_SHUTDOWN) &&
          access(soaun.sun_path, F_OK) && su_err_no_by_errno() == su_ERR_NOENT){
       rv = su_EX_TEMPFAIL;
       goto jleave;
@@ -454,7 +456,7 @@ jretry_socket:
          goto jleave_close;
       }
    }else{
-      if(pgp->pg_flags & a_PG_F_CLIENT_SHUTDOWN_MODE){
+      if(pgp->pg_flags & a_PG_F_MODE_CLIENT_SHUTDOWN){
          su_path_rm(soaun.sun_path);
          rv = su_EX_TEMPFAIL;
          goto jleave_close;
@@ -487,7 +489,7 @@ jretry_socket:
    }
    /*erefused = 0;*/
 
-   if(pgp->pg_flags & a_PG_F_CLIENT_SHUTDOWN_MODE)
+   if(pgp->pg_flags & a_PG_F_MODE_CLIENT_SHUTDOWN)
       goto jshutdown;
 
    rv = a_client__loop(pgp);
@@ -584,7 +586,7 @@ jblock:
             }
          }
 
-         if(pgp->pg_flags & a_PG_F_CLIENT_ONCE_MODE)
+         if(pgp->pg_flags & a_PG_F_MODE_CLIENT_ONCE)
             break;
          goto jblock;
       }else{
@@ -663,7 +665,7 @@ jblock:
       }
    }
    if(rv == su_EX_OK && !feof(stdin) &&
-         !(pgp->pg_flags & a_PG_F_CLIENT_ONCE_MODE))
+         !(pgp->pg_flags & a_PG_F_MODE_CLIENT_ONCE))
       rv = su_EX_IOERR;
 
    if(lnb != NIL)
@@ -2339,23 +2341,23 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
 
    case 'A':
       if(f & a_PG_AVO_FULL)
-         o = a_conf__AB(pgp, arg, ((pgp->pg_flags & a_PG_F_TEST_MODE)
+         o = a_conf__AB(pgp, arg, ((pgp->pg_flags & a_PG_F_MODE_TEST)
                ? R(struct a_pg_wb*,0x1) : &pgp->pg_master->pgm_white));
       break;
    case 'a':
       if(f & a_PG_AVO_FULL)
-         o = a_conf__ab(pgp, C(char*,arg), ((pgp->pg_flags & a_PG_F_TEST_MODE
+         o = a_conf__ab(pgp, C(char*,arg), ((pgp->pg_flags & a_PG_F_MODE_TEST
                ) ? R(struct a_pg_wb*,0x1) : &pgp->pg_master->pgm_white));
       break;
 
    case 'B':
       if(f & a_PG_AVO_FULL)
-         o = a_conf__AB(pgp, arg, ((pgp->pg_flags & a_PG_F_TEST_MODE) ? NIL
+         o = a_conf__AB(pgp, arg, ((pgp->pg_flags & a_PG_F_MODE_TEST) ? NIL
                : &pgp->pg_master->pgm_black));
       break;
    case 'b':
       if(f & a_PG_AVO_FULL)
-         o = a_conf__ab(pgp, C(char*,arg), ((pgp->pg_flags & a_PG_F_TEST_MODE
+         o = a_conf__ab(pgp, C(char*,arg), ((pgp->pg_flags & a_PG_F_MODE_TEST
                ) ? NIL : &pgp->pg_master->pgm_black));
       break;
 
@@ -2406,7 +2408,7 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
    }
 
 jleave:
-   if(o < 0 && (pgp->pg_flags & a_PG_F_TEST_MODE)){
+   if(o < 0 && (pgp->pg_flags & a_PG_F_MODE_TEST)){
       pgp->pg_flags |= a_PG_F_TEST_ERRORS;
       o = su_EX_OK;
    }
@@ -2468,7 +2470,7 @@ a_conf__AB(struct a_pg *pgp, char const *path, struct a_pg_wb *pgwbp){
          lnb[--lnr] = '\0';
 
       if((rv = a_conf__ab(pgp, lnb, pgwbp)) != su_EX_OK &&
-            !(pgp->pg_flags & a_PG_F_TEST_MODE))
+            !(pgp->pg_flags & a_PG_F_MODE_TEST))
          break;
       rv = su_EX_OK;
    }
@@ -2566,7 +2568,7 @@ jcname:
       cp = pgp->pg_cname;
       pgp->pg_cname = sip.cp;
 
-      if(!(pgp->pg_flags & a_PG_F_TEST_MODE)){
+      if(!(pgp->pg_flags & a_PG_F_MODE_TEST)){
          union {void *p; up v;} u;
 
          u.v = (m == 0) ? TRU1 : TRU2; /* "is exact" */
@@ -2645,7 +2647,7 @@ jca:/* C99 */{
 
    /* We need to normalize through the system's C library to match it!
     * This only for exact match or test mode, however */
-   if((exact || (pgp->pg_flags & a_PG_F_TEST_MODE)) &&
+   if((exact || (pgp->pg_flags & a_PG_F_MODE_TEST)) &&
          inet_ntop(rv, (rv == AF_INET ? S(void*,&sip.v4) : S(void*,&sip.v6)),
             buf, INET6_ADDRSTRLEN) == NIL){
       sip.cp = N_("Invalid internet address: %s\n");
@@ -2653,7 +2655,7 @@ jca:/* C99 */{
       goto jedata;
    }
 
-   if(!(pgp->pg_flags & a_PG_F_TEST_MODE)){
+   if(!(pgp->pg_flags & a_PG_F_MODE_TEST)){
       if(exact)
          su_cs_dict_insert(&pgwbp->pgwb_ca, buf, NIL);
       else{
@@ -2738,12 +2740,12 @@ a_conf__R(struct a_pg *pgp, char const *path,
       case 'm': case '~': case '!':
       case 'v':
          if((mpv = a_conf__arg(pgp, mpv, avo.avo_current_arg, f)) < 0 &&
-               !(pgp->pg_flags & a_PG_F_TEST_MODE))
+               !(pgp->pg_flags & a_PG_F_MODE_TEST))
             goto jleave;
          break;
 
       default:
-         if(pgp->pg_flags & a_PG_F_TEST_MODE){
+         if(pgp->pg_flags & a_PG_F_MODE_TEST){
             a_conf_error(pgp,
                _("Option unknown or invalid in --resource-file: %s: %s\n"),
                path, cp);
@@ -2788,7 +2790,7 @@ a_conf_error(struct a_pg *pgp, char const *msg, ...){
 
    va_start(vl, msg);
 
-   if(pgp->pg_flags & a_PG_F_TEST_MODE)
+   if(pgp->pg_flags & a_PG_F_MODE_TEST)
       vfprintf(stderr, msg, vl);
    else
       su_log_vwrite(su_LOG_CRIT, msg, &vl);
@@ -3210,13 +3212,13 @@ jreavo:
       /* In long-option order (mostly) */
       switch(mpv){
       case 'o':
-         pg.pg_flags |= a_PG_F_CLIENT_ONCE_MODE;
+         pg.pg_flags |= a_PG_F_MODE_CLIENT_ONCE;
          break;
       case '.':
-         pg.pg_flags |= a_PG_F_CLIENT_SHUTDOWN_MODE;
+         pg.pg_flags |= a_PG_F_MODE_CLIENT_SHUTDOWN;
          break;
       case '#':
-         pg.pg_flags |= a_PG_F_TEST_MODE;
+         pg.pg_flags |= a_PG_F_MODE_TEST;
          break;
 
       case '4': case '6':
@@ -3253,7 +3255,7 @@ jerropt:
          if(!(f & a_PG_AVO_FULL))
             fprintf(stderr, V_(emsg), avo.avo_current_err_opt);
 
-         if(pg.pg_flags & a_PG_F_TEST_MODE){
+         if(pg.pg_flags & a_PG_F_MODE_TEST){
             pg.pg_flags |= a_PG_F_TEST_ERRORS;
             break;
          }
@@ -3267,7 +3269,7 @@ jeusage:
    if(!(f & a_PG_AVO_FULL)){
       if(avo.avo_argc != 0){
          fprintf(stderr, _("Excess arguments given\n"));
-         if(!(pg.pg_flags & a_PG_F_TEST_MODE))
+         if(!(pg.pg_flags & a_PG_F_MODE_TEST))
             goto jeusage;
          pg.pg_flags |= a_PG_F_TEST_ERRORS;
       }
@@ -3275,7 +3277,7 @@ jeusage:
       a_conf_finish(&pg, a_PG_AVO_NONE);
    }
 
-   if(!(pg.pg_flags & a_PG_F_TEST_MODE))
+   if(!(pg.pg_flags & a_PG_F_MODE_TEST))
       mpv = a_client(&pg);
    else if(!(f & a_PG_AVO_FULL)){
       f = a_PG_AVO_FULL;
