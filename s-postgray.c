@@ -159,12 +159,13 @@ enum a_pg_flags{
    a_PG_F_MODE_TEST = 1u<<1, /* -# */
    a_PG_F_MODE_CLIENT_ONCE = 1u<<2, /* -o */
    a_PG_F_MODE_CLIENT_SHUTDOWN = 1u<<3, /* -. */
+
+   a_PG_F_SETUP_MASK = (1u<<4) - 1,
+
    a_PG_F_MASTER_DELAY_PROGRESSIVE = 1u<<4, /* -p */
-   a_PG_F_V = 1u<<6, /* Verbosity */
+   a_PG_F_V = 1u<<6, /* -v */
    a_PG_F_VV = 1u<<7,
    a_PG_F_V_MASK = a_PG_F_V | a_PG_F_VV,
-
-   a_PG_F_SETUP_MASK = 0xFFu,
 
    /* */
    a_PG_F_TEST_ERRORS = 1u<<8,
