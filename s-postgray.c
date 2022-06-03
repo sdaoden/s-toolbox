@@ -159,10 +159,11 @@ enum a_pg_flags{
    a_PG_F_MODE_TEST = 1u<<1, /* -# */
    a_PG_F_MODE_CLIENT_ONCE = 1u<<2, /* -o */
    a_PG_F_MODE_CLIENT_SHUTDOWN = 1u<<3, /* -. */
+   a_PG_F_FOCUS_SENDER = 1u<<4, /* -f */
 
-   a_PG_F_SETUP_MASK = (1u<<4) - 1,
+   a_PG_F_SETUP_MASK = (1u<<5) - 1,
 
-   a_PG_F_MASTER_DELAY_PROGRESSIVE = 1u<<4, /* -p */
+   a_PG_F_DELAY_PROGRESSIVE = 1u<<5, /* -p */
    a_PG_F_V = 1u<<6, /* -v */
    a_PG_F_VV = 1u<<7,
    a_PG_F_V_MASK = a_PG_F_V | a_PG_F_VV,
@@ -280,7 +281,7 @@ struct a_pg{
    u32 pg_argc;
    s32 pg_clima_fd; /* Client/Master comm fd */
    /* Triple data plus client_name, pointing into .pg_buf */
-   char *pg_r;
+   char *pg_r; /* Ignored with _F_FOCUS_SENDER */
    char *pg_s;
    char *pg_ca;
    char *pg_cname;
@@ -288,7 +289,7 @@ struct a_pg{
 };
 
 static char const a_sopts[] =
-      "4:6:" "A:a:B:b:" "c:D:d:pG:g:L:l:" "q:t:" "R:" "s:" "m:~:!:"
+      "4:6:" "A:a:B:b:" "c:D:d:fpG:g:L:l:" "q:t:" "R:" "s:" "m:~:!:"
       "o" "." "#" "vHh";
 static char const * const a_lopts[] = {
    "4-mask:;4;" N_("IPv4 mask to strip off addresses before match"),
@@ -302,6 +303,7 @@ static char const * const a_lopts[] = {
    "count:;c;" N_("of SMTP retries before accepting sender"),
    "delay-max:;D;" N_("until an email \"is not a retry\" but new (minutes)"),
    "delay-min:;d;" N_("before an email \"is a retry\" (minutes)"),
+   "focus-sender;f;" N_("ignore recipient data (see manual)"),
    "delay-progressive;p;"
       N_("double delay-min for each retry until count is reached"),
    "gc-rebalance:;G;" N_("no of GC DB cleanup runs before rebalance"),
@@ -321,7 +323,7 @@ static char const * const a_lopts[] = {
    "msg-allow:;~;" N_("whitelist message (read manual; not SIGHUP)"),
    "msg-block:;!;" N_("blacklist message (\")"),
    "msg-defer:;m;" N_("defer_if_permit message (\")"),
-   "defer-msg:;m;" N_("OBSOLETE compatibility for --msg-defer"),
+      "defer-msg:;m;" N_("OBSOLETE compatibility for --msg-defer"),
 
    /**/
    "once;o;" N_("process only one request in this client invocation"),
@@ -341,7 +343,7 @@ static char const * const a_lopts[] = {
    /* In long-option order */\
    case '4': case '6':\
    case 'A': case 'a': case 'B': case 'b':\
-   case 'c': case 'D': case 'd':\
+   case 'c': case 'D': case 'd': case 'f':\
       case 'p': case 'G': case 'g': case 'L': case 'l':\
    case 'q': case 't':\
    case 'R':\
@@ -585,7 +587,8 @@ jblock:
       if(lnr == 0){
          /* Query complete?  Normalize data and ask server about triple */
          if(use_this &&
-               pgp->pg_r != NIL && pgp->pg_s != NIL && pgp->pg_ca != NIL &&
+               ((pgp->pg_flags & a_PG_F_FOCUS_SENDER) || pgp->pg_r != NIL) &&
+               pgp->pg_s != NIL && pgp->pg_ca != NIL &&
                pgp->pg_cname != NIL){
             if((rv = a_client__req(pgp)) != su_EX_OK)
                break;
@@ -637,6 +640,7 @@ jblock:
                continue;
             }
          }else if(i == sizeof("recipient") -1 &&
+               !(pgp->pg_flags & a_PG_F_FOCUS_SENDER) &&
                !su_mem_cmp(cp, "recipient", sizeof("recipient") -1)){
             if(pgp->pg_r != NIL)
                continue;
@@ -699,7 +703,7 @@ a_client__req(struct a_pg *pgp){
 
    rv = su_EX_OK;
 
-   if(!a_norm_triple_r(pgp))
+   if(!(pgp->pg_flags & a_PG_F_FOCUS_SENDER) && !a_norm_triple_r(pgp))
       goto jex_nodefer;
    if(!a_norm_triple_s(pgp))
       goto jex_nodefer;
@@ -708,7 +712,11 @@ a_client__req(struct a_pg *pgp){
    if(!a_norm_triple_cname(pgp))
       goto jex_nodefer;
 
-   iov[0].iov_len = su_cs_len(iov[0].iov_base = pgp->pg_r) +1;
+   if(pgp->pg_flags & a_PG_F_FOCUS_SENDER){
+      iov[0].iov_base = UNCONST(char*,su_empty);
+      iov[0].iov_len = sizeof(su_empty[0]);
+   }else
+      iov[0].iov_len = su_cs_len(iov[0].iov_base = pgp->pg_r) +1;
    iov[1].iov_len = su_cs_len(iov[1].iov_base = pgp->pg_s) +1;
    iov[2].iov_len = su_cs_len(iov[2].iov_base = pgp->pg_ca) +1;
    iov[3].iov_len = su_cs_len(iov[3].iov_base = pgp->pg_cname) +1;
@@ -972,8 +980,8 @@ jreavo:
       /* In long-option order */
       case '4': case '6':
       case 'A': case 'a': case 'B': case 'b':
-      case 'c': case 'D': case 'd': case 'p':
-         case 'G': case 'g': case 'L': case 'l':
+      case 'c': case 'D': case 'd': case 'f':
+         case 'p': case 'G': case 'g': case 'L': case 'l':
       case 'q': case 't':
       case 'R':
       case 's':
@@ -1661,14 +1669,21 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
          }
       }else if(*base++ != ' ')
          goto jerr;
-      /* r[ecipient]/s[ender]/c[lient address] */
-      else if((u.z = P2UZ(p.c - base)) >= a_BUF_SIZE || u.z <= 3+2)
+      /* [no recipient]/s[ender]/c[lient address] */
+      else if((u.z = P2UZ(p.c - base)) >= a_BUF_SIZE || u.z <= 2+2)
          goto jerr;
       else{
          char key[a_BUF_SIZE];
          s16 nmin;
          up d;
 
+         if(pgp->pg_flags & a_PG_F_FOCUS_SENDER){
+            while(*base != '/'){
+               if(--u.z == 0)
+                  goto jerr;
+               ++base;
+            }
+         }
          su_mem_copy(key, base, u.z);
          key[u.z] = '\0';
 
@@ -2076,7 +2091,7 @@ jretry_nent:
 
    /* Totally ignore it if not enough time passed */
    if(xmin < (pgp->pg_delay_min *
-         (pgp->pg_flags & a_PG_F_MASTER_DELAY_PROGRESSIVE ? cnt : 1))){
+         (pgp->pg_flags & a_PG_F_DELAY_PROGRESSIVE ? cnt : 1))){
       a_DBG( su_log_write(su_LOG_DEBUG, "gray too soon: %s (%lu,%lu,%lu)",
          key, S(ul,min), S(ul,pgmp->pgm_epoch_min), S(ul,xmin)); )
       --cnt; /* (Logging) */
@@ -2261,11 +2276,11 @@ a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
          *empp++ = _("delay-min is >= delay-max\n");
          pgp->pg_delay_min = pgp->pg_delay_max;
       }
-      if((pgp->pg_flags & a_PG_F_MASTER_DELAY_PROGRESSIVE) &&
+      if((pgp->pg_flags & a_PG_F_DELAY_PROGRESSIVE) &&
             S(uz,pgp->pg_delay_min) * pgp->pg_count >=
                S(uz,pgp->pg_delay_max)){
          *empp++ = _("delay-min*count is >= delay-max: -delay-progressive\n");
-         pgp->pg_flags ^= a_PG_F_MASTER_DELAY_PROGRESSIVE;
+         pgp->pg_flags ^= a_PG_F_DELAY_PROGRESSIVE;
       }
 
       if(pgp->pg_limit_delay >= pgp->pg_limit){
@@ -2311,7 +2326,7 @@ a_conf_list_values(struct a_pg *pgp){
       ,
       S(ul,pgp->pg_4_mask), S(ul,pgp->pg_6_mask),
       S(ul,pgp->pg_count), S(ul,pgp->pg_delay_max), S(ul,pgp->pg_delay_min),
-         (pgp->pg_flags & a_PG_F_MASTER_DELAY_PROGRESSIVE
+         (pgp->pg_flags & a_PG_F_DELAY_PROGRESSIVE
             ? "delay-progressive\n" : su_empty),
          S(ul,pgp->pg_gc_rebalance), S(ul,pgp->pg_gc_timeout),
          S(ul,pgp->pg_limit), S(ul,pgp->pg_limit_delay),
@@ -2378,7 +2393,8 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
    case 'c': p.i32 = &pgp->pg_count; goto ji32;
    case 'D': p.i16 = &pgp->pg_delay_max; goto ji16;
    case 'd': p.i16 = &pgp->pg_delay_min; goto ji16;
-   case 'p': pgp->pg_flags |= a_PG_F_MASTER_DELAY_PROGRESSIVE; break;
+   case 'f': pgp->pg_flags |= a_PG_F_FOCUS_SENDER; break;
+   case 'p': pgp->pg_flags |= a_PG_F_DELAY_PROGRESSIVE; break;
    case 'G': p.i16 = &pgp->pg_gc_rebalance; goto ji16;
    case 'g': p.i16 = &pgp->pg_gc_timeout; goto ji16;
    case 'L': p.i32 = &pgp->pg_limit; goto ji32;

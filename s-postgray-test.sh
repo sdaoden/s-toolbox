@@ -15,12 +15,13 @@ MSG_DEFER='DEFER_IF_PERMIT 4.2.0 Cannot hurry love'
 LC_ALL=C SOURCE_DATE_EPOCH=844221007
 export LC_ALL SOURCE_DATE_EPOCH
 
-s4= s5= s6=
+s4= s5= s6= s7=
 while [ $# -gt 0 ]; do
    case $1 in
    4) s4=y;;
    5) s5=y;;
    6) s6=y;;
+   7) s7=y;;
    *)
       echo >&2 'No such test to skip: '$1
       echo >&2 'Synopsis: '$0' [:test major number to skip, eg 5:]'
@@ -170,6 +171,8 @@ t 1.18 limit-delay 333333 -l 333333
 
 t 1.19 server-timeout 0 --server-timeout=0
 t 1.20 server-timeout 5 -t 5
+
+# TODO No tests for boolean options!
 # }}}
 
 ##
@@ -819,6 +822,64 @@ eval $PG -R ./x.rc --shutdown $REDIR
 [ $? -eq 0 ] || exit 101
 fi
 # }}}
+
+##
+echo '=7: gray --focus-sender=' # {{{
+if [ -n "$s7" ]; then
+   echo 'skipping 7'
+else
+
+rm -f *.db
+
+# Without -f!
+cat <<'_EOT' | eval $PG -R ./x.rc > ./7.0 $REDIR; cat > ./7.x <<_EOT
+recipient=x1@y
+sender=y@z
+client_address=127.1.2.2
+client_name=xy
+
+recipient=x2@y
+sender=y@z
+client_address=127.1.2.3
+client_name=xy
+
+_EOT
+action=$MSG_DEFER
+
+action=$MSG_DEFER
+
+_EOT
+
+cmp -s ./7.0 ./7.x || exit 101
+[ -n "$REDIR" ] || echo ok 7.0
+
+# save+reload (without -f still!)
+eval $PG -R ./x.rc --shutdown $REDIR
+[ $? -eq 0 ] || exit 101
+
+xsleep 1
+printf 'action=%s\n\n' "$MSG_DEFER" > 7.xx
+
+printf \
+   'recipient=x3@y\nsender=y@z\nclient_address=127.1.2.4\nclient_name=xy\n\n'\
+   | eval $PG -f -R ./x.rc > ./7.1 $REDIR
+cmp -s ./7.1 ./7.xx || exit 101
+[ -n "$REDIR" ] || echo ok 7.1
+
+xsleep 1
+printf 'action=%s\n\n' "DUNNO" > 7.xx
+
+printf \
+   'recipient=x4@y\nsender=y@z\nclient_address=127.1.2.5\nclient_name=xy\n\n'\
+   | eval $PG -f -R ./x.rc > ./7.2 $REDIR
+cmp -s ./7.2 ./7.xx || exit 101
+[ -n "$REDIR" ] || echo ok 7.2
+
+eval $PG -R ./x.rc --shutdown $REDIR
+[ $? -eq 0 ] || exit 101
+fi
+# }}}
+
 )
 exit $?
 

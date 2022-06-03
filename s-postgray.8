@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd May 13, 2022
+.Dd June 3, 2022
 .ds VV \\%v0.7.0
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
@@ -49,44 +49,40 @@
 .
 .Sh DESCRIPTION
 .
-\*(Xx is a
+A RFC 6647 graylisting
 .Xr postfix 1
-RFC 6647 graylisting policy server, following the recommended practice
-noted in the standard document.
-Graylisting defers message acceptance (for a specific recipient / sender
-/ client_address value tuple) a configurable number of times
+policy service.
+Graylisting defers message acceptance a configurable number of times
 via a standardized SMTP response (see
 .Xr allow 5 ,
 RFC 5321), which does not prevent message delivery from SMTP
 M(ail) T(ransfer) A(gent)s, but can help against simple spam producing
 programs.
+Client allow (white) and block (black) lists of domain names (exact and
+wildcard) as well as IPv4 and IPv6 addresses (exact or in CIDR notation)
+are supported.
+This program aims in being fast and secure: all the data is stored in
+main memory, synchronization with backing store is only performed when
+the server process is started or stopped, and the graylist database
+which needs to handle network data uses a cryptographically secure hash
+function.
 .
 .Pp
-\*(Xx supports client allow (white) and block (black) lists (blocking
-should be done earlier in the processing chain, though) of domain names
-(exact and wildcard) as well as IPv4 and IPv6 addresses (exact or in
-CIDR notation).
-It aims in being fast and secure: all the data is stored in main memory,
-synchronization with backing store is only performed when the server
-process is started or stopped, and the graylist database which needs
-to handle network data uses a cryptographically secure hash function.
-.
-.Pp
-\*(Xx clients are intented to be started via the
+This program is intented to be started via the
 .Xr postfix 1
 .Xr spawn 8
-daemon, they will automatically start the server as necessary.
+daemon, the single-instance server is managed internally.
 The server lifetime is configurable, by (compile-time) default it will
 terminate itself after some time without any client connection.
 Sending the server a
 .Ql SIGHUP
-signal will re-evaluate its configuration (which may result in program
+signal will re-evaluate the configuration (may result in program
 panic if a file disappeared or memory failures occur), sending it
 .Ql SIGUSR2
 will save the graylist database,
 whereas sending
 .Ql SIGUSR1
-will write some statistics to the log file.
+will log some statistics.
 A synchronized server
 .Fl Fl shutdown
 can be enforced, or an asynchronous termination by sending the server a
@@ -94,22 +90,32 @@ can be enforced, or an asynchronous termination by sending the server a
 signal.
 .
 .Pp
-Here is an excessively lengthy but minimal
+As recommendet by RFC 6647 messages are identified by their recipient /
+sender / client_address value triple; in
+.Fl Fl focus-sender
+mode recipients are ignored, and graylisting can be performed in the
+.Ql smtpd_sender_restrictions
+instead of the
+.Ql smtpd_recipient_restrictions
+of the
 .Xr postfix 1
-configuration example.
+configuration, for example to guard a following sender address
+verification.
+Here is an excessively lengthy but minimal
+.Xr postconf 5
+example.
 (Especially address and DNS hostname checks and verifications are
 performed before the policy server is involved in the decision process.)
-It shall be noted that the
+Note the
 .Ql DEFER_IF_PERMIT
 .Fl Fl msg-defer
-used to signal actual graylisting to
-.Xr postfix 1
-is counted against the
-.Xr postconf 5
-parameters
+used to signal graylisting is counted against
 .Ql smtpd_hard_error_limit
 and
-.Ql smtpd_soft_error_limit .
+.Ql smtpd_soft_error_limit
+parameters
+.Pf ( Fl Fl focus-sender
+mode can generate only one error per message).
 .
 .Bd -literal -offset indent
 #@ /etc/postfix/master.cf:
@@ -128,9 +134,10 @@ default_privs = ANON-USR
 
 # Client connection checks
 smtpd_client_restrictions =
+#   permit_inet_interfaces, OR
    permit_mynetworks,
 #RELAY   permit_tls_clientcerts,
-#[RELAY]  permit_sasl_authenticated,
+#[RELAY]   permit_sasl_authenticated,
    reject_unknown_client_hostname,
    reject_unauth_pipelining,
    permit
@@ -140,9 +147,10 @@ smtpd_data_restrictions =
    permit
 
 smtpd_helo_restrictions =
+#   permit_inet_interfaces, OR
    permit_mynetworks,
 #RELAY   permit_tls_clientcerts,
-#[RELAY]  permit_sasl_authenticated,
+#[RELAY]   permit_sasl_authenticated,
    reject_invalid_helo_hostname,
    reject_non_fqdn_helo_hostname,
    reject_unknown_helo_hostname,
@@ -150,12 +158,19 @@ smtpd_helo_restrictions =
 
 # MAIL FROM Checks
 smtpd_sender_restrictions =
+#   permit_inet_interfaces, OR
    permit_mynetworks,
+#RELAY   reject_authenticated_sender_login_mismatch,
 #RELAY   permit_tls_clientcerts,
-#[RELAY]  permit_sasl_authenticated,
-    # Total no-goes database, eg: qq.com reject
+#[RELAY]   permit_sasl_authenticated,
+   reject_non_fqdn_sender,
+   # Total no-goes database, eg: qq.com reject
 #   check_sender_access lmdb:/etc/postfix/sender_restrict,
    reject_unknown_sender_domain,
+   reject_unknown_reverse_client_hostname,
+   # With --focus-sender only!  And --msg-allow=permit
+#   check_policy_service unix:private/postgray,
+#VERIFY(..then)   reject_unverified_sender,
    permit
 
 smtpd_relay_before_recipient_restrictions = yes
@@ -163,24 +178,26 @@ smtpd_relay_before_recipient_restrictions = yes
 # RCPT TO checks, relay policy
 # Local+auth clients may specify any destination domain
 smtpd_relay_restrictions =
+#   permit_inet_interfaces, OR
    permit_mynetworks,
 #RELAY   permit_tls_clientcerts,
 #[RELAY]  permit_sasl_authenticated,
-   reject_non_fqdn_sender,
    reject_non_fqdn_recipient,
    reject_unauth_destination,
    permit
 
 # RCPT TO checks, spam blocking policy
 smtpd_recipient_restrictions =
-  permit_mynetworks,
+#   permit_inet_interfaces, OR
+   permit_mynetworks,
 #RELAY   permit_tls_clientcerts,
 #[RELAY]  permit_sasl_authenticated,
-  reject_unknown_sender_domain,
-  reject_unknown_reverse_client_hostname,
-  reject_unknown_recipient_domain,
-  check_policy_service unix:private/postgray
-  permit
+   reject_unknown_recipient_domain,
+   # Without --focus-sender only!
+   check_policy_service unix:private/postgray,
+#VERIFY(..then)   reject_unverified_sender,
+#(VERIFY i would not)   reject_unverified_recipient,
+   permit
 
 \&...
 .Ed
@@ -294,6 +311,7 @@ Add a blacklist entry, syntax identical to
 .Fl Fl allow .
 Entries are rejected with
 .Fl Fl msg-block .
+(Blocking should possibly be done earlier in the processing chain.)
 .
 .Mx Fl count
 .It Fl Fl count Ar no , Fl c Ar no
@@ -319,12 +337,28 @@ Those which come sooner do not increment
 .Fl Fl count .
 .
 .Mx Fl delay-progressive
-.It Fl Fl delay-progressive , Fl p
+.It Fl Fl delay-progressive , p
 If set each counted retry doubles
 .Fl Fl delay-min
 for the next one until
 .Fl Fl count
 is reached.
+.
+.Mx Fl focus-sender
+.It Fl Fl focus-sender , f
+By default all of recipient (email address), sender (email address) and
+client address (IPv4 or IPv6 internet address) are used to identify
+messages for graylisting purposes.
+If enabled the recipient is instead ignored, with benefits as shown in
+.Sx DESCRIPTION .
+This setting cannot be changed at runtime, and it should be ensured all
+instances see the same setting.
+An existing DB can be reused, incompatible entries fall off at times.
+Alternatively an update (to the focus form) is possible by running the
+following, start in focused mode thereafter:
+.Bd -literal -offset indent
+sed -i'' -Ee 's|^([^ ] )[^/]*(/.+)$|\e1\e2|' PATH-TO-DB
+.Ed
 .
 .Mx Fl gc-rebalance
 .It Fl Fl gc-rebalance Ar no , Fl G Ar no
@@ -343,7 +377,7 @@ This timeout is also an indication for how often a GC shall be
 performed, but GC happens due to circumstances, too.
 .
 .Mx Fl help
-.It Fl Fl help , Fl h
+.It Fl Fl help , h
 A short help listing (not helpful, instead see
 .Fl H
 or
@@ -353,8 +387,8 @@ or
 .It Fl Fl limit Ar no , Fl L Ar no
 Number of DB entries until new ones are not handled,
 effectively turning them into accepted graylist members.
-Data is stored compact, and the size depends on actual email recipient /
-sender / client_address value tuple data,
+Data is stored compact, and the size depends on actual email
+(recipient /) sender / client_address value data,
 but accounting say 128 bytes per entry may be a guideline.
 In addition the dictionary head table resides in one large contiguous
 memory chunk, accounting 1 MB per 10000000 entries may be proper.
@@ -384,13 +418,15 @@ format that is passed to
 .Xr postfix 1
 for
 .Fl Fl allow Ns
-ed recipient / sender / client_address value tuples.
+ed (recipient /) sender / client_address value combinations.
 This setting cannot be changed at runtime.
 Defaults to
 .Ql DUNNO ,
 but
 .Ql OK
-seems reasonable.
+or even
+.Ql permit
+seem reasonable.
 .
 .Mx Fl msg-block
 .It Fl Fl msg-block Ar msg , Fl ! Ar msg
@@ -398,7 +434,7 @@ Like
 .Fl Fl msg-allow ,
 but for
 .Fl Fl block Ns
-ed tuples.
+ed value combinations.
 Defaults to
 .Ql REJECT ,
 but
@@ -409,7 +445,7 @@ seems reasonable.
 .It Fl Fl msg-defer Ar msg , Fl m Ar msg
 Like
 .Fl Fl msg-allow ,
-but used for graylisted tuples
+but used for graylisted value combinations
 .Pf ( Ql DUNNO
 is used for accepted ones).
 The default is
@@ -441,11 +477,11 @@ Remarks: the old
 option was a misnomer and is obsolete.
 .
 .Mx Fl long-help
-.It Fl Fl long-help , Fl H
+.It Fl Fl long-help , H
 A long help listing.
 .
 .Mx Fl once
-.It Fl Fl once , Fl o
+.It Fl Fl once , o
 If given the client part will only process one message.
 The server process functions as usual.
 .
@@ -477,7 +513,7 @@ The statistics dumped on the signal
 are not saved in the DB, they only reflect the current server lifetime.
 .
 .Mx Fl shutdown
-.It Fl Fl shutdown , Fl \&.
+.It Fl Fl shutdown , \&.
 Force a running server process to exit.
 The client synchronizes on the server exit before its terminating.
 It exits EX_TEMPFAIL (75) when no server is running.
@@ -491,7 +527,7 @@ communication socket will be created.
 This setting cannot be changed at runtime.
 .
 .Mx Fl test-mode
-.It Fl Fl test-mode , Fl #
+.It Fl Fl test-mode , #
 Enable test mode: all options are evaluated, including
 .Fl Fl allow-file ,
 .Fl Fl allow ,
@@ -499,15 +535,16 @@ Enable test mode: all options are evaluated, including
 and
 .Fl Fl block
 which are normally processed by only the server.
-Once the command line is worked the content of all white- and blacklists
-is shown, as well as the final settings of above variables.
+Once the command line is worked the content of all white- and
+blacklists, as well as the final settings of above variables are shown
+in resource file format.
 The exit status indicates error.
 It is highly recommended to use this for configuration checks.
 .
 .Mx Fl verbose
-.It Fl Fl verbose , Fl v
+.It Fl Fl verbose , v
 Increase log verbosity (two levels).
-Might be of interest to improve the configuration, for example
+May be of interest to improve the configuration, for example
 .Fl Fl allow
 and
 .Fl Fl block
