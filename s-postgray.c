@@ -1637,7 +1637,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
       if(*p.c != '\n')
          continue;
 
-      if(&base[1] == p.c)
+      if(&base[2] >= p.c)
          goto jerr;
 
       u.f = su_idec(&ibuf, base, P2UZ(p.c - base), 10, 0,
@@ -1661,7 +1661,8 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
          }
       }else if(*base++ != ' ')
          goto jerr;
-      else if((u.z = P2UZ(p.c - base)) >= a_BUF_SIZE)
+      /* r[ecipient]/s[ender]/c[lient address] */
+      else if((u.z = P2UZ(p.c - base)) >= a_BUF_SIZE || u.z <= 3+2)
          goto jerr;
       else{
          char key[a_BUF_SIZE];
