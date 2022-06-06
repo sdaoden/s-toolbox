@@ -12,6 +12,8 @@
  *@ - With $SOURCE_DATE_EPOCH "minutes" are indeed "seconds".
  *@
  *@ Possible improvements:
+ *@ - Integrate --focus-sender mode into verify(8) and drop mode again;
+ *@   or use verify(8) and keep state ourselfs.
  *@ - Add recipient whitelist?
  *@ - Add sender whitelist??  (In combination with DKIM etc thinkable?)
  *@ - We may want to make the server startable on its own?
@@ -1262,28 +1264,28 @@ a_server__log_stat(struct a_pg *pgp){ /* {{{ */
    }
 
    su_log_write(su_LOG_INFO,
-      _("clients %lu of %lu\n"
-        "white: CA %lu/%lu (fuzzy %lu), CNAME %lu/%lu\n"
-        "-hits: CA exact %lu / fuzzy %lu, CNAME exact %lu / fuzzy %lu\n"
-        "black: CA %lu/%lu (fuzzy %lu), CNAME %lu/%lu\n"
-        "-hits: CA exact %lu / fuzzy %lu, CNAME exact %lu / fuzzy %lu\n"
-        "gray: %lu/%lu, gc_cnt %lu; epoch: %lu, now %lu: %lu\n"
+      _("clients %lu of %lu; in following: exact/wildcard counts [(size)]\n"
+        "white: CA %lu (%lu) / %lu, CNAME %lu (%lu) [/?]\n"
+        "-hits: CA %lu/%lu, CNAME %lu/%lu\n"
+        "black: CA %lu (%lu) / %lu, CNAME %lu/%lu\n"
+        "-hits: CA %lu/%lu, CNAME %lu/%lu\n"
+        "gray: %lu (%lu), gc_cnt %lu; epoch: base %lu, now %lu, minutes %lu\n"
         "-hits: new %lu, defer %lu, pass %lu"),
       S(ul,pgmp->pgm_cli_no), S(ul,pgp->pg_server_queue),
       S(ul,su_cs_dict_count(&pgmp->pgm_white.pgwb_ca)),
-            S(ul,su_cs_dict_size(&pgmp->pgm_white.pgwb_ca)), i1,
-         S(ul,su_cs_dict_count(&pgmp->pgm_white.pgwb_cname)),
-            S(ul,su_cs_dict_size(&pgmp->pgm_white.pgwb_cname)),
-      pgmp->pgm_cnt_white.pgwbc_ca, pgmp->pgm_cnt_white.pgwbc_ca_fuzzy,
-         pgmp->pgm_cnt_white.pgwbc_cname,
-            pgmp->pgm_cnt_white.pgwbc_cname_fuzzy,
+               S(ul,su_cs_dict_size(&pgmp->pgm_white.pgwb_ca)), i1,
+            S(ul,su_cs_dict_count(&pgmp->pgm_white.pgwb_cname)),
+               S(ul,su_cs_dict_size(&pgmp->pgm_white.pgwb_cname)),
+         pgmp->pgm_cnt_white.pgwbc_ca, pgmp->pgm_cnt_white.pgwbc_ca_fuzzy,
+            pgmp->pgm_cnt_white.pgwbc_cname,
+               pgmp->pgm_cnt_white.pgwbc_cname_fuzzy,
       S(ul,su_cs_dict_count(&pgmp->pgm_black.pgwb_ca)),
-            S(ul,su_cs_dict_size(&pgmp->pgm_black.pgwb_ca)), i2,
-         S(ul,su_cs_dict_count(&pgmp->pgm_black.pgwb_cname)),
-            S(ul,su_cs_dict_size(&pgmp->pgm_black.pgwb_cname)),
-      pgmp->pgm_cnt_black.pgwbc_ca, pgmp->pgm_cnt_black.pgwbc_ca_fuzzy,
-         pgmp->pgm_cnt_black.pgwbc_cname,
-            pgmp->pgm_cnt_black.pgwbc_cname_fuzzy,
+               S(ul,su_cs_dict_size(&pgmp->pgm_black.pgwb_ca)), i2,
+            S(ul,su_cs_dict_count(&pgmp->pgm_black.pgwb_cname)),
+               S(ul,su_cs_dict_size(&pgmp->pgm_black.pgwb_cname)),
+         pgmp->pgm_cnt_black.pgwbc_ca, pgmp->pgm_cnt_black.pgwbc_ca_fuzzy,
+            pgmp->pgm_cnt_black.pgwbc_cname,
+               pgmp->pgm_cnt_black.pgwbc_cname_fuzzy,
       S(ul,su_cs_dict_count(&pgmp->pgm_gray)),
          S(ul,su_cs_dict_size(&pgmp->pgm_gray)),
          S(ul,pgmp->pgm_cleanup_cnt),
@@ -1729,7 +1731,7 @@ jerr:
 
       su_timespec_sub(su_timespec_current(&ts2), &ts);
       su_log_write(su_LOG_INFO,
-         _("loaded %lu gray DB entries in %lu:%lu (sec:nano) from %s"),
+         _("loaded %lu gray DB entries in %lu:%09lu seconds from %s"),
          S(ul,su_cs_dict_count(&pgp->pg_master->pgm_gray)),
          S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), path);
    }
@@ -1849,7 +1851,7 @@ jclose:
 
       su_timespec_sub(su_timespec_current(&ts2), &ts);
       su_log_write(su_LOG_INFO,
-         _("saved %lu gray DB entries in %lu:%lu (sec:nano) to %s"),
+         _("saved %lu gray DB entries in %lu:%09lu seconds to %s"),
          S(ul,cnt), S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), path);
    }
 
@@ -2165,7 +2167,7 @@ jleave:
    else
       ++pgmp->pgm_cnt_gray_pass;
    if(pgp->pg_flags & a_PG_F_V)
-      su_log_write(su_LOG_INFO, "### gray (defer=%d, count=%lu): %s",
+      su_log_write(su_LOG_INFO, "### gray (defer=%d [and count=%lu]): %s",
          (rv != a_PG_ANSWER_NODEFER), S(ul,cnt), key);
 
    NYD_OU;

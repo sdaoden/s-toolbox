@@ -20,14 +20,29 @@ This will build and install the binary under [.xxx]/usr/sbin, and the
 default built-in path for database storage and the client/server
 communication socket will be /var/lib/postfix.
 
+RELEASES
+--------
+
+v0.6.0, 2022-03-31:
+v0.7.0, 2022-06-07:
+  - An iteration that fixes some oddities, and clarifies documentation.
+  - Bug fixes:
+    . -v and -p were not reset for reload, this fixated once set.
+    . -b and -B were not command-line-parsed by the server, only in
+      --test-mode (driven by client); usage in resource-file ok, too.
+  - New --focus-sender approach which i like better.
+    (In fact that mode should be integrated into verify(8); or
+    s-postgray should do the verify; or it should use verify(8) for that
+    .. and manage the verification status itself?)
+  - New --msg-{allow,block}, and --msg-defer for misnamed --defer-msg,
+    which is kept for compatibility.
+
 NOTE
 ----
 
-The test script *may* fail on slow systems: in order not to take
-too long it uses very narrow time limits, and on slow systems errors
-can happen (in particular 5.9).  Since this only has been seen on an
-elder OpenBSD KVM on Linux kernel 5.15 with PREEMPT=y (shall that
-matter) it was decided not to change the entire test timings.
+The test script *may* fail on (very, very, very) slow systems: in order
+not to take too long it uses very narrow time limits, and on slow
+systems errors can happen (in particular 5.9).
 
 THANKS
 ------

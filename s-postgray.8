@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd June 3, 2022
+.Dd June 7, 2022
 .ds VV \\%v0.7.0
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
@@ -93,14 +93,7 @@ signal.
 As recommendet by RFC 6647 messages are identified by their recipient /
 sender / client_address value triple; in
 .Fl Fl focus-sender
-mode recipients are ignored, and graylisting can be performed in the
-.Ql smtpd_sender_restrictions
-instead of the
-.Ql smtpd_recipient_restrictions
-of the
-.Xr postfix 1
-configuration, for example to guard a following sender address
-verification.
+mode recipients are ignored (see there).
 Here is an excessively lengthy but minimal
 .Xr postconf 5
 example.
@@ -211,7 +204,8 @@ s only support the long form, and only a (logical) option subset.
 The minute limit is 32767 (15-bit), the maximum duration is thus 22 days.
 Other numbers have a limit of 31-bit (2147483647).
 .Fl Fl test-mode
-performs a dry-run configuration syntax test, and virtualizes it.
+performs a dry-run configuration syntax test, and outputs a normalized
+resource file.
 In the following DB means database, and GC garbage collection.
 .
 .Bl -tag -width ".It Fl BaNg"
@@ -349,16 +343,26 @@ is reached.
 By default all of recipient (email address), sender (email address) and
 client address (IPv4 or IPv6 internet address) are used to identify
 messages for graylisting purposes.
-If enabled the recipient is instead ignored, with benefits as shown in
-.Sx DESCRIPTION .
+With this focus is on the sender, and the recipient is ignored.
+.Xr postconf 5
+can then be changed to perform graylisting in
+.Ql smtpd_sender_restrictions
+instead of
+.Ql smtpd_recipient_restrictions ,
+for example to guard a following sender address verification;
+to accomplish this for real
+.Ql Fl Fl msg-allow Ns = Ns permit
+and
+.Ql Fl Fl msg-defer Ns = Ns DEFER 4.2.0 Service temporarily faded to Gray
+should be set, so that the verification is only reached for graylisted
+senders that passed the test, and
+.Ql Fl Fl count Ns = Ns 1
+might be sufficient.
 This setting cannot be changed at runtime, and it should be ensured all
-instances see the same setting.
-An existing DB can be reused, incompatible entries fall off at times.
-Alternatively an update (to the focus form) is possible by running the
-following, start in focused mode thereafter:
-.Bd -literal -offset indent
-sed -i'' -Ee 's|^([^ ] )[^/]*(/.+)$|\e1\e2|' PATH-TO-DB
-.Ed
+instances use the same one.
+An existing DB can be reused: the next load removes recipients, so this
+is one way (DB remains
+.Dq compatible ) .
 .
 .Mx Fl gc-rebalance
 .It Fl Fl gc-rebalance Ar no , Fl G Ar no
@@ -556,7 +560,8 @@ data is logged, as is the time necessary to save and load the DB.
 .
 .Xr postfix 1 ,
 .Xr access 5 ,
-.Xr spawn 8
+.Xr spawn 8 ,
+.Xr verify 8
 .
 .
 .Sh AUTHORS
