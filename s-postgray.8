@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd June 7, 2022
+.Dd June 9, 2022
 .ds VV \\%v0.7.0
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
@@ -56,8 +56,8 @@ Graylisting defers message acceptance a configurable number of times
 via a standardized SMTP response (see
 .Xr allow 5 ,
 RFC 5321), which does not prevent message delivery from SMTP
-M(ail) T(ransfer) A(gent)s, but can help against simple spam producing
-programs.
+M(essage) T(ransfer) A(gent)s, but can help against simple spam
+producing programs.
 Client allow (white) and block (black) lists of domain names (exact and
 wildcard) as well as IPv4 and IPv6 addresses (exact or in CIDR notation)
 are supported.
@@ -75,18 +75,18 @@ daemon, the single-instance server is managed internally.
 The server lifetime is configurable, by (compile-time) default it will
 terminate itself after some time without any client connection.
 Sending the server a
-.Ql SIGHUP
+.Ql HUP
 signal will re-evaluate the configuration (may result in program
 panic if a file disappeared or memory failures occur), sending it
-.Ql SIGUSR2
+.Ql USR2
 will save the graylist database,
 whereas sending
-.Ql SIGUSR1
+.Ql USR1
 will log some statistics.
 A synchronized server
 .Fl Fl shutdown
 can be enforced, or an asynchronous termination by sending the server a
-.Ql SIGTERM
+.Ql TERM
 signal.
 .
 .Pp
@@ -408,11 +408,10 @@ By choosing the right settings for
 .Fl Fl limit ,
 .Fl Fl limit-delay
 and
-.Fl Fl gc-timeout ,
+.Fl Fl gc-timeout
 it should be impossible to reach the graylist bypass limit.
-Note this is not honoured if
-.Fl Fl count
-is 0.
+Not honoured if for a 0
+.Fl Fl count .
 .
 .Mx Fl msg-allow
 .It Fl Fl msg-allow Ar msg , Fl ~ Ar msg
@@ -462,6 +461,11 @@ is not optional; it uses an RFC 3463 extended status code:
 4.X.X Persistent Transient Failure
 x.2.X Mailbox Status
 X.2.0 Other or undefined mailbox status
+# [4.1.7 (postfix during address verification in progress]
+x.1.x Addressing Status
+x.1.0 Other address status
+x.1.7 Bad sender's mailbox address syntax
+X.1.XXX Addressing Statu
 # [4.7.1 (seen in wild; less friendly and portable!)]
 x.7.X Security or Policy Status
 x.7.0 Other or undefined security status
@@ -513,7 +517,7 @@ This setting cannot be changed at runtime.
 Duration until a \*(Xx server which does not serve any clients terminates.
 The value 0 disables auto-termination.
 The statistics dumped on the signal
-.Ql SIGUSR1
+.Ql USR1
 are not saved in the DB, they only reflect the current server lifetime.
 .
 .Mx Fl shutdown

@@ -4,7 +4,7 @@ S - p o s t g r a y
 A postfix RFC 6647 graylisting policy server that aims in being fast
 and secure.  Graylisting defers message acceptance a configurable number
 of times via a standardized SMTP response (see RFC 5321, access(5)),
-which does not prevent message delivery from SMTP M(ail) T(ransfer)
+which does not prevent message delivery from SMTP M(essage) T(ransfer)
 A(gent)s, but can help against simple spam producing programs.
 Please see the manual for more.
 
@@ -26,14 +26,18 @@ RELEASES
 v0.6.0, 2022-03-31:
 v0.7.0, 2022-06-07:
   - An iteration that fixes some oddities, and clarifies documentation.
+    (The example configuration is also better.)
   - Bug fixes:
-    . -v and -p were not reset for reload, this fixated once set.
+    . -v and -p were not reset for reload, thus fixated once set.
     . -b and -B were not command-line-parsed by the server, only in
       --test-mode (driven by client); usage in resource-file ok, too.
+  - --test-mode now outputs a normalized resource file.
   - New --focus-sender approach which i like better.
-    (In fact that mode should be integrated into verify(8); or
-    s-postgray should do the verify; or it should use verify(8) for that
-    .. and manage the verification status itself?)
+      [I personally now use --focus-sender mode with --count=1,
+      --msg-allow=permit and --msg-defer='DEFER 4.2.0 blabla',
+      and reject_unverified_sender thereafter.  I could imagine
+      s-postgray to become obsolete if verify(8) would do a once-
+      then-wait-five-minutes graylisting itself.]
   - New --msg-{allow,block}, and --msg-defer for misnamed --defer-msg,
     which is kept for compatibility.
 
