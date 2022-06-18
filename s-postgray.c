@@ -49,7 +49,7 @@
 #define su_FILE s_postgray
 
 /* */
-#define a_VERSION "0.7.0"
+#define a_VERSION "0.7.1"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* Maximum accept(2) backlog */
@@ -1267,7 +1267,7 @@ a_server__log_stat(struct a_pg *pgp){ /* {{{ */
       _("clients %lu of %lu; in following: exact/wildcard counts [(size)]\n"
         "white: CA %lu (%lu) / %lu, CNAME %lu (%lu) [/?]\n"
         "-hits: CA %lu/%lu, CNAME %lu/%lu\n"
-        "black: CA %lu (%lu) / %lu, CNAME %lu/%lu\n"
+        "black: CA %lu (%lu) / %lu, CNAME %lu (%lu) [/?]\n"
         "-hits: CA %lu/%lu, CNAME %lu/%lu\n"
         "gray: %lu (%lu), gc_cnt %lu; epoch: base %lu, now %lu, minutes %lu\n"
         "-hits: new %lu, defer %lu, pass %lu"),
