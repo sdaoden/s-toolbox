@@ -1,20 +1,26 @@
 #@ Makefile for pam_xdg(8).
 #@ For example "$ make -f pam_xdg.makefile DESTDIR=.x CC=clang".
 
-PREFIX = /
-MANPREFIX = /usr
+PREFIX =
+MANPREFIX = $(PREFIX)/usr
 DESTDIR =
 LIBDIR = $(DESTDIR)$(PREFIX)/lib/security
 MANDIR = $(DESTDIR)$(MANPREFIX)/share/man/man8
 NAME = pam_xdg
 
-# According to XDG Base Directory Specification, v0.7.
+XDG_CONFIG_DIR = /etc
+# Standard says /usr/local/share/:/usr/share/, but instead of that
+# /usr/local/ one may use a different prefix by changing this
+XDG_DATA_DIR_LOCAL = /usr/local
 # Of _RUNTIME_DIR_OUTER, only the last component is created if non-existing
 XDG_RUNTIME_DIR_OUTER = /run
-XDG_DATA_DIR_LOCAL = /usr/local
-XDG_CONFIG_DIR = /etc
 
 ## >8 -- 8<
+
+XDG_FLAGS = \
+	-D XDG_CONFIG_DIR=$(XDG_CONFIG_DIR) \
+	-D XDG_DATA_DIR_LOCAL=$(XDG_DATA_DIR_LOCAL) \
+	-D XDG_RUNTIME_DIR_OUTER=$(XDG_RUNTIME_DIR_OUTER) \
 
 CC = cc
 CFLAGS = -DNDEBUG \
@@ -24,11 +30,8 @@ CFLAGS = -DNDEBUG \
 	-fno-common \
 	-fstrict-aliasing -fstrict-overflow \
 	-fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE
-XDG_FLAGS = -D XDG_RUNTIME_DIR_OUTER=$(XDG_RUNTIME_DIR_OUTER) \
-	-D XDG_DATA_DIR_LOCAL=$(XDG_DATA_DIR_LOCAL) \
-	-D XDG_CONFIG_DIR=$(XDG_CONFIG_DIR)
 LDFLAGS = -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
-	-Wl,--enable-new-dtags -pie -shared
+	-Wl,--enable-new-dtags -fpie -shared
 LDLIBS = -lpam
 
 INSTALL = install

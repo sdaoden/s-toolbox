@@ -1,6 +1,6 @@
 /*@ pam_xdg - manage XDG Base Directories (runtime dir life time, environment).
  *@ See pam_xdg.8 for more.
- *@ - According to XDG Base Directory Specification, v0.7.
+ *@ - According to XDG Base Directory Specification, v0.8.
  *@ - Supports libpam (Linux) and OpenPAM.
  *@ - Requires C preprocessor with __VA_ARGS__ support!
  *@ - Uses "rm -rf" to drop per-user directories. XXX Unroll this?  nftw?
@@ -21,14 +21,25 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#ifndef XDG_CONFIG_DIR
+# define XDG_CONFIG_DIR /etc
+#endif
+#ifndef XDG_DATA_DIR_LOCAL
+# define XDG_DATA_DIR_LOCAL /usr/local
+#endif
+#ifndef XDG_RUNTIME_DIR_OUTER
+# define XDG_RUNTIME_DIR_OUTER /run
+#endif
+
 /* For these a leading \1 is replaced with struct passwd::pw_dir.
  * Be aware we use a stack buffer for storage */
-#define a_XDG_DATA_HOME_DEF "\1/.local/share"
-#define a_XDG_CONFIG_HOME_DEF "\1/.config"
 #define a_XDG_CACHE_HOME_DEF "\1/.cache"
-/* For porter's sake this */
-#define a_XDG_DATA_DIRS_DEF a_STRING(XDG_DATA_DIR_LOCAL) "/share:/usr/share"
+#define a_XDG_CONFIG_HOME_DEF "\1/.config"
+#define a_XDG_DATA_HOME_DEF "\1/.local/share"
+#define a_XDG_STATE_HOME_DEF "\1/.local/state"
+
 #define a_XDG_CONFIG_DIRS_DEF a_STRING(XDG_CONFIG_DIR) "/xdg"
+#define a_XDG_DATA_DIRS_DEF a_STRING(XDG_DATA_DIR_LOCAL) "/share:/usr/share"
 
 /* We create the outer directories as necessary (stack buffer storage!).
  * This only holds for last component of _OUTER, though. */
@@ -309,16 +320,18 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
          };
 
          static struct a_dir const a_dirs[] = {
-            {"XDG_DATA_HOME=", sizeof("XDG_DATA_HOME=") -1,
-               a_XDG_DATA_HOME_DEF},
+            {"XDG_CACHE_HOME=", sizeof("XDG_CACHE_HOME=") -1,
+               a_XDG_CACHE_HOME_DEF},
+            {"XDG_CONFIG_DIRS=", sizeof("XDG_CONFIG_DIRS=") -1,
+               a_XDG_CONFIG_DIRS_DEF},
             {"XDG_CONFIG_HOME=", sizeof("XDG_CONFIG_HOME=") -1,
                a_XDG_CONFIG_HOME_DEF},
             {"XDG_DATA_DIRS=", sizeof("XDG_DATA_DIRS=") -1,
                a_XDG_DATA_DIRS_DEF},
-            {"XDG_CONFIG_DIRS=", sizeof("XDG_CONFIG_DIRS=") -1,
-               a_XDG_CONFIG_DIRS_DEF},
-            {"XDG_CACHE_HOME=", sizeof("XDG_CACHE_HOME=") -1,
-               a_XDG_CACHE_HOME_DEF},
+            {"XDG_DATA_HOME=", sizeof("XDG_DATA_HOME=") -1,
+               a_XDG_DATA_HOME_DEF},
+            {"XDG_STATE_HOME=", sizeof("XDG_STATE_HOME=") -1,
+               a_XDG_STATE_HOME_DEF},
             {NULL,0,NULL} /* XXX -> nelem/item/countof */
          };
 
