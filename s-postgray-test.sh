@@ -32,7 +32,7 @@ while [ $# -gt 0 ]; do
    shift
 done
 
-mkdir .test || exit 1
+[ -d .test ] || mkdir .test || exit 1
 trap "trap '' EXIT; [ -z \"$KEEP_TESTS\" ] && rm -rf ./.test" EXIT
 trap 'exit 1' HUP INT TERM
 
@@ -278,7 +278,7 @@ ab 2 b block B
 
 echo 'allow-file=x.a1' >> ./defx
 echo 'resource-file=3.r1' >> ./defx
-echo 'allow-file=x.a2' >> ./3.r1
+echo 'allow-file=x.a2' > ./3.r1
 
 eval $PGX --test-mode -R ./defx --4-mask=24 --6-mask 64 > ./3.4 $REDIR
 cmp -s 3.4 3.0x || exit 101
@@ -387,6 +387,8 @@ client_name=a.b.c.d.e.f.d.a.s
 
 _EOT
 
+: > ./4.0x
+: > ./4.1x
 i=0
 while [ $i -lt 17 ]; do
    printf 'action=xDUNNO\n\n' >> ./4.0x
@@ -413,7 +415,7 @@ printf \
    'recipient=x@y\nsender=y@z\nclient_address=200.200.200.200\n'\
 'client_name=and.subdomain\n\n'\
    | eval $PG -R ./x.rc > ./4.2 $REDIR
-printf 'action='"$MSG_DEFER"'\n\n' >> ./4.2x
+printf 'action='"$MSG_DEFER"'\n\n' > ./4.2x
 cmp -s ./4.2 ./4.2x || exit 101
 [ -n "$REDIR" ] || echo ok 4.2
 
@@ -421,7 +423,7 @@ printf \
    'recipient=x@y\nsender=y@z\nclient_address=200.200.201.200\n'\
 'client_name=subdomain.\n\n'\
    | eval $PG -R ./x.rc > ./4.3 $REDIR
-printf 'action='"$MSG_DEFER"'\n\n' >> ./4.3x
+printf 'action='"$MSG_DEFER"'\n\n' > ./4.3x
 cmp -s ./4.3 ./4.3x || exit 101
 [ -n "$REDIR" ] || echo ok 4.3
 
@@ -430,7 +432,7 @@ printf \
    'recipient=x@y\nsender=y@z\nclient_address=200.200.202.200\n'\
 'client_name=.\n\n'\
    | eval $PG -R ./x.rc > ./4.4 $REDIR
-printf 'action=DUNNO\n\n' >> ./4.4x
+printf 'action=DUNNO\n\n' > ./4.4x
 cmp -s ./4.4 ./4.4x || exit 101
 [ -n "$REDIR" ] || echo ok 4.4
 
@@ -444,7 +446,7 @@ printf \
    'recipient=x@y\nsender=y@z\nclient_address=200.200.203.200\n'\
 'client_name=.\n\n'\
    | eval $PG -R ./x.rc --once > ./4.5 $REDIR
-printf 'action=DUNNO\n\n' >> ./4.5x
+printf 'action=DUNNO\n\n' > ./4.5x
 cmp -s ./4.5 ./4.5x || exit 101
 [ -n "$REDIR" ] || echo ok 4.5
 
@@ -735,14 +737,19 @@ cat > ./6.rc <<_EOT
 count 1
 msg-defer=all the same
 delay-min 2
-delay-max 720
-gc-timeout 1440
-server-timeout 720
+delay-max 72
+gc-timeout 144
+server-timeout 72
 store-path=$pwd
 limit $((max2 * max1))
 limit-delay=0
 _EOT
 
+i=0
+while [ $i -lt $max1 ]; do
+   : > ./6.${i}x
+   i=$((i + 1))
+done
 i=0
 while [ $i -lt $max1 ]; do
    (
