@@ -141,7 +141,8 @@
 #define N_(X) X
 #define V_(X) X
 
-/* No need for _CASE since keys are normalized already.  No _AUTO_SHRINK! */
+/* Dictionary flags.
+ * No need for _CASE since keys are normalized already.  No _AUTO_SHRINK! */
 #define a_PG_WB_CA_FLAGS (su_CS_DICT_HEAD_RESORT)
 #define a_PG_WB_CNAME_FLAGS (su_CS_DICT_HEAD_RESORT)
 
@@ -152,7 +153,7 @@
    (su_CS_DICT_HEAD_RESORT | su_CS_DICT_STRONG /*| su_CS_DICT_ERR_PASS*/)
 #define a_PG_GRAY_TS 4
 #define a_PG_GRAY_MIN_LIMIT 1000
-#define a_PG_GRAY_DB_NAME "s-postgray.db"
+#define a_PG_GRAY_DB_NAME VAL_NAME ".db"
 
 enum a_pg_flags{
    a_PG_F_NONE,
@@ -812,8 +813,8 @@ a_server(struct a_pg *pgp, char const *sockpath){
     * connect(2) on the socket without getting ECONNREFUSED while at the same
     * time acting as a proper synchronization with server startup */
    if(listen(pgp->pg_clima_fd, a_SERVER_LISTEN)){
-      su_log_write(su_LOG_CRIT, _("cannot listen() on server socket: %s"),
-         su_err_doc(su_err_no_by_errno()));
+      su_log_write(su_LOG_CRIT, _("cannot listen on server socket %s/%s: %s"),
+         pgp->pg_store_path, sockpath, su_err_doc(su_err_no_by_errno()));
       rv = su_EX_IOERR;
    }else switch(fork()){
    case -1:
@@ -937,7 +938,8 @@ a_server__reset(struct a_pg *pgp){
    if(su_path_rm(pgmp->pgm_sockpath))
       rv = su_EX_OK;
    else{
-      su_log_write(su_LOG_CRIT, _("cannot remove server socket %s/%s: %s"),
+      su_log_write(su_LOG_CRIT,
+         _("cannot remove client/server socket %s/%s: %s"),
          pgp->pg_store_path, pgmp->pgm_sockpath, su_err_doc(-1));
       rv = su_EX_IOERR;
    }
@@ -1592,21 +1594,19 @@ a_server__gray_create(struct a_pg *pgp){
 
 static void
 a_server__gray_load(struct a_pg *pgp){ /* {{{ */
-   char path[PATH_MAX], *base;
    struct su_timespec ts;
    struct stat st;
+   char *base;
    s16 min;
    s32 i;
    union {void *v; char *c;} p;
    void *mbase;
    NYD_IN;
 
-   su_cs_pcopy(su_cs_pcopy(path, pgp->pg_store_path), "/" a_PG_GRAY_DB_NAME);
-
    /* Obtain a memory map on the DB storage */
    mbase = NIL;
 
-   i = open(path, (O_RDONLY
+   i = open(a_PG_GRAY_DB_NAME, (O_RDONLY
 #ifdef O_NOFOLLOW
          | O_NOFOLLOW
 #endif
@@ -1616,19 +1616,20 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
          ));
    if(i == -1){
       if(su_err_no_by_errno() != su_ERR_NOENT)
-         su_log_write(su_LOG_ERR, _("cannot load gray DB storage: %s: %s"),
-            path, su_err_doc(-1));
+         su_log_write(su_LOG_ERR, _("cannot load gray DB in %s: %s"),
+            pgp->pg_store_path, su_err_doc(-1));
       goto jleave;
    }
 
    p.c = NIL;
 
    if(fstat(i, &st) == -1)
-      su_log_write(su_LOG_ERR, _("cannot fstat(2) gray DB storage: %s: %s"),
-         path, su_err_doc(su_err_no_by_errno()));
-   else if((p.v = mmap(NIL, S(uz,st.st_size), PROT_READ, MAP_SHARED, i, 0)) == NIL)
-      su_log_write(su_LOG_ERR, _("cannot mmap(2) gray DB storage: %s: %s"),
-         path, su_err_doc(su_err_no_by_errno()));
+      su_log_write(su_LOG_ERR, _("cannot fstat(2) gray DB in %s: %s"),
+         pgp->pg_store_path, su_err_doc(su_err_no_by_errno()));
+   else if((p.v = mmap(NIL, S(uz,st.st_size), PROT_READ, MAP_SHARED, i, 0)
+         ) == NIL)
+      su_log_write(su_LOG_ERR, _("cannot mmap(2) gray DB in %s: %s"),
+         pgp->pg_store_path, su_err_doc(su_err_no_by_errno()));
 
    close(i);
 
@@ -1666,7 +1667,8 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
          if(/*UCMP(16, min, >=, S16_MAX) ||*/ min >= pgp->pg_gc_timeout){
             if(a_DBGIF || (pgp->pg_flags & a_PG_F_V))
                su_log_write(su_LOG_INFO,
-                  _("gray DB content timed out, skipping: %s"), path);
+                  _("skipping timed out gray DB content in %s"),
+                  pgp->pg_store_path);
             goto jleave;
          }
       }else if(*base++ != ' ')
@@ -1708,8 +1710,8 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
          if(su_cs_dict_insert(&pgp->pg_master->pgm_gray, key, R(void*,d)
                ) > su_ERR_NONE){
             su_log_write(su_LOG_ERR,
-               _("out of memory while reading gray DB, skipping rest of: %s"),
-               path);
+               _("after out of memory skipping rest of gray DB in %s"),
+               pgp->pg_store_path);
             goto jleave;
          }
 
@@ -1724,16 +1726,17 @@ jskip:
 
    if(base != p.c)
 jerr:
-      su_log_write(su_LOG_WARN, _("DB storage had corruptions: %s"), path);
+      su_log_write(su_LOG_WARN, _("corrupt gray DB in %s"),
+         pgp->pg_store_path);
 
    if(a_DBGIF || (pgp->pg_flags & a_PG_F_V)){
       struct su_timespec ts2;
 
       su_timespec_sub(su_timespec_current(&ts2), &ts);
       su_log_write(su_LOG_INFO,
-         _("loaded %lu gray DB entries in %lu:%09lu seconds from %s"),
+         _("loaded %lu entries in %lu:%09lu seconds from gray DB in %s"),
          S(ul,su_cs_dict_count(&pgp->pg_master->pgm_gray)),
-         S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), path);
+         S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), pgp->pg_store_path);
    }
 
 jleave:
@@ -1746,18 +1749,16 @@ jleave:
 
 static void
 a_server__gray_save(struct a_pg *pgp){ /* {{{ */
-   char path[PATH_MAX], *cp;
    /* Signals are blocked */
    struct su_timespec ts;
    struct su_cs_dict_view dv;
    s16 min;
+   char *cp;
    uz cnt, xlen;
    s32 fd;
    NYD_IN;
 
-   su_cs_pcopy(su_cs_pcopy(path, pgp->pg_store_path), "/" a_PG_GRAY_DB_NAME);
-
-   fd = open(path, (O_WRONLY | O_CREAT | O_TRUNC
+   fd = open(a_PG_GRAY_DB_NAME, (O_WRONLY | O_CREAT | O_TRUNC
 #ifdef O_NOFOLLOW
          | O_NOFOLLOW
 #endif
@@ -1766,8 +1767,8 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
 #endif
          ), S_IRUSR | S_IWUSR);
    if(fd == -1){
-      su_log_write(su_LOG_CRIT, _("cannot create gray DB storage: %s: %s"),
-         path, su_err_doc(su_err_no_by_errno()));
+      su_log_write(su_LOG_CRIT, _("cannot create gray DB in %s: %s"),
+         pgp->pg_store_path, su_err_doc(su_err_no_by_errno()));
       goto jleave;
    }
 
@@ -1827,7 +1828,7 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
 
       if(UNLIKELY(S(uz,S32_MAX) - i < xlen)){
          su_log_write(su_LOG_WARN,
-            _("gray DB too large, truncating near 2GB size: %s"), path);
+            _("truncating gray DB near 2GB size in: %s"), pgp->pg_store_path);
          break;
       }
 
@@ -1851,8 +1852,8 @@ jclose:
 
       su_timespec_sub(su_timespec_current(&ts2), &ts);
       su_log_write(su_LOG_INFO,
-         _("saved %lu gray DB entries in %lu:%09lu seconds to %s"),
-         S(ul,cnt), S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), path);
+         _("saved %lu entries in %lu:%09lu seconds to gray DB in %s"),
+         S(ul,cnt), S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), pgp->pg_store_path);
    }
 
 jleave:
@@ -1860,13 +1861,13 @@ jleave:
    return;
 
 jerr:
-   su_log_write(su_LOG_CRIT, _("cannot write gray DB storage: %s: %s"),
-      path, su_err_doc(su_err_no_by_errno()));
+   su_log_write(su_LOG_CRIT, _("cannot write gray DB in %s: %s"),
+      pgp->pg_store_path, su_err_doc(su_err_no_by_errno()));
 
-   if(!su_path_rm(path))
+   if(!su_path_rm(a_PG_GRAY_DB_NAME))
       su_log_write(su_LOG_CRIT,
-         _("cannot even unlink corrupted gray DB storage: %s: %s"),
-         path, su_err_doc(-1));
+         _("cannot even unlink corrupt gray DB in %s: %s"),
+         pgp->pg_store_path, su_err_doc(-1));
    goto jclose;
 } /* }}} */
 
