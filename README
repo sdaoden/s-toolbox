@@ -6,9 +6,7 @@ pam_xdg.c (plus support) v0.8.1:
    injection of environment variables into sessions.  libpam and OpenPAM.
    ...
    2021-07-29: port to OpenPAM (BSD).  (Jan Beich)
-   2021-08-01: (Re)Added (now optional) session handling.
-   2021-08-31: Review; do not fail when pam_putenv() fails, even without
-               session handling.  Make a ball release v0.8.0. (Jan Beich)
+   ...
    2021-09-16: Allow non-XDG-standard paths via make options. (Jan Beich)
    2022-08-02: Support XDG standard 0.8; make ball release v0.8.1.
 
@@ -39,8 +37,21 @@ s-cdda-to-db.pl (plus support) v0.8.0:
                The latter roots in old habits originating in perl(1) evolution
                problems Y2K2-3 (5.8.0 and 5.8.1).  Time to move on: v0.8.0.
 
-s-postgray.c (plus support) v0.7.0:
-   postfix(1) graylisting policy daemon.  See its manual for more.
+s-postgray.c (plus support) v0.8.0:
+   postfix(1) graylisting policy daemon.  See its README + manual for more.
+   ...
+   v0.8.0:
+     - New --startup mode to allow it to be driven as a standalone daemon.
+     - INCOMPAT!  The gray DB name did not adapt the makefile's VAL_NAME yet.
+     - Client no longer exits after five unsuccessful connection attempts.
+       Instead try as long as postfix is willing to let it.
+     - "Fixes a miss": if on server startup the socket yet existed (no
+       proper shutdown on last run), startup failed and the missing policy
+       server would cause postfix to refuse acting.
+       Whereas "rm -f PG-SOCKET" in a postfix-startup-script avoids this,
+       it was never announced to be necessary, so henceforth automatize this.
+     - Robustness against MFILE,NFILE,NOBUF,NOMEM in file/socket open paths.
+     - Fixes some oddities, and clarifies documentation.
 
 Not for the masses:
 
@@ -52,11 +63,10 @@ backup.sh:
    My private backup script.  Simple (uses tar(1)), but does some stuff
    which i need for my work flow (backups data which is in local repo
    clones but not yet pushed to their "real" counterparts).  Needs perl(1).
-   P.S.: it is fantastic to have a filesystem with snapshots thats can be
-   "send" in addition!
    ...
    2016-08-27: FIX faulty xarg/tar -c invocations. (Ralph Corderoy)
    ...
+   XXX No longer used: i switched to (subsets of) filesystem snapshots.
 
 btrfs-snapshot.sh:
    Simple script to deal with BTRFS snapshots.

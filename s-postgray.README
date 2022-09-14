@@ -13,17 +13,21 @@ makefile there are some variables, they can be overwritten from the
 command line:
 
    $ make DESTDIR=.xxx PREFIX=/usr LIBEXEC=sbin \
-      VAL_STORE_PATH=/var/lib/postfix \
+      VAL_STORE_PATH=/var/lib/postgray \
       install
 
-This will build and install the binary under [.xxx]/usr/sbin, and the
-default built-in path for database storage and the client/server
-communication socket will be /var/lib/postfix.
+This will build and install the binary under [.xxx]/usr/sbin.
+The default built-in path for database storage and the client/server
+communication socket will be /var/lib/postgray, and it should be ensured
+that this directory exists and is accessible by the desired user; it
+must _not_ be accessible by other users or groups, as user mask and
+file modes (umask(2), chmod(2)) are "not handled".
 
 RELEASES
 --------
 
 v0.6.0, 2022-03-31:
+
 v0.7.0, 2022-06-07:
   - An iteration that fixes some oddities, and clarifies documentation.
     (The example configuration is also better.)
@@ -35,11 +39,22 @@ v0.7.0, 2022-06-07:
   - New --focus-sender approach which i like better.
       [I personally now use --focus-sender mode with --count=1,
       --msg-allow=permit and --msg-defer='DEFER 4.2.0 blabla',
-      and reject_unverified_sender thereafter.  I could imagine
-      s-postgray to become obsolete if verify(8) would do a once-
-      then-wait-five-minutes graylisting itself.]
+      and reject_unverified_sender thereafter.]
   - New --msg-{allow,block}, and --msg-defer for misnamed --defer-msg,
     which is kept for compatibility.
+
+v0.8.0, 2022-09-16:
+  - New --startup mode to allow it to be driven as a standalone daemon.
+  - INCOMPAT!  The gray DB name did not adapt the makefile's VAL_NAME yet.
+  - Client no longer exits after five unsuccessful connection attempts.
+    Instead try as long as postfix is willing to let it.
+  - "Fixes a miss": if on server startup the socket yet existed (no
+    proper shutdown on last run), startup failed and the missing policy
+    server would cause postfix to refuse acting.
+    Whereas "rm -f PG-SOCKET" in a postfix-startup-script avoids this,
+    it was never announced to be necessary, so henceforth automatize this.
+  - Robustness against MFILE,NFILE,NOBUF,NOMEM in file/socket open paths.
+  - Fixes some oddities, and clarifies documentation.
 
 NOTE
 ----
