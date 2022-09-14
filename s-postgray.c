@@ -12,17 +12,13 @@
  *@ - With $SOURCE_DATE_EPOCH "minutes" are indeed "seconds".
  *@
  *@ Possible improvements:
- *@ - Integrate --focus-sender mode into verify(8) and drop mode again;
- *@   or use verify(8) and keep state ourselfs.
- *@ - Add recipient whitelist?
  *@ - Add sender whitelist??  (In combination with DKIM etc thinkable?)
- *@ - We may want to make the server startable on its own?
  *@ - May want to make policy return on ENOMEM/limit excess configurable?
  *@ - We do not sleep per policy instance=, but per-question.
- *@   This could add a lot of delay per-message.  Restore instance= handling
- *@   from git history, and sleep only once per instance?  The documented "it
- *@   should be impossible to reach the graylist bypass limit" calculation is
- *@   no longer true then however.
+ *@   This could add a lot of delay per-message in non-focus-sender mode.
+ *@   Restore instance= handling from git history, and sleep only once per
+ *@   instance?  The documented "it should be impossible to reach the graylist
+ *@   bypass limit" calculation is no longer true then however.
  *@ - We could add a in-between-delay counter, and if more than X messages
  *@   come in before the next delay expires, we could auto-blacklist.
  *@   Just extend the DB format to a 64-bit integer, and use bits 32..48.
@@ -49,11 +45,11 @@
 #define su_FILE s_postgray
 
 /* */
-#define a_VERSION "0.7.1"
+#define a_VERSION "0.8.0"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* Maximum accept(2) backlog */
-#define a_SERVER_LISTEN 5
+#define a_SERVER_LISTEN (VAL_SERVER_QUEUE / 2)
 
 /**/
 
@@ -88,9 +84,9 @@
 
 /* */
 #define a_DBGIF 0
-#define a_DBG(X)
-#define a_DBG2(X)
-#define a_NYD_FILE "/tmp/" VAL_NAME ".dat"
+# define a_DBG(X)
+# define a_DBG2(X)
+# define a_NYD_FILE "/tmp/" VAL_NAME ".dat"
 
 /* -- >8 -- 8< -- */
 
@@ -101,6 +97,7 @@
 #define _GNU_SOURCE /* Always the same mess */
 
 /* TODO all std or posix, nono */
+#include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -141,14 +138,22 @@
 #define N_(X) X
 #define V_(X) X
 
+/* Unfortunately pre v0.8 versions had an undocumented problem: in case the
+ * server socket was already existing upon startup (server did have not chance
+ * to perform cleanup), no server would ever have been started, and missing
+ * policy server would cause postfix to refuse acting.  A "rm -f PG-SOCKET" in
+ * a pre-postfix-startup-script avoids this, but it was never announced to be
+ * necessary.  v0.8 added a "reassurance" lock file to automatize this */
+#define a_PG_REA_NAME VAL_NAME ".lck"
+
 /* Dictionary flags.
  * No need for _CASE since keys are normalized already.  No _AUTO_SHRINK! */
 #define a_PG_WB_CA_FLAGS (su_CS_DICT_HEAD_RESORT)
 #define a_PG_WB_CNAME_FLAGS (su_CS_DICT_HEAD_RESORT)
 
-/* Gray list; that is balanced() after resize; no _ERR_PASS, set later on!
- * It is always in FROZEN state to delay resize costs to balance()!
- * MIN_LIMIT is also used for considering whether _this_ balance() is needed */
+/* Gray dictionary; is balanced() after resize; no _ERR_PASS, set later on!
+ * Always in FROZEN state to delay resize costs to balance()!
+ * MIN_LIMIT is also used to consider whether _this_ balance() is needed */
 #define a_PG_GRAY_FLAGS \
    (su_CS_DICT_HEAD_RESORT | su_CS_DICT_STRONG /*| su_CS_DICT_ERR_PASS*/)
 #define a_PG_GRAY_TS 4
@@ -243,6 +248,8 @@ struct a_pg_wb_cnt{
 
 struct a_pg_master{
    char const *pgm_sockpath;
+   s32 pgm_rea_fd; /* Client/Master reassurance fd */
+   su_64( u8 pgm__pad[4]; )
    s32 *pgm_cli_fds;
    u32 pgm_cli_no;
    u16 pgm_cleanup_cnt;
@@ -367,9 +374,9 @@ static s32 a_client__loop(struct a_pg *pgp);
 static s32 a_client__req(struct a_pg *pgp);
 
 /* server */
-static s32 a_server(struct a_pg *pgp, char const *sockpath);
+static s32 a_server(struct a_pg *pgp, char const *sockpath, s32 reafd);
 
-static s32 a_server__setup(struct a_pg *pgp, char const *sockpath);
+static s32 a_server__setup(struct a_pg *pgp, char const *sockpath, s32 reafd);
 static s32 a_server__reset(struct a_pg *pgp);
 static s32 a_server__wb_setup(struct a_pg *pgp, boole reset);
 static void a_server__wb_reset(struct a_pg_master *pgmp);
@@ -383,7 +390,7 @@ static void a_server__on_sig(int sig);
 
 static void a_server__gray_create(struct a_pg *pgp);
 static void a_server__gray_load(struct a_pg *pgp);
-static void a_server__gray_save(struct a_pg *pgp);
+static boole a_server__gray_save(struct a_pg *pgp);
 static void a_server__gray_cleanup(struct a_pg *pgp, boole force);
 static char a_server__gray_lookup(struct a_pg *pgp, char const *key);
 
@@ -427,8 +434,8 @@ static void a_main_oncrash__dump(up cookie, char const *buf, uz blen);
 static s32
 a_client(struct a_pg *pgp){
    struct sockaddr_un soaun;
-   u32 erefused;
-   s32 rv;
+   boole islock;
+   s32 reafd, rv;
    NYD_IN;
 
    if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE))){
@@ -437,12 +444,60 @@ a_client(struct a_pg *pgp){
    }
 
    if((rv = a_conf_chdir_store_path(pgp)) != su_EX_OK)
-      goto jleave;
+      goto j_leave;
 
-   erefused = 0;
    if(0){
-jretry_socket:
+jretry_all:
       close(pgp->pg_clima_fd);
+      close(reafd);
+   }
+
+   pgp->pg_clima_fd = reafd = -1;
+
+   while((reafd = open(a_PG_REA_NAME, O_WRONLY | O_CREAT, 0660)) == -1){
+      if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+         continue;
+      if(rv == su_ERR_MFILE || rv == su_ERR_NFILE ||
+            rv == su_ERR_NOBUFS/*hm*/ || rv == su_ERR_NOMEM){
+         a_DBG( su_log_write(su_LOG_DEBUG,
+            "out of OS resources, cannot open lock, waiting a bit"); )
+         su_time_msleep(250, TRU1);
+         continue;
+      }
+      su_log_write(su_LOG_CRIT,
+         _("cannot create/open client/server reassurance lock %s/%s: %s"),
+         pgp->pg_store_path, a_PG_REA_NAME, su_err_doc(rv));
+      rv = su_EX_CANTCREAT;
+      goto jleave;
+   }
+
+   /* If we can grap a write lock no server exists */
+   islock = TRU1;
+   while(flock(reafd, LOCK_EX | LOCK_NB) == -1){
+      if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+         continue;
+      if(LIKELY(rv == su_ERR_WOULDBLOCK)){
+         islock = FAL0;
+         break;
+      }else if(rv == su_ERR_NOLCK){
+         a_DBG( su_log_write(su_LOG_DEBUG,
+            "out of OS resources, cannot flock, waiting a bit"); )
+         su_time_msleep(250, TRU1);
+      }else{
+         su_log_write(su_LOG_CRIT,
+            _("error handling client/server reassurance lock %s/%s: %s"),
+            pgp->pg_store_path, a_PG_REA_NAME, su_err_doc(rv));
+         rv = su_EX_OSERR;
+         goto jleave;
+      }
+   }
+
+   /* In shutdown mode a taken lock means we are done */
+   if(islock && (pgp->pg_flags & a_PG_F_MODE_CLIENT_SHUTDOWN)){
+      a_DBG( su_log_write(su_LOG_DEBUG,
+         "shutdown mode could aquire write lock -> no server"); )
+      rv = su_EX_TEMPFAIL;
+      goto jleave;
    }
 
    STRUCT_ZERO(struct sockaddr_un, &soaun);
@@ -451,64 +506,95 @@ jretry_socket:
       ) >= sizeof(VAL_NAME) -1 + sizeof(".socket"));
    su_cs_pcopy(su_cs_pcopy(soaun.sun_path, VAL_NAME), ".socket");
 
-   if((pgp->pg_flags & a_PG_F_MODE_CLIENT_SHUTDOWN) &&
-         access(soaun.sun_path, F_OK) && su_err_no_by_errno() == su_ERR_NOENT){
-      rv = su_EX_TEMPFAIL;
-      goto jleave;
-   }
-
-   if((pgp->pg_clima_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1){
-      su_log_write(su_LOG_CRIT, _("cannot open client/server socket(): %s"),
-         su_err_doc(su_err_no_by_errno()));
+   while((pgp->pg_clima_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1){
+      if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+         continue;
+      if(rv == su_ERR_MFILE || rv == su_ERR_NFILE ||
+            rv == su_ERR_NOBUFS/*hm*/ || rv == su_ERR_NOMEM){
+         a_DBG( su_log_write(su_LOG_DEBUG,
+            "out of OS resources, cannot socket, waiting a bit"); )
+         su_time_msleep(250, TRU1);
+         continue;
+      }
+      su_log_write(su_LOG_CRIT,
+         _("cannot open client/server socket %s/%s: %s"),
+         pgp->pg_store_path, soaun.sun_path, su_err_doc(su_err_no_by_errno()));
       rv = su_EX_NOINPUT;
       goto jleave;
    }
 
-   rv = su_EX_IOERR;
-
+jretry_bind:
    if(bind(pgp->pg_clima_fd, R(struct sockaddr const*,&soaun), sizeof(soaun))){
+      if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+         goto jretry_bind;
+      if(rv == su_ERR_NOBUFS/*hm*/ || rv == su_ERR_NOMEM){
+         a_DBG( su_log_write(su_LOG_DEBUG,
+            "out of OS resources, cannot bind, waiting a bit"); )
+         su_time_msleep(250, TRU1);
+         goto jretry_bind;
+      }
       /* The server may be running yet */
-      if(su_err_no_by_errno() != su_ERR_ADDRINUSE){
-         su_log_write(su_LOG_CRIT, _("cannot bind() socket: %s"),
-            su_err_doc(-1));
-         goto jleave_close;
+      if(rv != su_ERR_ADDRINUSE){
+         su_log_write(su_LOG_CRIT, _("cannot bind() socket %s/%s: %s"),
+            pgp->pg_store_path, soaun.sun_path, su_err_doc(-1));
+         rv = su_EX_IOERR;
+         goto jleave;
+      }
+
+      /* ADDRINUSE with taken write lock means former server was not properly
+       * shutdown, for example hard power cycle */
+      if(islock){
+         a_DBG( su_log_write(su_LOG_DEBUG,
+            "bind() ADDRINUSE with aquired write lock -> no server"); )
+         if(!su_path_rm(soaun.sun_path)){
+            su_log_write(su_LOG_CRIT,
+               _("cannot remove stale socket %s/%s: %s"),
+               pgp->pg_store_path, soaun.sun_path, su_err_doc(-1));
+            rv = su_EX_SOFTWARE;
+            goto jleave;
+         }
+         goto jretry_bind;
       }
    }else{
+      /* No server running, we created the socket filename */
       if(pgp->pg_flags & a_PG_F_MODE_CLIENT_SHUTDOWN){
          su_path_rm(soaun.sun_path);
          rv = su_EX_TEMPFAIL;
-         goto jleave_close;
+         goto jleave;
       }
 
-      /* We are responsible for starting up the server! */
-      if((rv = a_server(pgp, soaun.sun_path)) != su_EX_OK)
-         goto jleave; /* (socket closed there then) */
-      goto jretry_socket;
+      if((rv = a_server(pgp, soaun.sun_path, reafd)) != su_EX_OK)
+         goto jleave;
+      goto jretry_all;
    }
 
    /* */
    while(connect(pgp->pg_clima_fd, R(struct sockaddr const*,&soaun),
          sizeof(soaun))){
-      s32 e;
+      if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+         continue;
 
-      if((e = su_err_no_by_errno()) == su_ERR_AGAIN || e == su_ERR_TIMEDOUT)
-         su_time_msleep(250, TRU1);
-      else{
-         if(e == su_ERR_CONNREFUSED && ++erefused < 5)
-            goto jretry_socket;
-         su_log_write(su_LOG_CRIT, _("cannot connect() socket: %s"),
-            su_err_doc(e));
-         if(erefused == 5)
-            su_log_write(su_LOG_CRIT,
-               _("maybe a stale socket?  Please remove %s/%s\n"),
-               pgp->pg_store_path, soaun.sun_path);
-         goto jleave_close;
+      a_DBG( su_log_write(su_LOG_DEBUG,
+         "out of OS resources, cannot connect, waiting a bit"); )
+      su_time_msleep(250, TRU1);
+
+      if(rv == su_ERR_AGAIN || rv == su_ERR_TIMEDOUT)
+         continue;
+      if(rv == su_ERR_CONNREFUSED){
+         a_DBG( su_log_write(su_LOG_DEBUG, "connect() CONNREFUSED, restart"); )
+         goto jretry_all;
       }
+      su_log_write(su_LOG_CRIT, _("cannot connect client socket %s/%s: %s"),
+         pgp->pg_store_path, soaun.sun_path, su_err_doc(rv));
+      rv = su_EX_IOERR;
+      goto jleave;
    }
-   /*erefused = 0;*/
 
    if(pgp->pg_flags & a_PG_F_MODE_CLIENT_SHUTDOWN)
       goto jshutdown;
+
+   close(reafd);
+   reafd = -1;
 
    rv = a_client__loop(pgp);
    if(rv < 0){
@@ -519,10 +605,13 @@ jretry_socket:
       rv = -rv;
    }
 
-jleave_close:
-   close(pgp->pg_clima_fd);
-
 jleave:
+   if(pgp->pg_clima_fd != -1)
+      close(pgp->pg_clima_fd);
+   if(reafd != -1)
+      close(reafd);
+
+j_leave:
    NYD_OU;
    return rv;
 
@@ -534,7 +623,7 @@ jshutdown:
          if(su_err_no_by_errno() == su_ERR_INTR)/* xxx why? */
             continue;
          rv = su_EX_IOERR;
-         goto jleave_close;
+         goto jleave;
       }
       break;
    }
@@ -804,82 +893,75 @@ jex_nodefer:
 
 /* server {{{ */
 static s32
-a_server(struct a_pg *pgp, char const *sockpath){
+a_server(struct a_pg *pgp, char const *sockpath, s32 reafd){
    struct a_pg_master pgm;
    s32 rv;
    NYD_IN;
 
-   /* We listen(2) before we fork(2) the server so the client can directly
-    * connect(2) on the socket without getting ECONNREFUSED while at the same
-    * time acting as a proper synchronization with server startup */
+   /* We listen(2) before we fork(2) the server so the client can connect(2)
+    * race-free without getting ECONNREFUSED */
    if(listen(pgp->pg_clima_fd, a_SERVER_LISTEN)){
       su_log_write(su_LOG_CRIT, _("cannot listen on server socket %s/%s: %s"),
          pgp->pg_store_path, sockpath, su_err_doc(su_err_no_by_errno()));
       rv = su_EX_IOERR;
    }else switch(fork()){
-   case -1:
-      /* Error */
+   case -1: /* Error */
       su_log_write(su_LOG_CRIT, _("cannot start server process: %s"),
          su_err_doc(su_err_no_by_errno()));
       rv = su_EX_OSERR;
       break;
-
-   default:
-      /* Parent (client) */
+   default: /* Parent (client) */
       rv = su_EX_OK;
       break;
-
-   case 0:
-      /* Child (server) */
-      /* Close the channels postfix(8)s spawn(8) opened for us; in test mode we
-       * need to keep STDERR open, of course */
-      close(STDIN_FILENO);
-      close(STDOUT_FILENO);
-
-      if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE))){
-         closelog();
-         openlog(VAL_NAME "/server", a_OPENLOG_FLAGS, LOG_MAIL);
-
-         close(STDERR_FILENO);
-
-         setsid();
-      }else
-         su_program = VAL_NAME "/server";
-
-      pgp->pg_master = &pgm;
-      if((rv = a_server__setup(pgp, sockpath)) == su_EX_OK)
-         rv = a_server__loop(pgp);
-
-      /* C99 */{
-         s32 xrv;
-
-         xrv = a_server__reset(pgp);
-         if(rv == su_EX_OK)
-            rv = xrv;
-      }
-
-      su_state_gut(rv == su_EX_OK
-         ? su_STATE_GUT_ACT_NORM /*DVL( | su_STATE_GUT_MEM_TRACE )*/
-         : su_STATE_GUT_ACT_QUICK);
-      exit(rv);
+   case 0: /* Child (server) */
+      goto jserver;
    }
 
-   /* In-client cleanup */
-   if(rv != su_EX_OK){
-      close(pgp->pg_clima_fd);
-
-      if(!su_path_rm(sockpath))
-         su_log_write(su_LOG_CRIT, _("cannot remove socket %s/%s: %s"),
-            pgp->pg_store_path, sockpath, su_err_doc(-1));
-   }
+   if(rv != su_EX_OK && !su_path_rm(sockpath))
+      su_log_write(su_LOG_CRIT, _("cannot remove socket %s/%s: %s"),
+         pgp->pg_store_path, sockpath, su_err_doc(-1));
 
    NYD_OU;
    return rv;
+
+jserver:
+   /* Close the channels postfix(8)s spawn(8) opened for us; in test mode we
+    * need to keep STDERR open, of course */
+   close(STDIN_FILENO);
+   close(STDOUT_FILENO);
+
+   if(UNLIKELY(su_state_has(su_STATE_REPRODUCIBLE)))
+      su_program = VAL_NAME "/server";
+   else{
+      closelog();
+      openlog(VAL_NAME "/server", a_OPENLOG_FLAGS, LOG_MAIL);
+
+      close(STDERR_FILENO);
+
+      setsid();
+   }
+
+   pgp->pg_master = &pgm;
+   if((rv = a_server__setup(pgp, sockpath, reafd)) == su_EX_OK)
+      rv = a_server__loop(pgp);
+
+   /* C99 */{
+      s32 xrv;
+
+      xrv = a_server__reset(pgp);
+      if(rv == su_EX_OK)
+         rv = xrv;
+   }
+
+   su_state_gut(rv == su_EX_OK
+      ? su_STATE_GUT_ACT_NORM /*DVL( | su_STATE_GUT_MEM_TRACE )*/
+      : su_STATE_GUT_ACT_QUICK);
+   exit(rv);
 }
 
 /* __(white_)(setup|reset)?() {{{ */
 static s32
-a_server__setup(struct a_pg *pgp, char const *sockpath){
+a_server__setup(struct a_pg *pgp, char const *sockpath, s32 reafd){
    sigset_t ssn, sso;
    s32 rv;
    struct a_pg_master *pgmp;
@@ -892,6 +974,7 @@ a_server__setup(struct a_pg *pgp, char const *sockpath){
    STRUCT_ZERO(struct a_pg_master, pgmp);
 
    pgmp->pgm_sockpath = sockpath;
+   pgmp->pgm_rea_fd = reafd;
    pgmp->pgm_cli_fds = su_TALLOC(s32, pgp->pg_server_queue);
 
    su_cs_dict_create(&pgmp->pgm_white.pgwb_ca, a_PG_WB_CA_FLAGS, NIL);
@@ -943,6 +1026,9 @@ a_server__reset(struct a_pg *pgp){
          pgp->pg_store_path, pgmp->pgm_sockpath, su_err_doc(-1));
       rv = su_EX_IOERR;
    }
+
+   /* Reassurance lock FD last. */
+   close(pgmp->pgm_rea_fd);
 
    closelog();
 
@@ -1230,7 +1316,8 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
    }
 
 jleave:
-   a_server__gray_save(pgp);
+   if(!a_server__gray_save(pgp) && rv == su_EX_OK)
+      rv = su_EX_CANTCREAT;
 
    sigprocmask(SIG_SETMASK, &psigseto, NIL);
 
@@ -1606,16 +1693,24 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
    /* Obtain a memory map on the DB storage */
    mbase = NIL;
 
-   i = open(a_PG_GRAY_DB_NAME, (O_RDONLY
+   while((i = open(a_PG_GRAY_DB_NAME, (O_RDONLY
 #ifdef O_NOFOLLOW
          | O_NOFOLLOW
 #endif
 #ifdef O_NOCTTY
          | O_NOCTTY /* hmm */
 #endif
-         ));
-   if(i == -1){
-      if(su_err_no_by_errno() != su_ERR_NOENT)
+         ))) == -1){
+      if((i = su_err_no_by_errno()) == su_ERR_INTR)
+         continue;
+      if(i == su_ERR_MFILE || i == su_ERR_NFILE ||
+            i == su_ERR_NOBUFS/*hm*/ || i == su_ERR_NOMEM){
+         a_DBG( su_log_write(su_LOG_DEBUG,
+            "out of OS resources, cannot read open gray, waiting a bit"); )
+         su_time_msleep(250, TRU1);
+         continue;
+      }
+      if(i != su_ERR_NOENT)
          su_log_write(su_LOG_ERR, _("cannot load gray DB in %s: %s"),
             pgp->pg_store_path, su_err_doc(-1));
       goto jleave;
@@ -1747,7 +1842,7 @@ jleave:
    return;
 } /* }}} */
 
-static void
+static boole
 a_server__gray_save(struct a_pg *pgp){ /* {{{ */
    /* Signals are blocked */
    struct su_timespec ts;
@@ -1756,19 +1851,30 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
    char *cp;
    uz cnt, xlen;
    s32 fd;
+   boole rv;
    NYD_IN;
 
-   fd = open(a_PG_GRAY_DB_NAME, (O_WRONLY | O_CREAT | O_TRUNC
+   rv = TRU1;
+   while((fd = open(a_PG_GRAY_DB_NAME, (O_WRONLY | O_CREAT | O_TRUNC
 #ifdef O_NOFOLLOW
          | O_NOFOLLOW
 #endif
 #ifdef O_NOCTTY
          | O_NOCTTY /* hmm, II. */
 #endif
-         ), S_IRUSR | S_IWUSR);
-   if(fd == -1){
+         ), S_IRUSR | S_IWUSR)) == -1){
+      if((fd = su_err_no_by_errno()) == su_ERR_INTR)
+         continue;
+      if(fd == su_ERR_MFILE || fd == su_ERR_NFILE ||
+            fd == su_ERR_NOBUFS/*hm*/ || fd == su_ERR_NOMEM){
+         a_DBG( su_log_write(su_LOG_DEBUG,
+            "out of OS resources, cannot write open gray, waiting a bit"); )
+         su_time_msleep(250, TRU1);
+         continue;
+      }
       su_log_write(su_LOG_CRIT, _("cannot create gray DB in %s: %s"),
          pgp->pg_store_path, su_err_doc(su_err_no_by_errno()));
+      rv = FAL0;
       goto jleave;
    }
 
@@ -1858,7 +1964,7 @@ jclose:
 
 jleave:
    NYD_OU;
-   return;
+   return rv;
 
 jerr:
    su_log_write(su_LOG_CRIT, _("cannot write gray DB in %s: %s"),
@@ -1868,6 +1974,8 @@ jerr:
       su_log_write(su_LOG_CRIT,
          _("cannot even unlink corrupt gray DB in %s: %s"),
          pgp->pg_store_path, su_err_doc(-1));
+
+   rv = FAL0;
    goto jclose;
 } /* }}} */
 
