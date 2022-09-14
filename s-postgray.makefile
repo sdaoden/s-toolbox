@@ -12,7 +12,7 @@ LIBEXEC = libexec
 # Directory for permanent (DB) storage and client/server socket.
 # Must exist and be writable by the spawn(8) defined user/group.
 # Should not be accessible by anyone else.
-VAL_STORE_PATH = /var/lib/postfix-lmdb
+VAL_STORE_PATH = /var/lib/postgray
 
 # Our name (test script and manual do not adapt!)
 VAL_NAME = s-postgray
