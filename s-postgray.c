@@ -165,23 +165,27 @@ enum a_pg_flags{
 
    /* Setup: command line option and shared persistant flags */
    a_PG_F_MODE_TEST = 1u<<1, /* -# */
-   a_PG_F_MODE_CLIENT_ONCE = 1u<<2, /* -o */
-   a_PG_F_MODE_CLIENT_SHUTDOWN = 1u<<3, /* -. */
-   a_PG_F_FOCUS_SENDER = 1u<<4, /* -f */
+   a_PG_F_MODE_SHUTDOWN = 1u<<2, /* -. */
+   a_PG_F_MODE_STARTUP = 1u<<3, /* -@ */
+   a__PG_F_MODE_MASK = a_PG_F_MODE_TEST | a_PG_F_MODE_SHUTDOWN |
+         a_PG_F_MODE_STARTUP,
 
-   a_PG_F_SETUP_MASK = (1u<<5) - 1,
+   a_PG_F_CLIENT_ONCE = 1u<<4, /* -o */
+   a_PG_F_FOCUS_SENDER = 1u<<5, /* -f */
 
-   a_PG_F_DELAY_PROGRESSIVE = 1u<<5, /* -p */
-   a_PG_F_V = 1u<<6, /* -v */
-   a_PG_F_VV = 1u<<7,
+   a_PG_F_SETUP_MASK = (1u<<6) - 1,
+
+   a_PG_F_DELAY_PROGRESSIVE = 1u<<6, /* -p */
+   a_PG_F_V = 1u<<7, /* -v */
+   a_PG_F_VV = 1u<<8,
    a_PG_F_V_MASK = a_PG_F_V | a_PG_F_VV,
 
    /* */
-   a_PG_F_TEST_ERRORS = 1u<<8,
-   a_PG_F_NOFREE_MSG_ALLOW = 1u<<9,
-   a_PG_F_NOFREE_MSG_BLOCK = 1u<<10,
-   a_PG_F_NOFREE_MSG_DEFER = 1u<<11,
-   a_PG_F_NOFREE_STORE_PATH = 1u<<12,
+   a_PG_F_TEST_ERRORS = 1u<<9,
+   a_PG_F_NOFREE_MSG_ALLOW = 1u<<10,
+   a_PG_F_NOFREE_MSG_BLOCK = 1u<<11,
+   a_PG_F_NOFREE_MSG_DEFER = 1u<<12,
+   a_PG_F_NOFREE_STORE_PATH = 1u<<13,
 
    /* Client */
    a_PG_F_CLIENT_NONE,
@@ -340,6 +344,7 @@ static char const * const a_lopts[] = {
 
    "shutdown;.;"
       N_("force a running server to exit, synchronize on that, then exit"),
+   "startup;@;" N_("only startup the server"),
 
    "test-mode;#;" N_("check and list configuration, then exit status"),
 
@@ -349,6 +354,7 @@ static char const * const a_lopts[] = {
    NIL
 };
 
+/* What can reside in resource files (and is parsed twice) */
 #define a_PG_AVOPT_CASES \
    /* In long-option order */\
    case '4': case '6':\
@@ -477,6 +483,12 @@ jretry_all:
       if((rv = su_err_no_by_errno()) == su_ERR_INTR)
          continue;
       if(LIKELY(rv == su_ERR_WOULDBLOCK)){
+         if(pgp->pg_flags & a_PG_F_MODE_STARTUP){
+            a_DBG( su_log_write(su_LOG_DEBUG,
+               "startup mode could not aquire write lock -> server running"); )
+            rv = su_EX_TEMPFAIL;
+            goto jleave;
+         }
          islock = FAL0;
          break;
       }else if(rv == su_ERR_NOLCK){
@@ -493,7 +505,7 @@ jretry_all:
    }
 
    /* In shutdown mode a taken lock means we are done */
-   if(islock && (pgp->pg_flags & a_PG_F_MODE_CLIENT_SHUTDOWN)){
+   if(islock && (pgp->pg_flags & a_PG_F_MODE_SHUTDOWN)){
       a_DBG( su_log_write(su_LOG_DEBUG,
          "shutdown mode could aquire write lock -> no server"); )
       rv = su_EX_TEMPFAIL;
@@ -556,15 +568,11 @@ jretry_bind:
          goto jretry_bind;
       }
    }else{
-      /* No server running, we created the socket filename */
-      if(pgp->pg_flags & a_PG_F_MODE_CLIENT_SHUTDOWN){
-         su_path_rm(soaun.sun_path);
-         rv = su_EX_TEMPFAIL;
-         goto jleave;
-      }
-
+      ASSERT(!(pgp->pg_flags & a_PG_F_MODE_SHUTDOWN));
       if((rv = a_server(pgp, soaun.sun_path, reafd)) != su_EX_OK)
          goto jleave;
+      if(pgp->pg_flags & a_PG_F_MODE_STARTUP)
+         goto j_leave;
       goto jretry_all;
    }
 
@@ -590,7 +598,7 @@ jretry_bind:
       goto jleave;
    }
 
-   if(pgp->pg_flags & a_PG_F_MODE_CLIENT_SHUTDOWN)
+   if(pgp->pg_flags & a_PG_F_MODE_SHUTDOWN)
       goto jshutdown;
 
    close(reafd);
@@ -694,7 +702,7 @@ jblock:
             }
          }
 
-         if(pgp->pg_flags & a_PG_F_MODE_CLIENT_ONCE)
+         if(pgp->pg_flags & a_PG_F_CLIENT_ONCE)
             break;
          goto jblock;
       }else{
@@ -773,8 +781,7 @@ jblock:
          }
       }
    }
-   if(rv == su_EX_OK && !feof(stdin) &&
-         !(pgp->pg_flags & a_PG_F_MODE_CLIENT_ONCE))
+   if(rv == su_EX_OK && !feof(stdin) && !(pgp->pg_flags & a_PG_F_CLIENT_ONCE))
       rv = su_EX_IOERR;
 
    if(lnb != NIL)
@@ -1060,23 +1067,14 @@ a_server__wb_setup(struct a_pg *pgp, boole reset){
       a_conf_setup(pgp, a_PG_AVO_RELOAD);
       f = a_PG_AVO_NONE | a_PG_AVO_RELOAD;
    }else
-      f = a_PG_AVO_FULL | a_PG_AVO_RELOAD;
 jreavo:
+      f = a_PG_AVO_FULL | a_PG_AVO_RELOAD;
    su_avopt_setup(&avo, pgp->pg_argc, C(char const*const*,pgp->pg_argv),
       a_sopts, a_lopts);
 
    while((rv = su_avopt_parse(&avo)) != su_AVOPT_STATE_DONE)
       switch(rv){
-      /* In long-option order */
-      case '4': case '6':
-      case 'A': case 'a': case 'B': case 'b':
-      case 'c': case 'D': case 'd': case 'f':
-         case 'p': case 'G': case 'g': case 'L': case 'l':
-      case 'q': case 't':
-      case 'R':
-      case 's':
-      case '~': case '!': case 'm':
-      case 'v':
+      a_PG_AVOPT_CASES
          if((rv = a_conf__arg(pgp, rv, avo.avo_current_arg, f)) < 0){
             rv = -rv;
             goto jleave;
@@ -1089,8 +1087,13 @@ jreavo:
    if(reset > FAL0){
       reset = TRUM1;
       a_conf_finish(pgp, a_PG_AVO_RELOAD);
-      f = a_PG_AVO_FULL | a_PG_AVO_RELOAD;
       goto jreavo;
+   }
+
+   if(pgp->pg_flags & a_PG_F_MODE_STARTUP){
+      a_DBG( su_log_write(su_LOG_DEBUG,
+         "--startup server, setting --server-timeout=0"); )
+      pgp->pg_server_timeout = 0;
    }
 
    su_cs_dict_balance(&pgmp->pgm_white.pgwb_ca);
@@ -2510,6 +2513,7 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg,
    case 'g': p.i16 = &pgp->pg_gc_timeout; goto ji16;
    case 'L': p.i32 = &pgp->pg_limit; goto ji32;
    case 'l': p.i32 = &pgp->pg_limit_delay; goto ji32;
+   case 'o': pgp->pg_flags |= a_PG_F_CLIENT_ONCE; break;
 
    case 'q':
       if(f & a_PG_AVO_RELOAD)
@@ -3343,15 +3347,9 @@ jreavo:
 
       /* In long-option order (mostly) */
       switch(mpv){
-      case 'o':
-         pg.pg_flags |= a_PG_F_MODE_CLIENT_ONCE;
-         break;
-      case '.':
-         pg.pg_flags |= a_PG_F_MODE_CLIENT_SHUTDOWN;
-         break;
-      case '#':
-         pg.pg_flags |= a_PG_F_MODE_TEST;
-         break;
+      case '.': pg.pg_flags |= a_PG_F_MODE_SHUTDOWN; break;
+      case '@': pg.pg_flags |= a_PG_F_MODE_STARTUP; break;
+      case '#': pg.pg_flags |= a_PG_F_MODE_TEST; break;
 
       a_PG_AVOPT_CASES
          if((mpv = a_conf__arg(&pg, mpv, avo.avo_current_arg, f)) < 0){
@@ -3391,6 +3389,21 @@ jeusage:
    }
 
    if(!(f & a_PG_AVO_FULL)){
+      switch(pg.pg_flags & a__PG_F_MODE_MASK){
+      case 0:
+      case a_PG_F_MODE_TEST:
+      case a_PG_F_MODE_SHUTDOWN:
+      case a_PG_F_MODE_STARTUP:
+         break;
+      default:
+         fprintf(stderr,
+            _("Only none or one of --shutdown, --startup, --test-mode\n"));
+         if(!(pg.pg_flags & a_PG_F_MODE_TEST))
+            goto jeusage;
+         pg.pg_flags |= a_PG_F_TEST_ERRORS;
+         break;
+      }
+
       if(avo.avo_argc != 0){
          fprintf(stderr, _("Excess arguments given\n"));
          if(!(pg.pg_flags & a_PG_F_MODE_TEST))

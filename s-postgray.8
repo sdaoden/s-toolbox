@@ -40,6 +40,9 @@
 .Fl Fl shutdown
 .Nm \*(xx
 .Op options
+.Fl Fl startup
+.Nm \*(xx
+.Op options
 .Fl Fl test-mode
 .Op options
 .
@@ -74,6 +77,11 @@ This program is intented to be started via the
 daemon, the single-instance server is managed internally.
 The server lifetime is configurable, by (compile-time) default it will
 terminate itself after some time without any client connection.
+The server can be started directly via
+.Fl Fl startup ,
+but
+.Fl Fl server-timeout
+is ignored in this mode.
 Sending the server a
 .Ql HUP
 signal will re-evaluate the configuration (may result in program
@@ -526,12 +534,25 @@ Force a running server process to exit.
 The client synchronizes on the server exit before its terminating.
 It exits EX_TEMPFAIL (75) when no server is running.
 .
+.Mx Fl startup
+.It Fl Fl startup , @
+Startup the server, for usage in daemon startup scripts for example.
+Care should be taken to use the same user and group as
+.Xr spawn 8
+will use for the client.
+It exits EX_TEMPFAIL (75) when a server is already running.
+.
 .Mx Fl store-path
 .It Fl Fl store-path Ar path , Fl s Ar path
 An accessible
 .Pa path
 to which \*(Xx will change, and where the DB and the server/client
 communication socket will be created.
+The directory should only be accessible by the \*(xx driving user (and
+group), no effort is taken to modify
+.Xr umask 2
+or path modes
+.Pf ( Xr chmod 2 ) !
 This setting cannot be changed at runtime.
 .
 .Mx Fl test-mode

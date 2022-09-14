@@ -15,13 +15,14 @@ MSG_DEFER='DEFER_IF_PERMIT 4.2.0 Cannot hurry love'
 LC_ALL=C SOURCE_DATE_EPOCH=844221007
 export LC_ALL SOURCE_DATE_EPOCH
 
-s4= s5= s6= s7=
+s4= s5= s6= s7= s8=
 while [ $# -gt 0 ]; do
    case $1 in
    4) s4=y;;
    5) s5=y;;
    6) s6=y;;
    7) s7=y;;
+   8) s8=y;;
    *)
       echo >&2 'No such test to skip: '$1
       echo >&2 'Synopsis: '$0' [:test major number to skip, eg 5:]'
@@ -887,7 +888,56 @@ eval $PG -R ./x.rc --shutdown $REDIR
 fi
 # }}}
 
+##
+echo '=8: --startup, more --shutdown' # {{{
+if [ -n "$s8" ]; then
+   echo 'skipping 8'
+else
+   rm -f *.db
+
+   i=0 j=
+   doit() {
+      j=$((i + 1))
+      eval $PG -R ./x.rc --startup > ./8.$j $REDIR
+      [ $? -eq 0 ] || exit 101
+      [ -n "$REDIR" ] || echo ok 8.$i
+      [ -s ./8.$j ] && exit 101
+      [ -n "$REDIR" ] || echo ok 8.$j
+
+      i=$((j + 1))
+      j=$((i + 1))
+
+      eval $PG -R ./x.rc --startup > ./8.$j $REDIR
+      [ $? -eq 75 ] || exit 101
+      [ -n "$REDIR" ] || echo ok 8.$i
+      [ -s ./8.$j ] && exit 101
+      [ -n "$REDIR" ] || echo ok 8.$j
+
+      i=$((j + 1))
+      j=$((i + 1))
+
+      eval $PG -R ./x.rc --shutdown > ./8.$j $REDIR
+      [ $? -eq 0 ] || exit 101
+      [ -n "$REDIR" ] || echo ok 8.$i
+      [ -s ./8.$j ] && exit 101
+      [ -n "$REDIR" ] || echo ok 8.$j
+
+      i=$((j + 1))
+      j=$((i + 1))
+
+      eval $PG -R ./x.rc --shutdown > ./8.$j $REDIR
+      [ $? -eq 75 ] || exit 101
+      [ -n "$REDIR" ] || echo ok 8.$i
+      [ -s ./8.$j ] && exit 101
+      [ -n "$REDIR" ] || echo ok 8.$j
+   }
+   doit
+   doit
+   doit
+fi
+# }}}
 )
+
 exit $?
 
 # s-it-mode
