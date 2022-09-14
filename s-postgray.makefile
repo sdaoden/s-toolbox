@@ -10,7 +10,8 @@ PREFIX = /usr/local
 LIBEXEC = libexec
 
 # Directory for permanent (DB) storage and client/server socket.
-# Must be writable by the spawn(8) defined user/group.
+# Must exist and be writable by the spawn(8) defined user/group.
+# Should not be accessible by anyone else.
 VAL_STORE_PATH = /var/lib/postfix-lmdb
 
 # Our name (test script and manual do not adapt!)
@@ -42,10 +43,12 @@ VAL_SERVER_TIMEOUT = 30
 SULIB=-lsu-dvldbg#-asan
 SULIB_BLD=#$(SULIB_TARGET)
 SUFLVLC=#-std=c89
+STRIP=#strip
 SUFOPT=-O1 -g -Dsu_HAVE_DEVEL -Dsu_HAVE_DEBUG #-I./include
 #SUFOPT=-O2 #-I./include
-SUFS=-fPIE -fstack-protector-strong #-D_FORTIFY_SOURCE=2 #-fsanitize=address
-STRIP=#strip
+SUFS=-fPIE -fstack-protector-strong \
+	-D_FORTIFY_SOURCE=2 \
+	#-fsanitize=address -fsanitize=undefined
 
 ## >8 -- 8<
 
