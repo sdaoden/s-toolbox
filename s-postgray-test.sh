@@ -667,7 +667,7 @@ printf \
 cmp -s ./5.19 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.19
 
-# While here, let's check at least once "instance" and "reqest"!
+# While here, let's check at least once "instance" and "request"!
 cat <<'_EOT' | eval $PG -R ./x.rc > ./5.20 $REDIR; cat <<_EOT > 5.20x
 recipient=x@y
 sender=y@z

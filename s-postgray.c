@@ -163,7 +163,7 @@
 enum a_pg_flags{
    a_PG_F_NONE,
 
-   /* Setup: command line option and shared persistant flags */
+   /* Setup: command line option and shared persistent flags */
    a_PG_F_MODE_TEST = 1u<<1, /* -# */
    a_PG_F_MODE_SHUTDOWN = 1u<<2, /* -. */
    a_PG_F_MODE_STARTUP = 1u<<3, /* -@ */
@@ -485,7 +485,7 @@ jretry_all:
       if(LIKELY(rv == su_ERR_WOULDBLOCK)){
          if(pgp->pg_flags & a_PG_F_MODE_STARTUP){
             a_DBG( su_log_write(su_LOG_DEBUG,
-               "startup mode could not aquire write lock -> server running"); )
+               "startup mode could not acquire write lock: server running"); )
             rv = su_EX_TEMPFAIL;
             goto jleave;
          }
@@ -507,7 +507,7 @@ jretry_all:
    /* In shutdown mode a taken lock means we are done */
    if(islock && (pgp->pg_flags & a_PG_F_MODE_SHUTDOWN)){
       a_DBG( su_log_write(su_LOG_DEBUG,
-         "shutdown mode could aquire write lock -> no server"); )
+         "shutdown mode could acquire write lock: no server"); )
       rv = su_EX_TEMPFAIL;
       goto jleave;
    }
@@ -557,7 +557,7 @@ jretry_bind:
        * shutdown, for example hard power cycle */
       if(islock){
          a_DBG( su_log_write(su_LOG_DEBUG,
-            "bind() ADDRINUSE with aquired write lock -> no server"); )
+            "bind() ADDRINUSE with acquired write lock: no server"); )
          if(!su_path_rm(soaun.sun_path)){
             su_log_write(su_LOG_CRIT,
                _("cannot remove stale socket %s/%s: %s"),
@@ -607,7 +607,7 @@ jretry_bind:
    rv = a_client__loop(pgp);
    if(rv < 0){
       /* After connect(2) succeeded once we may not restart from scratch by
-       * ourselfs since likely some circumstance beyond our horizon exists
+       * ourselves since likely some circumstance beyond our horizon exists
        * XXX if not we need a flag to continue working on current block!
        *goto jretry_socket;*/
       rv = -rv;
