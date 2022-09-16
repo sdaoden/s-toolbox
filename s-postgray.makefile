@@ -45,7 +45,7 @@ SULIB_BLD=#$(SULIB_TARGET)
 SUFLVLC=#-std=c89
 STRIP=#strip
 SUFOPT=-O1 -g -Dsu_HAVE_DEVEL -Dsu_HAVE_DEBUG #-I./include
-#SUFOPT=-O2 #-I./include
+#SUFOPT=-O2 -DNDEBUG #-I./include
 SUFS=-fPIE -fstack-protector-strong \
 	-D_FORTIFY_SOURCE=2 \
 	#-fsanitize=address -fsanitize=undefined
