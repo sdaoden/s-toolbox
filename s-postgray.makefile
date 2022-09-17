@@ -134,4 +134,19 @@ install: all
 uninstall:
 	$(RM) -f "$(LIBEXECDIR)/$(VAL_NAME)" "$(MANDIR)/$(VAL_NAME).8"
 
+d-release:
+	mkdir .rel &&\
+	cp s-postgray* .rel/ &&\
+	cd .rel &&\
+	mv s-postgray.makefile makefile &&\
+	mv s-postgray.README README &&\
+	mkdir include src mk &&\
+	cp -r ../../nail.git/include/su include/ &&\
+	cp -r ../../nail.git/src/su src/ &&\
+	cp ../../nail.git/mk/su-make-errors.sh mk/ &&\
+	rm -f src/su/*.cxx src/su/.*.cxx &&\
+	sh ../../nail.git/mk/su-make-strip-cxx.sh &&\
+	cd include/su && perl ../../../../nail.git/mk/su-doc-strip.pl *.h &&\
+	echo now edit makefile and src/su/.makefile
+
 # s-mk-mode
