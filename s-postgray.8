@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd Sep 16, 2022
+.Dd Sep 20, 2022
 .ds VV \\%v0.8.0
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
@@ -523,7 +523,9 @@ This setting cannot be changed at runtime.
 .Mx Fl server-timeout
 .It Fl Fl server-timeout Ar mins , Fl t Ar mins
 Duration until a \*(Xx server which does not serve any clients terminates.
-The value 0 disables auto-termination.
+The value 0 disables auto-termination; a
+.Fl Fl startup
+server only terminates upon request.
 The statistics dumped on the signal
 .Ql USR1
 are not saved in the DB, they only reflect the current server lifetime.
@@ -536,7 +538,7 @@ It exits EX_TEMPFAIL (75) when no server is running.
 .
 .Mx Fl startup
 .It Fl Fl startup , @
-Startup the server, for usage in daemon startup scripts for example.
+Startup a permanent server, to be used in startup scripts for example.
 Care should be taken to use the same user and group as
 .Xr spawn 8
 will use for the client.
