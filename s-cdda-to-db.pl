@@ -1650,6 +1650,7 @@ jREDO:
       print "\n..but, once again - please verify the content\n",
          "  (Terminal may not be able to display all characters):\n";
       {
+         no warnings 'utf8'; # (got warning, .. but why in en_US.UTF-8?)
          my %flagh = (flags => MBDB::DB_DUMP_FINAL, db => $DB, fh => *STDOUT,
                prefix => '  ');
          my $xdb = $DB->{_last_db};
@@ -2183,8 +2184,8 @@ __EOT__
 #  I.e., SET_PART is required, then, and the two TITLEs of the ALBUMSET and
 #  the ALBUM together form the actual album title used in encoded files.
 #  GENRE is one of the ID3 genres ($SELF --genre-list to see them).
-#  GAPLESS (if 1) states wether there is no silence in between tracks, and
-#  COMPILATION (if 1) wether this is a compilation of various-artists etc.
+#  GAPLESS (if 1) states whether there is no silence in between tracks, and
+#  COMPILATION (if 1) whether this is a compilation of various-artists etc.
 #  MCN is the Media Catalog Number, and UPC_EAN is the Universal Product
 #  Number alias European Article Number (bar code).  MBRAINZ_ID is the
 #  MusicBrainz "MBID" of the medium.
@@ -2333,7 +2334,7 @@ __EOT__
 #
 #  For classical music the orchestra should be the ARTIST.
 #  SOLOIST should include the instrument in parenthesis (Midori (violin)).
-#  The difference between COMPOSER and SONGWRITER is only noticeable for
+#  The difference in between COMPOSER and SONGWRITER is only noticeable for
 #  output file formats which do not support a COMPOSER information frame:
 #  whereas the SONGWRITER is simply discarded then, the COMPOSER becomes
 #  part of the ALBUM TITLE (Vivaldi: Le quattro stagioni - "La Primavera")
@@ -2602,8 +2603,8 @@ __EOT__
 #  LABEL is not optional but can be empty; it is used to subdivide classical
 #  music, for example: LABEL = Water Music Suite No. 1 in F major.
 #  GENRE is one of the ID3 genres ($SELF --genre-list to see them).
-#  GAPLESS states wether there shall be no silence in between tracks,
-#  and COMPILATION wether this is a compilation of various-artists, or so.
+#  GAPLESS states whether there shall be no silence in between tracks,
+#  and COMPILATION whether this is a compilation of various-artists, or so.
 #  CAST-fields may be used to *append* to global [CAST] fields -- to specify
 #  CAST fields exclusively, place the GROUP before the global [CAST]!
 
@@ -2720,7 +2721,7 @@ __EOT__
 #  MBRAINZ_ID is the MusicBrainz "MBID" of the track.
 #  CAST-fields may be used to *append* to global [CAST] (and those of an
 #  active [GROUP], if there is one) fields; to specify CAST fields exclusively,
-#  place the TRACK before the global [CAST] as well as any [GROUP].
+#  place the TRACK before the global [CAST] and any [GROUP].
 #  Note: all TRACKs need an ARTIST in the end, from whatever CAST it is
 #  inherited.
 
