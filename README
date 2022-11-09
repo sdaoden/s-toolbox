@@ -100,6 +100,9 @@ gmane-fetch.pl:
    store them in (append them to) a local MBOX.
    Read and adjust the script header for documentation and configuration.
 
+oauth-helper.py:
+   Handles OAuth 2.0 credentials.  Supports Google, Microsoft, Yandex.
+
 quote-rndtrip.sh:
    Round trip quote strings in POSIX (and elder) shell(s).
    Thanks to Robert Elz (kre).
