@@ -54,19 +54,7 @@ s-postgray.c (plus support) v0.8.0:
      - Fixes some oddities, and clarifies documentation.
 
 Not for the masses:
-
-arena-manager:
-   Offers some automatized operations on revision control repositories,
-   like updating, (fast-forward) merging, garbage-collecting.
-
-backup.sh:
-   My private backup script.  Simple (uses tar(1)), but does some stuff
-   which i need for my work flow (backups data which is in local repo
-   clones but not yet pushed to their "real" counterparts).  Needs perl(1).
-   ...
-   2016-08-27: FIX faulty xarg/tar -c invocations. (Ralph Corderoy)
-   ...
-   XXX No longer used: i switched to (subsets of) filesystem snapshots.
+-------------------
 
 btrfs-snapshot.sh:
    Simple script to deal with BTRFS snapshots.
@@ -74,12 +62,6 @@ btrfs-snapshot.sh:
    2021-07-03: drop unused/broken "setmounts", add "setvols" command.
    2022-01-02: subvol sync after removal; if receiving a snapshot fails,
                remove it immediately via trap(1) EXIT, 'hope this works.
-
-cdoc-freebsd.S:
-   FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on
-   newer ones, but have not tried it in a while.  It had 416 object
-   file bytes when everything was placed in ``.text`` (no .EH frames
-   back then).
 
 entropy-saver.c:
    Linux: for my use cases i find it annoying that "entropy_avail" is not
@@ -94,11 +76,6 @@ entropy-saver.c:
                   https://git.zx2c4.com/seedrng/plain/seedrng.c
                P.S.: most preferable would be "echo seed > /dev/random"
 
-fan-adaptive.sh:
-   "Adaptive", more generic, and much more easily adaptable successor of
-   fancontrol.sh.  For now with simulator and MacBook Air model support.
-   See the script header for more.
-
 find-command.sh:
    Find an executable command within a POSIX shell.
    which(1) is not standardized, and command(1) -v may return non-executable,
@@ -107,15 +84,6 @@ find-command.sh:
 
    2021-12-16: allow prefilled variables with spaces, no longer find
                commands with spaces: $VAR (not "$VAR") now always correct.
-
-gen-uushar-wrapper:
-   Creates a shell archive similar to uushar as below, except that the
-   archive (1) consists only of executable file members, and (2) will
-   be itself executable.  Run the generated shell archive script to invoke
-   any of its programs.  Upon first invocation the wrapper creates a
-   hidden directory in $TMPDIR to unpack its members.
-   Without arguments it shows its contents and the creation date.
-   Simply execute it, it guides through the archive creation process.
 
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so
@@ -137,6 +105,42 @@ quote-rndtrip.sh:
    Thanks to Robert Elz (kre).
 
    2019-05-27: ensure outer driver(s) do not leak variabes. (Steven Penny)
+
+In the fog:
+-----------
+
+arena-manager:
+   Offers some automatized operations on revision control repositories,
+   like updating, (fast-forward) merging, garbage-collecting.
+
+backup.sh:
+   My private backup script.  Simple (uses tar(1)), but does some stuff
+   which i need for my work flow (backups data which is in local repo
+   clones but not yet pushed to their "real" counterparts).  Needs perl(1).
+   ...
+   2016-08-27: FIX faulty xarg/tar -c invocations. (Ralph Corderoy)
+   ...
+   XXX No longer used: i switched to (subsets of) filesystem snapshots.
+
+cdoc-freebsd.S:
+   FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on
+   newer ones, but have not tried it in a while.  It had 416 object
+   file bytes when everything was placed in ``.text`` (no .EH frames
+   back then).
+
+fan-adaptive.sh:
+   "Adaptive", more generic, and much more easily adaptable successor of
+   fancontrol.sh.  For now with simulator and MacBook Air model support.
+   See the script header for more.
+
+gen-uushar-wrapper:
+   Creates a shell archive similar to uushar as below, except that the
+   archive (1) consists only of executable file members, and (2) will
+   be itself executable.  Run the generated shell archive script to invoke
+   any of its programs.  Upon first invocation the wrapper creates a
+   hidden directory in $TMPDIR to unpack its members.
+   Without arguments it shows its contents and the creation date.
+   Simply execute it, it guides through the archive creation process.
 
 real-periodic.sh:
    A real periodic for NetBSD, FreeBSD, DragonFly BSD and OpenBSD that
