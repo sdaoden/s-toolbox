@@ -21,9 +21,7 @@ LDFLAGS = -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
 	-Wl,--enable-new-dtags -pie \
 	$(EXTRA_LDFLAGS) \
 	`os=\`uname -s|tr [[:upper:]] [[:lower:]]\`;\
-	if [ "$$os" = freebsd ] || [ "$$os" = dragonfly ]; then \
-		printf -- -lcam;\
-	fi`
+	if [ "$$os" = freebsd ] || [ "$$os" = dragonfly ]; then printf -- -lcam; fi`
 INSTALL = install
 RM = rm
 
