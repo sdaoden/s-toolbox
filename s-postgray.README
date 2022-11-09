@@ -56,6 +56,9 @@ v0.8.0, 2022-09-16:
   - Robustness against MFILE,NFILE,NOBUF,NOMEM in file/socket open paths.
   - Fixes some oddities, and clarifies documentation.
 
+v0.8.1, 202?-??-??:
+  - Source code style change, saves ~12KB.
+
 NOTE
 ----
 

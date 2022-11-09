@@ -73,9 +73,7 @@ SUFW=-W -Wall -pedantic \
 	-fstrict-aliasing -fstrict-overflow \
 
 CFLAGS=$(SUFLVLC) $(SUFW) $(SUFS) $(SUFOPT) $(EXTRA_CFLAGS)
-LDFLAGS=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
-	-Wl,--enable-new-dtags \
-	-fpie $(EXTRA_LDFLAGS)
+LDFLAGS=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed -Wl,--enable-new-dtags -fpie $(EXTRA_LDFLAGS)
 
 CC = cc
 INSTALL = install

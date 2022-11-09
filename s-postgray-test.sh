@@ -17,20 +17,20 @@ export LC_ALL SOURCE_DATE_EPOCH
 
 s4= s5= s6= s7= s8=
 while [ $# -gt 0 ]; do
-   case $1 in
-   4) s4=y;;
-   5) s5=y;;
-   6) s6=y;;
-   7) s7=y;;
-   8) s8=y;;
-   *)
-      echo >&2 'No such test to skip: '$1
-      echo >&2 'Synopsis: '$0' [:test major number to skip, eg 5:]'
-      echo >&2 'First three test series cannot be skipped'
-      exit 64
-      ;;
-   esac
-   shift
+	case $1 in
+	4) s4=y;;
+	5) s5=y;;
+	6) s6=y;;
+	7) s7=y;;
+	8) s8=y;;
+	*)
+		echo >&2 'No such test to skip: '$1
+		echo >&2 'Synopsis: '$0' [:test major number to skip, eg 5:]'
+		echo >&2 'First three test series cannot be skipped'
+		exit 64
+		;;
+	esac
+	shift
 done
 
 [ -d .test ] || mkdir .test || exit 1
@@ -53,13 +53,13 @@ PGx="$PG -s'$pwd' -m '$MSG_DEFER' "\
 
 __xsleep=
 if ( sleep .1 ) >/dev/null 2>&1; then
-   xsleep() { eval sleep "$1.2"; }
-   delay() { sleep .5; }
-   sdelay() { sleep .1; }
+	xsleep() { eval sleep "$1.2"; }
+	delay() { sleep .5; }
+	sdelay() { sleep .1; }
 else
-   xsleep() { sleep $1; }
-   delay() { sleep 1; }
-   sdelay() { sleep 1; }
+	xsleep() { sleep $1; }
+	delay() { sleep 1; }
+	sdelay() { sleep 1; }
 fi
 
 echo '=def: calibration=' # {{{
@@ -93,34 +93,34 @@ delay-min 1
 gc-rebalance 2
 gc-timeout 7
 limit 10
-   # Comment
+	# Comment
 allow-file=x.a2
-   limit-delay 8    
+	limit-delay 8	  
 
 server-timeout 5
  msg-block=$MSG_BLOCK
  msg-defer=$MSG_DEFER
  msg-allow=$MSG_ALLOW
-   # Comment
+	# Comment
 	store-path=$pwd	
 _EOT
 
 cat > ./x.a1 <<'_EOT'; cat > ./x.a2 <<'_EOT'
 # Comment
-   exact.match
+	exact.match
    also.exact.match
 .domain.and.subdomain 
-      		.d.a.s	 
+				.d.a.s	 
 
-   127.0.0.1 
-    2a03:2880:20:4f06:face:b00c:0:14/56       
+	127.0.0.1 
+	  2a03:2880:20:4f06:face:b00c:0:14/56		 
 
 	2a03:2880:20:6f06:face:b00c:0:14/66	
-	2a03:2880:20:8f06:face:b00c:0:14/128
-		# Comment		
+	  2a03:2880:20:8f06:face:b00c:0:14/128
+   # Comment		
 _EOT
 2a03:2880:33:5f06::
-   # Comment !!
+	# Comment !!
 193.92.150.2/24
 193.95.150.100/28
   195.90.112.99/32  
@@ -134,20 +134,20 @@ _EOT
 echo '=1: options=' # {{{
 
 adj_def() {
-   sed -Ee 's|^'"$1"'=.*$|'"$1"'='"$2"'|' < ./defx > ./${3}x || exit 100
-   cmp -s $3 ${3}x || exit 101
+	sed -Ee 's|^'"$1"'=.*$|'"$1"'='"$2"'|' < ./defx > ./${3}x || exit 100
+	cmp -s $3 ${3}x || exit 101
 }
 
 t() {
-   t=$1 o=$2 v=$3
-   shift 3
-   eval "$PGX" -# "$@" > ./$t $REDIR; adj_def $o $v $t || exit $?
-   [ -n "$REDIR" ] || echo ok $t
-   eval "$PGX" -# -R ./defx "$@" > ./$t.2 $REDIR;\
-      adj_def $o $v $t.2 || exit $?
-   eval $PGx --shutdown $REDIR
-   [ $? -eq 75 ] || exit 101
-   [ -n "$REDIR" ] || echo ok $t.2
+	t=$1 o=$2 v=$3
+	shift 3
+	eval "$PGX" -# "$@" > ./$t $REDIR; adj_def $o $v $t || exit $?
+	[ -n "$REDIR" ] || echo ok $t
+	eval "$PGX" -# -R ./defx "$@" > ./$t.2 $REDIR;\
+		adj_def $o $v $t.2 || exit $?
+	eval $PGx --shutdown $REDIR
+	[ $? -eq 75 ] || exit 101
+	[ -n "$REDIR" ] || echo ok $t.2
 }
 
 t 1.1 4-mask 11 --4-mask=11
@@ -180,27 +180,27 @@ t 1.20 server-timeout 5 -t 5
 echo '=2: resource files=' # {{{
 
 adj_def() {
-   t=$1
-   shift
-   cat < ./defx > ./${t}x
-   while [ $# -gt 0 ]; do
-      sed -i'' -Ee 's|^'"$1"'=.*$|'"$1"'='"$2"'|' ${t}x || exit 100
-      shift 2
-   done
-   cmp -s $t ${t}x || exit 101
-   [ -n "$REDIR" ] || echo ok $t
+	t=$1
+	shift
+	cat < ./defx > ./${t}x
+	while [ $# -gt 0 ]; do
+		sed -i'' -Ee 's|^'"$1"'=.*$|'"$1"'='"$2"'|' ${t}x || exit 100
+		shift 2
+	done
+	cmp -s $t ${t}x || exit 101
+	[ -n "$REDIR" ] || echo ok $t
 }
 
 cat > ./2.rc1 <<'_EOT'; cat > ./2.rc2 <<'_EOT'
   # Comment 1
-   4-mask           31   
+	4-mask			  31	 
 6-mask=127
 count 3
 resource-file 2.rc2
-delay-min         4
+delay-min			4
 #comment2
-      gc-rebalance=2
-      gc-timeout	7200  	   
+	  gc-rebalance=2
+   	gc-timeout	7200			
 limit-delay=10405
 _EOT
 delay-max=5
@@ -210,13 +210,13 @@ server-timeout=9
 _EOT
 
 eval $PGX -# -R 2.rc1 -t 10 > ./2.0 $REDIR
-   adj_def 2.0 \
-      4-mask 31 6-mask 127 \
-      count 3 \
-      delay-max 5 delay-min 4 \
-      gc-rebalance 2 gc-timeout 7200 \
-      limit 11000 limit-delay 10405 \
-      server-timeout 10 || exit $?
+	adj_def 2.0 \
+		4-mask 31 6-mask 127 \
+		count 3 \
+		delay-max 5 delay-min 4 \
+		gc-rebalance 2 gc-timeout 7200 \
+		limit 11000 limit-delay 10405 \
+		server-timeout 10 || exit $?
 eval $PGx --shutdown $REDIR
 [ $? -eq 75 ] || exit 101
 # }}}
@@ -245,33 +245,33 @@ sed -e 's/^allow /block /' < ./3.zz > ./3.2x
 cat defx >> ./3.2x
 
 ab() {
-   eval $PGX --test-mode --4-mask 24 --6-mask 64 \
-      -$2 exact.match \
-      --$3 also.exact.match \
-      -${2}.domain.and.subdomain \
-      --$3=.d.a.s \
-      -$2 127.0.0.1 \
-      -$2 2a03:2880:20:4f06:face:b00c:0:14/56 \
-      -$2 2a03:2880:20:6f06:face:b00c:0:14/66 \
-      -$2 2a03:2880:20:8f06:face:b00c:0:14/128 \
-      -$2 2a03:2880:33:5f06:: \
-      -$2 193.92.150.2/24 \
-      -$2 193.95.150.100/28 \
-      -$2 195.90.112.99/32 \
-      -$2 195.90.111.99/22 \
-      \
-      > ./3.$1 $REDIR
-   cmp -s 3.$1 3.${1}x || exit 101
-   eval $PGX --shutdown $REDIR
-   [ $? -eq 75 ] || exit 102
-   [ -n "$REDIR" ] || echo ok 3.${1}
+	eval $PGX --test-mode --4-mask 24 --6-mask 64 \
+		-$2 exact.match \
+		--$3 also.exact.match \
+		-${2}.domain.and.subdomain \
+		--$3=.d.a.s \
+		-$2 127.0.0.1 \
+		-$2 2a03:2880:20:4f06:face:b00c:0:14/56 \
+		-$2 2a03:2880:20:6f06:face:b00c:0:14/66 \
+		-$2 2a03:2880:20:8f06:face:b00c:0:14/128 \
+		-$2 2a03:2880:33:5f06:: \
+		-$2 193.92.150.2/24 \
+		-$2 193.95.150.100/28 \
+		-$2 195.90.112.99/32 \
+		-$2 195.90.111.99/22 \
+		\
+		> ./3.$1 $REDIR
+	cmp -s 3.$1 3.${1}x || exit 101
+	eval $PGX --shutdown $REDIR
+	[ $? -eq 75 ] || exit 102
+	[ -n "$REDIR" ] || echo ok 3.${1}
 
-   i=$(($1 + 1))
-   eval $PGX --test-mode -424 -664 -$4 x.a1 -$4 x.a2 > ./3.$i $REDIR
-   cmp -s 3.$i 3.${1}x || exit 101
-   eval $PGX --shutdown $REDIR
-   [ $? -eq 75 ] || exit 102
-   [ -n "$REDIR" ] || echo ok 3.${i}
+	i=$(($1 + 1))
+	eval $PGX --test-mode -424 -664 -$4 x.a1 -$4 x.a2 > ./3.$i $REDIR
+	cmp -s 3.$i 3.${1}x || exit 101
+	eval $PGX --shutdown $REDIR
+	[ $? -eq 75 ] || exit 102
+	[ -n "$REDIR" ] || echo ok 3.${i}
 }
 
 ab 0 a allow A
@@ -293,7 +293,7 @@ eval $PGX --shutdown $REDIR
 ##
 echo '=4: allow and block=' # {{{
 if [ -n "$s4" ]; then
-   echo 'skipping 4'
+	echo 'skipping 4'
 else
 
 cat <<'_EOT' > ./4.x
@@ -392,9 +392,9 @@ _EOT
 : > ./4.1x
 i=0
 while [ $i -lt 17 ]; do
-   printf 'action=xDUNNO\n\n' >> ./4.0x
-   printf 'action=xREJECT\n\n' >> ./4.1x
-   i=$((i + 1))
+	printf 'action=xDUNNO\n\n' >> ./4.0x
+	printf 'action=xREJECT\n\n' >> ./4.1x
+	i=$((i + 1))
 done
 
 sed -e 's/^allow/block/' < ./x.rc > ./y.rc
@@ -413,26 +413,26 @@ eval $PG -R ./x.rc --shutdown $REDIR
 [ $? -ne 75 ] || exit 102
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=200.200.200.200\n'\
+	'recipient=x@y\nsender=y@z\nclient_address=200.200.200.200\n'\
 'client_name=and.subdomain\n\n'\
-   | eval $PG -R ./x.rc > ./4.2 $REDIR
+	| eval $PG -R ./x.rc > ./4.2 $REDIR
 printf 'action='"$MSG_DEFER"'\n\n' > ./4.2x
 cmp -s ./4.2 ./4.2x || exit 101
 [ -n "$REDIR" ] || echo ok 4.2
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=200.200.201.200\n'\
+	'recipient=x@y\nsender=y@z\nclient_address=200.200.201.200\n'\
 'client_name=subdomain.\n\n'\
-   | eval $PG -R ./x.rc > ./4.3 $REDIR
+	| eval $PG -R ./x.rc > ./4.3 $REDIR
 printf 'action='"$MSG_DEFER"'\n\n' > ./4.3x
 cmp -s ./4.3 ./4.3x || exit 101
 [ -n "$REDIR" ] || echo ok 4.3
 
 # root label -> error (aka unhandled aka DUNNO)
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=200.200.202.200\n'\
+	'recipient=x@y\nsender=y@z\nclient_address=200.200.202.200\n'\
 'client_name=.\n\n'\
-   | eval $PG -R ./x.rc > ./4.4 $REDIR
+	| eval $PG -R ./x.rc > ./4.4 $REDIR
 printf 'action=DUNNO\n\n' > ./4.4x
 cmp -s ./4.4 ./4.4x || exit 101
 [ -n "$REDIR" ] || echo ok 4.4
@@ -442,11 +442,11 @@ eval $PG -R ./x.rc --shutdown $REDIR
 
 # Let's just test --once mode here and now
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=200.200.202.200\n'\
+	'recipient=x@y\nsender=y@z\nclient_address=200.200.202.200\n'\
 'client_name=.\n\n'\
-   'recipient=x@y\nsender=y@z\nclient_address=200.200.203.200\n'\
+	'recipient=x@y\nsender=y@z\nclient_address=200.200.203.200\n'\
 'client_name=.\n\n'\
-   | eval $PG -R ./x.rc --once > ./4.5 $REDIR
+	| eval $PG -R ./x.rc --once > ./4.5 $REDIR
 printf 'action=DUNNO\n\n' > ./4.5x
 cmp -s ./4.5 ./4.5x || exit 101
 [ -n "$REDIR" ] || echo ok 4.5
@@ -459,7 +459,7 @@ fi
 ##
 echo '=5: gray basics (slow: needs sleeping)=' # {{{
 if [ -n "$s5" ]; then
-   echo 'skipping 5'
+	echo 'skipping 5'
 else
 
 # Honour --delay-min and --count
@@ -534,16 +534,16 @@ sed -i'' -e '3,$d' ./5.xx
 
 #
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.3 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.3 $REDIR
 cmp -s ./5.3 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.3
 
 xsleep 1
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.4 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.4 $REDIR
 cmp -s ./5.4 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.4
 
@@ -557,95 +557,95 @@ xsleep 7
 # out one of them
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.5 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.5 $REDIR
 cmp -s ./5.5 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.5
 
 xsleep 1
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.6 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.6 $REDIR
 cmp -s ./5.6 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.6
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.7 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.7 $REDIR
 cmp -s ./5.7 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.7
 
 xsleep 1
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.8 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.8 $REDIR
 cmp -s ./5.8 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.8
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.9 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.9 $REDIR
 cmp -s ./5.9 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.9
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.10 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.10 $REDIR
 cmp -s ./5.10 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.10
 
 xsleep 1
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.11 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.11 $REDIR
 cmp -s ./5.11 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.11
 
 xsleep 3
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.12 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.12 $REDIR
 cmp -s ./5.12 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.12
 
 xsleep 3
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.13 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.13 $REDIR
 cmp -s ./5.13 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.13
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.14 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.14 $REDIR
 cmp -s ./5.14 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.14
 
 xsleep 1
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.15 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.15 $REDIR
 cmp -s ./5.15 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.15
 
 xsleep 1
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.16 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.16 $REDIR
 cmp -s ./5.16 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.16
 
 # this will be delay-max at time
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=130.0.0.0\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.17 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=130.0.0.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.17 $REDIR
 cmp -s ./5.17 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.17
 
@@ -656,14 +656,14 @@ eval $PG -R ./x.rc --shutdown $REDIR
 xsleep 1
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.18 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.18 $REDIR
 cmp -s ./5.18 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.18
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.19 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.19 $REDIR
 cmp -s ./5.19 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.19
 
@@ -710,8 +710,8 @@ cmp -s ./5.20 ./5.20x || exit 101
 xsleep 2
 
 printf \
-   'recipient=x@y\nsender=y@z\nclient_address=130.0.0.0\nclient_name=xy\n\n'\
-   | eval $PG -R ./x.rc > ./5.21 $REDIR
+	'recipient=x@y\nsender=y@z\nclient_address=130.0.0.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc > ./5.21 $REDIR
 cmp -s ./5.21 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.21
 
@@ -723,7 +723,7 @@ fi
 ##
 echo '=6: gray parallel (this takes quite some time)=' # {{{
 if [ -n "$s6" ]; then
-   echo 'skipping 6'
+	echo 'skipping 6'
 else
 
 rm -f *.db
@@ -748,82 +748,82 @@ _EOT
 
 i=0
 while [ $i -lt $max1 ]; do
-   : > ./6.${i}x
-   i=$((i + 1))
+	: > ./6.${i}x
+	i=$((i + 1))
 done
 i=0
 while [ $i -lt $max1 ]; do
-   (
-      j=0
-      while [ $j -lt $max2 ]; do
-         j1=$((j / 256))
-         j2=$((j % 256))
-         printf 'recipient=x@y\nsender=y@z\nclient_name=xy\n'\
+	(
+		j=0
+		while [ $j -lt $max2 ]; do
+			j1=$((j / 256))
+			j2=$((j % 256))
+			printf 'recipient=x@y\nsender=y@z\nclient_name=xy\n'\
 'client_address='$i.$j1.$j2.$j2'\ninstance=hey'$i'.'$j'\n\n'
-         printf "action=all the same\n\n" >> ./6.${i}x
-         while :; do
-            [ -f ./6.${i}syncx ] && break
-            sdelay
-         done
-         rm -f ./6.${i}syncx
-         j=$((j + 1))
-      done
-      echo > ./6.${i}okx
+			printf "action=all the same\n\n" >> ./6.${i}x
+			while :; do
+				[ -f ./6.${i}syncx ] && break
+				sdelay
+			done
+			rm -f ./6.${i}syncx
+			j=$((j + 1))
+		done
+		echo > ./6.${i}okx
 
-      # Find our partner, and wait for it
-      [ $((i % 2)) -eq 0 ] && k=$((i + 1)) || k=$((i - 1))
+		# Find our partner, and wait for it
+		[ $((i % 2)) -eq 0 ] && k=$((i + 1)) || k=$((i - 1))
 
-      while :; do
-         [ -f ./6.${k}okx ] && break
-         delay
-      done
+		while :; do
+			[ -f ./6.${k}okx ] && break
+			delay
+		done
 
-      xsleep 2
+		xsleep 2
 
-      j=0
-      while [ $j -lt $max2 ]; do
-         j1=$((j / 256))
-         j2=$((j % 256))
-         printf 'recipient=x@y\nsender=y@z\nclient_name=xy\n'\
+		j=0
+		while [ $j -lt $max2 ]; do
+			j1=$((j / 256))
+			j2=$((j % 256))
+			printf 'recipient=x@y\nsender=y@z\nclient_name=xy\n'\
 'client_address='$k.$j1.$j2.$j2'\ninstance=hey'$i'.'$j'\n\n'
-         printf 'action=DUNNO\n\n' >> ./6.${i}x
-         while :; do
-            [ -f ./6.${i}syncx ] && break
-            sdelay
-         done
-         rm -f ./6.${i}syncx
-         j=$((j + 1))
-      done
-   ) | eval $PG -R ./6.rc $REDIR | {
-      while :; do
-         read a || break
-         read e || break
-         echo $a
-         echo $e
-         echo > ./6.${i}syncx
-      done
-      echo > ./6.${i}ok
-   } > ./6.$i &
+			printf 'action=DUNNO\n\n' >> ./6.${i}x
+			while :; do
+				[ -f ./6.${i}syncx ] && break
+				sdelay
+			done
+			rm -f ./6.${i}syncx
+			j=$((j + 1))
+		done
+	) | eval $PG -R ./6.rc $REDIR | {
+		while :; do
+			read a || break
+			read e || break
+			echo $a
+			echo $e
+			echo > ./6.${i}syncx
+		done
+		echo > ./6.${i}ok
+	} > ./6.$i &
 
-   i=$((i + 1))
+	i=$((i + 1))
 done
 
 # Wait for all
 while :; do
-   i=0
-   while [ $i -lt $max1 ]; do
-      [ -f ./6.${i}ok ] || break
-      i=$((i + 1))
-   done
-   [ $i -eq $max1 ] && break
-   delay
+	i=0
+	while [ $i -lt $max1 ]; do
+		[ -f ./6.${i}ok ] || break
+		i=$((i + 1))
+	done
+	[ $i -eq $max1 ] && break
+	delay
 done
 
 i=0
 while [ $i -lt $max1 ]; do
-   cmp -s ./6.$i ./6.${i}x || exit 101
-   [ -n "$REDIR" ] || echo ok 6.$i
-   i=$((i + 1))
+	cmp -s ./6.$i ./6.${i}x || exit 101
+	[ -n "$REDIR" ] || echo ok 6.$i
+	i=$((i + 1))
 done
 
 eval $PG -R ./x.rc --shutdown $REDIR
@@ -834,7 +834,7 @@ fi
 ##
 echo '=7: gray --focus-sender=' # {{{
 if [ -n "$s7" ]; then
-   echo 'skipping 7'
+	echo 'skipping 7'
 else
 
 rm -f *.db
@@ -869,8 +869,8 @@ xsleep 1
 printf 'action=%s\n\n' "$MSG_DEFER" > 7.xx
 
 printf \
-   'recipient=x3@y\nsender=y@z\nclient_address=127.1.2.4\nclient_name=xy\n\n'\
-   | eval $PG -f -R ./x.rc > ./7.1 $REDIR
+	'recipient=x3@y\nsender=y@z\nclient_address=127.1.2.4\nclient_name=xy\n\n'\
+	| eval $PG -f -R ./x.rc > ./7.1 $REDIR
 cmp -s ./7.1 ./7.xx || exit 101
 [ -n "$REDIR" ] || echo ok 7.1
 
@@ -878,8 +878,8 @@ xsleep 1
 printf 'action=%s\n\n' "DUNNO" > 7.xx
 
 printf \
-   'recipient=x4@y\nsender=y@z\nclient_address=127.1.2.5\nclient_name=xy\n\n'\
-   | eval $PG -f -R ./x.rc > ./7.2 $REDIR
+	'recipient=x4@y\nsender=y@z\nclient_address=127.1.2.5\nclient_name=xy\n\n'\
+	| eval $PG -f -R ./x.rc > ./7.2 $REDIR
 cmp -s ./7.2 ./7.xx || exit 101
 [ -n "$REDIR" ] || echo ok 7.2
 
@@ -891,54 +891,54 @@ fi
 ##
 echo '=8: --startup, more --shutdown' # {{{
 if [ -n "$s8" ]; then
-   echo 'skipping 8'
+	echo 'skipping 8'
 else
-   rm -f *.db
+	rm -f *.db
 
-   i=0 j=
-   doit() {
-      j=$((i + 1))
-      eval $PG -R ./x.rc --server-timeout=1 --startup > ./8.$j $REDIR
-      [ $? -eq 0 ] || exit 101
-      [ -n "$REDIR" ] || echo ok 8.$i
-      [ -s ./8.$j ] && exit 101
-      [ -n "$REDIR" ] || echo ok 8.$j
+	i=0 j=
+	doit() {
+		j=$((i + 1))
+		eval $PG -R ./x.rc --server-timeout=1 --startup > ./8.$j $REDIR
+		[ $? -eq 0 ] || exit 101
+		[ -n "$REDIR" ] || echo ok 8.$i
+		[ -s ./8.$j ] && exit 101
+		[ -n "$REDIR" ] || echo ok 8.$j
 
-      i=$((j + 1))
-      j=$((i + 1))
+		i=$((j + 1))
+		j=$((i + 1))
 
-      eval $PG -R ./x.rc --server-timeout=1 --startup > ./8.$j $REDIR
-      [ $? -eq 75 ] || exit 101
-      [ -n "$REDIR" ] || echo ok 8.$i
-      [ -s ./8.$j ] && exit 101
-      [ -n "$REDIR" ] || echo ok 8.$j
+		eval $PG -R ./x.rc --server-timeout=1 --startup > ./8.$j $REDIR
+		[ $? -eq 75 ] || exit 101
+		[ -n "$REDIR" ] || echo ok 8.$i
+		[ -s ./8.$j ] && exit 101
+		[ -n "$REDIR" ] || echo ok 8.$j
 
-      i=$((j + 1))
-      j=$((i + 1))
-      sleep 2
+		i=$((j + 1))
+		j=$((i + 1))
+		sleep 2
 
-      eval $PG -R ./x.rc --shutdown > ./8.$j $REDIR
-      [ $? -eq 0 ] || exit 101
-      [ -n "$REDIR" ] || echo ok 8.$i
-      [ -s ./8.$j ] && exit 101
-      [ -n "$REDIR" ] || echo ok 8.$j
+		eval $PG -R ./x.rc --shutdown > ./8.$j $REDIR
+		[ $? -eq 0 ] || exit 101
+		[ -n "$REDIR" ] || echo ok 8.$i
+		[ -s ./8.$j ] && exit 101
+		[ -n "$REDIR" ] || echo ok 8.$j
 
-      i=$((j + 1))
-      j=$((i + 1))
+		i=$((j + 1))
+		j=$((i + 1))
 
-      eval $PG -R ./x.rc --shutdown > ./8.$j $REDIR
-      [ $? -eq 75 ] || exit 101
-      [ -n "$REDIR" ] || echo ok 8.$i
-      [ -s ./8.$j ] && exit 101
-      [ -n "$REDIR" ] || echo ok 8.$j
-   }
-   doit
-   doit
-   doit
+		eval $PG -R ./x.rc --shutdown > ./8.$j $REDIR
+		[ $? -eq 75 ] || exit 101
+		[ -n "$REDIR" ] || echo ok 8.$i
+		[ -s ./8.$j ] && exit 101
+		[ -n "$REDIR" ] || echo ok 8.$j
+	}
+	doit
+	doit
+	doit
 fi
 # }}}
 )
 
 exit $?
 
-# s-it-mode
+# s-sht-mode
