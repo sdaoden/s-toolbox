@@ -1,5 +1,5 @@
 #!/bin/sh -
-#@ Create BTRFS filesystem snapshots, send them to a ball, trim them down.
+#@ Create BTRFS filesystem snapshots, trim them down, etc.
 #@ This script assumes a BTRFS master volume under which some subvolumes exist
 #@ as mount points, and a snapshots/ at the first level under which all those
 #@ subvolumes are mirrored.  Otherwise the_worker() must be adjusted.
@@ -10,11 +10,9 @@
 #@   THEVOL=/media/btrfs-master
 #@
 #@   # the mount points within; we cd(1) to $THEVOL, these need to be relative.
-#@   # Note whitespace and other shell quoting issues are not handled!
+#@   # Note I: whitespace and other shell quoting issues are not handled!
+#@   # Note II: directories may not begin with equal-sign =.
 #@   DIRS='home x/doc x/m x/m-mp4 x/os x/p x/src var/cache/apk'
-#@
-#@   # (balls-related only) ACCUDIR: where work and final balls are written to
-#@   ACCUDIR=/media/btrfs-master
 #@
 #@   # If set, no real action is performed
 #@   #DEBUG
@@ -24,14 +22,12 @@
 #@
 #@ Synopsis: btrfs-snapshot.sh create-dir-tree
 #@ Synopsis: btrfs-snapshot.sh create|trim|setvols
-#@ Synopsis: btrfs-snapshot.sh create-balls
-#@ Synopsis: btrfs-snapshot.sh receive-balls [:BALL:]
 #@ Synopsis: btrfs-snapshot.sh clone-to-cwd|sync-to-cwd
 #@
 #@ - "create-dir-tree" creates all $DIRS and their snapshot mirrors,
 #@   as necessary, in and under CWD.  It does not remove surplus directories.
 #@   All further synchronizations can then be performed via
-#@      cd WHEREVER && btrfs-snapshot.sh sync-to-cwd
+#@     cd WHEREVER && btrfs-snapshot.sh sync-to-cwd
 #@
 #@ - "create" creates a new snapshots/ of all $DIRS.
 #@
@@ -41,18 +37,6 @@
 #@ - "setvols" moves any existing $DIRS (subvolumes) to $THEVOL/.old/$now/
 #@   (covered by "trim"), and recreates them from the latest corresponding
 #@   entry within snapshots/.
-#@
-#@ - "create-balls" sends the (differences to the last, if any) snapshots into
-#@   $ACCUDIR/.snap-ISODATE/ as zstd(1) compressed streams, split into files
-#@   of 2 GB size at most.  You then move the entire $ACCUDIR/.snap-ISODATE
-#@   directory tree somewhere else.  (Or you can create a tar archive of it,
-#@   if the target filesystem can deal with very large files.)
-#@
-#@ - "receive-balls" receives one or multiple BALLS, which must have been
-#@   created by "create-balls", and merges them in snapshots/.
-#@   Ball must refer to a .snap-ISODATE super-directory, and the path must
-#@   be absolute.  (If realpath(1) is available we use it though.)
-#@   If the filename of a BALL is equal-sign =, "trim" is executed.
 #@
 #@ - "clone-to-cwd" and "sync-to-cwd" need one existing snapshot (series),
 #@   and will clone all the latest snapshots to the current-working-directory.
@@ -71,15 +55,14 @@
 : ${HOSTNAME:=$(uname -n)}
 
 if [ -f "$BTRFS_SNAPSHOT" ]; then
-   . "$BTRFS_SNAPSHOT"
+	. "$BTRFS_SNAPSHOT"
 elif [ -f ./btrfs-snapshot ]; then
-   . ./btrfs-snapshot
+	. ./btrfs-snapshot
 elif [ -f /root/hosts/$HOSTNAME/btrfs-snapshot ]; then
-   . /root/hosts/$HOSTNAME/btrfs-snapshot
+	. /root/hosts/$HOSTNAME/btrfs-snapshot
 else
-   logger -s -t /root/bin/btrfs-snapshot.sh \
-      "no config ./btrfs-snapshot, nor /root/hosts/$HOSTNAME/btrfs-snapshot"
-   exit 1
+	logger -s -t /root/bin/btrfs-snapshot.sh "no config ./btrfs-snapshot, nor /root/hosts/$HOSTNAME/btrfs-snapshot"
+	exit 1
 fi
 : ${ZSTD_LEVEL=-5}
 
@@ -88,429 +71,307 @@ fi
 
 ## >8 -- 8<
 
-# Will be set by "receive-balls"
-BALLS=
+TEMPLATE=
 
 the_worker() ( # (output redirected)
-   if [ $1 = clone-to-cwd ] || [ $1 = sync-to-cwd ]; then
-      CLONEDIR=$(pwd)
-   fi
+	if [ $1 = clone-to-cwd ] || [ $1 = sync-to-cwd ]; then
+		CLONEDIR=$(pwd)
+	fi
 
-   if mountpoint -q "$THEVOL"; then
-      echo '= '$THEVOL' is already mounted'
-      UMOUNT=:
-   else
-      echo '= Mounting '$THEVOL
-      if cd && mount "$THEVOL"; then :; else
-         echo 'Cannot mount '$THEVOL
-         exit 1
-      fi
-      UMOUNT="cd && umount \"$THEVOL\""
-      trap "$UMOUNT" EXIT
-   fi
+	if mountpoint -q "$THEVOL"; then
+		echo '= '$THEVOL' is already mounted'
+		UMOUNT=:
+	else
+		echo '= Mounting '$THEVOL
+		if cd && mount "$THEVOL"; then :; else
+			echo 'Cannot mount '$THEVOL
+			exit 1
+		fi
+		UMOUNT="cd && umount \"$THEVOL\""
+		trap "$UMOUNT" EXIT
+	fi
 
-   cd "$THEVOL" || {
-      echo 'Cannot cd to '$THEVOL
-      exit 1
-   }
+	cd "$THEVOL" || {
+		echo 'Cannot cd to '$THEVOL
+		exit 1
+	}
 
-   echo '= Checking mirrors for '$DIRS
-   i=
-   [ $1 = create-dir-tree ] && i=y
-   for d in $DIRS; do
-      check_mirror "$d" "snapshots" "$i"
-   done
+	echo '= Checking mirrors for '$DIRS
+	i=
+	[ $1 = create-dir-tree ] && i=y
+	for d in $DIRS; do
+		check_mirror "$d" "snapshots" "$i"
+	done
 
-   if [ $1 = create-dir-tree ]; then
-      exit 0
-   elif [ $1 = create ]; then
-      echo '= Creating snapshots for '$DIRS
-      create_setup
-      for d in $DIRS; do
-         create_one "$d"
-      done
-   elif [ $1 = create-balls ]; then
-      create_setup
-      echo '= Creating balls in '$ACCUDIR/.snap-$now
-      act mkdir "$ACCUDIR"/.snap-$now
-      trap "cd; rm -rf \"$ACCUDIR\"/.snap-$now; $UMOUNT" EXIT
-      for d in $DIRS; do
-         create_ball "$d"
-      done
-      trap "$UMOUNT" EXIT
-   elif [ $1 = receive-balls ]; then
-      echo '= Working balls'
-      for b in $BALLS; do
-         echo '== Receiving ball '$b
-         for d in $DIRS; do
-            if [ "$b" = = ]; then
-               trim_one "$d" y
-            else
-               receive_ball "$d" "$b"
-            fi
-         done
-      done
-   elif [ $1 = trim ]; then
-      echo '= Trimming snapshots for '$DIRS
-      for d in $DIRS; do
-         trim_one "$d"
-      done
-      for d in $DIRS; do
-         (
-            cd snapshots/"$d" || exit 11
-            echo '== Syncing on removal(s) of '$d
-            act btrfs subvolume sync .
-         ) || exit $?
-      done
-      trim_old_vols
-   elif [ $1 = setvols ]; then
-      create_setup
-      echo '= Checking .old mirrors for '$DIRS
-      for d in $DIRS; do
-         dx=$(dirname "$d")
-         check_mirror "$dx" ".old/$now" y
-      done
-      echo '= Setting '$DIRS' to newest snapshots'
-      for d in $DIRS; do
-         setvol_one "$d"
-      done
-   elif [ $1 = clone-to-cwd ]; then
-      echo '= Creating or updating a clone in '$CLONEDIR
-      clone_to_cwd 1
-   elif [ $1 = sync-to-cwd ]; then
-      echo '= Synchronizing a clone in '$CLONEDIR
-      clone_to_cwd 0
-   fi
+	if [ $1 = create-dir-tree ]; then
+		exit 0
+	elif [ $1 = create ]; then
+		echo '= Creating snapshots for '$DIRS
+		create_setup
+		for d in $DIRS; do
+			create_one "$d"
+		done
+	elif [ $1 = trim ]; then
+		echo '= Trimming snapshots for '$DIRS
+		for d in $DIRS; do
+			trim_one "$d"
+		done
+		for d in $DIRS; do
+			(
+				cd snapshots/"$d" || exit 11
+				echo '== Syncing on removal(s) of '$d
+				act btrfs subvolume sync .
+			) || exit $?
+		done
+		trim_old_vols
+	elif [ $1 = setvols ]; then
+		create_setup
+		echo '= Checking .old mirrors for '$DIRS
+		for d in $DIRS; do
+			dx=$(dirname "$d")
+			check_mirror "$dx" ".old/$now" y
+		done
+		echo '= Setting '$DIRS' to newest snapshots'
+		for d in $DIRS; do
+			setvol_one "$d"
+		done
+	elif [ $1 = clone-to-cwd ]; then
+		echo '= Creating or updating a clone in '$CLONEDIR
+		clone_to_cwd 1
+	elif [ $1 = sync-to-cwd ]; then
+		echo '= Synchronizing a clone in '$CLONEDIR
+		clone_to_cwd 0
+	fi
 
-   if eval $UMOUNT; then :; else
-      echo '== Failed to umount '$THEVOL
-   fi
-   trap "" EXIT
-   echo '= Done'
+	if eval $UMOUNT; then :; else
+		echo '== Failed to umount '$THEVOL
+	fi
+	trap "" EXIT
+	echo '= Done'
 )
 
 ## >8 -- -- 8<
 
 act() {
-   if [ -n "$DEBUG" ]; then
-      echo eval "$@"
-   else
-      eval "$@"
-      if [ $? -ne 0 ]; then
-         echo 'PANIC: '$*
-         exit 1
-      fi
-   fi
+	if [ -n "$DEBUG" ]; then
+		echo eval "$@"
+	else
+		eval "$@"
+		if [ $? -ne 0 ]; then
+			echo 'PANIC: '$*
+			exit 1
+		fi
+	fi
 }
 
 check_mirror() {
-   if [ -d "$1" ] && [ -d "$2"/"$1" ]; then :; else
-      if [ -n "$3" ]; then
-         act mkdir -p "$1" "$2"/"$1"
-      else
-         echo 'PANIC: cannot handle DIR ('$2'/) '$1
-         exit 1
-      fi
-   fi
+	if [ -d "$1" ] && [ -d "$2"/"$1" ]; then :; else
+		if [ -n "$3" ]; then
+			act mkdir -p "$1" "$2"/"$1"
+		else
+			echo 'PANIC: cannot handle DIR ('$2'/) '$1
+			exit 1
+		fi
+	fi
 }
 
 create_setup() {
-   now=$(date +%Y%m%dT%H%M%S)
+	now=$(date +%Y%m%dT%H%M%S)
 }
 
 create_one() {
-   echo '== Creating snapshot: '$1' -> snapshots/'$1'/'$now
-   act btrfs subvolume snapshot -r "$1" snapshots/"$1"/"$now"
-}
-
-create_ball() {
-   (
-   mydir=$1
-   cd snapshots/"$mydir" || exit 11
-
-   set -- $(find . -maxdepth 1 -type d -not -path . | sort)
-   if [ $# -eq 0 ]; then
-      echo '== No snapshots to send in snapshots/'$mydir
-      exit 0
-   fi
-
-   # Shift all but two
-   i=$((-(2 - $#)))
-   [ $i -gt 0 ] && shift $i
-
-   # The send stream
-   if [ $# -eq 1 ]; then
-      parent=
-      i='without parent'
-      this=$(basename "$1")
-   else
-      parent=$(basename "$1")
-      i='with parent '$parent
-      parent=' -p '$parent
-      this=$(basename "$2")
-   fi
-   target="$ACCUDIR"/.snap-$now/"$mydir" #/"$this"
-
-   echo '== '$mydir': '$i' to '$target
-
-   act mkdir -p "$target"
-   act btrfs send $parent "$this" '|' \
-      zstd -zc -T0 $ZSTD_LEVEL '|' \
-      '('cd "$target" '&&' \
-        echo "$this" '>' .stamp '&&' \
-        split -a 4 -b 2000000000 -d -')'
-   ) || exit $?
-}
-
-receive_ball() {
-   (
-   mydir=$1
-   ball=$2
-
-   if [ -d "$ball"/"$mydir" ]; then :; else
-      echo '=== '$mydir': no snapshot for me in here: '"$ball"/"$mydir"
-      exit 0
-   fi
-
-   snaps=0
-   for snap in "$ball"/"$mydir"/*; do
-      snaps=$((snaps + 1))
-      [ -f "$snap" ] && continue
-      echo '=== '$mydir': invalid content, skipping this: '$snap
-      exit 1
-   done
-   if [ -f "$ball"/"$mydir"/.stamp ]; then
-      snap=$(cat "$ball"/"$mydir"/.stamp)
-   else
-      echo '=== '$mydir': invalid content, missing .stamp file'
-      exit 1
-   fi
-
-   cd snapshots/"$mydir" || exit 11
-
-   if [ -d "$snap" ]; then
-      echo '=== '$mydir': snapshot '$snap' already exists'
-      exit 0
-   fi
-
-   echo '=== '$mydir': receiving snapshot of '$snaps' files'
-   act cat "$ball"/"$mydir"/* '|' zstd -dc '|' btrfs receive .
-   act btrfs filesystem sync .
-   ) || exit $?
+	echo '== Creating snapshot: '$1' -> snapshots/'$1'/'$now
+	act btrfs subvolume snapshot -r "$1" snapshots/"$1"/"$now"
 }
 
 trim_one() {
-   (
-   mydir=$1
-   dosync=$2
-   cd snapshots/"$mydir" || exit 11
+	(
+	mydir=$1
+	dosync=$2
+	cd snapshots/"$mydir" || exit 11
 
-   set -- $(find . -maxdepth 1 -type d -not -path . | sort)
-   if [ $# -le 1 ]; then
-      echo '== No snapshots to trim in snapshots/'$mydir
-      exit 0
-   fi
+	set -- $(find . -maxdepth 1 -type d -not -path . | sort)
+	if [ $# -le 1 ]; then
+		echo '== No snapshots to trim in snapshots/'$mydir
+		exit 0
+	fi
 
-   echo '== Trimming snapshots in snapshots/'$mydir
-   while [ $# -gt 1 ]; do
-      echo '=== Deleting '$1
-      act btrfs subvolume delete "$1"
-      shift
-   done
-   if [ -n "$dosync" ]; then
-      echo '=== Syncing on removal(s)'
-      act btrfs subvolume sync .
-   fi
-   ) || exit $?
+	echo '== Trimming snapshots in snapshots/'$mydir
+	while [ $# -gt 1 ]; do
+		echo '=== Deleting '$1
+		act btrfs subvolume delete "$1"
+		shift
+	done
+	if [ -n "$dosync" ]; then
+		echo '=== Syncing on removal(s)'
+		act btrfs subvolume sync .
+	fi
+	) || exit $?
 }
 
 trim_old_vols() {
-   (
-   echo '= Trimming old volumes in .old'
-   btrfs subvol list . |
-      awk '/ .old\//{print $9}' |
-      while read p; do
-         act btrfs subvolume delete "$p"
-      done
-   rm -rf .old
-   echo '== Syncing on removal(s)'
-   act btrfs subvolume sync .
-   ) || exit $?
+	(
+	echo '= Trimming old volumes in .old'
+	btrfs subvol list . |
+		awk '/ .old\//{print $9}' |
+		while read p; do
+			act btrfs subvolume delete "$p"
+		done
+	rm -rf .old
+	echo '== Syncing on removal(s)'
+	act btrfs subvolume sync .
+	) || exit $?
 }
 
 setvol_one() {
-   (
-   mydir=$1
-   cd snapshots/"$mydir" || exit 11
+	(
+	mydir=$1
+	cd snapshots/"$mydir" || exit 11
 
-   set -- $(find . -maxdepth 1 -type d -not -path . | sort)
-   if [ $# -eq 0 ]; then
-      echo '== No volume to set from snapshots/'$mydir
-      exit 0
-   fi
+	set -- $(find . -maxdepth 1 -type d -not -path . | sort)
+	if [ $# -eq 0 ]; then
+		echo '== No volume to set from snapshots/'$mydir
+		exit 0
+	fi
 
-   # Shift all but one
-   i=$((-(1 - $#)))
-   [ $i -gt 0 ] && shift $i
+	# Shift all but one
+	i=$((-(1 - $#)))
+	[ $i -gt 0 ] && shift $i
 
-   echo '== Setting '$mydir' to '$1
-   if [ -d "$THEVOL/$mydir" ]; then
-      if btrfs subvolume show "$THEVOL/$mydir" >/dev/null 2>&1; then
-         # We do not remove old volumes, but move them to .old.
-         # This keeps mount points intact etc.  Of course it means later
-         # cleaning is necessary
-         act mv "$THEVOL/$mydir" "$THEVOL/.old/$now/$mydir"
-      else
-         act rm -rf "$THEVOL/$mydir"
-      fi
-   fi
-   act btrfs subvolume snapshot "$1" "$THEVOL/$mydir"
-   ) || exit $?
+	echo '== Setting '$mydir' to '$1
+	if [ -d "$THEVOL/$mydir" ]; then
+		if btrfs subvolume show "$THEVOL/$mydir" >/dev/null 2>&1; then
+			# We do not remove old volumes, but move them to .old.
+			# This keeps mount points intact etc.  Of course it means later cleaning is necessary
+			act mv "$THEVOL/$mydir" "$THEVOL/.old/$now/$mydir"
+		else
+			act rm -rf "$THEVOL/$mydir"
+		fi
+	fi
+	act btrfs subvolume snapshot "$1" "$THEVOL/$mydir"
+	) || exit $?
 }
 
 clone_to_cwd() {
-   if [ "$1" = 1 ]; then
-      for d in $DIRS; do
-         i=
-         [ -d "$CLONEDIR/$d" ] || i="$i \"$CLONEDIR/$d\""
-         [ -d "$CLONEDIR/snapshots/$d" ] || i="$i \"$CLONEDIR/snapshots/$d\""
-         [ -n "$i" ] && act mkdir -p $i
-      done
-   fi
+	if [ "$1" = 1 ]; then
+		for d in $DIRS; do
+			i=
+			[ -d "$CLONEDIR/$d" ] || i="$i \"$CLONEDIR/$d\""
+			[ -d "$CLONEDIR/snapshots/$d" ] || i="$i \"$CLONEDIR/snapshots/$d\""
+			[ -n "$i" ] && act mkdir -p $i
+		done
+	fi
 
-   deldirs=
-   for d in $DIRS; do
-      target="$CLONEDIR"/snapshots/"$d"
-      if [ -d "$CLONEDIR/$d" ] && [ -d "$target" ]; then :; else
-         [ -d "$CLONEDIR/$d" ] && deldirs="$deldirs \"$CLONEDIR/$d\""
-         echo '== Skipping non-existing snapshots/'$d
-         continue
-      fi
-      (
-      act cd "$target"
+	deldirs=
+	for d in $DIRS; do
+		target="$CLONEDIR"/snapshots/"$d"
+		if [ -d "$CLONEDIR/$d" ] && [ -d "$target" ]; then :; else
+			[ -d "$CLONEDIR/$d" ] && deldirs="$deldirs \"$CLONEDIR/$d\""
+			echo '== Skipping non-existing snapshots/'$d
+			continue
+		fi
+		(
+		act cd "$target"
 
-      set -- $(find . -maxdepth 1 -type d -not -path . | sort)
-      # Shift all but one
-      i=$((-(1 - $#)))
-      [ $i -gt 0 ] && shift $i
-      lastsync=$1
+		set -- $(find . -maxdepth 1 -type d -not -path . | sort)
+		# Shift all but one
+		i=$((-(1 - $#)))
+		[ $i -gt 0 ] && shift $i
+		lastsync=$1
 
-      act cd "$THEVOL"/snapshots/"$d"
+		act cd "$THEVOL"/snapshots/"$d"
 
-      set -- $(find . -maxdepth 1 -type d -not -path . | sort)
-      if [ $# -eq 0 ]; then
-         echo '== No snapshot to clone in snapshots/'$d
-         exit 0
-      fi
-      parentmsg= parent=
-      while [ $# -gt 1 ]; do
-         if [ "$1" = "$lastsync" ]; then
-            parentmsg=' with parent '"$1"
-            parent='-p '"$1"
-         fi
-         shift
-      done
+		set -- $(find . -maxdepth 1 -type d -not -path . | sort)
+		if [ $# -eq 0 ]; then
+			echo '== No snapshot to clone in snapshots/'$d
+			exit 0
+		fi
+		parentmsg= parent=
+		while [ $# -gt 1 ]; do
+			if [ "$1" = "$lastsync" ]; then
+				parentmsg=' with parent '"$1"
+				parent='-p '"$1"
+			fi
+			shift
+		done
 
-      if [ -n "$lastsync" ]; then
-         if [ "$1" = "$lastsync" ]; then
-            echo '== Yet has up-to-date snapshot: snapshots/'$d
-            exit 0
-         fi
-         if [ -z "$parent" ]; then
-            echo '== Found parental mismatch: '"$parentmsg"
-            echo '== Please remove snapshots which cannot be based upon!'
-            echo '== Rejecting synchronization for snapshots/'$d
-            exit 1
-         fi
-      fi
+		if [ -n "$lastsync" ]; then
+			if [ "$1" = "$lastsync" ]; then
+				echo '== Yet has up-to-date snapshot: snapshots/'$d
+				exit 0
+			fi
+			if [ -z "$parent" ]; then
+				echo '== Found no matching base snapshot!'
+				echo '== Last of template '"$THEVOL"' is '"$1"
+				echo '== Last of target '"$CLONEDIR"' is '"$lastsync"
+				echo '== Rejecting synchronization for snapshots/'$d
+				exit 1
+			fi
+		fi
 
-      echo '== Synchronizing to '"$1$parentmsg"' from snapshots/'$d
-      # On #btrfs@Libera.Chat multicore: and darkling: suggested looking for
-      # "btrfs sub list -R", and if received_uuid is empty then it was not
-      # successful, but (a) hard to make that fit into this code path, and
-      # (b) "-" seems to cause from uid_is_null(subv->ruuid) and that also
-      # seems to succeed for regular local volumes not received.
-      mysnap=$1
-      _remit() {
-         trap '' EXIT
-         echo '!! Cleaning up after error'
-         act cd "$CLONEDIR"/snapshots/"$d" '&&' \
-            btrfs subvolume delete $mysnap '&&' \
-            btrfs subvolume sync .
-         echo '!! Cleanup finished'
-      }
-      ( set -o pipefail ) >/dev/null 2>&1 && set -o pipefail
-      trap _remit EXIT
-      act btrfs send $parent $1 '|' \
-         '('cd "$CLONEDIR"/snapshots/"$d" '&&' \
-            btrfs receive . '&&' \
-            btrfs filesystem sync .')'
-      trap '' EXIT
-      ) || exit $?
-   done
+		echo '== Synchronizing to '"$1$parentmsg"' from snapshots/'$d
+		# On #btrfs@Libera.Chat multicore: and darkling: suggested looking for
+		# "btrfs sub list -R", and if received_uuid is empty then it was not
+		# successful, but (a) hard to make that fit into this code path, and
+		# (b) "-" seems to cause from uid_is_null(subv->ruuid) and that also
+		# seems to succeed for regular local volumes not received.
+		mysnap=$1
+		_remit() {
+			trap '' EXIT
+			echo '!! Cleaning up after error'
+			act cd "$CLONEDIR"/snapshots/"$d" '&&' btrfs subvolume delete $mysnap '&&' btrfs subvolume sync .
+			echo '!! Cleanup finished'
+		}
+		( set -o pipefail ) >/dev/null 2>&1 && set -o pipefail
+		trap _remit EXIT
+		act btrfs send $parent $1 '|' 
+			'('cd "$CLONEDIR"/snapshots/"$d" '&&' btrfs receive . '&&' btrfs filesystem sync .')'
+		trap '' EXIT
+		) || exit $?
+	done
 
-   if [ -n "$deldirs" ]; then
-      echo '== The following snapshots have no upstream: '$deldirs
-   fi
+	if [ -n "$deldirs" ]; then
+		echo '== The following snapshots have no upstream: '$deldirs
+	fi
 }
 
 mytee() {
-   while read l; do
-      [ -z "$DEBUG" ] && echo "$l"
-      echo >&2 "$l"
-   done
+	while read l; do
+		[ -z "$DEBUG" ] && echo "$l"
+		echo >&2 "$l"
+	done
 }
 
 mymail() {
-   if [ -n "$DEBUG" ] || ! command -v mail >/dev/null 2>&1; then
-      cat
-   else
-      mail -s 'BTRFS snapshot management: '"$cmd ${DEBUG:+ (DEBUG MODE)}" root
-   fi
+	if [ -n "$DEBUG" ] || ! command -v mail >/dev/null 2>&1; then
+		cat
+	else
+		mail -s 'BTRFS snapshot management: '"$cmd" root
+	fi
 }
 
 syno() {
-   echo 'Synopsis: btrfs-snapshot.sh create-dir-tree'
-   echo 'Synopsis: btrfs-snapshot.sh create|trim|setvols'
-   echo 'Synopsis: btrfs-snapshot.sh create-balls'
-   echo 'Synopsis: btrfs-snapshot.sh receive-balls [:BALL:]'
-   echo 'Synopsis: btrfs-snapshot.sh clone-to-cwd|sync-to-cwd'
-   echo
-   echo 'See script head for documentation: '$0
-   exit $1
+	echo 'Synopsis: btrfs-snapshot.sh create-dir-tree'
+	echo 'Synopsis: btrfs-snapshot.sh create|trim|setvols'
+	echo 'Synopsis: btrfs-snapshot.sh clone-to-cwd|sync-to-cwd'
+	echo
+	echo 'See script head for documentation: '$0
+	exit $1
 }
 
 cmd=$1
-if [ "$cmd" = receive-balls ]; then
-   shift
-   echo '= Checking balls'
-   rp=
-   command -v realpath >/dev/null 2>&1 && rp=realpath
-   for b in "$@"; do
-      if  [ "$b" = = ]; then
-         BALLS="$BALLS $b"
-      elif [ -d "$b" ]; then
-         [ -n "$rp" ] && b=$($rp "$b")
-         BALLS="$BALLS $b" # XXX quoting
-      else
-         echo 'No such ball to receive: '$b
-         exit 1
-      fi
-   done
-else
-   [ $# -ne 1 ] && syno 1
-   case $cmd in
-   help) syno 0;;
-   create-dir-tree) ;;
-   create) ;; trim) ;; setvols) ;;
-   create-balls) ;; #receive-balls) ;;
-   clone-to-cwd) ;; sync-to-cwd) ;;
-   *) syno 1;;
-   esac
-fi
+tmpl=$2
+[ $# -ne 1 ] && syno 1
+case $cmd in
+help) syno 0;;
+create-dir-tree) ;;
+create) ;; trim) ;; setvols) ;;
+clone-to-cwd) ;; sync-to-cwd) ;;
+*) syno 1;;
+esac
 
 #(set -o pipefail) >/dev/null 2>&1 && set -o pipefail
 es=$(exec 3>&1 1>&2; { the_worker "$cmd"; echo $? >&3; } | mytee | mymail)
 
 exit $es
-# s-sh-mode
+# s-sht-mode
