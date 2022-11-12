@@ -104,8 +104,7 @@ fc__acmd() {
 			# automatic fashion, we need to take it for granted
 			if [ "${fca__dotest}" = "${fca__dotest#* }" ] || [ -f "${fca__dotest}" ]; then :; else
 				[ -n "${VERBOSE}" ] && [ ${fca__verbok} -ne 0 ] &&
-					msg ' . ${%s} ... %s (spacy user data, unverifiable)' 
-						"${fca__pname}" "${fca__dotest}"
+					msg ' . ${%s} ... %s (spacy user data, unverifiable)' "${fca__pname}" "${fca__dotest}"
 				return 0
 			fi
 
