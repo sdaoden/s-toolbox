@@ -1,6 +1,6 @@
 .\"@ s-postgray - postfix policy (graylisting) server.
 .\"
-.\" Copyright (c) 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
+.\" Copyright (c) 2022 - 2023 Steffen Nurpmeso <steffen@sdaoden.eu>.
 .\" SPDX-License-Identifier: ISC
 .\"
 .\" Permission to use, copy, modify, and/or distribute this software for any
@@ -77,7 +77,7 @@ This program is intended to be started via the
 daemon, the single-instance server is managed internally.
 The server lifetime is configurable, by (compile-time) default it will
 terminate itself after some time without any client connection.
-The server can be started directly via
+The server can also be started directly via
 .Fl Fl startup ,
 but
 .Fl Fl server-timeout
@@ -110,13 +110,13 @@ performed before the policy server is involved in the decision process.)
 Note the
 .Ql DEFER_IF_PERMIT
 .Fl Fl msg-defer
-used to signal graylisting is counted against
+used to signal per-recipient graylisting is counted against
 .Ql smtpd_hard_error_limit
 and
 .Ql smtpd_soft_error_limit
 parameters
 .Pf ( Fl Fl focus-sender
-mode can generate only one error per message).
+mode will generate only one error per message).
 .
 .Bd -literal -offset indent
 #@ /etc/postfix/master.cf:
@@ -399,11 +399,11 @@ or
 .It Fl Fl limit Ar no , Fl L Ar no
 Number of DB entries until new ones are not handled,
 effectively turning them into accepted graylist members.
-Data is stored compact, and the size depends on actual email
-(recipient /) sender / client_address value data,
-but accounting say 128 bytes per entry may be a guideline.
-In addition the dictionary head table resides in one large contiguous
-memory chunk, accounting 1 MB per 10000000 entries may be proper.
+Data size depends on actual email (recipient /) sender / client_address
+value data, but data store is compact, and accounting say 128 bytes per
+entry may be a guideline.
+In addition there is a large continuous memory chunk for a lookup table,
+accounting 1 MB per 10000000 entries may be proper.
 .
 .Mx Fl limit-delay
 .It Fl Fl limit-delay Ar no , Fl l Ar no
@@ -418,7 +418,7 @@ By choosing the right settings for
 and
 .Fl Fl gc-timeout
 it should be impossible to reach the graylist bypass limit.
-Not honoured if for a 0
+Not honoured for a 0
 .Fl Fl count .
 .
 .Mx Fl msg-allow
@@ -488,9 +488,6 @@ graylisting (maybe second-last and) before it, and return
 .Ql DEFER 4.2.0
 instead, so that the more expensive address verification is performed
 only when graylisting permits continuation.
-Remarks: the old
-.Fl Fl defer-msg
-option was a misnomer and is obsolete.
 .
 .Mx Fl long-help
 .It Fl Fl long-help , H
