@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #@ Create and update OAuth2 access tokens (for S-nail).
 #
-# 2022 Steffen Nurpmeso <steffen@sdaoden.eu>
+# 2022 - 2023 Steffen Nurpmeso <steffen@sdaoden.eu>
 # Public Domain
 
 # Empty and no builtin configs
@@ -137,6 +137,7 @@ def config_load(args, dt): #{{{
 	try:
 		s = os.stat(args.resource).st_mode 
 		if s & 0o0177:
+			s &= 0o0777
 			print('! Warning: --resource mode permissions other than '
 				'user read/write: %s: %s' % (s, args.resource), file=sys.stderr)
 
@@ -275,7 +276,7 @@ def config_save_head(f, args): #{{{
 	f.write('# . flow= auth | [devicecode |] redirect\n')
 	f.write('#   + All flows require the user to open an URL that is shown.\n')
 	f.write('#     And follow the instructions of the used provider in the\n')
-	f.write('      browser window; Javascript capability is a requirement?!\n')
+	f.write('#     browser window; Javascript capability is a requirement?!\n')
 	f.write('#     - auth: browser goes web, user oks + copy+paste a token.\n')
 	f.write('#       The token is usually shown as a HTML document, but some\n')
 	f.write('#       providers only redirect the browser to an empty document,\n')
