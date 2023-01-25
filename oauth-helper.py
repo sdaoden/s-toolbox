@@ -139,7 +139,7 @@ def config_load(args, dt): #{{{
 		if s & 0o0177:
 			s &= 0o0777
 			print('! Warning: --resource mode permissions other than '
-				'user read/write: %s: %s' % (s, args.resource), file=sys.stderr)
+				'user read/write: 0%o: %s' % (s, args.resource), file=sys.stderr)
 
 		with open(args.resource) as f:
 			cfg = dict((s.strip() for s in l.split('=', 1))
