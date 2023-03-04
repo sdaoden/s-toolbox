@@ -62,6 +62,7 @@ btrfs-snapshot.sh:
    2021-07-03: drop unused/broken "setmounts", add "setvols" command.
    2022-01-02: subvol sync after removal; if receiving a snapshot fails,
                remove it immediately via trap(1) EXIT, 'hope this works.
+   2023-03-04: (tar)ball support is gone; new syntax fixed.
 
 entropy-saver.c:
    Linux: for my use cases i find it annoying that "entropy_avail" is not
