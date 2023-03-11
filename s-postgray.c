@@ -27,7 +27,7 @@
  *@   keep [AaBb] in an allocated list, parse that in server or in --test-mode.
  *@   Currently -R is parsed two times.  (I messed it now it is weird.)
  *
- * Copyright (c) 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
+ * Copyright (c) 2022 - 2023 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -522,8 +522,7 @@ jretry_bind:
 			goto jleave;
 		}
 
-		/* ADDRINUSE with taken write lock means former server was not properly
-		 * shutdown, for example hard power cycle */
+		/* ADDRINUSE with taken write lock: former server not properly shutdown (hard power cycle?) */
 		if(islock){
 			a_DBG( su_log_write(su_LOG_DEBUG, "bind() ADDRINUSE with acquired write lock: no server"); )
 			if(!su_path_rm(soaun.sun_path)){
@@ -1580,7 +1579,7 @@ a_server__gray_create(struct a_pg *pgp){
 
 	/* Perform the initial allocation without _ERR_PASS so that we panic if we
 	 * cannot create it, then set _ERR_PASS to handle (ignore) errors */
-	su_cs_dict_resize(su_cs_dict_set_min_size(su_cs_dict_set_treshold_shift(
+	su_cs_dict_resize(su_cs_dict_set_min_size(su_cs_dict_set_threshold_shift(
 				su_cs_dict_create(&pgmp->pgm_gray, (a_PG_GRAY_FLAGS | su_CS_DICT_FROZEN), NIL),
 			a_PG_GRAY_TS), a_PG_GRAY_MIN_LIMIT), 1);
 
@@ -1887,7 +1886,7 @@ a_server__gray_cleanup(struct a_pg *pgp, boole force){ /* {{{ */
 	gc_any = FAL0;
 	t = pgp->pg_gc_timeout;
 
-	/* We may need to cleanup more, check some tresholds */
+	/* We may need to cleanup more, check some thresholds */
 	UNINIT(c_88 = c_75, 0);
 	UNINIT(t_88 = t_75, 0);
 	if(force){
@@ -2413,6 +2412,7 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fl
 
 			i = ((pgp->pg_flags << 1) | a_PG_F_V) & a_PG_F_V_MASK;
 			pgp->pg_flags = (pgp->pg_flags & ~S(uz,a_PG_F_V_MASK)) | i;
+			su_log_set_level((i & a_PG_F_VV) ? su_LOG_DEBUG : su_LOG_INFO);
 		}break;
 	}
 

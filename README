@@ -52,6 +52,11 @@ s-postgray.c (plus support) v0.8.0:
        it was never announced to be necessary, so henceforth automatize this.
      - Robustness against MFILE,NFILE,NOBUF,NOMEM in file/socket open paths.
      - Fixes some oddities, and clarifies documentation.
+   v0.8.1:
+     - Add missing su_log_set_level(): now --verbose works in non-
+       development code.
+     - Changing treshold->threshold typos. (Jens Schleusener)
+     - (Syntax change: space indentation/80 columns -> tab/120+.)
 
 Not for the masses:
 -------------------
