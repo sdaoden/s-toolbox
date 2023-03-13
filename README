@@ -28,35 +28,30 @@ s-cdda-to-db.pl (plus support) v0.8.0:
    aware) database layout while doing so.)
    (P.P.S.: nice foundation for link farms.)
    ...
-   2021-05-17: fix: $MUSIC_DB now always needed, even in read-only mode.
-               Talk about $LC_ALL and $PERL5OPT in the manual.
-               MusicBrainz has HTTPS-query problems, henceforth require
-               new --music-brainz-tls; add --music-brainz to avoid interactive
-               prompt, v0.7.0.
    2021-06-18: use POSIX::setlocale() instead of relying on PERL5OPT=-C.
                The latter roots in old habits originating in perl(1) evolution
                problems Y2K2-3 (5.8.0 and 5.8.1).  Time to move on: v0.8.0.
 
-s-postgray.c (plus support) v0.8.0:
+s-postgray.c (plus support) v0.8.1:
    postfix(1) graylisting policy daemon.  See its README + manual for more.
-   ...
-   v0.8.0:
-     - New --startup mode to allow it to be driven as a standalone daemon.
-     - INCOMPAT!  The gray DB name did not adapt the makefile's VAL_NAME yet.
-     - Client no longer exits after five unsuccessful connection attempts.
-       Instead try as long as postfix is willing to let it.
-     - "Fixes a miss": if on server startup the socket yet existed (no
-       proper shutdown on last run), startup failed and the missing policy
-       server would cause postfix to refuse acting.
-       Whereas "rm -f PG-SOCKET" in a postfix-startup-script avoids this,
-       it was never announced to be necessary, so henceforth automatize this.
-     - Robustness against MFILE,NFILE,NOBUF,NOMEM in file/socket open paths.
-     - Fixes some oddities, and clarifies documentation.
    v0.8.1:
-     - Add missing su_log_set_level(): now --verbose works in non-
-       development code.
-     - Changing treshold->threshold typos. (Jens Schleusener)
-     - (Syntax change: space indentation/80 columns -> tab/120+.)
+   - Add missing su_log_set_level(): now --verbose works in non-
+     development code.  (Jens Schleusener)
+     --- s-postgray-0.8.0.old/s-postgray.c	2023-03-13 17:32:14.676764628 +0100
+     +++ s-postgray-0.8.0/s-postgray.c	2023-03-13 17:34:05.376771408 +0100
+     @@ -2547,6 +2547,10 @@ a_conf__arg(struct a_pg *pgp, s32 o, cha
+            if(!(f & a_PG_AVO_FULL)){
+               uz i;
+      
+     +#if DVLDBGOR(0, 1)
+     +         if(!(pgp->pg_flags & a_PG_F_V))
+     +            su_log_set_level(su_LOG_INFO);
+     +#endif
+               i = ((pgp->pg_flags << 1) | a_PG_F_V) & a_PG_F_V_MASK;
+               pgp->pg_flags = (pgp->pg_flags & ~S(uz,a_PG_F_V_MASK)) | i;
+            }break;
+   - Typos: treshold->threshold.  (Jens Schleusener)
+   - (Syntax change: space indentation/80 columns -> tab/120+; etc.)
 
 Not for the masses:
 -------------------
@@ -88,9 +83,6 @@ find-command.sh:
    so here is how it is possible to really find a usable executable file.
    Thanks to Robert Elz (kre).
 
-   2021-12-16: allow prefilled variables with spaces, no longer find
-               commands with spaces: $VAR (not "$VAR") now always correct.
-
 git-topic-creator.pl:
    To ease maintaining of topic branches i use a linear history, so
    that i can use ``$ git rebase -i`` for fixups and squashes, without
@@ -98,8 +90,6 @@ git-topic-creator.pl:
    commit messages, and use this script to create the topics once i am
    finished.  Read the --help output for more, and make use of verbosity
    when you use it first.
-
-   2013-09-13: newer git(1) reverse ``rev-parse`` output: adjusted.
 
 gmane-fetch.pl:
    Download NNTP articles from Gmane.org and Gwene.org, incrementally, and

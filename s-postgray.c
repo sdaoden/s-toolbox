@@ -444,7 +444,7 @@ jretry_all:
 		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
 			continue;
 		if(rv == su_ERR_MFILE || rv == su_ERR_NFILE || rv == su_ERR_NOBUFS/*hm*/ || rv == su_ERR_NOMEM){
-			a_DBG( su_log_write(su_LOG_DEBUG, "out of OS resources, cannot open lock, waiting a bit"); )
+			a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, cannot open lock, waiting a bit");)
 			su_time_msleep(250, TRU1);
 			continue;
 		}
@@ -461,15 +461,14 @@ jretry_all:
 			continue;
 		if(LIKELY(rv == su_ERR_WOULDBLOCK)){
 			if(pgp->pg_flags & a_PG_F_MODE_STARTUP){
-				a_DBG( su_log_write(su_LOG_DEBUG,
-					"startup mode could not acquire write lock: server running"); )
+				a_DBG(su_log_write(su_LOG_DEBUG, "--startup could not acquire write lock: server running");)
 				rv = su_EX_TEMPFAIL;
 				goto jleave;
 			}
 			islock = FAL0;
 			break;
 		}else if(rv == su_ERR_NOLCK){
-			a_DBG( su_log_write(su_LOG_DEBUG, "out of OS resources, cannot flock, waiting a bit"); )
+			a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, cannot flock(2), waiting a bit");)
 			su_time_msleep(250, TRU1);
 		}else{
 			su_log_write(su_LOG_CRIT, _("error handling client/server reassurance lock %s/%s: %s"),
@@ -481,7 +480,7 @@ jretry_all:
 
 	/* In shutdown mode a taken lock means we are done */
 	if(islock && (pgp->pg_flags & a_PG_F_MODE_SHUTDOWN)){
-		a_DBG( su_log_write(su_LOG_DEBUG, "shutdown mode could acquire write lock: no server"); )
+		a_DBG(su_log_write(su_LOG_DEBUG, "--shutdown could acquire write lock: no server");)
 		rv = su_EX_TEMPFAIL;
 		goto jleave;
 	}
@@ -495,7 +494,7 @@ jretry_all:
 		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
 			continue;
 		if(rv == su_ERR_MFILE || rv == su_ERR_NFILE || rv == su_ERR_NOBUFS/*hm*/ || rv == su_ERR_NOMEM){
-			a_DBG( su_log_write(su_LOG_DEBUG, "out of OS resources, cannot socket, waiting a bit"); )
+			a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, socket(2) failed, waiting a bit");)
 			su_time_msleep(250, TRU1);
 			continue;
 		}
@@ -510,7 +509,7 @@ jretry_bind:
 		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
 			goto jretry_bind;
 		if(rv == su_ERR_NOBUFS/*hm*/ || rv == su_ERR_NOMEM){
-			a_DBG( su_log_write(su_LOG_DEBUG, "out of OS resources, cannot bind, waiting a bit"); )
+			a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, bind(2) failed, waiting a bit");)
 			su_time_msleep(250, TRU1);
 			goto jretry_bind;
 		}
@@ -524,7 +523,7 @@ jretry_bind:
 
 		/* ADDRINUSE with taken write lock: former server not properly shutdown (hard power cycle?) */
 		if(islock){
-			a_DBG( su_log_write(su_LOG_DEBUG, "bind() ADDRINUSE with acquired write lock: no server"); )
+			a_DBG(su_log_write(su_LOG_DEBUG, "bind(2) ADDRINUSE with acquired write lock: no server");)
 			if(!su_path_rm(soaun.sun_path)){
 				su_log_write(su_LOG_CRIT, _("cannot remove stale socket %s/%s: %s"),
 					pgp->pg_store_path, soaun.sun_path, su_err_doc(-1));
@@ -543,18 +542,17 @@ jretry_bind:
 	}
 
 	/* */
-	while(connect(pgp->pg_clima_fd, R(struct sockaddr const*,&soaun),
-			sizeof(soaun))){
+	while(connect(pgp->pg_clima_fd, R(struct sockaddr const*,&soaun), sizeof(soaun))){
 		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
 			continue;
 
-		a_DBG( su_log_write(su_LOG_DEBUG, "out of OS resources, cannot connect, waiting a bit"); )
+		a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, connect(2) failed, waiting a bit");)
 		su_time_msleep(250, TRU1);
 
 		if(rv == su_ERR_AGAIN || rv == su_ERR_TIMEDOUT)
 			continue;
 		if(rv == su_ERR_CONNREFUSED){
-			a_DBG( su_log_write(su_LOG_DEBUG, "connect() CONNREFUSED, restart"); )
+			a_DBG(su_log_write(su_LOG_DEBUG, "connect(2) CONNREFUSED, restart");)
 			goto jretry_all;
 		}
 		su_log_write(su_LOG_CRIT, _("cannot connect client socket %s/%s: %s"),
@@ -571,9 +569,8 @@ jretry_bind:
 
 	rv = a_client__loop(pgp);
 	if(rv < 0){
-		/* After connect(2) succeeded once we may not restart from scratch by ourselves since likely some
-		 * circumstance beyond our horizon exists XXX if not we need a flag to continue working on current
-		 * block!
+		/* After connect(2) succeeded once we may not restart from scratch since likely some circumstance
+		 * beyond our horizon exists XXX if not we need a flag to continue working on current block!
 		 *goto jretry_socket;*/
 		rv = -rv;
 	}
@@ -721,7 +718,7 @@ jblock:
 			 * XXX to be able, reserve INET6_A8N bytes! -> SU ip_addr */
 			if(UCMP(z, lnr, >=,
 					P2UZ(&pgp->pg_buf[sizeof(pgp->pg_buf) - ALIGN_Z(INET6_ADDRSTRLEN+1) -1] - bp))){
-				a_DBG( su_log_write(su_LOG_DEBUG, "client buffer too small!!!"); )
+				a_DBG(su_log_write(su_LOG_DEBUG, "client buffer too small!!!");)
 				use_this = FAL0;
 			}else{
 				char *top;
@@ -837,7 +834,7 @@ jex_nodefer:
 		cp = a_MSG_NODEFER;
 		break;
 	}
-	a_DBG( su_log_write(su_LOG_DEBUG, "answer %s", cp); )
+	a_DBG(su_log_write(su_LOG_DEBUG, "answer %s", cp);)
 	srvx = (fprintf(stdout, "action=%s\n\n", cp) < 0) ? EOF : 0;
 
 	if(srvx == EOF || fflush(stdout) == EOF)
@@ -1036,7 +1033,7 @@ jreavo:
 	}
 
 	if(pgp->pg_flags & a_PG_F_MODE_STARTUP){
-		a_DBG( su_log_write(su_LOG_DEBUG, "--startup server, setting --server-timeout=0"); )
+		a_DBG(su_log_write(su_LOG_DEBUG, "--startup server, setting --server-timeout=0");)
 		pgp->pg_server_timeout = 0;
 	}
 
@@ -1160,7 +1157,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 			a_DBG2(su_log_write(su_LOG_DEBUG, "select: maxfd=%d timeout=%d (%lu)",
 				maxfd, (tosp != NIL), (tosp != NIL ? S(ul,tosp->tv_sec) : 0));)
 		}else{
-			a_DBG(su_log_write(su_LOG_DEBUG, "select: reached server_queue=%d, no accept-waiting", maxfd);)
+			a_DBG(su_log_write(su_LOG_DEBUG, "select(2): reached server_queue=%d, no accept-waiting", maxfd);)
 		}
 
 		/* Poll descriptors interruptable */
@@ -1173,7 +1170,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 		}else if(x == 0){
 			if(pgp->pg_flags & a_PG_F_MASTER_ACCEPT_SUSPENDED){
 				pgp->pg_flags &= ~S(uz,a_PG_F_MASTER_ACCEPT_SUSPENDED);
-				a_DBG(su_log_write(su_LOG_DEBUG, "select: un-suspend");)
+				a_DBG(su_log_write(su_LOG_DEBUG, "select(2): un-suspend");)
 				continue;
 			}
 
@@ -1230,7 +1227,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 				a_DBG(su_log_write(su_LOG_DEBUG, "accept(2): suspending for a bit: %s", su_err_doc(x));)
 			}else{
 				pgmp->pgm_cli_fds[pgmp->pgm_cli_no++] = x;
-				a_DBG2(su_log_write(su_LOG_DEBUG, "accepted client=%u fd=%d", pgmp->pgm_cli_no, x);)
+				a_DBG2(su_log_write(su_LOG_DEBUG, "accept(2)ed client=%u fd=%d", pgmp->pgm_cli_no, x);)
 			}
 			/* XXX non-empty accept queue MUST cause more select(2) wakes */
 		}
@@ -1618,7 +1615,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 		if((i = su_err_no_by_errno()) == su_ERR_INTR)
 			continue;
 		if(i == su_ERR_MFILE || i == su_ERR_NFILE || i == su_ERR_NOBUFS/*hm*/ || i == su_ERR_NOMEM){
-			a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, cannot read open gray, waiting a bit");)
+			a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, cannot read open gray DB, waiting a bit");)
 			su_time_msleep(250, TRU1);
 			continue;
 		}
@@ -1768,7 +1765,7 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
 		if((fd = su_err_no_by_errno()) == su_ERR_INTR)
 			continue;
 		if(fd == su_ERR_MFILE || fd == su_ERR_NFILE || fd == su_ERR_NOBUFS/*hm*/ || fd == su_ERR_NOMEM){
-			a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, cannot write open gray, waiting a bit");)
+			a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, cannot write open gray DB, waiting a bit");)
 			su_time_msleep(250, TRU1);
 			continue;
 		}
@@ -2410,9 +2407,13 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fl
 		if(!(f & a_PG_AVO_FULL)){
 			uz i;
 
-			i = ((pgp->pg_flags << 1) | a_PG_F_V) & a_PG_F_V_MASK;
+			i = pgp->pg_flags;
+#if DVLDBGOR(0, 1)
+			if(!(i & a_PG_F_V))
+				su_log_set_level(su_LOG_INFO);
+#endif
+			i = ((i << 1) | a_PG_F_V) & a_PG_F_V_MASK;
 			pgp->pg_flags = (pgp->pg_flags & ~S(uz,a_PG_F_V_MASK)) | i;
-			su_log_set_level((i & a_PG_F_VV) ? su_LOG_DEBUG : su_LOG_INFO);
 		}break;
 	}
 

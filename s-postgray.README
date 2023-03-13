@@ -12,7 +12,7 @@ To build this software simply run "make install".  At the top of the
 makefile there are some variables, they can be overwritten from the
 command line:
 
-   $ make DESTDIR=.xxx PREFIX=/usr LIBEXEC=sbin \
+  $ make DESTDIR=.xxx PREFIX=/usr LIBEXEC=sbin \
       VAL_STORE_PATH=/var/lib/postgray \
       install
 
@@ -26,38 +26,55 @@ file modes (umask(2), chmod(2)) are "not handled".
 RELEASES
 --------
 
-v0.6.0, 2022-03-31:
-
-v0.7.0, 2022-06-07:
-  - An iteration that fixes some oddities, and clarifies documentation.
-    (The example configuration is also better.)
-  - Bug fixes:
-    . -v and -p were not reset for reload, thus fixated once set.
-    . -b and -B were not command-line-parsed by the server, only in
-      --test-mode (driven by client); usage in resource-file ok, too.
-  - --test-mode now outputs a normalized resource file.
-  - New --focus-sender approach which i like better.
-      [I personally now use --focus-sender mode with --count=1,
-      --msg-allow=permit and --msg-defer='DEFER 4.2.0 blabla',
-      and reject_unverified_sender thereafter.]
-  - New --msg-{allow,block}, and --msg-defer for misnamed --defer-msg,
-    which is kept for compatibility.
+v0.8.1, 2023-03-16:
+- Add missing su_log_set_level(): now --verbose works in non-development
+  code.  (Jens Schleusener)
+    diff -Napru s-postgray-0.8.0.old/s-postgray.c s-postgray-0.8.0/s-postgray.c
+    --- s-postgray-0.8.0.old/s-postgray.c	2023-03-13 17:32:14.676764628 +0100
+    +++ s-postgray-0.8.0/s-postgray.c	2023-03-13 17:34:05.376771408 +0100
+    @@ -2547,6 +2547,10 @@ a_conf__arg(struct a_pg *pgp, s32 o, cha
+           if(!(f & a_PG_AVO_FULL)){
+              uz i;
+     
+    +#if DVLDBGOR(0, 1)
+    +         if(!(pgp->pg_flags & a_PG_F_V))
+    +            su_log_set_level(su_LOG_INFO);
+    +#endif
+              i = ((pgp->pg_flags << 1) | a_PG_F_V) & a_PG_F_V_MASK;
+              pgp->pg_flags = (pgp->pg_flags & ~S(uz,a_PG_F_V_MASK)) | i;
+           }break;
+- Typos: treshold->threshold.  (Jens Schleusener)
+- Source code style change spaces/80 -> tab/120+, saves ~12KB; etc.
 
 v0.8.0, 2022-09-16:
-  - New --startup mode to allow it to be driven as a standalone daemon.
-  - INCOMPAT!  The gray DB name did not adapt the makefile's VAL_NAME yet.
-  - Client no longer exits after five unsuccessful connection attempts.
-    Instead try as long as postfix is willing to let it.
-  - "Fixes a miss": if on server startup the socket yet existed (no
-    proper shutdown on last run), startup failed and the missing policy
-    server would cause postfix to refuse acting.
-    Whereas "rm -f PG-SOCKET" in a postfix-startup-script avoids this,
-    it was never announced to be necessary, so henceforth automatize this.
-  - Robustness against MFILE,NFILE,NOBUF,NOMEM in file/socket open paths.
-  - Fixes some oddities, and clarifies documentation.
+- New --startup mode to allow it to be driven as a standalone daemon.
+- INCOMPAT!  The gray DB name did not adapt the makefile's VAL_NAME yet.
+- Client no longer exits after five unsuccessful connection attempts.
+  Instead try as long as postfix is willing to let it.
+- "Fixes a miss": if on server startup the socket yet existed (no
+  proper shutdown on last run), startup failed and the missing policy
+  server would cause postfix to refuse acting.
+  Whereas "rm -f PG-SOCKET" in a postfix-startup-script avoids this,
+  it was never announced to be necessary, so henceforth automatize this.
+- Robustness against MFILE,NFILE,NOBUF,NOMEM in file/socket open paths.
+- Fixes some oddities, and clarifies documentation.
 
-v0.8.1, 202?-??-??:
-  - Source code style change, saves ~12KB.
+v0.7.0, 2022-06-07:
+- An iteration that fixes some oddities, and clarifies documentation.
+  (The example configuration is also better.)
+- Bug fixes:
+  . -v and -p were not reset for reload, thus fixated once set.
+  . -b and -B were not command-line-parsed by the server, only in
+    --test-mode (driven by client); usage in resource-file ok, too.
+- --test-mode now outputs a normalized resource file.
+- New --focus-sender approach which i like better.
+  [I personally now use --focus-sender mode with --count=1,
+  --msg-allow=permit and --msg-defer='DEFER 4.2.0 blabla',
+  and reject_unverified_sender thereafter.]
+- New --msg-{allow,block}, and --msg-defer for misnamed --defer-msg,
+  which is kept for compatibility.
+
+v0.6.0, 2022-03-31: (first release)
 
 NOTE
 ----
@@ -75,6 +92,7 @@ Here is a list of those people.  I hope the list is complete and free of
 errors.
 
 Joachim Lindenberg      postfix-users at lindenberg dot one
+Jens Schleusener        Jens dot Schleusener at t-online dot de
 Matus UHLAR - fantomas  uhlar at fantomas dot sk
 
 Thank you!
