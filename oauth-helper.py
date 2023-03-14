@@ -41,7 +41,8 @@ providers = { #{{{
 		'tenant': None,
 		'scope': 'https://mail.google.com/',
 		'flow': 'redirect',
-		'flow_redirect_uri_port_fixed': None
+		'flow_redirect_uri_port_fixed': None,
+		'refresh_needs_authorize': None
 	},
 	'Microsoft': {
 		'authorize_endpoint': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
@@ -56,7 +57,8 @@ providers = { #{{{
 				'https://outlook.office.com/SMTP.Send'
 			),
 		'flow': 'redirect',
-		'flow_redirect_uri_port_fixed': None
+		'flow_redirect_uri_port_fixed': None,
+		'refresh_needs_authorize': None
 	},
 	'Yandex': {
 		'authorize_endpoint': 'https://oauth.yandex.com/authorize',
@@ -67,7 +69,8 @@ providers = { #{{{
 		'tenant': None,
 		'scope': 'mail:imap_full mail:imap_ro mail:smtp',
 		'flow': 'redirect',
-		'flow_redirect_uri_port_fixed': 'port_number_to_use'
+		'flow_redirect_uri_port_fixed': 'port_number_to_use',
+		'refresh_needs_authorize': None
 	}
 }
 #}}}
@@ -301,6 +304,12 @@ def config_save_head(f, args): #{{{
 	f.write('#   Value content is highly provider dependent\n')
 	f.write('#\n')
 	f.write('# . [tenant= directory tenant of the application]\n')
+	f.write('#\n')
+	f.write('# . [refresh_needs_authorize= any value: always authorize\n]\n')
+	f.write('#   A provider may impolitely forbit RFC 6749, 6. Refreshing an Access Token,\n')
+	f.write('#   but always require RFC 6749, 4.1.1. Authorization Request\n')
+	f.write('#   To avoid the script stumbling on this, set this non-empty\n')
+
 	if VAL_NAME:
 		f.write('#\n')
 		f.write('# NOTE: prefilled application-specific of the above refer to ' + VAL_NAME + '\n')
@@ -639,6 +648,11 @@ def act_access(args, cfg, dt): #{{{
 		print('  ! Configuration incomplete; need --authorize', file=sys.stderr)
 		return act_authorize(args, cfg, dt)
 
+	if cfg.get('refresh_needs_authorize'):
+		if args.debug:
+			print('# Configuration enforces refresh_needs_authorize\n', file=sys.stderr)
+		return act_authorize(args, cfg, dt)
+
 	p = {}
 	p['grant_type'] = 'refresh_token'
 	p['client_id'] = cfg['client_id']
@@ -662,8 +676,11 @@ def act_access(args, cfg, dt): #{{{
 		if args.debug:
 			print('# Response is %s' % resp, file=sys.stderr)
 	except Exception as e:
-		print('PANIC: refresh_token response: %s' % e, file=sys.stderr)
-		return EX_NOINPUT
+		print('  ! refresh_token response: %s' % e, file=sys.stderr)
+		#return EX_NOINPUT
+		print('  ! Let us try --authorize instead (sleeping 3 seconds)', file=sys.stderr)
+		time.sleep(3)
+		return act_authorize(args, cfg, dt)
 	return response_check_and_config_save(args, cfg, dt, resp)
 #}}}
 
@@ -781,6 +798,9 @@ to create the app registration.
 
 ]
 For Microsoft we need a client_id=, and (optionally?) a tenant=.
+Detected in March 2023: they seem to have stopped supporting RFC 6749,
+6. Refreshing an Access Token, but now always require RFC 6749,
+4.1.1. Authorization Request; configure via refresh_needs_authorize=y.
 			''')
 		if VAL_NAME:
 			print('For %s we have a built-in configuration for this provider' % VAL_NAME)

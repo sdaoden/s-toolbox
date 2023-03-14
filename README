@@ -99,6 +99,10 @@ gmane-fetch.pl:
 oauth-helper.py:
    Handles OAuth 2.0 credentials.  Supports Google, Microsoft, Yandex.
 
+   2023-03-14: add refresh_needs_authorize=, Microsoft seems to no
+               longer support RFC 6749, 6. Refreshing an Access Token,
+               but only  RFC 6749, 4.1.1. Authorization Request.
+
 quote-rndtrip.sh:
    Round trip quote strings in POSIX (and elder) shell(s).
    Thanks to Robert Elz (kre).
