@@ -95,6 +95,8 @@ Force an access token --action=update even for non-expired timeouts.
 (For S-nail one might get away with --action=access --provider=X --resource=Y.)
 		''')
 
+	p.add_argument('-A', '--automatic', action='store_true',
+		help='no interactivity, exit error if that would happen')
 	p.add_argument('-a', '--action', dest='action',
 		choices=('access', 'authorize', 'manual', 'template', 'update'), default='access',
 		help='the action to perform'),
@@ -669,7 +671,8 @@ def act_access(args, cfg, dt): #{{{
 			print('# Response is %s' % resp, file=sys.stderr)
 	except Exception as e:
 		print('  ! refresh_token response: %s' % e, file=sys.stderr)
-		#return EX_NOINPUT
+		if args.automatic:
+			return EX_NOINPUT
 		print('  ! Let us try --authorize instead (sleeping 3 seconds)', file=sys.stderr)
 		time.sleep(3)
 		return act_authorize(args, cfg, dt)
@@ -692,6 +695,8 @@ def main(): #{{{
 		return cfg
 
 	if not cfg.get('access_token') or args.action == 'authorize':
+		if args.automatic:
+			return EX_NOINPUT
 		return act_authorize(args, cfg, dt)
 	elif args.action == 'access' and cfg.get('timeout') and cfg.get('timestamp'):
 		try:
