@@ -85,35 +85,27 @@ client = {
 }
 
 def arg_parser(): #{{{
-	p = argparse.ArgumentParser(description='Manage OAuth 2.0 access tokens (for ' + VAL_NAME + ')', epilog='''
-
-This is an RFC 6749 OAuth 2.0 Authorization Framework helper.
-Create a new --resource for --provider via --action=template,
-fill in client_id=, maybe login_hint=, and all other provider needs
-(see the according --provider specific --action=manual).
-Other providers can be used by editing such a template.
-Only the template contains documenting comments.
-Then run --action=access; because upon first contact that requires
-interaction, an explicit --action=authorize can be used instead.
-(For S-nail/S-mailx, one may get away with only
-  --action=access --provider=XY --resource=YZ,
-dependent upon --provider.)
+	p = argparse.ArgumentParser(description='Manage RFC 6749 OAuth 2.0 Authorization Framework access tokens.',
+			epilog='''
+Create a new --resource for --provider via --action=template, fill in
+client_id=, maybe login_hint= (contains documentation!), and all other
+provider needs (alos see according --provider specific --action=manual).
+Run --action=access; at least the first run actually is --action=authorize!
 Force an access token --action=update even for non-expired timeouts.
-					''')
+(For S-nail one might get away with --action=access --provider=X --resource=Y.)
+		''')
 
 	p.add_argument('-a', '--action', dest='action',
 		choices=('access', 'authorize', 'manual', 'template', 'update'), default='access',
 		help='the action to perform'),
-	p.add_argument('-H', '--hook', dest='hook', default=None, help='''
-configuration load/save hook: instead of using a configuration file,
-a hook script can be specified.  It will be invoked via "load|save"
-and the --resource  argument, the data format is the same.
-(Note: values are not quoted!)
+	p.add_argument('-H', '--hook', dest='hook', metavar='X', default=None, help='''
+a configuration load/save hook script may be used; invoked via "load|save"
+plus --resource  argument, data format is the same. (Note: values not quoted!)
 		'''),
 	p.add_argument('-p', '--provider', dest='provider', choices=providers, default=None,
-		help='Technology Giant of choice; ignored if --resource yet exists!')
-	p.add_argument('-R', '--resource', required=True, dest='resource',
-		help='resource (file) to read configuration from and write to')
+		help='Technology Giant; ignored if --resource yet exists!')
+	p.add_argument('-R', '--resource', required=True, dest='resource', metavar='X',
+		help='configuration file')
 	p.add_argument('-d', '--debug', action='store_true', help='be noisy')
 
 	return p
