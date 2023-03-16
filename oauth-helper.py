@@ -392,6 +392,9 @@ def act_template(args, dt): #{{{
 
 auth_code = None
 def act_authorize(args, cfg, dt): #{{{
+	if args.automatic:
+		return EX_NOINPUT
+
 	global auth_code
 	print('* OAuth 2.0 RFC 6749, 4.1.1. Authorization Request', file=sys.stderr)
 	e = False
@@ -695,8 +698,6 @@ def main(): #{{{
 		return cfg
 
 	if not cfg.get('access_token') or args.action == 'authorize':
-		if args.automatic:
-			return EX_NOINPUT
 		return act_authorize(args, cfg, dt)
 	elif args.action == 'access' and cfg.get('timeout') and cfg.get('timestamp'):
 		try:
