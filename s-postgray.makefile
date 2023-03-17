@@ -44,11 +44,8 @@ SULIB=-lsu-dvldbg#-asan
 SULIB_BLD=#$(SULIB_TARGET)
 SUFLVLC=#-std=c89
 STRIP=#strip
-SUFOPT=-O1 -g -Dsu_HAVE_DEVEL -Dsu_HAVE_DEBUG #-I./include
+SUFOPT=-O1 -g -Dsu_HAVE_DEVEL -Dsu_HAVE_DEBUG -Dsu_HAVE_NYD #-I./include
 #SUFOPT=-O2 -DNDEBUG #-I./include
-SUFS=-fPIE -fstack-protector-strong \
-	-D_FORTIFY_SOURCE=2 \
-	#-fsanitize=address -fsanitize=undefined
 
 ## >8 -- 8<
 
@@ -57,7 +54,8 @@ MANDIR = $(DESTDIR)$(PREFIX)/share/man/man8
 
 SULIB_TARGET=./libsu.a
 
-SUFWW=-Weverything \
+SUFWWW = #-Weverything
+SUFWW = -W -Wall -pedantic $(SUFWWW) \
 	-Wno-atomic-implicit-seq-cst \
 	-Wno-c++98-compat \
 	-Wno-documentation-unknown-command \
@@ -66,14 +64,21 @@ SUFWW=-Weverything \
 	-Wno-reserved-macro-identifier \
 	-Wno-unused-macros
 
-#$(SUFWW)
-SUFW=-W -Wall -pedantic \
-	-Wno-uninitialized -Wno-unused-result -Wno-unused-value \
+SUFW = -W -Wall -pedantic
+
+SUFS = -fPIE \
 	-fno-common \
 	-fstrict-aliasing -fstrict-overflow \
+	-fstack-protector-strong \
+	-D_FORTIFY_SOURCE=3 \
+#	-fsanitize=undefined \
+#	-fsanitize=address \
 
-CFLAGS=$(SUFLVLC) $(SUFW) $(SUFS) $(SUFOPT) $(EXTRA_CFLAGS)
-LDFLAGS=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed -Wl,--enable-new-dtags -fpie $(EXTRA_LDFLAGS)
+CFLAGS += $(SUFLVLC) $(SUF) $(SUFWW) $(SUFS) $(SUFOPT)
+
+LDFLAGS += -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
+	-Wl,--enable-new-dtags \
+	-fpie
 
 CC = cc
 INSTALL = install
@@ -113,6 +118,9 @@ $(VAL_NAME): $(SULIB_BLD) s-postgray.c
 		\
 		$(CFLAGS) $(LDFLAGS) \
 		-o $(@) s-postgray.c $(SULIB)
+
+test: all
+	./s-postgray-test.sh
 
 clean:
 	if [ -n "$(SULIB_BLD)" ]; then \
