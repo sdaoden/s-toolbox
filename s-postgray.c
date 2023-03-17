@@ -2457,7 +2457,7 @@ a_conf__AB(struct a_pg *pgp, char const *path, struct a_pg_wb *pgwbp){
 	NYD2_IN;
 
 	if((fp = fopen(path, "r")) == NIL){
-		a_conf_error(pgp, _("Cannot open file %s: %s\n"), su_err_doc(su_err_no_by_errno()));
+		a_conf_error(pgp, _("Cannot open file %s: %s\n"), path, su_err_doc(su_err_no_by_errno()));
 		rv = -su_EX_NOINPUT;
 		goto jleave;
 	}
