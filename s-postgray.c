@@ -130,10 +130,6 @@
 #include "su/code-in.h"
 
 /* defines, enums, types, rodata, bss {{{ */
-/* I18N */
-#define _(X) X
-#define N_(X) X
-#define V_(X) X
 
 /* Unfortunately pre v0.8 versions had an undocumented problem: in case the server socket was already existing upon
  * startup (server did have not chance to perform cleanup), no server would ever have been started, and missing policy
@@ -817,6 +813,7 @@ jioerr:
 	rv = su_EX_OK;
 
 	switch(resp){
+	default:
 	case a_PG_ANSWER_ALLOW:
 		cp = pgp->pg_msg_allow;
 		break;
@@ -1883,13 +1880,11 @@ a_server__gray_cleanup(struct a_pg *pgp, boole force){ /* {{{ */
 	gc_any = FAL0;
 	t = pgp->pg_gc_timeout;
 
-	/* We may need to cleanup more, check some thresholds */
-	UNINIT(c_88 = c_75, 0);
-	UNINIT(t_88 = t_75, 0);
+	/* We may need to cleanup more, check some thresholds (avoid "uninit" warnings) */
+	c_88 = c_75 = 0;
+	t_88 = t_75 = t;
 	if(force){
 		force = TRUM1;
-		c_88 = c_75 = 0;
-		t_88 = t_75 = t;
 		t_75 -= t >> 2;
 		t_88 -= t >> 3;
 	}
@@ -1993,7 +1988,7 @@ jdel:
 	/* Do not balance when force mode is on, client is waiting */
 	if(gc_any){
 		gc_any = FAL0; /* -> "was balanced" */
-		if(pgmp->pgm_cleanup_cnt >= pgp->pg_gc_rebalance && pgp->pg_gc_rebalance != 0 && !force){
+		if(!force && pgmp->pgm_cleanup_cnt >= pgp->pg_gc_rebalance && pgp->pg_gc_rebalance != 0){
 			su_cs_dict_add_flags(su_cs_dict_balance(&pgmp->pgm_gray), su_CS_DICT_FROZEN);
 			a_DBG(su_log_write(su_LOG_DEBUG, "gc: rebalance after %u: count=%u, new size=%u",
 				pgmp->pgm_cleanup_cnt, su_cs_dict_count(&pgmp->pgm_gray), su_cs_dict_size(&pgmp->pgm_gray));)
@@ -2006,7 +2001,7 @@ jdel:
 		struct su_timespec ts2;
 
 		su_timespec_sub(su_timespec_current(&ts2), &ts);
-		su_log_write(su_LOG_INFO, _("gray DB: count=%u: %sGC took %lu:%lu (sec:nano), balanced: %d"),
+		su_log_write(su_LOG_INFO, _("gray DB: count=%u: %sGC in %lu:%09lu seconds, balanced: %d"),
 			su_cs_dict_count(&pgmp->pgm_gray), (force == TRU1 ? _("two round ") : su_empty),
 			S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), gc_any);
 	}
