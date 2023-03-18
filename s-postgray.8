@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd March 16, 2023
+.Dd March 18, 2023
 .ds VV \\%v0.8.1
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
@@ -61,41 +61,51 @@ via a standardized SMTP response (see
 RFC 5321), which does not prevent message delivery from SMTP
 M(essage) T(ransfer) A(gent)s, but can help against simple spam
 producing programs.
+.
+.Pp
 Client allow (white) and block (black) lists of domain names (exact and
 wildcard) as well as IPv4 and IPv6 addresses (exact or in CIDR notation)
 are supported.
-This program aims in being fast and secure: all the data is stored in
-main memory, synchronization with backing store is only performed when
-the server process is started or stopped, and the graylist database
-which needs to handle network data uses a cryptographically secure hash
-function.
+All the data is stored in main memory, synchronization with backing
+store is only performed when the server process is started or stopped,
+and the graylist database which needs to handle network data uses
+a cryptographically secure hash function.
+Operating-system dependent best-effort sandboxing is used.
 .
 .Pp
 This program is intended to be started via the
 .Xr postfix 1
 .Xr spawn 8
-daemon, the single-instance server is managed internally.
-The server lifetime is configurable, by (compile-time) default it will
-terminate itself after some time without any client connection.
-The server can also be started directly via
-.Fl Fl startup ,
-but
+daemon, which takes care of the correct user and group credentials;
+Its single-instance server is then managed automatically, with
+a configurable lifetime; by (compile-time) default it terminates itself
+after some time without any client connection.
+The server may
+.Fl Fl startup
+directly:
 .Fl Fl server-timeout
 is ignored in this mode.
-Sending the server a
-.Ql HUP
-signal will re-evaluate the configuration (may result in program
-panic if a file disappeared or memory failures occur), sending it
-.Ql USR2
-will save the graylist database,
-whereas sending
-.Ql USR1
-will log some statistics.
 A synchronized server
 .Fl Fl shutdown
 can be enforced, or an asynchronous termination by sending the server a
 .Ql TERM
 signal.
+.
+.Pp
+Sending the
+.Ql USR2
+signal will save the graylist database,
+whereas sending
+.Ql USR1
+logs some statistics.
+Sending a
+.Ql HUP
+signal re-evaluates the configuration;
+Because sandboxing is used if possible, changes to, or additions of
+directory and file paths may cause crashes due to security violations!
+(The client ignores these signals:
+.Xr pkill 1
+may be used.)
 .
 .Pp
 As recommendet by RFC 6647 messages are identified by their recipient /
@@ -167,6 +177,7 @@ smtpd_sender_restrictions =
    reject_non_fqdn_sender,
    # Total no-goes database, eg: qq.com reject
 #   check_sender_access lmdb:/etc/postfix/sender_restrict,
+#   check_sender_access inline:{$mydomain=reject},
    reject_unknown_sender_domain,
    reject_unknown_reverse_client_hostname,
    # With --focus-sender only!  And --msg-allow=permit
@@ -241,6 +252,8 @@ If the first non-whitespace character is the number-sign
 .Ql #
 the line is a comment and discarded.
 Empty lines are ignored.
+.Ar path
+is added to sandbox constraints.
 .
 .Mx Fl allow
 .It Fl Fl allow Ar spec , Fl a Ar spec
@@ -306,6 +319,8 @@ Load a file of blacklist entries in the syntax described for
 .Fl Fl allow-file
 from within the server or
 .Fl Fl test-mode .
+.Ar path
+is added to sandbox constraints.
 .
 .Mx Fl block
 .It Fl Fl block Ar spec , Fl b Ar spec
@@ -508,6 +523,8 @@ the line is a comment and discarded.
 Empty lines are ignored.
 The server parses the configuration a second time, and from within
 .Fl Fl store-path !
+.Ar path
+is added to sandbox constraints.
 .
 .Mx Fl server-queue
 .It Fl Fl server-queue Ar no , Fl q Ar no

@@ -178,8 +178,9 @@ enum a_pg_flags{
 	/* Client */
 	a_PG_F_CLIENT_NONE,
 
-	/* Master */
+	/* Master (server-only control block) */
 	a_PG_F_MASTER_NONE = 0,
+	a_PG_F_MASTER_IN_SETUP = 1u<<15, /* First time config evaluation from within server */
 	a_PG_F_MASTER_ACCEPT_SUSPENDED = 1u<<16,
 	a_PG_F_MASTER_LIMIT_EXCESS_LOGGED = 1u<<17,
 	a_PG_F_MASTER_NOMEM_LOGGED = 1u<<18
@@ -411,6 +412,17 @@ static void a_main_oncrash(int signo);
 static void a_main_oncrash__dump(up cookie, char const *buf, uz blen);
 #endif
 
+/* OS-specific sandboxing (at EOF, after main()) */
+#if su_OS_OPENBSD
+static void a_sandbox_client(struct a_pg *pgp);
+static void a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path);
+static void a_sandbox_server(struct a_pg *pgp);
+#else
+# define a_sandbox_client(PGP) do{}while(0)
+# define a_sandbox_server_add_path_access(PGP,PATH) do{}while(0)
+# define a_sandbox_server(PGP) do{}while(0)
+#endif
+
 /* client {{{ */
 static s32
 a_client(struct a_pg *pgp){
@@ -585,6 +597,8 @@ j_leave:
 	return rv;
 
 jshutdown:
+	a_sandbox_client(pgp);
+
 	for(;;){
 		static char const nulnul[2] = {'\0','\0'};
 
@@ -624,6 +638,8 @@ a_client__loop(struct a_pg *pgp){
 	signal(SIGHUP, SIG_IGN);
 	signal(SIGUSR1, SIG_IGN);
 	signal(SIGUSR2, SIG_IGN);
+
+	a_sandbox_client(pgp);
 
 	rv = su_EX_OK;
 
@@ -1009,9 +1025,11 @@ a_server__wb_setup(struct a_pg *pgp, boole reset){
 	if(reset){
 		a_conf_setup(pgp, a_PG_AVO_RELOAD);
 		f = a_PG_AVO_NONE | a_PG_AVO_RELOAD;
-	}else
+	}else{
+		pgp->pg_flags |= a_PG_F_MASTER_IN_SETUP;
 jreavo:
 		f = a_PG_AVO_FULL | a_PG_AVO_RELOAD;
+	}
 	su_avopt_setup(&avo, pgp->pg_argc, C(char const*const*,pgp->pg_argv), a_sopts, a_lopts);
 
 	while((rv = su_avopt_parse(&avo)) != su_AVOPT_STATE_DONE)
@@ -1047,6 +1065,8 @@ jreavo:
 
 	rv = su_EX_OK;
 jleave:
+	pgp->pg_flags &= ~a_PG_F_MASTER_IN_SETUP;
+
 	NYD_OU;
 	return rv;
 }
@@ -1096,6 +1116,8 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 	sigaddset(&psigset, SIGUSR1);
 	sigaddset(&psigset, SIGUSR2);
 	sigprocmask(SIG_BLOCK, &psigset, &psigseto);
+
+	a_sandbox_server(pgp);
 
 	while(a_pgm != NIL){
 		u32 i;
@@ -2342,6 +2364,8 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fla
 		}break;
 
 	case 'A':
+		if(pgp->pg_flags & a_PG_F_MASTER_IN_SETUP)
+			a_sandbox_server_add_path_access(pgp, arg);
 		if(f & a_PG_AVO_FULL)
 			o = a_conf__AB(pgp, arg, ((pgp->pg_flags & a_PG_F_MODE_TEST
 					) ? R(struct a_pg_wb*,0x1) : &pgp->pg_master->pgm_white));
@@ -2353,6 +2377,8 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fla
 		break;
 
 	case 'B':
+		if(pgp->pg_flags & a_PG_F_MASTER_IN_SETUP)
+			a_sandbox_server_add_path_access(pgp, arg);
 		if(f & a_PG_AVO_FULL)
 			o = a_conf__AB(pgp, arg, ((pgp->pg_flags & a_PG_F_MODE_TEST
 					) ? NIL : &pgp->pg_master->pgm_black));
@@ -2381,7 +2407,11 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fla
 		goto ji32;
 	case 't': p.i16 = &pgp->pg_server_timeout; goto ji16;
 
-	case 'R': o = a_conf__R(pgp, arg, f); break;
+	case 'R':
+		if(pgp->pg_flags & a_PG_F_MASTER_IN_SETUP)
+			a_sandbox_server_add_path_access(pgp, arg);
+		o = a_conf__R(pgp, arg, f);
+		break;
 
 	case 's':
 		if(f & (a_PG_AVO_FULL | a_PG_AVO_RELOAD))
@@ -3265,6 +3295,63 @@ jleave:
 
 	return mpv;
 } /* }}} */
+
+/* sandbox {{{
+ * On a best effort base: we do not face the world directly, therefore simply ignore setup failures
+ */
+
+#if su_OS_OPENBSD /* {{{ */
+static char **a_sandbox_paths; /* TODO su_vector */
+static uz a_sandbox_paths_cnt;
+static uz a_sandbox_paths_size;
+
+static void
+a_sandbox_client(struct a_pg *pgp){
+	NYD_IN;
+	UNUSED(pgp);
+
+	unveil(".", "r"); /* (Need at least one real) */
+
+	pledge("stdio", "");
+
+	NYD_OU;
+}
+
+static void
+a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path){
+	NYD_IN;
+	UNUSED(pgp);
+
+	if(a_sandbox_paths_cnt + 1 >= a_sandbox_paths_size){
+		a_sandbox_paths_size += 8;
+		a_sandbox_paths = su_TREALLOC(char*, a_sandbox_paths, a_sandbox_paths_size);
+	}
+
+	a_sandbox_paths[a_sandbox_paths_cnt++] = su_cs_dup(path, su_STATE_ERR_NOPASS);
+
+	NYD_OU;
+}
+
+static void
+a_sandbox_server(struct a_pg *pgp){
+	uz i;
+	NYD_IN;
+
+	unveil(pgp->pg_master->pgm_sockpath, "c");
+	unveil(a_PG_GRAY_DB_NAME, "rwc");
+# if a_DBGIF
+	unveil(a_NYD_FILE, "w");
+# endif
+
+	for(i = 0; i < a_sandbox_paths_cnt; ++i)
+		unveil(a_sandbox_paths[i], "r");
+
+	pledge("stdio inet rpath wpath cpath", "");
+
+	NYD_OU;
+}
+#endif /* }}} su_OS_OPENBSD */
+/* sandbox }}} */
 
 #include "su/code-ou.h"
 #undef su_FILE
