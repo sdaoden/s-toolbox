@@ -89,7 +89,7 @@ RM = rm
 all: $(SULIB_BLD) $(VAL_NAME)
 
 $(SULIB_TARGET):
-	cd src/su && $(MAKE) -f .makefile &&\
+	cd src/su && $(MAKE) -f .makefile .clib.a &&\
 	$(INSTALL) -m 0644 .clib.a ../../$(SULIB_TARGET)
 
 $(VAL_NAME): $(SULIB_BLD) s-postgray.c
@@ -153,6 +153,7 @@ d-release:
 	rm -f src/su/*.cxx src/su/.*.cxx &&\
 	sh ../../nail.git/mk/su-make-strip-cxx.sh &&\
 	cd include/su && perl ../../../../nail.git/mk/su-doc-strip.pl *.h &&\
+	git reset&&\
 	echo now edit makefile and src/su/.makefile
 
 # s-mk-mode
