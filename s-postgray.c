@@ -185,7 +185,7 @@ enum a_pg_flags{
 	a_PG_F_MASTER_NOMEM_LOGGED = 1u<<18
 };
 
-enum a_pg_avo_args{
+enum a_pg_avo_flags{
 	a_PG_AVO_NONE,
 	a_PG_AVO_FULLER = 1u<<0, /* Like _FULL less AaBb */
 	a_PG_AVO_FULL = 1u<<1,
@@ -320,7 +320,6 @@ static char const * const a_lopts[] = {
 	"msg-allow:;~;" N_("whitelist message (read manual; not SIGHUP)"),
 	"msg-block:;!;" N_("blacklist message (\")"),
 	"msg-defer:;m;" N_("defer_if_permit message (\")"),
-		"defer-msg:;m;" N_("OBSOLETE compatibility for --msg-defer"),
 
 	/**/
 	"once;o;" N_("process only one request in this client invocation"),
@@ -384,12 +383,12 @@ static char a_server__gray_lookup(struct a_pg *pgp, char const *key);
 static void a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f);
 static void a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f);
 static void a_conf_list_values(struct a_pg *pgp);
-static s32 a_conf__arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_flags) f);
+static s32 a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_flags) f);
+
 static s32 a_conf__AB(struct a_pg *pgp, char const *path, struct a_pg_wb *pgwbp);
 static s32 a_conf__ab(struct a_pg *pgp, char *entry, struct a_pg_wb *pgwbp);
 static s32 a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_pg_avo_flags) f);
-static s32 a_conf_chdir_store_path(struct a_pg *pgp);
-static void a_conf_error(struct a_pg *pgp, char const *msg, ...);
+static void a_conf__err(struct a_pg *pgp, char const *msg, ...);
 
 /* normalization; can fail for effectively empty or bogus input!
  * XXX As long as we do not have ip_addr, _ca() uses inet_ntop() that may grow,
@@ -425,9 +424,13 @@ a_client(struct a_pg *pgp){
 		su_log_set_write_fun(&a_main_log_write);
 	}
 
-	if((rv = a_conf_chdir_store_path(pgp)) != su_EX_OK)
+	if(!su_path_chdir(pgp->pg_store_path)){
+		su_log_write(su_LOG_CRIT, _("cannot change directory to %s: %s\n"), pgp->pg_store_path, su_err_doc(-1));
+		rv = su_EX_NOINPUT;
 		goto j_leave;
+	}
 
+	rv = su_EX_OK;
 	if(0){
 jretry_all:
 		close(pgp->pg_clima_fd);
@@ -1014,7 +1017,7 @@ jreavo:
 	while((rv = su_avopt_parse(&avo)) != su_AVOPT_STATE_DONE)
 		switch(rv){
 		a_PG_AVOPT_CASES
-			if((rv = a_conf__arg(pgp, rv, avo.avo_current_arg, f)) < 0){
+			if((rv = a_conf_arg(pgp, rv, avo.avo_current_arg, f)) < 0){
 				rv = -rv;
 				goto jleave;
 			}
@@ -2269,7 +2272,7 @@ a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
 		*empp = NIL;
 
 		for(empp = em_arr; *empp != NIL; ++empp)
-			a_conf_error(pgp, "%s", V_(*empp));
+			a_conf__err(pgp, "%s", V_(*empp));
 	}
 
 	NYD2_OU;
@@ -2281,22 +2284,22 @@ a_conf_list_values(struct a_pg *pgp){
 	NYD2_IN;
 
 	fprintf(stdout,
-		"4-mask=%lu\n"
-			"6-mask=%lu\n"
-		"count=%lu\n"
-			"delay-max=%lu\n"
-			"delay-min=%lu\n"
+		"4-mask %lu\n"
+			"6-mask %lu\n"
+		"count %lu\n"
+			"delay-max %lu\n"
+			"delay-min %lu\n"
 			"%s"
-			"gc-rebalance=%lu\n"
-			"gc-timeout=%lu\n"
-			"limit=%lu\n"
-			"limit-delay=%lu\n"
-		"server-queue=%lu\n"
-			"server-timeout=%lu\n"
-		"store-path=%s\n"
-		"msg-allow=%s\n"
-			"msg-block=%s\n"
-			"msg-defer=%s\n"
+			"gc-rebalance %lu\n"
+			"gc-timeout %lu\n"
+			"limit %lu\n"
+			"limit-delay %lu\n"
+		"server-queue %lu\n"
+			"server-timeout %lu\n"
+		"store-path %s\n"
+		"msg-allow %s\n"
+			"msg-block %s\n"
+			"msg-defer %s\n"
 		,
 		S(ul,pgp->pg_4_mask), S(ul,pgp->pg_6_mask),
 		S(ul,pgp->pg_count), S(ul,pgp->pg_delay_max), S(ul,pgp->pg_delay_min),
@@ -2312,7 +2315,7 @@ a_conf_list_values(struct a_pg *pgp){
 }
 
 static s32
-a_conf__arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_flags) f){
+a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_flags) f){
 	union {u8 *i8; u16 *i16; u32 *i32; char const **cpp;} p;
 	NYD2_IN;
 
@@ -2333,7 +2336,7 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fl
 
 			if((su_idec_u8(p.i8, arg, UZ_MAX, 10, NIL) & (su_IDEC_STATE_EMASK | su_IDEC_STATE_CONSUMED)
 					) != su_IDEC_STATE_CONSUMED || *p.i8 > max){
-				a_conf_error(pgp, _("Invalid IPv%c mask: %s (max: %hhu)\n"), o, arg, max);
+				a_conf__err(pgp, _("Invalid IPv%c mask: %s (max: %hhu)\n"), o, arg, max);
 				o = -su_EX_USAGE;
 			}
 		}break;
@@ -2385,7 +2388,7 @@ a_conf__arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fl
 			break;
 		if(su_cs_len(arg) + sizeof("/" a_PG_GRAY_DB_NAME) >= PATH_MAX){
 			o = su_err_no_by_errno();
-			a_conf_error(pgp, _("-s / --store-path argument is a path too long: %s\n"), su_err_doc(o));
+			a_conf__err(pgp, _("-s / --store-path argument is a path too long: %s\n"), su_err_doc(o));
 			o = -o;
 			goto jleave;
 		}
@@ -2434,7 +2437,7 @@ ji32:
 	goto jleave;
 
 jeiuse:
-	a_conf_error(pgp, _("Invalid number or limit excess of -%c argument: %s\n"), o, arg);
+	a_conf__err(pgp, _("Invalid number or limit excess of -%c argument: %s\n"), o, arg);
 	o = -su_EX_USAGE;
 	goto jleave;
 
@@ -2457,7 +2460,7 @@ a_conf__AB(struct a_pg *pgp, char const *path, struct a_pg_wb *pgwbp){
 	NYD2_IN;
 
 	if((fp = fopen(path, "r")) == NIL){
-		a_conf_error(pgp, _("Cannot open file %s: %s\n"), path, su_err_doc(su_err_no_by_errno()));
+		a_conf__err(pgp, _("Cannot open file %s: %s\n"), path, su_err_doc(su_err_no_by_errno()));
 		rv = -su_EX_NOINPUT;
 		goto jleave;
 	}
@@ -2677,7 +2680,7 @@ jca:/* C99 */{
 	}goto jleave;
 
 jedata:
-	a_conf_error(pgp, V_(sip.cp), entry, cp);
+	a_conf__err(pgp, V_(sip.cp), entry, cp);
 	rv = -su_EX_DATAERR;
 	goto jleave;
 }
@@ -2697,7 +2700,7 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_pg_avo_flags) f){
 
 	if((fp = fopen(path, "r")) == NIL){
 		mpv = su_err_no_by_errno();
-		a_conf_error(pgp, _("Cannot open --resource-file %s: %s\n"), path, su_err_doc(mpv));
+		a_conf__err(pgp, _("Cannot open --resource-file %s: %s\n"), path, su_err_doc(mpv));
 		mpv = -mpv;
 		goto jleave;
 	}
@@ -2726,14 +2729,14 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_pg_avo_flags) f){
 
 		switch((mpv = su_avopt_parse_line(&avo, cp))){
 		a_PG_AVOPT_CASES
-			if((mpv = a_conf__arg(pgp, mpv, avo.avo_current_arg, f)) < 0 &&
+			if((mpv = a_conf_arg(pgp, mpv, avo.avo_current_arg, f)) < 0 &&
 					!(pgp->pg_flags & a_PG_F_MODE_TEST))
 				goto jleave;
 			break;
 
 		default:
 			if(pgp->pg_flags & a_PG_F_MODE_TEST){
-				a_conf_error(pgp, _("Option unknown or invalid in --resource-file: %s: %s\n"), path, cp);
+				a_conf__err(pgp, _("Option unknown or invalid in --resource-file: %s: %s\n"), path, cp);
 				break;
 			}
 			mpv = -su_EX_USAGE;
@@ -2752,24 +2755,8 @@ jleave:
 	return mpv;
 }
 
-static s32
-a_conf_chdir_store_path(struct a_pg *pgp){
-	s32 rv;
-	NYD2_IN;
-
-	if(su_path_chdir(pgp->pg_store_path))
-		rv = su_EX_OK;
-	else{
-		su_log_write(su_LOG_CRIT, _("cannot change directory to %s: %s\n"), pgp->pg_store_path, su_err_doc(-1));
-		rv = su_EX_NOINPUT;
-	}
-
-	NYD2_OU;
-	return rv;
-}
-
 static void
-a_conf_error(struct a_pg *pgp, char const *msg, ...){
+a_conf__err(struct a_pg *pgp, char const *msg, ...){
 	va_list vl;
 
 	va_start(vl, msg);
@@ -3189,7 +3176,7 @@ jreavo:
 		case '#': pg.pg_flags |= a_PG_F_MODE_TEST; break;
 
 		a_PG_AVOPT_CASES
-			if((mpv = a_conf__arg(&pg, mpv, avo.avo_current_arg, f)) < 0){
+			if((mpv = a_conf_arg(&pg, mpv, avo.avo_current_arg, f)) < 0){
 				mpv = -mpv;
 				goto jleave;
 			}

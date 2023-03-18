@@ -66,10 +66,10 @@ echo '=def: calibration=' # {{{
 
 eval $PGX -# > ./tdef1 || exit 1
 sed '/^store-path/,$d' < def > ./defx || exit 2
-echo 'store-path='"$pwd"'' >> ./defx
-echo 'msg-allow='"$MSG_ALLOW" >> ./defx
-echo 'msg-block='"$MSG_BLOCK" >> ./defx
-echo 'msg-defer='"$MSG_DEFER" >> ./defx
+echo 'store-path '"$pwd"'' >> ./defx
+echo 'msg-allow '"$MSG_ALLOW" >> ./defx
+echo 'msg-block '"$MSG_BLOCK" >> ./defx
+echo 'msg-defer '"$MSG_DEFER" >> ./defx
 cmp -s tdef1 defx || exit 3
 
 eval $PGx -# > ./tdef2 || exit 4
@@ -134,7 +134,7 @@ _EOT
 echo '=1: options=' # {{{
 
 adj_def() {
-	sed -Ee 's|^'"$1"'=.*$|'"$1"'='"$2"'|' < ./defx > ./${3}x || exit 100
+	sed -Ee 's|^'"$1"' .*$|'"$1"' '"$2"'|' < ./defx > ./${3}x || exit 100
 	cmp -s $3 ${3}x || exit 101
 }
 
@@ -184,7 +184,7 @@ adj_def() {
 	shift
 	cat < ./defx > ./${t}x
 	while [ $# -gt 0 ]; do
-		sed -i'' -Ee 's|^'"$1"'=.*$|'"$1"'='"$2"'|' ${t}x || exit 100
+		sed -i'' -Ee 's|^'"$1"' .*$|'"$1"' '"$2"'|' ${t}x || exit 100
 		shift 2
 	done
 	cmp -s $t ${t}x || exit 101
