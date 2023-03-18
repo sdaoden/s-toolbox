@@ -26,8 +26,10 @@ file modes (umask(2), chmod(2)) are "not handled".
 RELEASES
 --------
 
-v0.8.1, 2023-03-16:
-- Add missing su_log_set_level(): now --verbose works in non-development
+v0.8.1, 2023-03-21:
+- Add operating-system dependent sandboxing features.
+- FIX a possible error path crash during program startup.
+- FIX: add missing su_log_set_level(): now --verbose works in non-development
   code.  (Jens Schleusener)
     diff -Napru s-postgray-0.8.0.old/s-postgray.c s-postgray-0.8.0/s-postgray.c
     --- s-postgray-0.8.0.old/s-postgray.c	2023-03-13 17:32:14.676764628 +0100
@@ -44,7 +46,7 @@ v0.8.1, 2023-03-16:
               pgp->pg_flags = (pgp->pg_flags & ~S(uz,a_PG_F_V_MASK)) | i;
            }break;
 - Typos: treshold->threshold.  (Jens Schleusener)
-- Source code style change spaces/80 -> tab/120+, saves ~12KB; etc.
+- (Source code style change spaces/80 -> tab/120+, saves ~12KB; etc.)
 
 v0.8.0, 2022-09-16:
 - New --startup mode to allow it to be driven as a standalone daemon.

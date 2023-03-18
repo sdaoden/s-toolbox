@@ -35,7 +35,9 @@ s-cdda-to-db.pl (plus support) v0.8.0:
 s-postgray.c (plus support) v0.8.1:
    postfix(1) graylisting policy daemon.  See its README + manual for more.
    v0.8.1:
-   - Add missing su_log_set_level(): now --verbose works in non-
+   - Add operating-system dependent sandboxing features.
+   - FIX a possible error path crash during program startup.
+   - FIX: add missing su_log_set_level(): now --verbose works in non-
      development code.  (Jens Schleusener)
      --- s-postgray-0.8.0.old/s-postgray.c	2023-03-13 17:32:14.676764628 +0100
      +++ s-postgray-0.8.0/s-postgray.c	2023-03-13 17:34:05.376771408 +0100
