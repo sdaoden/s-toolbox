@@ -12,7 +12,6 @@
  *@ - With $SOURCE_DATE_EPOCH "minutes" are indeed "seconds".
  *@
  *@ Possible improvements:
- *@ - Add sender whitelist??  (In combination with DKIM etc thinkable?)
  *@ - May want to make policy return on ENOMEM/limit excess configurable?
  *@ - We do not sleep per policy instance=, but per-question.
  *@   This could add a lot of delay per-message in non-focus-sender mode.
@@ -93,9 +92,12 @@
 */
 #define _GNU_SOURCE /* Always the same mess */
 
+#include <su/code.h>
+
 /* TODO all std or posix, nono */
 #include <sys/file.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -112,6 +114,15 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+
+/* Sandbox */
+#undef a_HAVE_SANDBOX
+#elif su_OS_LINUX
+# define a_HAVE_SANDBOX
+# include <sys/prctl.h>
+#elif su_OS_OPENBSD
+# define a_HAVE_SANDBOX
+#endif
 
 #include <su/avopt.h>
 #include <su/boswap.h>
@@ -413,14 +424,12 @@ static void a_main_oncrash__dump(up cookie, char const *buf, uz blen);
 #endif
 
 /* OS-specific sandboxing (at EOF, after main()) */
-#if su_OS_OPENBSD
 static void a_sandbox_client(struct a_pg *pgp);
-static void a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path);
 static void a_sandbox_server(struct a_pg *pgp);
+#ifdef a_HAVE_SANDBOX
+static void a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path);
 #else
-# define a_sandbox_client(PGP) do{}while(0)
 # define a_sandbox_server_add_path_access(PGP,PATH) do{}while(0)
-# define a_sandbox_server(PGP) do{}while(0)
 #endif
 
 /* client {{{ */
@@ -437,7 +446,7 @@ a_client(struct a_pg *pgp){
 	}
 
 	if(!su_path_chdir(pgp->pg_store_path)){
-		su_log_write(su_LOG_CRIT, _("cannot change directory to %s: %s\n"), pgp->pg_store_path, su_err_doc(-1));
+		su_log_write(su_LOG_CRIT, _("cannot change directory to %s: %s"), pgp->pg_store_path, su_err_doc(-1));
 		rv = su_EX_NOINPUT;
 		goto j_leave;
 	}
@@ -3297,25 +3306,35 @@ jleave:
 } /* }}} */
 
 /* sandbox {{{
- * On a best effort base: we do not face the world directly, therefore simply ignore setup failures
+ * On a best effort base: we do not face the world directly
  */
 
-#if su_OS_OPENBSD /* {{{ */
-static char **a_sandbox_paths; /* TODO su_vector */
-static uz a_sandbox_paths_cnt;
-static uz a_sandbox_paths_size;
+static void a_sandbox__rlimit(struct a_pg *pgp, boole server);
 
 static void
-a_sandbox_client(struct a_pg *pgp){
+a_sandbox__rlimit(struct a_pg *pgp, boole server){
+	struct rlimit rl;
 	NYD_IN;
 	UNUSED(pgp);
 
-	unveil(".", "r"); /* (Need at least one real) */
+	rl.rlim_cur = rl.rlim_max = 0;
 
-	pledge("stdio", "");
+	setrlimit(RLIMIT_NPROC, &rl);
+
+	if(!server){
+		setrlimit(RLIMIT_NOFILE, &rl);
+
+		rl.rlim_cur = rl.rlim_max = 1024;
+		setrlimit(RLIMIT_FSIZE, &rl);
+	}
 
 	NYD_OU;
 }
+
+#ifdef a_HAVE_SANDBOX
+static char **a_sandbox_paths; /* TODO su_vector */
+static uz a_sandbox_paths_cnt;
+static uz a_sandbox_paths_size;
 
 static void
 a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path){
@@ -3332,16 +3351,111 @@ a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path){
 	NYD_OU;
 }
 
+# if su_OS_LINUX /* {{{ */
+static void a_sandbox__linux(struct a_pg *pgp, boole server);
+
+static void
+a_sandbox__linux(struct a_pg *pgp, boole server){
+	NYD_IN;
+	UNUSED(pgp);
+	UNUSED(server);
+
+#  ifdef PR_SET_NAME
+	prctl(PR_SET_NAME, (server ? VAL_NAME "/server" : VAL_NAME));
+#  endif
+
+#  ifdef PR_SET_NO_NEW_PRIVS
+	if(prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
+		su_log_write(su_LOG_ERR, _("prctl(PR_SET_NO_NEW_PRIVS) failed: %s"), su_err_doc(su_err_no_by_errno()));
+#  endif
+
+	/* (Avoid ptrace) */
+#  ifdef PR_SET_DUMPABLE
+	if(prctl(PR_SET_DUMPABLE, 0) == -1)
+		su_log_write(su_LOG_ERR, _("prctl(PR_SET_DUMPABLE,0) failed: %s"), su_err_doc(su_err_no_by_errno()));
+#  endif
+
+	NYD_OU;
+}
+
+static void
+a_sandbox_client(struct a_pg *pgp){
+	NYD_IN;
+
+	a_sandbox__rlimit(pgp, FAL0);
+	a_sandbox__linux(pgp, FAL0);
+
+/* FIXME
+prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &FILTER = struct  sock_fprog;);
+*/
+
+	NYD_OU;
+}
+
 static void
 a_sandbox_server(struct a_pg *pgp){
 	uz i;
 	NYD_IN;
 
+	a_sandbox__rlimit(pgp, TRU1);
+	a_sandbox__linux(pgp, TRU1);
+
+
+#if 0
+
 	unveil(pgp->pg_master->pgm_sockpath, "c");
 	unveil(a_PG_GRAY_DB_NAME, "rwc");
-# if a_DBGIF
+#  if a_DBGIF
 	unveil(a_NYD_FILE, "w");
-# endif
+#  endif
+
+
+
+	for(i = 0; i < a_sandbox_paths_cnt; ++i){
+		emsg = a_sandbox_paths[i];
+
+
+		llpba.parent_fd = STDIN_FILENO;
+		llpba.allowed_access = LANDLOCK_ACCESS_FS_READ_FILE;
+		if(a_sandbox__add_rule(rsfd, LANDLOCK_RULE_PATH_BENEATH, &llpba, 0) < 0)
+			goto jerr;
+	}
+
+
+
+#endif
+
+	NYD_OU;
+}
+# endif /* }}} su_OS_LINUX */
+
+# if su_OS_OPENBSD /* {{{ */
+static void
+a_sandbox_client(struct a_pg *pgp){
+	NYD_IN;
+	UNUSED(pgp);
+
+	a_sandbox__rlimit(pgp, FAL0);
+
+	unveil(".", "r"); /* (Need at least one real) */
+
+	pledge("stdio", "");
+
+	NYD_OU;
+}
+
+static void
+a_sandbox_server(struct a_pg *pgp){
+	uz i;
+	NYD_IN;
+
+	a_sandbox__rlimit(pgp, TRU1);
+
+	unveil(pgp->pg_master->pgm_sockpath, "c");
+	unveil(a_PG_GRAY_DB_NAME, "rwc");
+#  if a_DBGIF
+	unveil(a_NYD_FILE, "w");
+#  endif
 
 	for(i = 0; i < a_sandbox_paths_cnt; ++i)
 		unveil(a_sandbox_paths[i], "r");
@@ -3350,7 +3464,27 @@ a_sandbox_server(struct a_pg *pgp){
 
 	NYD_OU;
 }
-#endif /* }}} su_OS_OPENBSD */
+# endif /* }}} su_OS_OPENBSD */
+
+#else /* a_HAVE_SANDBOX */
+static void
+a_sandbox_client(struct a_pg *pgp){
+	NYD_IN;
+	
+	a_sandbox__rlimit(pgp, FAL0);
+
+	NYD_OU;
+}
+
+static void
+a_sandbox_server(struct a_pg *pgp){
+	NYD_IN;
+	
+	a_sandbox__rlimit(pgp, TRU1);
+
+	NYD_OU;
+}
+#endif /* !a_HAVE_SANDBOX */
 /* sandbox }}} */
 
 #include "su/code-ou.h"
