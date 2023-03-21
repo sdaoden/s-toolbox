@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd March 18, 2023
+.Dd March 21, 2023
 .ds VV \\%v0.8.1
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
@@ -87,7 +87,7 @@ directly:
 is ignored in this mode.
 A synchronized server
 .Fl Fl shutdown
-can be enforced, or an asynchronous termination by sending the server a
+can be enforced, or an asynchronous termination by sending a
 .Ql TERM
 signal.
 .
@@ -95,14 +95,16 @@ signal.
 Sending the
 .Ql USR2
 signal will save the graylist database,
-whereas sending
+whereas
 .Ql USR1
 logs some statistics.
 Sending a
 .Ql HUP
-signal re-evaluates the configuration;
-Because sandboxing is used if possible, changes to, or additions of
-directory and file paths may cause crashes due to security violations!
+signal re-evaluates the configuration: because sandboxing may be active,
+changes to, or additions of directory and file paths could cause security
+violations, and
+.Fl Fl limit Ns
+s may have imposed sandbox restrictions that cannot be runtime adjusted.
 (The client ignores these signals:
 .Xr pkill 1
 may be used.)
@@ -415,10 +417,16 @@ or
 Number of DB entries until new ones are not handled,
 effectively turning them into accepted graylist members.
 Data size depends on actual email (recipient /) sender / client_address
-value data, but data store is compact, and accounting say 128 bytes per
-entry may be a guideline.
-In addition there is a large continuous memory chunk for a lookup table,
+value data, but is stored compactly; accounting say 256 bytes per
+entry seems to be (overly) plenty.
+There is also a large continuous lookup table memory chunk,
 accounting 1 MB per 10000000 entries may be proper.
+When saving file size is soft-limited to 2 GiB (two gigabyte),
+excess is discarded; if possible a hard limit up to that size via
+.Xr setrlimit 2
+sandbox is established at
+.Fl Fl startup :
+runtime hard limit adjustments are not possible.
 .
 .Mx Fl limit-delay
 .It Fl Fl limit-delay Ar no , Fl l Ar no

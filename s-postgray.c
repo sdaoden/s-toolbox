@@ -1859,6 +1859,7 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
 		i += j;
 		cp[i++] = '\n';
 
+		/* (setrlimit(2) sandbox up to that size(, too)) */
 		if(UNLIKELY(S(uz,S32_MAX) - i < xlen)){
 			su_log_write(su_LOG_WARN, _("truncating gray DB near 2GB size in: %s"), pgp->pg_store_path);
 			break;
@@ -3324,9 +3325,19 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 	if(!server){
 		setrlimit(RLIMIT_NOFILE, &rl);
 
-		rl.rlim_cur = rl.rlim_max = 1024;
-		setrlimit(RLIMIT_FSIZE, &rl);
+		rl.rlim_cur = rl.rlim_max = ALIGN_Z(a_BUF_SIZE);
+	}else{
+		rlim_t const xxl = (S(u64,S(rlim_t,-1)) - 1 > S(u64,S32_MAX)) ? S(rlim_t,S32_MAX) : S(rlim_t,-1) - 1;
+		u64 xl;
+
+		LCTAV(U64_MAX / a_BUF_SIZE > U32_MAX);
+		xl = S(u64,pgp->pg_limit) * ALIGN_Z(a_BUF_SIZE);
+		rl.rlim_cur = rl.rlim_max = (S(u64,xxl) <= xl) ? xxl : S(rlim_t,xl);
+
+		if(pgp->pg_flags & a_PG_F_VV)
+			su_log_write(su_LOG_INFO, "setrlimit(2) RLIMIT_FSIZE %" PRIu64, S(u64,rl.rlim_max));
 	}
+	setrlimit(RLIMIT_FSIZE, &rl);
 
 	NYD_OU;
 }
@@ -3369,8 +3380,8 @@ a_sandbox__linux(struct a_pg *pgp, boole server){
 		su_log_write(su_LOG_ERR, _("prctl(PR_SET_NO_NEW_PRIVS) failed: %s"), su_err_doc(su_err_no_by_errno()));
 #  endif
 
-	/* (Avoid ptrace) */
-#  ifdef PR_SET_DUMPABLE
+	/* (Avoid ptrace, but only if no sanitizer may be used) */
+#  if defined PR_SET_DUMPABLE && !su_HAVE_DEVEL
 	if(prctl(PR_SET_DUMPABLE, 0) == -1)
 		su_log_write(su_LOG_ERR, _("prctl(PR_SET_DUMPABLE,0) failed: %s"), su_err_doc(su_err_no_by_errno()));
 #  endif
