@@ -416,17 +416,18 @@ static boole a_norm_triple_cname(struct a_pg *pgp);
 static sz a_misc_getline(struct a_pg *pgp, FILE *fp, char iobuf[a_BUF_SIZE]);
 
 /* Unless when running on a terminal, log via this */
-static void a_main_log_write(u32 lvl_a_flags, char const *msg, uz len);
+static void a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len);
 
-static void a_main_usage(FILE *fp);
-static boole a_main_dump_doc(up cookie, boole has_arg, char const *sopt, char const *lopt, char const *doc);
+static void a_misc_usage(FILE *fp);
+static boole a_misc_dump_doc(up cookie, boole has_arg, char const *sopt, char const *lopt, char const *doc);
 
 #if a_DBGIF
-static void a_main_oncrash(int signo);
-static void a_main_oncrash__dump(up cookie, char const *buf, uz blen);
+static void a_misc_oncrash(int signo);
+static void a_misc_oncrash__dump(up cookie, char const *buf, uz blen);
 #endif
 
-/* OS-specific sandboxing (at EOF, after main()) */
+/* sandbox: OS-specific, at EOF, after main() */
+
 static void a_sandbox_client(struct a_pg *pgp);
 static void a_sandbox_server(struct a_pg *pgp);
 #ifdef a_HAVE_SANDBOX
@@ -445,7 +446,7 @@ a_client(struct a_pg *pgp){
 
 	if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE))){
 		openlog(VAL_NAME, a_OPENLOG_FLAGS, LOG_MAIL);
-		su_log_set_write_fun(&a_main_log_write);
+		su_log_set_write_fun(&a_misc_log_write);
 	}
 
 	if(!su_path_chdir(pgp->pg_store_path)){
@@ -3057,7 +3058,7 @@ jskip:
 }
 
 static void
-a_main_log_write(u32 lvl_a_flags, char const *msg, uz len){
+a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 	/* We need to deal with CANcelled newlines .. */
 	static char xb[1024];
 	static uz xl;
@@ -3094,7 +3095,7 @@ jleave:;
 }
 
 static void
-a_main_usage(FILE *fp){
+a_misc_usage(FILE *fp){
 	char buf[7];
 	uz i;
 	NYD2_IN;
@@ -3112,7 +3113,7 @@ a_main_usage(FILE *fp){
 }
 
 static boole
-a_main_dump_doc(up cookie, boole has_arg, char const *sopt, char const *lopt, char const *doc){
+a_misc_dump_doc(up cookie, boole has_arg, char const *sopt, char const *lopt, char const *doc){
 	char const *x1, *x2, *x3;
 	NYD2_IN;
 	UNUSED(doc);
@@ -3136,7 +3137,7 @@ a_main_dump_doc(up cookie, boole has_arg, char const *sopt, char const *lopt, ch
 
 #if a_DBGIF
 static void
-a_main_oncrash(int signo){
+a_misc_oncrash(int signo){
 	char s2ibuf[32], *cp;
 	int fd;
 	uz i;
@@ -3162,7 +3163,7 @@ a_main_oncrash(int signo){
 
 	write(fd, _X(":\n"));
 
-	su_nyd_dump(&a_main_oncrash__dump, S(uz,S(u32,fd)));
+	su_nyd_dump(&a_misc_oncrash__dump, S(uz,S(u32,fd)));
 
 	write(fd, _X("-----\nCome up to the lab and see what's on the slab\n"));
 
@@ -3187,7 +3188,7 @@ a_main_oncrash(int signo){
 }
 
 static void
-a_main_oncrash__dump(up cookie, char const *buf, uz blen){
+a_misc_oncrash__dump(up cookie, char const *buf, uz blen){
 	write(S(int,cookie), buf, blen);
 }
 #endif /* a_DBGIF */
@@ -3208,13 +3209,13 @@ main(int argc, char *argv[]){ /* {{{ */
 		su_STATE_ERR_NOPASS);
 
 #if a_DBGIF
-	signal(SIGABRT, &a_main_oncrash);
+	signal(SIGABRT, &a_misc_oncrash);
 # ifdef SIGBUS
-	signal(SIGBUS, &a_main_oncrash);
+	signal(SIGBUS, &a_misc_oncrash);
 # endif
-	signal(SIGFPE, &a_main_oncrash);
-	signal(SIGILL, &a_main_oncrash);
-	signal(SIGSEGV, &a_main_oncrash);
+	signal(SIGFPE, &a_misc_oncrash);
+	signal(SIGILL, &a_misc_oncrash);
+	signal(SIGSEGV, &a_misc_oncrash);
 #endif
 
 	STRUCT_ZERO(struct a_pg, &pg);
@@ -3222,8 +3223,7 @@ main(int argc, char *argv[]){ /* {{{ */
 	pg.pg_argc = S(u32,(argc > 0) ? --argc : argc);
 	pg.pg_argv = ++argv;
 
-	/* To avoid that clients do not parse too much we may have to parse ARGV
-	 * several times instead */
+	/* To avoid that clients do not parse too much we may have to parse ARGV several times instead */
 	f = a_PG_AVO_NONE;
 jreavo:
 	su_avopt_setup(&avo, pg.pg_argc, C(char const*const*,pg.pg_argv), a_sopts, a_lopts);
@@ -3246,10 +3246,10 @@ jreavo:
 
 		case 'H':
 		case 'h':
-			a_main_usage(stdout);
+			a_misc_usage(stdout);
 			if(mpv == 'H'){
 				fprintf(stdout, _("\nLong options:\n"));
-				(void)su_avopt_dump_doc(&avo, &a_main_dump_doc, R(up,stdout));
+				(void)su_avopt_dump_doc(&avo, &a_misc_dump_doc, R(up,stdout));
 			}
 			mpv = su_EX_OK;
 			goto jleave;
@@ -3268,7 +3268,7 @@ jerropt:
 				break;
 			}
 jeusage:
-			a_main_usage(stderr);
+			a_misc_usage(stderr);
 			mpv = su_EX_USAGE;
 			goto jleave;
 		}
