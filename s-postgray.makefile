@@ -71,8 +71,10 @@ SUFS = -fPIE \
 	-fstrict-aliasing -fstrict-overflow \
 	-fstack-protector-strong \
 	-D_FORTIFY_SOURCE=3 \
-#	-fsanitize=undefined \
-#	-fsanitize=address \
+	\
+#	-DHAVE_SANITIZER \
+#		-fsanitize=undefined \
+#		-fsanitize=address \
 
 CFLAGS += $(SUFLVLC) $(SUF) $(SUFWW) $(SUFS) $(SUFOPT)
 

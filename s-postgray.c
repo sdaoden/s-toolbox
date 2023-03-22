@@ -59,7 +59,7 @@
  *   4.5.3.1.2.   Domain
  * The maximum total length of a domain name or number is 255 octets.
  * We also store client_name for configurable domain whitelisting, but be easy and treat that as local+domain, too.
- * And finally we also use the buffer for gray savings, so add room */
+ * And finally we also use the buffer for gray savings and stdio getline(3) replacement (for ditto): add plenty */
 #define a_BUF_SIZE (ALIGN_Z(INET6_ADDRSTRLEN +1) + ((64 + 256 +1) * 3) + 1 + su_IENC_BUFFER_SIZE + 1)
 
 /* Minimum number of minutes in between DB cleanup runs.
@@ -412,6 +412,9 @@ static boole a_norm_triple_cname(struct a_pg *pgp);
 
 /* misc */
 
+/* getline(3) replacement (EOF, or size of space-normalized and trimmed line in .pg_rl_buf */
+static sz a_misc_getline(struct a_pg *pgp, FILE *fp, char iobuf[a_BUF_SIZE]);
+
 /* Unless when running on a terminal, log via this */
 static void a_main_log_write(u32 lvl_a_flags, char const *msg, uz len);
 
@@ -635,10 +638,9 @@ jshutdown:
 
 static s32
 a_client__loop(struct a_pg *pgp){
-	char *lnb, *bp, *cp;
+	char iobuf[a_BUF_SIZE], *bp;
 	ssize_t lnr;
 	boole use_this, seen_any;
-	size_t lnl;
 	s32 rv;
 	NYD_IN;
 
@@ -654,21 +656,13 @@ a_client__loop(struct a_pg *pgp){
 
 	/* Main loop: while we receive policy queries, collect the triple(s) we are looking for, ask our server what he
 	 * thinks about that, act accordingly */
-	lnl = 0;
-	lnb = NIL;/* XXX lnb+lnl : su_cstr */
 jblock:
 	bp = pgp->pg_buf;
 	pgp->pg_r = pgp->pg_s = pgp->pg_ca = pgp->pg_cname = NIL;
 	use_this = TRU1;
 	seen_any = FAL0;
 
-	while((lnr = getline(&lnb, &lnl, stdin)) != -1){
-		cp = lnb;
-		if(lnr > 0){
-			if(cp[lnr - 1] == '\n') /* xxx if not this is bogus! */
-				cp[--lnr] = '\0';
-		}
-
+	while((lnr = a_misc_getline(pgp, stdin, iobuf)) != EOF){
 		/* Until an empty line ends one block, collect data */
 		if(lnr == 0){
 			/* Query complete?  Normalize data and ask server about triple */
@@ -690,12 +684,14 @@ jblock:
 			/* We assume no WS at BOL and EOL, nor in between key, =, and value.  We use the first value
 			 * shall an attribute appear multiple times; this also aids in bp handling simplicity */
 			uz i;
-			char *xcp;
+			char *cp, *xcp;
 
 			seen_any = TRU1;
 
 			if(!use_this)
 				continue;
+
+			cp = iobuf;
 
 			if((xcp = su_cs_find_c(cp, '=')) == NIL){
 				rv = su_EX_PROTOCOL;
@@ -758,9 +754,6 @@ jblock:
 	}
 	if(rv == su_EX_OK && !feof(stdin) && !(pgp->pg_flags & a_PG_F_CLIENT_ONCE))
 		rv = su_EX_IOERR;
-
-	if(lnb != NIL)
-		free(lnb);
 
 	NYD_OU;
 	return rv;
@@ -1074,7 +1067,7 @@ jreavo:
 
 	rv = su_EX_OK;
 jleave:
-	pgp->pg_flags &= ~a_PG_F_MASTER_IN_SETUP;
+	pgp->pg_flags &= ~S(uz,a_PG_F_MASTER_IN_SETUP);
 
 	NYD_OU;
 	return rv;
@@ -2492,9 +2485,8 @@ jmsg:
 
 static s32
 a_conf__AB(struct a_pg *pgp, char const *path, struct a_pg_wb *pgwbp){
-	char *lnb;
-	size_t lnl;
-	ssize_t lnr;
+	char iobuf[a_BUF_SIZE];
+	sz lnr;
 	s32 rv;
 	FILE *fp;
 	NYD2_IN;
@@ -2507,21 +2499,15 @@ a_conf__AB(struct a_pg *pgp, char const *path, struct a_pg_wb *pgwbp){
 
 	rv = su_EX_OK;
 
-	lnl = 0;
-	lnb = NIL;/* XXX lnb+lnl : su_cstr */
-	while((lnr = getline(&lnb, &lnl, fp)) != -1){
-		while(lnr > 0 && lnb[lnr - 1] == '\n')
-			lnb[--lnr] = '\0';
-
-		if((rv = a_conf__ab(pgp, lnb, pgwbp)) != su_EX_OK && !(pgp->pg_flags & a_PG_F_MODE_TEST))
-			break;
-		rv = su_EX_OK;
+	while((lnr = a_misc_getline(pgp, fp, iobuf)) != EOF){
+		if(lnr != 0 && (rv = a_conf__ab(pgp, iobuf, pgwbp)) != su_EX_OK){
+			if(!(pgp->pg_flags & a_PG_F_MODE_TEST))
+				break;
+			rv = su_EX_OK;
+		}
 	}
 	if(rv == su_EX_OK && !feof(fp))
 		rv = -su_EX_IOERR;
-
-	if(lnb != NIL)
-		free(lnb);
 
 	fclose(fp);
 
@@ -2545,12 +2531,8 @@ a_conf__ab(struct a_pg *pgp, char *entry, struct a_pg_wb *pgwbp){
 	while((c = *entry) != '\0' && su_cs_is_space(c))
 		++entry;
 
-	if(/*maybe_comment &&*/ c == '#')
-		goto jleave;
-
 	for(cp = entry; *cp != '\0'; ++cp){
 	}
-
 	while(cp > entry && su_cs_is_space(cp[-1]))
 		--cp;
 	*cp = '\0';
@@ -2727,16 +2709,12 @@ jedata:
 
 static s32
 a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_pg_avo_flags) f){
+	char iobuf[a_BUF_SIZE];
 	struct su_avopt avo;
-	char *lnb;
-	size_t lnl;
-	ssize_t lnr;
+	sz lnr;
 	s32 mpv;
 	FILE *fp;
 	NYD2_IN;
-
-	lnl = 0;
-	lnb = NIL;/* XXX lnb+lnl : su_cstr */
 
 	if((fp = fopen(path, "r")) == NIL){
 		mpv = su_err_no_by_errno();
@@ -2747,27 +2725,12 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_pg_avo_flags) f){
 
 	su_avopt_setup(&avo, 0, NIL, NIL, a_lopts);
 
-	while((lnr = getline(&lnb, &lnl, fp)) != -1){
-		char *cp;
-
-		for(cp = lnb; lnr > 0 && su_cs_is_space(*cp); ++cp, --lnr){
-		}
-
-		if(lnr == 0)
-			continue;
-
-		/* We do support comments */
-		if(*cp == '#')
-			continue;
-
-		while(lnr > 0 && su_cs_is_space(cp[lnr - 1]))
-			cp[--lnr] = '\0';
-
+	while((lnr = a_misc_getline(pgp, fp, iobuf)) != EOF){
 		/* Empty lines are ignored */
 		if(lnr == 0)
 			continue;
 
-		switch((mpv = su_avopt_parse_line(&avo, cp))){
+		switch((mpv = su_avopt_parse_line(&avo, iobuf))){
 		a_PG_AVOPT_CASES
 			if((mpv = a_conf_arg(pgp, mpv, avo.avo_current_arg, f)) < 0 &&
 					!(pgp->pg_flags & a_PG_F_MODE_TEST))
@@ -2776,7 +2739,8 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_pg_avo_flags) f){
 
 		default:
 			if(pgp->pg_flags & a_PG_F_MODE_TEST){
-				a_conf__err(pgp, _("Option unknown or invalid in --resource-file: %s: %s\n"), path, cp);
+				a_conf__err(pgp, _("Option unknown or invalid in --resource-file: %s: %s\n"),
+					path, iobuf);
 				break;
 			}
 			mpv = -su_EX_USAGE;
@@ -2786,8 +2750,6 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_pg_avo_flags) f){
 
 	mpv = su_EX_OK;
 jleave:
-	if(lnb != NIL)
-		free(lnb);
 	if(fp != NIL)
 		fclose(fp);
 
@@ -3035,6 +2997,65 @@ a_norm_triple_cname(struct a_pg *pgp){
 /* }}} */
 
 /* misc {{{ */
+static sz
+a_misc_getline(struct a_pg *pgp, FILE *fp, char iobuf[a_BUF_SIZE]){
+	sz rv;
+	char *cp, *top, cx;
+	NYD_IN;
+	UNUSED(pgp);
+
+jredo:
+	cp = iobuf;
+	top = &cp[a_BUF_SIZE - 1];
+	cx = '\0';
+
+	for(;;){
+		int c;
+
+		if((c = getc_unlocked(fp)) == EOF){
+			if(cp != iobuf && feof(fp))
+				goto jfakenl;
+			rv = -1;
+			break;
+		}else if(c == '\n'){
+jfakenl:
+			rv = S(sz,P2UZ(cp - iobuf));
+			if(rv > 0 && su_cs_is_space(cp[-1])){
+				--cp;
+				--rv;
+				ASSERT(rv == 0 || !su_cs_is_space(cp[-1]));
+			}
+			*cp = '\0';
+			break;
+		}else if(c == '#' && cx == '\0')
+			goto jskip;
+		else if(su_cs_is_space(c) && (cx == '\0' || su_cs_is_space(cx)))
+			continue;
+		else if(cp == top)
+			goto jelong;
+		else
+			*cp++ = cx = S(char,c);
+	}
+
+jleave:
+	NYD_OU;
+	return rv;
+
+jelong:
+	*cp = '\0';
+	su_log_write(su_LOG_ERR, _("line too long, skip: %s"), cp);
+jskip:
+	for(;;){
+		int c;
+
+		if((c = getc_unlocked(fp)) == EOF){
+			rv = -1;
+			goto jleave;
+		}else if(c == '\n')
+			goto jredo;
+	}
+}
+
 static void
 a_main_log_write(u32 lvl_a_flags, char const *msg, uz len){
 	/* We need to deal with CANcelled newlines .. */
@@ -3067,7 +3088,8 @@ a_main_log_write(u32 lvl_a_flags, char const *msg, uz len){
 		msg = xb;
 	}
 
-	syslog(S(int,lvl_a_flags & su_LOG_PRIMASK), "%s", msg);
+	/* Restrict to < 1024 so no memory allocator kicks in! */
+	syslog(S(int,lvl_a_flags & su_LOG_PRIMASK), "%.950s", msg);
 jleave:;
 }
 
@@ -3317,6 +3339,10 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 	struct rlimit rl;
 	NYD_IN;
 	UNUSED(pgp);
+
+#ifdef HAVE_SANITIZER
+	goto su_NYD_OU_LABEL;
+#endif
 
 	rl.rlim_cur = rl.rlim_max = 0;
 
