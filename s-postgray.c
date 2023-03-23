@@ -450,7 +450,7 @@ a_client(struct a_pg *pgp){
 	}
 
 	if(!su_path_chdir(pgp->pg_store_path)){
-		su_log_write(su_LOG_CRIT, _("cannot change directory to %s: %s"), pgp->pg_store_path, su_err_doc(-1));
+		su_log_write(su_LOG_CRIT, _("cannot change directory to %s: %s"), pgp->pg_store_path, V_(su_err_doc(-1)));
 		rv = su_EX_NOINPUT;
 		goto j_leave;
 	}
@@ -473,7 +473,7 @@ jretry_all:
 			continue;
 		}
 		su_log_write(su_LOG_CRIT, _("cannot create/open client/server reassurance lock %s/%s: %s"),
-			pgp->pg_store_path, a_PG_REA_NAME, su_err_doc(rv));
+			pgp->pg_store_path, a_PG_REA_NAME, V_(su_err_doc(rv)));
 		rv = su_EX_CANTCREAT;
 		goto jleave;
 	}
@@ -496,7 +496,7 @@ jretry_all:
 			su_time_msleep(250, TRU1);
 		}else{
 			su_log_write(su_LOG_CRIT, _("error handling client/server reassurance lock %s/%s: %s"),
-				pgp->pg_store_path, a_PG_REA_NAME, su_err_doc(rv));
+				pgp->pg_store_path, a_PG_REA_NAME, V_(su_err_doc(rv)));
 			rv = su_EX_OSERR;
 			goto jleave;
 		}
@@ -523,7 +523,7 @@ jretry_all:
 			continue;
 		}
 		su_log_write(su_LOG_CRIT, _("cannot open client/server socket %s/%s: %s"),
-			pgp->pg_store_path, soaun.sun_path, su_err_doc(su_err_no_by_errno()));
+			pgp->pg_store_path, soaun.sun_path, V_(su_err_doc(su_err_no_by_errno())));
 		rv = su_EX_NOINPUT;
 		goto jleave;
 	}
@@ -540,21 +540,32 @@ jretry_bind:
 		/* The server may be running yet */
 		if(rv != su_ERR_ADDRINUSE){
 			su_log_write(su_LOG_CRIT, _("cannot bind() socket %s/%s: %s"),
-				pgp->pg_store_path, soaun.sun_path, su_err_doc(-1));
+				pgp->pg_store_path, soaun.sun_path, V_(su_err_doc(-1)));
 			rv = su_EX_IOERR;
 			goto jleave;
 		}
 
 		/* ADDRINUSE with taken write lock: former server not properly shutdown (hard power cycle?) */
 		if(islock){
+			struct su_pathinfo pi;
+			char const *emsg;
+
 			a_DBG(su_log_write(su_LOG_DEBUG, "bind(2) ADDRINUSE with acquired write lock: no server");)
-			if(!su_path_rm(soaun.sun_path)){
-				su_log_write(su_LOG_CRIT, _("cannot remove stale socket %s/%s: %s"),
-					pgp->pg_store_path, soaun.sun_path, su_err_doc(-1));
-				rv = su_EX_SOFTWARE;
-				goto jleave;
-			}
-			goto jretry_bind;
+
+			emsg = NIL;
+			if(!su_pathinfo_lstat(&pi, soaun.sun_path)){
+			}else if(!su_pathinfo_is_sock(&pi))
+				emsg = _("refused to act, not a socket");
+			else if(!su_path_rm(soaun.sun_path)){
+			}else
+				goto jretry_bind;
+
+			if(emsg == NIL)
+				emsg = V_(su_err_doc(-1));
+			su_log_write(su_LOG_CRIT, _("cannot remove stale socket %s/%s: %s"),
+				pgp->pg_store_path, soaun.sun_path, emsg);
+			rv = su_EX_SOFTWARE;
+			goto jleave;
 		}
 	}else{
 		ASSERT(!(pgp->pg_flags & a_PG_F_MODE_SHUTDOWN));
@@ -580,7 +591,7 @@ jretry_bind:
 			goto jretry_all;
 		}
 		su_log_write(su_LOG_CRIT, _("cannot connect client socket %s/%s: %s"),
-			pgp->pg_store_path, soaun.sun_path, su_err_doc(rv));
+			pgp->pg_store_path, soaun.sun_path, V_(su_err_doc(rv)));
 		rv = su_EX_IOERR;
 		goto jleave;
 	}
@@ -823,7 +834,7 @@ jredo_read:
 		if((rv = su_err_no_by_errno()) == su_ERR_INTR)/* XXX no more in client */
 			goto jredo_read;
 jioerr:
-		su_log_write(su_LOG_ERR, _("I/O error in server communication: %s"), su_err_doc(rv));
+		su_log_write(su_LOG_ERR, _("I/O error in server communication: %s"), V_(su_err_doc(rv)));
 		/* If the server is gone, then restart cycle from our point of view */
 		rv = (rv == su_ERR_PIPE) ? -su_EX_IOERR : su_EX_IOERR;
 		goto jex_nodefer;
@@ -875,11 +886,11 @@ a_server(struct a_pg *pgp, char const *sockpath, s32 reafd){
 	 * race-free without getting ECONNREFUSED */
 	if(listen(pgp->pg_clima_fd, a_SERVER_LISTEN)){
 		su_log_write(su_LOG_CRIT, _("cannot listen on server socket %s/%s: %s"),
-			pgp->pg_store_path, sockpath, su_err_doc(su_err_no_by_errno()));
+			pgp->pg_store_path, sockpath, V_(su_err_doc(su_err_no_by_errno())));
 		rv = su_EX_IOERR;
 	}else switch(fork()){
 	case -1: /* Error */
-		su_log_write(su_LOG_CRIT, _("cannot start server process: %s"), su_err_doc(su_err_no_by_errno()));
+		su_log_write(su_LOG_CRIT, _("cannot start server process: %s"), V_(su_err_doc(su_err_no_by_errno())));
 		rv = su_EX_OSERR;
 		break;
 	default: /* Parent (client) */
@@ -891,7 +902,7 @@ a_server(struct a_pg *pgp, char const *sockpath, s32 reafd){
 
 	if(rv != su_EX_OK && !su_path_rm(sockpath))
 		su_log_write(su_LOG_CRIT, _("cannot remove socket %s/%s: %s"),
-			pgp->pg_store_path, sockpath, su_err_doc(-1));
+			pgp->pg_store_path, sockpath, V_(su_err_doc(-1)));
 
 	NYD_OU;
 	return rv;
@@ -992,7 +1003,7 @@ a_server__reset(struct a_pg *pgp){
 		rv = su_EX_OK;
 	else{
 		su_log_write(su_LOG_CRIT, _("cannot remove client/server socket %s/%s: %s"),
-			pgp->pg_store_path, pgmp->pgm_sockpath, su_err_doc(-1));
+			pgp->pg_store_path, pgmp->pgm_sockpath, V_(su_err_doc(-1)));
 		rv = su_EX_IOERR;
 	}
 
@@ -1189,7 +1200,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 		if((x = pselect(maxfd + 1, rfdsp, NIL, NIL, tosp, &psigseto)) == -1){
 			if((e = su_err_no_by_errno()) == su_ERR_INTR)
 				continue;
-			su_log_write(su_LOG_CRIT, _("select(2) failed: %s"), su_err_doc(e));
+			su_log_write(su_LOG_CRIT, _("select(2) failed: %s"), V_(su_err_doc(e)));
 			rv = su_EX_IOERR;
 			goto jleave;
 		}else if(x == 0){
@@ -1249,7 +1260,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 			if((x = accept(pgp->pg_clima_fd, NIL, NIL)) == -1){
 				/* Just skip this mess for now, and pause accept(2) */
 				pgp->pg_flags |= a_PG_F_MASTER_ACCEPT_SUSPENDED;
-				a_DBG(su_log_write(su_LOG_DEBUG, "accept(2): suspending for a bit: %s", su_err_doc(x));)
+				a_DBG(su_log_write(su_LOG_DEBUG, "accept(2): suspending for a bit: %s", V_(su_err_doc(x)));)
 			}else{
 				pgmp->pgm_cli_fds[pgmp->pgm_cli_no++] = x;
 				a_DBG2(su_log_write(su_LOG_DEBUG, "accept(2)ed client=%u fd=%d", pgmp->pgm_cli_no, x);)
@@ -1373,7 +1384,7 @@ jredo:
 
 jcli_err:
 		su_log_write(su_LOG_CRIT, _("client fd=%d read() failed, dropping client: %s"),
-			pgmp->pgm_cli_fds[client], su_err_doc(-1));
+			pgmp->pgm_cli_fds[client], V_(su_err_doc(-1)));
 		close(pgmp->pgm_cli_fds[client]);
 		goto jcli_del;
 	}else if(osx == 0){
@@ -1617,8 +1628,8 @@ a_server__gray_create(struct a_pg *pgp){
 
 static void
 a_server__gray_load(struct a_pg *pgp){ /* {{{ */
+	struct su_pathinfo pi;
 	struct su_timespec ts;
-	struct stat st;
 	char *base;
 	s16 min;
 	s32 i;
@@ -1645,18 +1656,17 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 			continue;
 		}
 		if(i != su_ERR_NOENT)
-			su_log_write(su_LOG_ERR, _("cannot load gray DB in %s: %s"), pgp->pg_store_path, su_err_doc(-1));
+			su_log_write(su_LOG_ERR, _("cannot load gray DB in %s: %s"), pgp->pg_store_path, V_(su_err_doc(-1)));
 		goto jleave;
 	}
 
 	p.c = NIL;
 
-	if(fstat(i, &st) == -1)
-		su_log_write(su_LOG_ERR, _("cannot fstat(2) gray DB in %s: %s"),
-			pgp->pg_store_path, su_err_doc(su_err_no_by_errno()));
-	else if((p.v = mmap(NIL, S(uz,st.st_size), PROT_READ, MAP_SHARED, i, 0)) == NIL)
+	if(!su_pathinfo_fstat(&pi, i))
+		su_log_write(su_LOG_ERR, _("cannot fstat(2) gray DB in %s: %s"), pgp->pg_store_path, V_(su_err_doc(-1)));
+	else if((p.v = mmap(NIL, S(uz,pi.pi_size)/* (max 2GB) */, PROT_READ, MAP_SHARED, i, 0)) == NIL)
 		su_log_write(su_LOG_ERR, _("cannot mmap(2) gray DB in %s: %s"),
-			pgp->pg_store_path, su_err_doc(su_err_no_by_errno()));
+			pgp->pg_store_path, V_(su_err_doc(su_err_no_by_errno())));
 
 	close(i);
 
@@ -1665,8 +1675,8 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 
 	pgp->pg_master->pgm_base_epoch = su_timespec_current(&ts)->ts_sec;
 
-	/* (Saving DB stops before S32_MAX bytes) */
-	for(min = S16_MAX, base = p.c, i = MIN(S32_MAX, S(s32,st.st_size)); i > 0; ++p.c, --i){
+	/* (Saving DB stops before S32_MAX bytes, but .. do) */
+	for(min = S16_MAX, base = p.c, i = MIN(S32_MAX, S(s32,pi.pi_size)); i > 0; ++p.c, --i){
 		s64 ibuf;
 		union {u32 f; uz z;} u;
 
@@ -1760,7 +1770,7 @@ jerr:
 
 jleave:
 	if(mbase != NIL)
-		munmap(mbase, S(uz,st.st_size));
+		munmap(mbase, S(uz,pi.pi_size));
 
 	NYD_OU;
 	return;
@@ -1795,7 +1805,7 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
 			continue;
 		}
 		su_log_write(su_LOG_CRIT, _("cannot create gray DB in %s: %s"),
-			pgp->pg_store_path, su_err_doc(su_err_no_by_errno()));
+			pgp->pg_store_path, V_(su_err_doc(su_err_no_by_errno())));
 		rv = FAL0;
 		goto jleave;
 	}
@@ -1886,11 +1896,11 @@ jleave:
 
 jerr:
 	su_log_write(su_LOG_CRIT, _("cannot write gray DB in %s: %s"),
-		pgp->pg_store_path, su_err_doc(su_err_no_by_errno()));
+		pgp->pg_store_path, V_(su_err_doc(su_err_no_by_errno())));
 
 	if(!su_path_rm(a_PG_GRAY_DB_NAME))
 		su_log_write(su_LOG_CRIT, _("cannot even unlink corrupt gray DB in %s: %s"),
-			pgp->pg_store_path, su_err_doc(-1));
+			pgp->pg_store_path, V_(su_err_doc(-1)));
 
 	rv = FAL0;
 	goto jclose;
@@ -2422,7 +2432,7 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fla
 			break;
 		if(su_cs_len(arg) + sizeof("/" a_PG_GRAY_DB_NAME) >= PATH_MAX){
 			o = su_err_no_by_errno();
-			a_conf__err(pgp, _("-s / --store-path argument is a path too long: %s\n"), su_err_doc(o));
+			a_conf__err(pgp, _("-s / --store-path argument is a path too long: %s\n"), V_(su_err_doc(o)));
 			o = -o;
 			goto jleave;
 		}
@@ -2493,7 +2503,7 @@ a_conf__AB(struct a_pg *pgp, char const *path, struct a_pg_wb *pgwbp){
 	NYD2_IN;
 
 	if((fp = fopen(path, "r")) == NIL){
-		a_conf__err(pgp, _("Cannot open file %s: %s\n"), path, su_err_doc(su_err_no_by_errno()));
+		a_conf__err(pgp, _("Cannot open file %s: %s\n"), path, V_(su_err_doc(su_err_no_by_errno())));
 		rv = -su_EX_NOINPUT;
 		goto jleave;
 	}
@@ -2719,7 +2729,7 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_pg_avo_flags) f){
 
 	if((fp = fopen(path, "r")) == NIL){
 		mpv = su_err_no_by_errno();
-		a_conf__err(pgp, _("Cannot open --resource-file %s: %s\n"), path, su_err_doc(mpv));
+		a_conf__err(pgp, _("Cannot open --resource-file %s: %s\n"), path, V_(su_err_doc(mpv)));
 		mpv = -mpv;
 		goto jleave;
 	}
