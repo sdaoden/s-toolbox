@@ -104,6 +104,19 @@
 #include <sys/un.h>
 #include <sys/uio.h>
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+
+/* Sandbox */
+#if su_OS_LINUX
+# include <linux/filter.h>
+# include <linux/seccomp.h>
+
+# include <sys/prctl.h>
+# include <sys/syscall.h>
+#elif su_OS_OPENBSD
+#endif
+
 #include <fcntl.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -111,18 +124,6 @@
 #include <stdlib.h>
 #include <syslog.h>
 #include <unistd.h>
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
-
-/* Sandbox */
-#undef a_HAVE_SANDBOX
-#elif su_OS_LINUX
-# define a_HAVE_SANDBOX
-# include <sys/prctl.h>
-#elif su_OS_OPENBSD
-# define a_HAVE_SANDBOX
-#endif
 
 #include <su/avopt.h>
 #include <su/boswap.h>
@@ -430,9 +431,11 @@ static void a_misc_oncrash__dump(up cookie, char const *buf, uz blen);
 
 static void a_sandbox_client(struct a_pg *pgp);
 static void a_sandbox_server(struct a_pg *pgp);
-#ifdef a_HAVE_SANDBOX
+#if su_OS_OPENBSD
+# define a_HAVE_ADD_PATH_ACCESS
 static void a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path);
 #else
+# undef a_HAVE_ADD_PATH_ACCESS
 # define a_sandbox_server_add_path_access(PGP,PATH) do{}while(0)
 #endif
 
@@ -3342,7 +3345,32 @@ jleave:
  * On a best effort base: we do not face the world directly
  */
 
+#ifdef a_HAVE_ADD_PATH_ACCESS
+static char **a_sandbox__paths; /* TODO su_vector */
+static uz a_sandbox__paths_cnt;
+static uz a_sandbox__paths_size;
+#endif
+
+/* 0:err_no_by_errno, -1.. */
+static void a_sandbox__err(char const *emsg, char const *arg, s32 err);
 static void a_sandbox__rlimit(struct a_pg *pgp, boole server);
+#if su_OS_LINUX || su_OS_OPENBSD
+static void a_sandbox__os(struct a_pg *pgp, boole server);
+#endif
+
+static void
+a_sandbox__err(char const *emsg, char const *arg, s32 err){
+	if(err == 0)
+		err = su_err_no_by_errno();
+
+	su_log_write(
+#if su_OS_OPENBSD
+		su_LOG_EMERG
+#else
+		su_LOG_CRIT
+#endif
+		, "%s failed: %s: %s", V_(emsg), arg, V_(su_err_doc(err)));
+}
 
 static void
 a_sandbox__rlimit(struct a_pg *pgp, boole server){
@@ -3356,10 +3384,12 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 
 	rl.rlim_cur = rl.rlim_max = 0;
 
-	setrlimit(RLIMIT_NPROC, &rl);
+	if(setrlimit(RLIMIT_NPROC, &rl) == -1)
+		a_sandbox__err("setrlimit", "NPROC", 0);
 
 	if(!server){
-		setrlimit(RLIMIT_NOFILE, &rl);
+		if(setrlimit(RLIMIT_NOFILE, &rl) == -1)
+			a_sandbox__err("setrlimit", "NOFILE", 0);
 
 		rl.rlim_cur = rl.rlim_max = ALIGN_Z(a_BUF_SIZE);
 	}else{
@@ -3373,165 +3403,209 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 		if(pgp->pg_flags & a_PG_F_VV)
 			su_log_write(su_LOG_INFO, "setrlimit(2) RLIMIT_FSIZE %" PRIu64, S(u64,rl.rlim_max));
 	}
-	setrlimit(RLIMIT_FSIZE, &rl);
+	if(setrlimit(RLIMIT_FSIZE, &rl) == -1)
+		a_sandbox__err("setrlimit", "FSIZE", 0);
 
 	NYD_OU;
 }
 
-#ifdef a_HAVE_SANDBOX
-static char **a_sandbox_paths; /* TODO su_vector */
-static uz a_sandbox_paths_cnt;
-static uz a_sandbox_paths_size;
+#if su_OS_LINUX /* {{{ */
+# ifdef SECCOMP_RET_KILL_PROCESS
+#  define a_FAIL SECCOMP_RET_KILL_PROCESS
+# else
+#  define a_FAIL SECCOMP_RET_KILL
+# endif
 
+# define a_ALLOW(SCNO) BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SCNO, 0, 1), BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ALLOW)
+
+# ifdef SYS_send
+#  define a_SEND a_ALLOW(SYS_send)
+# else
+#  define a_SEND a_ALLOW(SYS_sendto)
+# endif
+# ifdef SYS_exit_group
+#  define a_EXIT a_ALLOW(SYS_exit_group)
+# else
+#  define a_EXIT a_ALLOW(SYS_exit)
+# endif
+# ifdef SYS_newfstatat
+#  define a_FSTAT a_ALLOW(SYS_newfstatat)
+# elif defined SYS_fstatat64
+#  define a_FSTAT a_ALLOW(SYS_fstatat64)
+# else
+#  define a_FSTAT a_ALLOW(SYS_fstat)
+# endif
+
+/* SYS_futex? */
+#  define a_SHARED \
+	/* futex C lib? */\
+	\
+	a_ALLOW(SYS_close),\
+	a_EXIT,\
+	a_ALLOW(SYS_read),\
+	a_ALLOW(SYS_write),\
+	\
+	/* STDIO (GNU LibC) */\
+	a_FSTAT,\
+	a_ALLOW(SYS_fsync),\
+	\
+	/* syslog (plus reopen) */\
+	a_SEND,\
+	a_ALLOW(SYS_socket),\
+	a_ALLOW(SYS_connect),\
+	a_ALLOW(SYS_getpid),\
+	\
+        BPF_STMT(BPF_RET | BPF_K, a_FAIL),
+
+static struct sock_filter const a_sandbox__client_filt[] = {
+	/* See seccomp(2).  Load syscall number into accu */
+	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,nr)),
+	a_ALLOW(SYS_writev),
+	a_SHARED
+};
+
+static struct sock_filter const a_sandbox__server_filt[] = {
+	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,nr)),
+	a_ALLOW(SYS_accept),
+	a_ALLOW(SYS_clock_gettime),
+	a_ALLOW(SYS_clock_nanosleep),
+	a_ALLOW(SYS_mmap),
+	a_ALLOW(SYS_munmap),
+	a_ALLOW(SYS_open),
+	a_ALLOW(SYS_openat), /* xxx C lib */
+	a_ALLOW(SYS_pselect6),
+# ifdef SYS_rt_sigaction
+	a_ALLOW(SYS_rt_sigaction),
+# else
+	a_ALLOW(SYS_sigaction),
+# endif
+# ifdef SYS_rt_sigprocmask
+	a_ALLOW(SYS_rt_sigprocmask),
+# else
+	a_ALLOW(SYS_sigprocmask),
+# endif
+	a_ALLOW(SYS_unlink),
+	a_SHARED
+};
+
+# undef a_FAIL
+# undef a_ALLOW
+# undef a_SEND
+# undef a_EXIT
+# undef a_FSTAT
+# undef a_SHARED
+
+static struct sock_fprog const a_sandbox__client_prog = {
+        FIELD_INITN(len) S(us,NELEM(a_sandbox__client_filt)),
+        FIELD_INITN(filter) C(struct sock_filter*,a_sandbox__client_filt)
+};
+
+static struct sock_fprog const a_sandbox__server_prog = {
+        FIELD_INITN(len) S(us,NELEM(a_sandbox__server_filt)),
+        FIELD_INITN(filter) C(struct sock_filter*,a_sandbox__server_filt)
+};
+
+static void
+a_sandbox__os(struct a_pg *pgp, boole server){
+	NYD_IN;
+	UNUSED(pgp);
+	UNUSED(server);
+
+	/* (Avoid ptrace) */
+# if defined PR_SET_DUMPABLE && !defined HAVE_SANITIZER
+	if(prctl(PR_SET_DUMPABLE, 0) == -1)
+		a_sandbox__err("prctl", "SET_DUMPABLE=0", 0);
+# endif
+
+	/* Prepare seccomp */
+# ifdef PR_SET_NO_NEW_PRIVS
+	if(prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
+		a_sandbox__err("prctl", "SET_NO_NEW_PRIVS", 0);
+# endif
+
+	if(prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (server ? &a_sandbox__server_prog : &a_sandbox__client_prog)) == -1)
+		a_sandbox__err("prctl", "SET_SECCOMP", 0);
+
+	NYD_OU;
+}
+#endif /* }}} su_OS_LINUX */
+
+#if su_OS_OPENBSD /* {{{ */
+static void
+a_sandbox__os(struct a_pg *pgp, boole server){
+	NYD_IN;
+
+	if(!server){
+		if(unveil(".", "r") == -1) /* (Need at least one real) */
+			a_sandbox__err("unveil", ".", 0);
+
+		if(pledge("stdio", "") == -1)
+			a_sandbox__err("pledge", "stdio", 0);
+	}else{
+		uz i;
+
+		setproctitle("server");
+
+		if(unveil(pgp->pg_master->pgm_sockpath, "c") == -1)
+			a_sandbox__err("unveil", pgp->pg_master->pgm_sockpath, 0);
+		if(unveil(a_PG_GRAY_DB_NAME, "rwc") == -1)
+			a_sandbox__err("unveil", a_PG_GRAY_DB_NAME, 0);
+# if a_DBGIF
+		unveil(a_NYD_FILE, "w");
+# endif
+
+		for(i = 0; i < a_sandbox__paths_cnt; ++i)
+			if(unveil(a_sandbox__paths[i], "r") == -1)
+				a_sandbox__err("unveil", a_sandbox__paths[i], 0);
+
+		if(pledge("stdio inet rpath wpath cpath", "") == -1)
+			a_sandbox__err("pledge", "stdio inet rpath wpath cpath", 0);
+	}
+
+	NYD_OU;
+}
+#endif /* }}} su_OS_OPENBSD */
+
+static void
+a_sandbox_client(struct a_pg *pgp){
+	NYD_IN;
+
+	a_sandbox__rlimit(pgp, FAL0);
+#if su_OS_LINUX || su_OS_OPENBSD
+	a_sandbox__os(pgp, FAL0);
+#endif
+
+	NYD_OU;
+}
+
+static void
+a_sandbox_server(struct a_pg *pgp){
+	NYD_IN;
+
+	a_sandbox__rlimit(pgp, TRU1);
+#if su_OS_LINUX || su_OS_OPENBSD
+	a_sandbox__os(pgp, TRU1);
+#endif
+
+	NYD_OU;
+}
+
+#ifdef a_HAVE_ADD_PATH_ACCESS
 static void
 a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path){
 	NYD_IN;
 	UNUSED(pgp);
 
-	if(a_sandbox_paths_cnt + 1 >= a_sandbox_paths_size){
-		a_sandbox_paths_size += 8;
-		a_sandbox_paths = su_TREALLOC(char*, a_sandbox_paths, a_sandbox_paths_size);
+	if(a_sandbox__paths_cnt + 1 >= a_sandbox__paths_size){
+		a_sandbox__paths_size += 8;
+		a_sandbox__paths = su_TREALLOC(char*, a_sandbox__paths, a_sandbox__paths_size);
 	}
 
-	a_sandbox_paths[a_sandbox_paths_cnt++] = su_cs_dup(path, su_STATE_ERR_NOPASS);
+	a_sandbox__paths[a_sandbox__paths_cnt++] = su_cs_dup(path, su_STATE_ERR_NOPASS);
 
 	NYD_OU;
 }
-
-# if su_OS_LINUX /* {{{ */
-static void a_sandbox__linux(struct a_pg *pgp, boole server);
-
-static void
-a_sandbox__linux(struct a_pg *pgp, boole server){
-	NYD_IN;
-	UNUSED(pgp);
-	UNUSED(server);
-
-#  ifdef PR_SET_NAME
-	prctl(PR_SET_NAME, (server ? VAL_NAME "/server" : VAL_NAME));
-#  endif
-
-#  ifdef PR_SET_NO_NEW_PRIVS
-	if(prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
-		su_log_write(su_LOG_ERR, _("prctl(PR_SET_NO_NEW_PRIVS) failed: %s"), su_err_doc(su_err_no_by_errno()));
-#  endif
-
-	/* (Avoid ptrace, but only if no sanitizer may be used) */
-#  if defined PR_SET_DUMPABLE && !su_HAVE_DEVEL
-	if(prctl(PR_SET_DUMPABLE, 0) == -1)
-		su_log_write(su_LOG_ERR, _("prctl(PR_SET_DUMPABLE,0) failed: %s"), su_err_doc(su_err_no_by_errno()));
-#  endif
-
-	NYD_OU;
-}
-
-static void
-a_sandbox_client(struct a_pg *pgp){
-	NYD_IN;
-
-	a_sandbox__rlimit(pgp, FAL0);
-	a_sandbox__linux(pgp, FAL0);
-
-/* FIXME
-prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &FILTER = struct  sock_fprog;);
-*/
-
-	NYD_OU;
-}
-
-static void
-a_sandbox_server(struct a_pg *pgp){
-	uz i;
-	NYD_IN;
-
-	a_sandbox__rlimit(pgp, TRU1);
-	a_sandbox__linux(pgp, TRU1);
-
-
-#if 0
-
-	unveil(pgp->pg_master->pgm_sockpath, "c");
-	unveil(a_PG_GRAY_DB_NAME, "rwc");
-#  if a_DBGIF
-	unveil(a_NYD_FILE, "w");
-#  endif
-
-
-
-	for(i = 0; i < a_sandbox_paths_cnt; ++i){
-		emsg = a_sandbox_paths[i];
-
-
-		llpba.parent_fd = STDIN_FILENO;
-		llpba.allowed_access = LANDLOCK_ACCESS_FS_READ_FILE;
-		if(a_sandbox__add_rule(rsfd, LANDLOCK_RULE_PATH_BENEATH, &llpba, 0) < 0)
-			goto jerr;
-	}
-
-
-
 #endif
-
-	NYD_OU;
-}
-# endif /* }}} su_OS_LINUX */
-
-# if su_OS_OPENBSD /* {{{ */
-static void
-a_sandbox_client(struct a_pg *pgp){
-	NYD_IN;
-	UNUSED(pgp);
-
-	a_sandbox__rlimit(pgp, FAL0);
-
-	unveil(".", "r"); /* (Need at least one real) */
-
-	pledge("stdio", "");
-
-	NYD_OU;
-}
-
-static void
-a_sandbox_server(struct a_pg *pgp){
-	uz i;
-	NYD_IN;
-
-	a_sandbox__rlimit(pgp, TRU1);
-
-	unveil(pgp->pg_master->pgm_sockpath, "c");
-	unveil(a_PG_GRAY_DB_NAME, "rwc");
-#  if a_DBGIF
-	unveil(a_NYD_FILE, "w");
-#  endif
-
-	for(i = 0; i < a_sandbox_paths_cnt; ++i)
-		unveil(a_sandbox_paths[i], "r");
-
-	pledge("stdio inet rpath wpath cpath", "");
-
-	NYD_OU;
-}
-# endif /* }}} su_OS_OPENBSD */
-
-#else /* a_HAVE_SANDBOX */
-static void
-a_sandbox_client(struct a_pg *pgp){
-	NYD_IN;
-	
-	a_sandbox__rlimit(pgp, FAL0);
-
-	NYD_OU;
-}
-
-static void
-a_sandbox_server(struct a_pg *pgp){
-	NYD_IN;
-	
-	a_sandbox__rlimit(pgp, TRU1);
-
-	NYD_OU;
-}
-#endif /* !a_HAVE_SANDBOX */
 /* sandbox }}} */
 
 #include "su/code-ou.h"

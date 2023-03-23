@@ -1,7 +1,7 @@
 #!/bin/sh -
 #@ s-postgray test
 
-KEEP_TESTS=
+: ${KEEP_TESTS:=}
 REDIR= #'2>/dev/null'
 
 PG=../s-postgray
