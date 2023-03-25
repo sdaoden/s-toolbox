@@ -70,7 +70,8 @@ All the data is stored in main memory, synchronization with backing
 store is only performed when the server process is started or stopped,
 and the graylist database which needs to handle network data uses
 a cryptographically secure hash function.
-Operating-system dependent best-effort sandboxing is used.
+Operating-system dependent best-effort sandboxing is used, possibly
+.Fl Fl untamed .
 .
 .Pp
 This program is intended to be started via the
@@ -79,15 +80,15 @@ This program is intended to be started via the
 daemon, which takes care of the correct user and group credentials;
 Its single-instance server is then managed automatically, with
 a configurable lifetime; by (compile-time) default it terminates itself
-after some time without any client connection.
+after some time without a client connection.
 The server may
 .Fl Fl startup
 directly:
 .Fl Fl server-timeout
 is ignored in this mode.
-The PID of the server will be placed in the locked
-.Ql .pid
-file within
+The server writes its PID into a file
+.Ql NAME.pid
+within
 .Fl Fl store-path .
 A synchronized server
 .Fl Fl shutdown
@@ -596,6 +597,18 @@ blacklists, as well as the final settings of above variables are shown
 in resource file format.
 The exit status indicates error.
 It is highly recommended to use this for configuration checks.
+.
+.Mx Fl untamed
+.It Fl Fl untamed , u
+The program always executes in a
+.Xr setrlimit 2
+sandbox; dependent upon operating-system and compile-time
+.Pf ( Ql VAL_OS_SANDBOX )
+an even more restricted compartment is entered.
+In order to be as strict as possible the latter, however, may make false
+assumptions on the internals of the used C library, causing security
+violations at runtime.
+Using this option skips the latter.
 .
 .Mx Fl verbose
 .It Fl Fl verbose , v

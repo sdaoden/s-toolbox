@@ -174,12 +174,13 @@ enum a_pg_flags{
 
 	a_PG_F_CLIENT_ONCE = 1u<<4, /* -o */
 	a_PG_F_FOCUS_SENDER = 1u<<5, /* -f */
+	a_PG_F_SANDBOX_UNTAMED = 1u<<6, /* -u */
 
-	a_PG_F_SETUP_MASK = (1u<<6) - 1,
+	a_PG_F_SETUP_MASK = (1u<<7) - 1,
 
-	a_PG_F_DELAY_PROGRESSIVE = 1u<<6, /* -p */
-	a_PG_F_V = 1u<<7, /* -v */
-	a_PG_F_VV = 1u<<8,
+	a_PG_F_DELAY_PROGRESSIVE = 1u<<7, /* -p */
+	a_PG_F_V = 1u<<8, /* -v */
+	a_PG_F_VV = 1u<<9,
 	a_PG_F_V_MASK = a_PG_F_V | a_PG_F_VV,
 
 	/* */
@@ -305,7 +306,7 @@ struct a_pg{
 	char pg_buf[ALIGN_Z(a_BUF_SIZE)];
 };
 
-static char const a_sopts[] = "4:6:" "A:a:B:b:" "c:D:d:fpG:g:L:l:" "q:t:" "R:" "s:" "m:~:!:"  "o" "@." "#@" "vHh";
+static char const a_sopts[] = "4:6:" "A:a:B:b:" "c:D:d:pfG:g:L:l:" "m:~:!:" "o" "R:" "q:t:" "s:" "u" "v" ".@" "#" "Hh";
 static char const * const a_lopts[] = {
 	"4-mask:;4;" N_("IPv4 mask to strip off addresses before match"),
 	"6-mask:;6;" N_("IPv6 mask to strip off addresses before match"),
@@ -318,33 +319,36 @@ static char const * const a_lopts[] = {
 	"count:;c;" N_("of SMTP retries before accepting sender"),
 	"delay-max:;D;" N_("until an email \"is not a retry\" but new (minutes)"),
 	"delay-min:;d;" N_("before an email \"is a retry\" (minutes)"),
-	"focus-sender;f;" N_("ignore recipient data (see manual)"),
 	"delay-progressive;p;" N_("double delay-min for each retry until count is reached"),
+	"focus-sender;f;" N_("ignore recipient data (see manual)"),
 	"gc-rebalance:;G;" N_("no of GC DB cleanup runs before rebalance"),
 	"gc-timeout:;g;" N_("until unused gray DB entry is removed (minutes)"),
 	"limit:;L;" N_("DB entries after which new ones are not handled"),
 	"limit-delay:;l;" N_("DB entries after which new ones cause sleeps"),
 
-	"server-queue:;q;" N_("number of clients a server supports (not SIGHUP)"),
-	"server-timeout:;t;" N_("until client-less server exits (0=never; minutes)"),
-
-	"resource-file:;R;" N_("path to configuration file with long options"),
-
-	"store-path:;s;" N_("DB and server/client socket directory (not SIGHUP)"),
-
 	"msg-allow:;~;" N_("whitelist message (read manual; not SIGHUP)"),
 	"msg-block:;!;" N_("blacklist message (\")"),
 	"msg-defer:;m;" N_("defer_if_permit message (\")"),
 
-	/**/
-	"once;o;" N_("process only one request in this client invocation"),
+	"once;o;" N_("process only one request per client invocation"),
 
+	"resource-file:;R;" N_("path to configuration file with long options"),
+
+	"server-queue:;q;" N_("number of clients a server supports (not SIGHUP)"),
+	"server-timeout:;t;" N_("until client-less server exits (0=never; minutes)"),
+
+	"store-path:;s;" N_("DB and server/client socket directory (not SIGHUP)"),
+
+	"untamed;u;" N_("enter only setrlimit(2), not operating-system dependent sandbox"),
+
+	"verbose;v;" N_("increase syslog verbosity (multiply for more verbosity)"),
+
+	/**/
 	"shutdown;.;" N_("force a running server to exit, synchronize on that, then exit"),
 	"startup;@;" N_("only startup the server"),
 
 	"test-mode;#;" N_("check and list configuration, then exit status"),
 
-	"verbose;v;" N_("increase syslog verbosity (multiply for more verbosity)"),
 	"long-help;H;" N_("this listing"),
 	"help;h;" N_("short help"),
 	NIL
@@ -355,11 +359,13 @@ static char const * const a_lopts[] = {
 	/* In long-option order */\
 	case '4': case '6':\
 	case 'A': case 'a': case 'B': case 'b':\
-	case 'c': case 'D': case 'd': case 'f': case 'p': case 'G': case 'g': case 'L': case 'l':\
-	case 'q': case 't':\
+	case 'c': case 'D': case 'd': case 'p': case 'f': case 'G': case 'g': case 'L': case 'l':\
+	case 'm': case '~': case '!':\
+	case 'o':\
 	case 'R':\
+	case 'q': case 't':\
 	case 's':\
-	case '~': case '!': case 'm':\
+	case 'u':\
 	case 'v':
 
 static struct a_pg_master ATOMIC *a_pgm; /* xxx only used as on/off: s32? */
@@ -2448,13 +2454,24 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fla
 	case 'c': p.i32 = &pgp->pg_count; goto ji32;
 	case 'D': p.i16 = &pgp->pg_delay_max; goto ji16;
 	case 'd': p.i16 = &pgp->pg_delay_min; goto ji16;
-	case 'f': pgp->pg_flags |= a_PG_F_FOCUS_SENDER; break;
 	case 'p': pgp->pg_flags |= a_PG_F_DELAY_PROGRESSIVE; break;
+	case 'f': pgp->pg_flags |= a_PG_F_FOCUS_SENDER; break;
 	case 'G': p.i16 = &pgp->pg_gc_rebalance; goto ji16;
 	case 'g': p.i16 = &pgp->pg_gc_timeout; goto ji16;
 	case 'L': p.i32 = &pgp->pg_limit; goto ji32;
 	case 'l': p.i32 = &pgp->pg_limit_delay; goto ji32;
+
+	case 'm': p.cpp = &pgp->pg_msg_defer; goto jmsg;
+	case '~': p.cpp = &pgp->pg_msg_allow; goto jmsg;
+	case '!': p.cpp = &pgp->pg_msg_block; goto jmsg;
+
 	case 'o': pgp->pg_flags |= a_PG_F_CLIENT_ONCE; break;
+
+	case 'R':
+		if(pgp->pg_flags & a_PG_F_MASTER_IN_SETUP)
+			a_sandbox_server_add_path_access(pgp, arg);
+		o = a_conf__R(pgp, arg, f);
+		break;
 
 	case 'q':
 		if(f & a_PG_AVO_RELOAD)
@@ -2462,12 +2479,6 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fla
 		p.i32 = &pgp->pg_server_queue;
 		goto ji32;
 	case 't': p.i16 = &pgp->pg_server_timeout; goto ji16;
-
-	case 'R':
-		if(pgp->pg_flags & a_PG_F_MASTER_IN_SETUP)
-			a_sandbox_server_add_path_access(pgp, arg);
-		o = a_conf__R(pgp, arg, f);
-		break;
 
 	case 's':
 		if(f & (a_PG_AVO_FULL | a_PG_AVO_RELOAD))
@@ -2483,9 +2494,7 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fla
 		pgp->pg_store_path = su_cs_dup(arg, su_STATE_ERR_NOPASS);
 		break;
 
-	case 'm': p.cpp = &pgp->pg_msg_defer; goto jmsg;
-	case '~': p.cpp = &pgp->pg_msg_allow; goto jmsg;
-	case '!': p.cpp = &pgp->pg_msg_block; goto jmsg;
+	case 'u': pgp->pg_flags |= a_PG_F_SANDBOX_UNTAMED; break;
 
 	case 'v':
 		if(!(f & a_PG_AVO_FULL)){
@@ -3652,7 +3661,8 @@ a_sandbox_client(struct a_pg *pgp){
 
 	a_sandbox__rlimit(pgp, FAL0);
 #if VAL_OS_SANDBOX > 0 && (su_OS_LINUX || su_OS_OPENBSD)
-	a_sandbox__os(pgp, FAL0);
+	if(!(pgp->pg_flags & a_PG_F_SANDBOX_UNTAMED))
+		a_sandbox__os(pgp, FAL0);
 #endif
 
 	NYD_OU;
@@ -3664,7 +3674,8 @@ a_sandbox_server(struct a_pg *pgp){
 
 	a_sandbox__rlimit(pgp, TRU1);
 #if VAL_OS_SANDBOX > 0 && (su_OS_LINUX || su_OS_OPENBSD)
-	a_sandbox__os(pgp, TRU1);
+	if(!(pgp->pg_flags & a_PG_F_SANDBOX_UNTAMED))
+		a_sandbox__os(pgp, TRU1);
 #endif
 
 	NYD_OU;
