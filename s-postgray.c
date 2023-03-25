@@ -167,38 +167,39 @@ enum a_pg_flags{
 	a_PG_F_NONE,
 
 	/* Setup: command line option and shared persistent flags */
-	a_PG_F_MODE_TEST = 1u<<1, /* -# */
-	a_PG_F_MODE_SHUTDOWN = 1u<<2, /* -. */
-	a_PG_F_MODE_STARTUP = 1u<<3, /* -@ */
-	a__PG_F_MODE_MASK = a_PG_F_MODE_TEST | a_PG_F_MODE_SHUTDOWN | a_PG_F_MODE_STARTUP,
+	a_PG_F_MODE_SHUTDOWN = 1u<<1, /* -. */
+	a_PG_F_MODE_STARTUP = 1u<<2, /* -@ */
+	a_PG_F_MODE_STATUS = 1u<<3, /* -% */
+	a_PG_F_MODE_TEST = 1u<<4, /* -# */
+	a__PG_F_MODE_MASK = a_PG_F_MODE_SHUTDOWN | a_PG_F_MODE_STARTUP | a_PG_F_MODE_STATUS | a_PG_F_MODE_TEST,
 
-	a_PG_F_CLIENT_ONCE = 1u<<4, /* -o */
-	a_PG_F_FOCUS_SENDER = 1u<<5, /* -f */
-	a_PG_F_SANDBOX_UNTAMED = 1u<<6, /* -u */
+	a_PG_F_CLIENT_ONCE = 1u<<5, /* -o */
+	a_PG_F_FOCUS_SENDER = 1u<<6, /* -f */
+	a_PG_F_SANDBOX_UNTAMED = 1u<<7, /* -u */
 
-	a_PG_F_SETUP_MASK = (1u<<7) - 1,
+	a_PG_F_SETUP_MASK = (1u<<8) - 1,
 
-	a_PG_F_DELAY_PROGRESSIVE = 1u<<7, /* -p */
-	a_PG_F_V = 1u<<8, /* -v */
-	a_PG_F_VV = 1u<<9,
+	a_PG_F_DELAY_PROGRESSIVE = 1u<<8, /* -p */
+	a_PG_F_V = 1u<<9, /* -v */
+	a_PG_F_VV = 1u<<10,
 	a_PG_F_V_MASK = a_PG_F_V | a_PG_F_VV,
 
 	/* */
-	a_PG_F_TEST_ERRORS = 1u<<9,
-	a_PG_F_NOFREE_MSG_ALLOW = 1u<<10,
-	a_PG_F_NOFREE_MSG_BLOCK = 1u<<11,
-	a_PG_F_NOFREE_MSG_DEFER = 1u<<12,
-	a_PG_F_NOFREE_STORE_PATH = 1u<<13,
+	a_PG_F_TEST_ERRORS = 1u<<11,
+	a_PG_F_NOFREE_MSG_ALLOW = 1u<<12,
+	a_PG_F_NOFREE_MSG_BLOCK = 1u<<13,
+	a_PG_F_NOFREE_MSG_DEFER = 1u<<14,
+	a_PG_F_NOFREE_STORE_PATH = 1u<<15,
 
 	/* Client */
 	a_PG_F_CLIENT_NONE,
 
 	/* Master (server-only control block) */
 	a_PG_F_MASTER_NONE = 0,
-	a_PG_F_MASTER_IN_SETUP = 1u<<15, /* First time config evaluation from within server */
-	a_PG_F_MASTER_ACCEPT_SUSPENDED = 1u<<16,
-	a_PG_F_MASTER_LIMIT_EXCESS_LOGGED = 1u<<17,
-	a_PG_F_MASTER_NOMEM_LOGGED = 1u<<18
+	a_PG_F_MASTER_IN_SETUP = 1u<<16, /* First time config evaluation from within server */
+	a_PG_F_MASTER_ACCEPT_SUSPENDED = 1u<<17,
+	a_PG_F_MASTER_LIMIT_EXCESS_LOGGED = 1u<<18,
+	a_PG_F_MASTER_NOMEM_LOGGED = 1u<<19
 };
 
 enum a_pg_avo_flags{
@@ -306,7 +307,7 @@ struct a_pg{
 	char pg_buf[ALIGN_Z(a_BUF_SIZE)];
 };
 
-static char const a_sopts[] = "4:6:" "A:a:B:b:" "c:D:d:pfG:g:L:l:" "m:~:!:" "o" "R:" "q:t:" "s:" "u" "v" ".@" "#" "Hh";
+static char const a_sopts[] = "4:6:" "A:a:B:b:" "c:D:d:pfG:g:L:l:" "m:~:!:" "o" "R:" "q:t:" "s:" "u" "v" ".@%#" "Hh";
 static char const * const a_lopts[] = {
 	"4-mask:;4;" N_("IPv4 mask to strip off addresses before match"),
 	"6-mask:;6;" N_("IPv6 mask to strip off addresses before match"),
@@ -346,8 +347,8 @@ static char const * const a_lopts[] = {
 	/**/
 	"shutdown;.;" N_("force a running server to exit, synchronize on that, then exit"),
 	"startup;@;" N_("only startup the server"),
-
-	"test-mode;#;" N_("check and list configuration, then exit status"),
+	"status;%;" N_("exit status 0 when server is running, 1 otherwise"),
+	"test-mode;#;" N_("check and list configuration, exit according status"),
 
 	"long-help;H;" N_("this listing"),
 	"help;h;" N_("short help"),
@@ -443,7 +444,7 @@ static void a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len);
 static void a_misc_usage(FILE *fp);
 static boole a_misc_dump_doc(up cookie, boole has_arg, char const *sopt, char const *lopt, char const *doc);
 
-#if a_DBGIF
+#if a_DBGIF || defined su_HAVE_NYD
 static void a_misc_oncrash(int signo);
 static void a_misc_oncrash__dump(up cookie, char const *buf, uz blen);
 #endif
@@ -468,7 +469,7 @@ a_client(struct a_pg *pgp){
 		goto j_leave;
 	}
 
-	rv = su_EX_OK;
+	rv = su_EX_OK;/* xxx uninit? */
 	if(0){
 jretry_all:
 		close(pgp->pg_clima_fd);
@@ -497,6 +498,10 @@ jretry_all:
 		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
 			continue;
 		if(LIKELY(rv == su_ERR_WOULDBLOCK)){
+			if(pgp->pg_flags & a_PG_F_MODE_STATUS){
+				rv = su_EX_OK;
+				goto jleave;
+			}
 			if(pgp->pg_flags & a_PG_F_MODE_STARTUP){
 				a_DBG(su_log_write(su_LOG_DEBUG, "--startup could not acquire write lock: server running");)
 				rv = su_EX_TEMPFAIL;
@@ -515,11 +520,17 @@ jretry_all:
 		}
 	}
 
-	/* In shutdown mode a taken lock means we are done */
-	if(islock && (pgp->pg_flags & a_PG_F_MODE_SHUTDOWN)){
-		a_DBG(su_log_write(su_LOG_DEBUG, "--shutdown could acquire write lock: no server");)
-		rv = su_EX_TEMPFAIL;
-		goto jleave;
+	/* In status/shutdown mode a taken lock means we are done */
+	if(islock){
+		if(pgp->pg_flags & a_PG_F_MODE_STATUS){
+			rv = su_EX_ERR;
+			goto jleave;
+		}
+		if(pgp->pg_flags & a_PG_F_MODE_SHUTDOWN){
+			a_DBG(su_log_write(su_LOG_DEBUG, "--shutdown could acquire write lock: no server");)
+			rv = su_EX_TEMPFAIL;
+			goto jleave;
+		}
 	}
 
 	STRUCT_ZERO(struct sockaddr_un, &soaun);
@@ -3196,7 +3207,7 @@ a_misc_dump_doc(up cookie, boole has_arg, char const *sopt, char const *lopt, ch
 	return TRU1;
 }
 
-#if a_DBGIF
+#if a_DBGIF || defined su_HAVE_NYD
 static void
 a_misc_oncrash(int signo){
 	char s2ibuf[32], *cp;
@@ -3252,7 +3263,7 @@ static void
 a_misc_oncrash__dump(up cookie, char const *buf, uz blen){
 	write(S(int,cookie), buf, blen);
 }
-#endif /* a_DBGIF */
+#endif /* a_DBGIF || defined su_HAVE_NYD */
 /* }}} */
 
 int
@@ -3269,7 +3280,7 @@ main(int argc, char *argv[]){ /* {{{ */
 				: (su_STATE_LOG_SHOW_PID | su_STATE_REPRODUCIBLE))),
 		su_STATE_ERR_NOPASS);
 
-#if a_DBGIF
+#if a_DBGIF || defined su_HAVE_NYD
 	signal(SIGABRT, &a_misc_oncrash);
 # ifdef SIGBUS
 	signal(SIGBUS, &a_misc_oncrash);
@@ -3296,6 +3307,7 @@ jreavo:
 		switch(mpv){
 		case '.': pg.pg_flags |= a_PG_F_MODE_SHUTDOWN; break;
 		case '@': pg.pg_flags |= a_PG_F_MODE_STARTUP; break;
+		case '%': pg.pg_flags |= a_PG_F_MODE_STATUS; break;
 		case '#': pg.pg_flags |= a_PG_F_MODE_TEST; break;
 
 		a_PG_AVOPT_CASES
@@ -3338,9 +3350,10 @@ jeusage:
 	if(!(f & a_PG_AVO_FULL)){
 		switch(pg.pg_flags & a__PG_F_MODE_MASK){
 		case 0:
-		case a_PG_F_MODE_TEST:
 		case a_PG_F_MODE_SHUTDOWN:
 		case a_PG_F_MODE_STARTUP:
+		case a_PG_F_MODE_STATUS:
+		case a_PG_F_MODE_TEST:
 			break;
 		default:
 			fprintf(stderr, _("Only none or one of --shutdown, --startup, --test-mode\n"));

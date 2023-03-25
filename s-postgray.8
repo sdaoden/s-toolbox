@@ -43,6 +43,9 @@
 .Fl Fl startup
 .Nm \*(xx
 .Op options
+.Fl Fl status
+.Nm \*(xx
+.Op options
 .Fl Fl test-mode
 .Op options
 .
@@ -569,6 +572,10 @@ Care should be taken to use the same user and group as
 .Xr spawn 8
 will use for the client.
 It exits EX_TEMPFAIL (75) when a server is already running.
+.
+.Mx Fl status
+.It Fl Fl status , %
+Test whether server is running, exit according status.
 .
 .Mx Fl store-path
 .It Fl Fl store-path Ar path , Fl s Ar path
