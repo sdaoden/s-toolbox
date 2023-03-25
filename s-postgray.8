@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd March 21, 2023
+.Dd April 1, 2023
 .ds VV \\%v0.8.1
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
@@ -85,6 +85,10 @@ The server may
 directly:
 .Fl Fl server-timeout
 is ignored in this mode.
+The PID of the server will be placed in the locked
+.Ql .pid
+file within
+.Fl Fl store-path .
 A synchronized server
 .Fl Fl shutdown
 can be enforced, or an asynchronous termination by sending a
@@ -569,8 +573,8 @@ It exits EX_TEMPFAIL (75) when a server is already running.
 .It Fl Fl store-path Ar path , Fl s Ar path
 An accessible
 .Pa path
-to which \*(Xx will change, and where the DB and the server/client
-communication socket will be created.
+to which \*(Xx will change, and where the DB, server PID lock file,
+and server/client communication socket will be created.
 The directory should only be accessible by the \*(xx driving user (and
 group), no effort is taken to modify
 .Xr umask 2

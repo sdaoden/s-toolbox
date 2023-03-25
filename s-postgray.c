@@ -149,7 +149,7 @@
  * startup (server did have not chance to perform cleanup), no server would ever have been started, and missing policy
  * server would cause postfix to refuse acting.  A "rm -f PG-SOCKET" in a pre-postfix-startup-script avoids this, but
  * it was never announced to be necessary.  v0.8 added a "reassurance" lock file to automatize this */
-#define a_PG_REA_NAME VAL_NAME ".lck"
+#define a_PG_REA_NAME VAL_NAME ".pid"
 
 /* Dictionary flags.  No need for _CASE since keys are normalized already.  No _AUTO_SHRINK! */
 #define a_PG_WB_CA_FLAGS (su_CS_DICT_HEAD_RESORT)
@@ -471,7 +471,7 @@ jretry_all:
 
 	pgp->pg_clima_fd = reafd = -1;
 
-	while((reafd = open(a_PG_REA_NAME, O_WRONLY | O_CREAT, 0660)) == -1){
+	while((reafd = open(a_PG_REA_NAME, O_WRONLY | O_CREAT, 0644)) == -1){
 		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
 			continue;
 		if(rv == su_ERR_MFILE || rv == su_ERR_NFILE || rv == su_ERR_NOBUFS/*hm*/ || rv == su_ERR_NOMEM){
@@ -562,7 +562,7 @@ jretry_bind:
 			emsg = NIL;
 			if(!su_pathinfo_lstat(&pi, soaun.sun_path)){
 			}else if(!su_pathinfo_is_sock(&pi))
-				emsg = _("refused to act, not a socket");
+				emsg = _("refused removing non-socket");
 			else if(!su_path_rm(soaun.sun_path)){
 			}else
 				goto jretry_bind;
@@ -956,8 +956,32 @@ a_server__setup(struct a_pg *pgp, char const *sockpath, s32 reafd){
 	struct a_pg_master *pgmp;
 	NYD_IN;
 
+	pgp->pg_r = su_ienc_sz(pgp->pg_buf, S(sz,getpid()), 10);
+
 	sigfillset(&ssn);
 	sigprocmask(SIG_BLOCK, &ssn, &sso);
+
+	while(ftruncate(reafd, 0) == -1){
+		if((rv = su_err_no_by_errno()) != su_ERR_INTR)
+			goto jepid;
+	}
+	/* C99 */{
+		uz i;
+
+		i = su_cs_len(pgp->pg_r);
+		pgp->pg_r[i++] = '\n';
+		pgp->pg_r[i] = '\0';
+
+		while(i > 0){
+			ssize_t j;
+
+			j = write(reafd, pgp->pg_r, 1);
+			if(j == -1 && (rv = su_err_no_by_errno()) != su_ERR_INTR)
+				goto jepid;
+			pgp->pg_r += S(uz,j);
+			i -= S(uz,j);
+		}
+	}
 
 	pgmp = pgp->pg_master;
 	STRUCT_ZERO(struct a_pg_master, pgmp);
@@ -970,15 +994,22 @@ a_server__setup(struct a_pg *pgp, char const *sockpath, s32 reafd){
 	su_cs_dict_create(&pgmp->pgm_white.pgwb_cname, a_PG_WB_CNAME_FLAGS, NIL);
 	su_cs_dict_create(&pgmp->pgm_black.pgwb_ca, a_PG_WB_CA_FLAGS, NIL);
 	su_cs_dict_create(&pgmp->pgm_black.pgwb_cname, a_PG_WB_CNAME_FLAGS, NIL);
-	rv = a_server__wb_setup(pgp, FAL0);
+	if((rv = a_server__wb_setup(pgp, FAL0)) != su_EX_OK)
+		goto jleave;
 
-	if(rv == su_EX_OK)
-		a_server__gray_create(pgp);
+	a_server__gray_create(pgp);
 
+jleave:
 	sigprocmask(SIG_SETMASK, &sso, NIL);
 
 	NYD_OU;
 	return rv;
+
+jepid:
+	su_log_write(su_LOG_CRIT, _("cannot update server PID to reassurance lock %s/%s: %s"),
+		pgp->pg_store_path, a_PG_REA_NAME, V_(su_err_doc(rv)));
+	rv = su_EX_IOERR;
+	goto jleave;
 }
 
 static s32
