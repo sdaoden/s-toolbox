@@ -907,7 +907,7 @@ else
 		i=$((j + 1))
 		j=$((i + 1))
 
-		eval $PG -R ./x.rc --server-timeout=1 --startup > ./8.$j $REDIR
+		eval $PG -R ./x.rc --server-timeout=1 -@ > ./8.$j $REDIR
 		[ $? -eq 75 ] || exit 101
 		[ -n "$REDIR" ] || echo ok 8.$i
 		[ -s ./8.$j ] && exit 101
@@ -917,7 +917,7 @@ else
 		j=$((i + 1))
 		sleep 2
 
-		eval $PG -R ./x.rc --shutdown > ./8.$j $REDIR
+		eval $PG -R ./x.rc -. > ./8.$j $REDIR
 		[ $? -eq 0 ] || exit 101
 		[ -n "$REDIR" ] || echo ok 8.$i
 		[ -s ./8.$j ] && exit 101

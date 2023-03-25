@@ -305,7 +305,7 @@ struct a_pg{
 	char pg_buf[ALIGN_Z(a_BUF_SIZE)];
 };
 
-static char const a_sopts[] = "4:6:" "A:a:B:b:" "c:D:d:fpG:g:L:l:" "q:t:" "R:" "s:" "m:~:!:"  "o" "." "#" "vHh";
+static char const a_sopts[] = "4:6:" "A:a:B:b:" "c:D:d:fpG:g:L:l:" "q:t:" "R:" "s:" "m:~:!:"  "o" "@." "#@" "vHh";
 static char const * const a_lopts[] = {
 	"4-mask:;4;" N_("IPv4 mask to strip off addresses before match"),
 	"6-mask:;6;" N_("IPv6 mask to strip off addresses before match"),
