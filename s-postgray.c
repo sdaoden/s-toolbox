@@ -108,13 +108,15 @@
 #include <netinet/in.h>
 
 /* Sandbox */
-#if su_OS_LINUX
-# include <linux/filter.h>
-# include <linux/seccomp.h>
+#if VAL_OS_SANDBOX > 0
+# if su_OS_LINUX
+#  include <linux/filter.h>
+#  include <linux/seccomp.h>
 
-# include <sys/prctl.h>
-# include <sys/syscall.h>
-#elif su_OS_OPENBSD
+#  include <sys/prctl.h>
+#  include <sys/syscall.h>
+# elif su_OS_OPENBSD
+# endif
 #endif
 
 #include <fcntl.h>
@@ -134,7 +136,7 @@
 #include <su/path.h>
 #include <su/time.h>
 
-#if a_DBGIF
+#if a_DBGIF || defined su_HAVE_NYD
 /*# define NYDPROF_ENABLE*/
 # define NYD_ENABLE
 # define NYD2_ENABLE
@@ -366,6 +368,8 @@ static s32 ATOMIC a_server_usr1;
 static s32 ATOMIC a_server_usr2;
 /* }}} */
 
+/* protos {{{ */
+
 /* client */
 static s32 a_client(struct a_pg *pgp);
 
@@ -411,6 +415,17 @@ static boole a_norm_triple_s(struct a_pg *pgp);
 static boole a_norm_triple_ca(struct a_pg *pgp);
 static boole a_norm_triple_cname(struct a_pg *pgp);
 
+/* sandbox: setrlimit plus optionally OS-specific, at EOF, after main() */
+static void a_sandbox_client(struct a_pg *pgp);
+static void a_sandbox_server(struct a_pg *pgp);
+#if VAL_OS_SANDBOX > 0 && (su_OS_OPENBSD)
+# define a_HAVE_ADD_PATH_ACCESS
+static void a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path);
+#else
+# undef a_HAVE_ADD_PATH_ACCESS
+# define a_sandbox_server_add_path_access(PGP,PATH) do{}while(0)
+#endif
+
 /* misc */
 
 /* getline(3) replacement (EOF, or size of space-normalized and trimmed line in .pg_rl_buf */
@@ -426,18 +441,7 @@ static boole a_misc_dump_doc(up cookie, boole has_arg, char const *sopt, char co
 static void a_misc_oncrash(int signo);
 static void a_misc_oncrash__dump(up cookie, char const *buf, uz blen);
 #endif
-
-/* sandbox: OS-specific, at EOF, after main() */
-
-static void a_sandbox_client(struct a_pg *pgp);
-static void a_sandbox_server(struct a_pg *pgp);
-#if su_OS_OPENBSD
-# define a_HAVE_ADD_PATH_ACCESS
-static void a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path);
-#else
-# undef a_HAVE_ADD_PATH_ACCESS
-# define a_sandbox_server_add_path_access(PGP,PATH) do{}while(0)
-#endif
+/* }}} */
 
 /* client {{{ */
 static s32
@@ -920,9 +924,10 @@ jserver:
 		su_program = VAL_NAME "/server";
 	else{
 		closelog();
-		openlog(VAL_NAME "/server", a_OPENLOG_FLAGS, LOG_MAIL);
-
+#if VAL_OS_SANDBOX < 2
 		close(STDERR_FILENO);
+#endif
+		openlog(VAL_NAME "/server", a_OPENLOG_FLAGS, LOG_MAIL);
 
 		setsid();
 	}
@@ -984,6 +989,9 @@ a_server__reset(struct a_pg *pgp){
 	NYD_IN;
 
 	sigfillset(&ssn);
+#if VAL_OS_SANDBOX > 1
+	sigdelset(&ssn, SIGSYS);
+#endif
 	sigprocmask(SIG_BLOCK, &ssn, &sso);
 
 	close(pgp->pg_clima_fd);
@@ -3354,7 +3362,7 @@ static uz a_sandbox__paths_size;
 /* 0:err_no_by_errno, -1.. */
 static void a_sandbox__err(char const *emsg, char const *arg, s32 err);
 static void a_sandbox__rlimit(struct a_pg *pgp, boole server);
-#if su_OS_LINUX || su_OS_OPENBSD
+#if VAL_OS_SANDBOX > 0 && (su_OS_LINUX || su_OS_OPENBSD)
 static void a_sandbox__os(struct a_pg *pgp, boole server);
 #endif
 
@@ -3409,11 +3417,15 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 	NYD_OU;
 }
 
-#if su_OS_LINUX /* {{{ */
-# ifdef SECCOMP_RET_KILL_PROCESS
-#  define a_FAIL SECCOMP_RET_KILL_PROCESS
+#if VAL_OS_SANDBOX > 0 && su_OS_LINUX /* {{{ */
+# if VAL_OS_SANDBOX > 1
+#  define a_FAIL SECCOMP_RET_TRAP
 # else
-#  define a_FAIL SECCOMP_RET_KILL
+#  ifdef SECCOMP_RET_KILL_PROCESS
+#   define a_FAIL SECCOMP_RET_KILL_PROCESS
+#  else
+#   define a_FAIL SECCOMP_RET_KILL
+#  endif
 # endif
 
 # define a_ALLOW(SCNO) BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SCNO, 0, 1), BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ALLOW)
@@ -3437,7 +3449,7 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 # endif
 
 /* SYS_futex? */
-#  define a_SHARED \
+# define a_SHARED \
 	/* futex C lib? */\
 	\
 	a_ALLOW(SYS_close),\
@@ -3451,20 +3463,22 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 	\
 	/* syslog (plus reopen) */\
 	a_SEND,\
-	a_ALLOW(SYS_socket),\
 	a_ALLOW(SYS_connect),\
 	a_ALLOW(SYS_getpid),\
+	a_ALLOW(SYS_lseek),\
+	a_ALLOW(SYS_openat),\
+	a_ALLOW(SYS_socket),\
 	\
         BPF_STMT(BPF_RET | BPF_K, a_FAIL),
 
-static struct sock_filter const a_sandbox__client_filt[] = {
+static struct sock_filter const a_sandbox__client_flt[] = {
 	/* See seccomp(2).  Load syscall number into accu */
 	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,nr)),
 	a_ALLOW(SYS_writev),
 	a_SHARED
 };
 
-static struct sock_filter const a_sandbox__server_filt[] = {
+static struct sock_filter const a_sandbox__server_flt[] = {
 	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,nr)),
 	a_ALLOW(SYS_accept),
 	a_ALLOW(SYS_clock_gettime),
@@ -3472,7 +3486,7 @@ static struct sock_filter const a_sandbox__server_filt[] = {
 	a_ALLOW(SYS_mmap),
 	a_ALLOW(SYS_munmap),
 	a_ALLOW(SYS_open),
-	a_ALLOW(SYS_openat), /* xxx C lib */
+	/*a_ALLOW(SYS_openat), in a_SHARED:syslog */
 	a_ALLOW(SYS_pselect6),
 # ifdef SYS_rt_sigaction
 	a_ALLOW(SYS_rt_sigaction),
@@ -3483,6 +3497,11 @@ static struct sock_filter const a_sandbox__server_filt[] = {
 	a_ALLOW(SYS_rt_sigprocmask),
 # else
 	a_ALLOW(SYS_sigprocmask),
+# endif
+# ifdef SYS_rt_sigreturn
+	a_ALLOW(SYS_rt_sigreturn),
+# else
+	a_ALLOW(SYS_sigreturn),
 # endif
 	a_ALLOW(SYS_unlink),
 	a_SHARED
@@ -3495,21 +3514,43 @@ static struct sock_filter const a_sandbox__server_filt[] = {
 # undef a_FSTAT
 # undef a_SHARED
 
-static struct sock_fprog const a_sandbox__client_prog = {
-        FIELD_INITN(len) S(us,NELEM(a_sandbox__client_filt)),
-        FIELD_INITN(filter) C(struct sock_filter*,a_sandbox__client_filt)
+static struct sock_fprog const a_sandbox__client_prg = {
+        FIELD_INITN(len) S(us,NELEM(a_sandbox__client_flt)),
+        FIELD_INITN(filter) C(struct sock_filter*,a_sandbox__client_flt)
 };
 
-static struct sock_fprog const a_sandbox__server_prog = {
-        FIELD_INITN(len) S(us,NELEM(a_sandbox__server_filt)),
-        FIELD_INITN(filter) C(struct sock_filter*,a_sandbox__server_filt)
+static struct sock_fprog const a_sandbox__server_prg = {
+        FIELD_INITN(len) S(us,NELEM(a_sandbox__server_flt)),
+        FIELD_INITN(filter) C(struct sock_filter*,a_sandbox__server_flt)
 };
+
+# if VAL_OS_SANDBOX > 1
+static void a_sandbox__osdeath(int no, siginfo_t *sip, void *vp);
+# endif
+
+# if VAL_OS_SANDBOX > 1
+static void
+a_sandbox__osdeath(int no, siginfo_t *sip, void *vp){
+	char msg[80];
+	int i;
+	UNUSED(no);
+	UNUSED(vp);
+
+	i = snprintf(msg, sizeof(msg),
+			VAL_NAME ": seccomp(2) violation (syscall %d); please report this bug\n",
+			sip->si_syscall);
+	write(STDERR_FILENO, msg, i);
+        _exit(1);
+}
+# endif /* VAL_OS_SANDBOX>1 */
 
 static void
 a_sandbox__os(struct a_pg *pgp, boole server){
+# if VAL_OS_SANDBOX > 1
+	struct sigaction sa;
+# endif
 	NYD_IN;
 	UNUSED(pgp);
-	UNUSED(server);
 
 	/* (Avoid ptrace) */
 # if defined PR_SET_DUMPABLE && !defined HAVE_SANITIZER
@@ -3523,14 +3564,22 @@ a_sandbox__os(struct a_pg *pgp, boole server){
 		a_sandbox__err("prctl", "SET_NO_NEW_PRIVS", 0);
 # endif
 
-	if(prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (server ? &a_sandbox__server_prog : &a_sandbox__client_prog)) == -1)
+	/**/
+# if VAL_OS_SANDBOX > 1
+	STRUCT_ZERO(struct sigaction,&sa);
+	sa.sa_sigaction = &a_sandbox__osdeath;
+	sa.sa_flags = SA_SIGINFO;
+	sigaction(SIGSYS, &sa, NIL);
+# endif
+
+	if(prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (server ? &a_sandbox__server_prg : &a_sandbox__client_prg)) == -1)
 		a_sandbox__err("prctl", "SET_SECCOMP", 0);
 
 	NYD_OU;
 }
-#endif /* }}} su_OS_LINUX */
+#endif /* }}} VAL_OS_SANDBOX>0 && su_OS_LINUX */
 
-#if su_OS_OPENBSD /* {{{ */
+#if VAL_OS_SANDBOX > 0 && su_OS_OPENBSD /* {{{ */
 static void
 a_sandbox__os(struct a_pg *pgp, boole server){
 	NYD_IN;
@@ -3564,14 +3613,14 @@ a_sandbox__os(struct a_pg *pgp, boole server){
 
 	NYD_OU;
 }
-#endif /* }}} su_OS_OPENBSD */
+#endif /* }}} VAL_OS_SANDBOX>0 && su_OS_OPENBSD */
 
 static void
 a_sandbox_client(struct a_pg *pgp){
 	NYD_IN;
 
 	a_sandbox__rlimit(pgp, FAL0);
-#if su_OS_LINUX || su_OS_OPENBSD
+#if VAL_OS_SANDBOX > 0 && (su_OS_LINUX || su_OS_OPENBSD)
 	a_sandbox__os(pgp, FAL0);
 #endif
 
@@ -3583,7 +3632,7 @@ a_sandbox_server(struct a_pg *pgp){
 	NYD_IN;
 
 	a_sandbox__rlimit(pgp, TRU1);
-#if su_OS_LINUX || su_OS_OPENBSD
+#if VAL_OS_SANDBOX > 0 && (su_OS_LINUX || su_OS_OPENBSD)
 	a_sandbox__os(pgp, TRU1);
 #endif
 

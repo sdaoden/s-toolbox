@@ -4,7 +4,7 @@
 : ${KEEP_TESTS:=}
 REDIR= #'2>/dev/null'
 
-PG=../s-postgray
+: ${PG:=../s-postgray}
 
 MSG_ALLOW=xDUNNO
 MSG_BLOCK=xREJECT

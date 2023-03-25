@@ -1,6 +1,5 @@
 #@ Makefile for s-postgray(8).
-#@ Pass outer CFLAGS/LDFLAGS via EXTRA_CFLAGS/EXTRA_LDFLAGS.
-#@ For example "$ make -f s-postgray.makefile DESTDIR=.x CC=clang".
+#@	$ make -f s-postgray.makefile DESTDIR=.x CC=clang VAL_OS_SANDBOX=0
 #@ NOTE: for now requires bundled SU tools that are part of S-nail!!
 
 DESTDIR =
@@ -13,6 +12,18 @@ LIBEXEC = libexec
 # Must exist and be writable by the spawn(8) defined user/group.
 # Should not be accessible by anyone else.
 VAL_STORE_PATH = /var/lib/postgray
+
+# 0=disable, 1=enable, 2=enable+debug (DO NOT USE REGULARY; May log to STDERR!)
+# A setrlimit(2) sandbox is _always_ used, this uses in addition on
+# - OpenBSD
+#   pledge(2)/unveil(2) -- just works
+# - Linux
+#   prctl(2)/seccomp(2) -- _may_ fail with violations if the C library
+#   requires uncovered system calls; please report such.
+#   To have a glue on all system calls, you need strace(1) (https://strace.io),
+#   then compile with VAL_OS_SANDBOX=2 and use the test-strace make(1) target.
+#   (One then adds a_ALLOW() statements for all system calls that are needed.)
+VAL_OS_SANDBOX = 1
 
 # Our name (test script and manual do not adapt!)
 VAL_NAME = s-postgray
@@ -99,6 +110,7 @@ $(VAL_NAME): $(SULIB_BLD) s-postgray.c
 		-DVAL_NAME="\"$(VAL_NAME)\"" \
 		\
 		-DVAL_STORE_PATH="\"$(VAL_STORE_PATH)\"" \
+		-DVAL_OS_SANDBOX=$(VAL_OS_SANDBOX) \
 		\
 		\
 		-DVAL_4_MASK=$(VAL_4_MASK) \
@@ -122,7 +134,7 @@ $(VAL_NAME): $(SULIB_BLD) s-postgray.c
 		-o $(@) s-postgray.c $(SULIB)
 
 test: all
-	./s-postgray-test.sh
+	PG="../$(VAL_NAME)" exec ./s-postgray-test.sh
 
 clean:
 	if [ -n "$(SULIB_BLD)" ]; then \
