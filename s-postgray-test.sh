@@ -895,7 +895,7 @@ if [ -n "$s8" ]; then
 else
 	rm -f *.db
 
-	i=0 j=
+	i=0 j= dokill=
 	doit() {
 		j=$((i + 1))
 		eval $PG -R ./x.rc --server-timeout=1 --startup > ./8.$j $REDIR
@@ -917,8 +917,16 @@ else
 		j=$((i + 1))
 		sleep 2
 
-		eval $PG -R ./x.rc -. > ./8.$j $REDIR
-		[ $? -eq 0 ] || exit 101
+		if [ -z "$dokill" ]; then
+			eval $PG -R ./x.rc --shutdown > ./8.$j $REDIR
+			[ $? -eq 0 ] || exit 101
+		else
+			dokill=$(cat $(basename $PG).pid)
+			kill -TERM $dokill
+			delay
+			eval $PG -R ./x.rc -. > ./8.$j $REDIR
+			[ $? -eq 75 ] || exit 101
+		fi
 		[ -n "$REDIR" ] || echo ok 8.$i
 		[ -s ./8.$j ] && exit 101
 		[ -n "$REDIR" ] || echo ok 8.$j
@@ -929,11 +937,10 @@ else
 		eval $PG -R ./x.rc --shutdown > ./8.$j $REDIR
 		[ $? -eq 75 ] || exit 101
 		[ -n "$REDIR" ] || echo ok 8.$i
-		[ -s ./8.$j ] && exit 101
-		[ -n "$REDIR" ] || echo ok 8.$j
 	}
 	doit
 	doit
+	dokill=y
 	doit
 fi
 # }}}
