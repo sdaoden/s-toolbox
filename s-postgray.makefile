@@ -136,6 +136,28 @@ $(VAL_NAME): $(SULIB_BLD) s-postgray.c
 test: all
 	PG="../$(VAL_NAME)" exec ./s-postgray-test.sh
 
+test-strace: all
+	if [ "$(VAL_OS_SANDBOX)" -lt 2 ]; then echo >&2 this will not do; exit 1; fi;\
+	trap "rm -rf z b.rc" EXIT; trap "exit 1" INT HUP QUIT TERM;\
+	mkdir z || exit 2;\
+	echo test.localdomain > b.rc || exit 3;\
+	echo test2.localdomain > z/a.rc || exit 4;\
+	pwd=$$(pwd);\
+	{ echo store-path $$pwd/z; echo block-file $$pwd/b.rc; echo allow-file $$pwd/z/a.rc; \
+		echo verbose; echo verbose; echo count 1; echo delay-min 0; } > r.rc || exit 5;\
+	strace -o "$(VAL_NAME)"-server.strace -fc ./"$(VAL_NAME)" -R $$pwd/r.rc --startup & [ $$? -eq 0 ] || exit 6;\
+	sleep 3;\
+	{ \
+	echo recipient=x1@y; echo sender=y@z; echo client_address=127.1.2.2; echo client_name=xy; echo;\
+	echo recipient=x1@y; echo sender=y@z; echo client_address=127.1.2.2; echo client_name=test2.localdomain; echo;\
+	echo recipient=x1@y; echo sender=y@z; echo client_address=127.1.2.2; echo client_name=test.localdomain; echo;\
+	echo recipient=x1@y; echo sender=y@z; echo client_address=127.1.2.2; echo client_name=xy; echo;\
+	} |\
+		strace -o "$(VAL_NAME)"-client.strace -c ./"$(VAL_NAME)" -R $$pwd/r.rc || exit 7;\
+	sleep 3;\
+	kill -HUP $$(cat $$pwd/z/"$(VAL_NAME)".pid) || exit 8;\
+	./"$(VAL_NAME)" -R $$pwd/r.rc --shutdown || exit 9
+	
 clean:
 	if [ -n "$(SULIB_BLD)" ]; then \
 		cd src/su && $(MAKE) -f .makefile clean rm="$(RM)" CC="$(CC)";\
