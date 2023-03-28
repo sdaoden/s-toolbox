@@ -3409,6 +3409,14 @@ jleave:
  * On a best effort base: we do not face the world directly
  */
 
+#if VAL_OS_SANDBOX > 0 && su_OS_LINUX
+# ifdef __UCLIBC__
+#  warning uclibc never tried, turning off OS sandbox
+#  undef VAL_OS_SANDBOX
+#  define VAL_OS_SANDBOX 0
+# endif
+#endif
+
 #ifdef a_HAVE_ADD_PATH_ACCESS
 static char **a_sandbox__paths; /* TODO su_vector */
 static uz a_sandbox__paths_cnt;
@@ -3485,6 +3493,7 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 # endif
 
 # define a_ALLOW(SCNO) BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SCNO, 0, 1), BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ALLOW)
+# define a_A a_ALLOW /* ..for the makefile-provided _RULES.. */
 
 # ifdef SYS_send
 #  define a_SEND a_ALLOW(SYS_send)
@@ -3504,6 +3513,14 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 #  define a_FSTAT a_ALLOW(SYS_fstat)
 # endif
 
+# ifdef __GLIBC__
+#  define a_G(X) X
+#  define a_M(X)
+# else
+#  define a_G(X)
+#  define a_M(X) X
+# endif
+
 /* SYS_futex? */
 # define a_SHARED \
 	/* futex C lib? */\
@@ -3515,60 +3532,73 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 	\
 	/* STDIO (GNU LibC) */\
 	a_FSTAT,\
-	a_ALLOW(SYS_fsync),\
+	a_ALLOW(SYS_fsync), /* xxx not client musl */\
 	\
 	/* syslog (plus reopen) */\
 	a_SEND,\
 	a_ALLOW(SYS_connect),\
 	a_ALLOW(SYS_getpid),\
-	a_ALLOW(SYS_lseek),\
-	a_ALLOW(SYS_openat),\
-	a_ALLOW(SYS_socket),\
+	a_G(a_ALLOW(SYS_lseek) su_COMMA)\
+	a_G(a_ALLOW(SYS_openat) su_COMMA)\
+	a_G(a_ALLOW(SYS_socket) su_COMMA)\
 	\
         BPF_STMT(BPF_RET | BPF_K, a_FAIL),
 
 static struct sock_filter const a_sandbox__client_flt[] = {
 	/* See seccomp(2).  Load syscall number into accu */
 	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,nr)),
+# ifdef VAL_OS_SANDBOX_CLIENT_RULES
+	VAL_OS_SANDBOX_CLIENT_RULES
+# else
+	a_M(a_ALLOW(SYS_ioctl) su_COMMA)
 	a_ALLOW(SYS_writev),
+# endif
 	a_SHARED
 };
 
 static struct sock_filter const a_sandbox__server_flt[] = {
 	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,nr)),
+# ifdef VAL_OS_SANDBOX_SERVER_RULES
+	VAL_OS_SANDBOX_SERVER_RULES
+# else
 	a_ALLOW(SYS_accept),
 	a_ALLOW(SYS_clock_gettime),
-	a_ALLOW(SYS_clock_nanosleep),
+	a_G(a_ALLOW(SYS_clock_nanosleep) su_COMMA)
+	a_M(a_ALLOW(SYS_nanosleep) su_COMMA)
 	a_ALLOW(SYS_mmap),
 	a_ALLOW(SYS_munmap),
-	a_ALLOW(SYS_open),
+	a_M(a_ALLOW(SYS_open) su_COMMA)
 	/*a_ALLOW(SYS_openat), in a_SHARED:syslog */
 	a_ALLOW(SYS_pselect6),
-# ifdef SYS_rt_sigaction
+#  ifdef SYS_rt_sigaction
 	a_ALLOW(SYS_rt_sigaction),
-# else
+#  else
 	a_ALLOW(SYS_sigaction),
-# endif
-# ifdef SYS_rt_sigprocmask
+#  endif
+#  ifdef SYS_rt_sigprocmask
 	a_ALLOW(SYS_rt_sigprocmask),
-# else
+#  else
 	a_ALLOW(SYS_sigprocmask),
-# endif
-# ifdef SYS_rt_sigreturn
+#  endif
+#  ifdef SYS_rt_sigreturn
 	a_ALLOW(SYS_rt_sigreturn),
-# else
+#  else
 	a_ALLOW(SYS_sigreturn),
-# endif
+#  endif
 	a_ALLOW(SYS_unlink),
+# endif /* !def VAL_OS_SERVER_RULES */
 	a_SHARED
 };
 
 # undef a_FAIL
 # undef a_ALLOW
+# undef a_A
 # undef a_SEND
 # undef a_EXIT
 # undef a_FSTAT
 # undef a_SHARED
+# undef a_G
+# undef a_M
 
 static struct sock_fprog const a_sandbox__client_prg = {
         FIELD_INITN(len) S(us,NELEM(a_sandbox__client_flt)),
