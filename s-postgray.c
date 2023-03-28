@@ -2323,15 +2323,18 @@ a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_pg_avo_flags) f){
 			pgp->pg_server_queue = VAL_SERVER_QUEUE;
 
 		if(pgp->pg_msg_allow == NIL){
-			pgp->pg_msg_allow = (VAL_MSG_ALLOW != NIL) ? VAL_MSG_ALLOW : a_MSG_ALLOW;
+			char const * const ccp = VAL_MSG_ALLOW;
+			pgp->pg_msg_allow = (ccp != NIL) ? VAL_MSG_ALLOW : a_MSG_ALLOW;
 			pgp->pg_flags |= a_PG_F_NOFREE_MSG_ALLOW;
 		}
 		if(pgp->pg_msg_block == NIL){
-			pgp->pg_msg_block = (VAL_MSG_BLOCK != NIL) ? VAL_MSG_BLOCK : a_MSG_BLOCK;
+			char const * const ccp = VAL_MSG_BLOCK;
+			pgp->pg_msg_block = (ccp != NIL) ? VAL_MSG_BLOCK : a_MSG_BLOCK;
 			pgp->pg_flags |= a_PG_F_NOFREE_MSG_BLOCK;
 		}
 		if(pgp->pg_msg_defer == NIL){
-			pgp->pg_msg_defer = (VAL_MSG_DEFER != NIL) ? VAL_MSG_DEFER : a_MSG_DEFER;
+			char const * const ccp = VAL_MSG_DEFER;
+			pgp->pg_msg_defer = (ccp != NIL) ? VAL_MSG_DEFER : a_MSG_DEFER;
 			pgp->pg_flags |= a_PG_F_NOFREE_MSG_DEFER;
 		}
 
