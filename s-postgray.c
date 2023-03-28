@@ -3229,7 +3229,7 @@ a_misc_oncrash(int signo){
 
 	cp = &s2ibuf[sizeof(s2ibuf) -1];
 	*cp = '\0';
-	i = signo;
+	i = S(uz,signo);
 	do{
 		*--cp = "0123456789"[i % 10];
 		i /= 10;
@@ -3409,6 +3409,14 @@ jleave:
  * On a best effort base: we do not face the world directly
  */
 
+#ifdef HAVE_SANITIZER
+# if VAL_OS_SANDBOX > 0
+#  warning HAVE_SANITIZER, turning off OS sandbox
+#  undef VAL_OS_SANDBOX
+#  define VAL_OS_SANDBOX 0
+# endif
+#endif
+
 #if VAL_OS_SANDBOX > 0 && su_OS_LINUX
 # ifdef __UCLIBC__
 #  warning uclibc never tried, turning off OS sandbox
@@ -3423,24 +3431,27 @@ static uz a_sandbox__paths_cnt;
 static uz a_sandbox__paths_size;
 #endif
 
+#ifndef HAVE_SANITIZER
 /* 0:err_no_by_errno, -1.. */
 static void a_sandbox__err(char const *emsg, char const *arg, s32 err);
 static void a_sandbox__rlimit(struct a_pg *pgp, boole server);
+#endif
 #if VAL_OS_SANDBOX > 0 && (su_OS_LINUX || su_OS_OPENBSD)
 static void a_sandbox__os(struct a_pg *pgp, boole server);
 #endif
 
+#ifndef HAVE_SANITIZER
 static void
 a_sandbox__err(char const *emsg, char const *arg, s32 err){
 	if(err == 0)
 		err = su_err_no_by_errno();
 
 	su_log_write(
-#if su_OS_OPENBSD
+# if su_OS_OPENBSD
 		su_LOG_EMERG
-#else
+# else
 		su_LOG_CRIT
-#endif
+# endif
 		, "%s failed: %s: %s", V_(emsg), arg, V_(su_err_doc(err)));
 }
 
@@ -3449,10 +3460,6 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 	struct rlimit rl;
 	NYD_IN;
 	UNUSED(pgp);
-
-#ifdef HAVE_SANITIZER
-	goto su_NYD_OU_LABEL;
-#endif
 
 	rl.rlim_cur = rl.rlim_max = 0;
 
@@ -3480,6 +3487,7 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 
 	NYD_OU;
 }
+#endif /* !HAVE_SANITIZER */
 
 #if VAL_OS_SANDBOX > 0 && su_OS_LINUX /* {{{ */
 # if VAL_OS_SANDBOX > 1
@@ -3705,7 +3713,9 @@ static void
 a_sandbox_client(struct a_pg *pgp){
 	NYD_IN;
 
+#ifndef HAVE_SANITIZER
 	a_sandbox__rlimit(pgp, FAL0);
+#endif
 #if VAL_OS_SANDBOX > 0 && (su_OS_LINUX || su_OS_OPENBSD)
 	if(!(pgp->pg_flags & a_PG_F_SANDBOX_UNTAMED))
 		a_sandbox__os(pgp, FAL0);
@@ -3718,7 +3728,9 @@ static void
 a_sandbox_server(struct a_pg *pgp){
 	NYD_IN;
 
+#ifndef HAVE_SANITIZER
 	a_sandbox__rlimit(pgp, TRU1);
+#endif
 #if VAL_OS_SANDBOX > 0 && (su_OS_LINUX || su_OS_OPENBSD)
 	if(!(pgp->pg_flags & a_PG_F_SANDBOX_UNTAMED))
 		a_sandbox__os(pgp, TRU1);

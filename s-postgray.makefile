@@ -248,9 +248,10 @@ uninstall:
 	$(RM) -f "$(LIBEXECDIR)/$(VAL_NAME)" "$(MANDIR)/$(VAL_NAME).8"
 
 d-release:
-	mkdir .rel &&\
-	cp s-postgray* .rel/ &&\
-	cd .rel &&\
+	VER=.s-postgray-$$(sed -Ee '/a_VERSION/b V;d;:V; s/^.+"([^"]+)"/\1/;q' < s-postgray.c) &&\
+	mkdir $$VER &&\
+	cp s-postgray* $$VER/ &&\
+	cd $$VER &&\
 	mv s-postgray.makefile makefile &&\
 	mv s-postgray.README README &&\
 	mkdir include src mk &&\
