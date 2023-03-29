@@ -897,7 +897,8 @@ else
 
 	i=0 j= k= dokill=
 	doit() {
-		j=$((i + 1)) k=$((j + 1))
+		j=$((i + 1))
+		k=$((j + 1))
 		eval $PG -R ./x.rc --server-timeout=1 --startup > ./8.$j $REDIR
 		[ $? -eq 0 ] || exit 101
 		[ -n "$REDIR" ] || echo ok 8.$i
@@ -907,7 +908,9 @@ else
 		[ $? -eq 0 ] || exit 101
 		[ -n "$REDIR" ] || echo ok 8.$k
 
-		i=$((k + 1)) j=$((i + 1)) k=$((j + 1))
+		i=$((k + 1))
+		j=$((i + 1))
+		k=$((j + 1))
 
 		eval $PG -R ./x.rc --server-timeout=1 -@ > ./8.$j $REDIR
 		[ $? -eq 75 ] || exit 101
@@ -918,7 +921,9 @@ else
 		[ $? -eq 0 ] || exit 101
 		[ -n "$REDIR" ] || echo ok 8.$k
 
-		i=$((k + 1)) j=$((i + 1)) k=$((j + 1))
+		i=$((k + 1))
+		j=$((i + 1))
+		k=$((j + 1))
 		sleep 2
 
 		if [ -z "$dokill" ]; then
@@ -938,7 +943,9 @@ else
 		[ $? -ne 0 ] || exit 101
 		[ -n "$REDIR" ] || echo ok 8.$k
 
-		i=$((k + 1)) j=$((i + 1)) k=$((j + 1))
+		i=$((k + 1))
+		j=$((i + 1))
+		k=$((j + 1))
 
 		eval $PG -R ./x.rc --shutdown > ./8.$j $REDIR
 		[ $? -eq 75 ] || exit 101
