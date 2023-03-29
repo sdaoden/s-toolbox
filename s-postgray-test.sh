@@ -413,7 +413,7 @@ eval $PG -R ./x.rc --shutdown $REDIR
 [ $? -ne 75 ] || exit 102
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=200.200.200.200\n'\
+'recipient=x@y\nsender=y@z\nclient_address=200.200.200.200\n'\
 'client_name=and.subdomain\n\n'\
 	| eval $PG -R ./x.rc > ./4.2 $REDIR
 printf 'action='"$MSG_DEFER"'\n\n' > ./4.2x
@@ -421,7 +421,7 @@ cmp -s ./4.2 ./4.2x || exit 101
 [ -n "$REDIR" ] || echo ok 4.2
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=200.200.201.200\n'\
+'recipient=x@y\nsender=y@z\nclient_address=200.200.201.200\n'\
 'client_name=subdomain.\n\n'\
 	| eval $PG -R ./x.rc > ./4.3 $REDIR
 printf 'action='"$MSG_DEFER"'\n\n' > ./4.3x
@@ -430,7 +430,7 @@ cmp -s ./4.3 ./4.3x || exit 101
 
 # root label -> error (aka unhandled aka DUNNO)
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=200.200.202.200\n'\
+'recipient=x@y\nsender=y@z\nclient_address=200.200.202.200\n'\
 'client_name=.\n\n'\
 	| eval $PG -R ./x.rc > ./4.4 $REDIR
 printf 'action=DUNNO\n\n' > ./4.4x
@@ -442,9 +442,9 @@ eval $PG -R ./x.rc --shutdown $REDIR
 
 # Let's just test --once mode here and now
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=200.200.202.200\n'\
+'recipient=x@y\nsender=y@z\nclient_address=200.200.202.200\n'\
 'client_name=.\n\n'\
-	'recipient=x@y\nsender=y@z\nclient_address=200.200.203.200\n'\
+'recipient=x@y\nsender=y@z\nclient_address=200.200.203.200\n'\
 'client_name=.\n\n'\
 	| eval $PG -R ./x.rc --once > ./4.5 $REDIR
 printf 'action=DUNNO\n\n' > ./4.5x
@@ -534,7 +534,7 @@ sed -i'' -e '3,$d' ./5.xx
 
 #
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.3 $REDIR
 cmp -s ./5.3 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.3
@@ -542,7 +542,7 @@ cmp -s ./5.3 ./5.xx || exit 101
 xsleep 1
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.4 $REDIR
 cmp -s ./5.4 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.4
@@ -557,7 +557,7 @@ xsleep 7
 # out one of them
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.5 $REDIR
 cmp -s ./5.5 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.5
@@ -565,13 +565,13 @@ cmp -s ./5.5 ./5.x || exit 101
 xsleep 1
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.6 $REDIR
 cmp -s ./5.6 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.6
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.7 $REDIR
 cmp -s ./5.7 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.7
@@ -579,19 +579,19 @@ cmp -s ./5.7 ./5.x || exit 101
 xsleep 1
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.8 $REDIR
 cmp -s ./5.8 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.8
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.9 $REDIR
 cmp -s ./5.9 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.9
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.10 $REDIR
 cmp -s ./5.10 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.10
@@ -599,7 +599,7 @@ cmp -s ./5.10 ./5.x || exit 101
 xsleep 1
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.11 $REDIR
 cmp -s ./5.11 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.11
@@ -607,7 +607,7 @@ cmp -s ./5.11 ./5.xx || exit 101
 xsleep 3
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.12 $REDIR
 cmp -s ./5.12 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.12
@@ -615,13 +615,13 @@ cmp -s ./5.12 ./5.xx || exit 101
 xsleep 3
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.13 $REDIR
 cmp -s ./5.13 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.13
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.14 $REDIR
 cmp -s ./5.14 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.14
@@ -629,7 +629,7 @@ cmp -s ./5.14 ./5.x || exit 101
 xsleep 1
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.15 $REDIR
 cmp -s ./5.15 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.15
@@ -637,14 +637,14 @@ cmp -s ./5.15 ./5.x || exit 101
 xsleep 1
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.16 $REDIR
 cmp -s ./5.16 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.16
 
 # this will be delay-max at time
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=130.0.0.0\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=130.0.0.0\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.17 $REDIR
 cmp -s ./5.17 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.17
@@ -656,13 +656,13 @@ eval $PG -R ./x.rc --shutdown $REDIR
 xsleep 1
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=127.1.2.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.18 $REDIR
 cmp -s ./5.18 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.18
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=128.1.1.1\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.19 $REDIR
 cmp -s ./5.19 ./5.xx || exit 101
 [ -n "$REDIR" ] || echo ok 5.19
@@ -710,7 +710,7 @@ cmp -s ./5.20 ./5.20x || exit 101
 xsleep 2
 
 printf \
-	'recipient=x@y\nsender=y@z\nclient_address=130.0.0.0\nclient_name=xy\n\n'\
+'recipient=x@y\nsender=y@z\nclient_address=130.0.0.0\nclient_name=xy\n\n'\
 	| eval $PG -R ./x.rc > ./5.21 $REDIR
 cmp -s ./5.21 ./5.x || exit 101
 [ -n "$REDIR" ] || echo ok 5.21
@@ -869,7 +869,7 @@ xsleep 1
 printf 'action=%s\n\n' "$MSG_DEFER" > 7.xx
 
 printf \
-	'recipient=x3@y\nsender=y@z\nclient_address=127.1.2.4\nclient_name=xy\n\n'\
+'recipient=x3@y\nsender=y@z\nclient_address=127.1.2.4\nclient_name=xy\n\n'\
 	| eval $PG -f -R ./x.rc > ./7.1 $REDIR
 cmp -s ./7.1 ./7.xx || exit 101
 [ -n "$REDIR" ] || echo ok 7.1
@@ -878,7 +878,7 @@ xsleep 1
 printf 'action=%s\n\n' "DUNNO" > 7.xx
 
 printf \
-	'recipient=x4@y\nsender=y@z\nclient_address=127.1.2.5\nclient_name=xy\n\n'\
+'recipient=x4@y\nsender=y@z\nclient_address=127.1.2.5\nclient_name=xy\n\n'\
 	| eval $PG -f -R ./x.rc > ./7.2 $REDIR
 cmp -s ./7.2 ./7.xx || exit 101
 [ -n "$REDIR" ] || echo ok 7.2
