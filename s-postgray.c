@@ -59,7 +59,8 @@
  *   4.5.3.1.2.   Domain
  * The maximum total length of a domain name or number is 255 octets.
  * We also store client_name for configurable domain whitelisting, but be easy and treat that as local+domain, too.
- * And finally we also use the buffer for gray savings and stdio getline(3) replacement (for ditto): add plenty */
+ * And finally we also use the buffer for gray savings and stdio getline(3) replacement (for ditto): add plenty
+ * (a_misc_getline() complains and skips lines longer than that; note: stack buffers!) */
 #define a_BUF_SIZE (ALIGN_Z(INET6_ADDRSTRLEN +1) + ((64 + 256 +1) * 3) + 1 + su_IENC_BUFFER_SIZE + 1)
 
 /* Minimum number of minutes in between DB cleanup runs.
@@ -1692,11 +1693,11 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 	char *base;
 	s16 min;
 	s32 i;
-	union {void *v; char *c;} p;
+	union {sz l; void *v; char *c;} p;
 	void *mbase;
 	NYD_IN;
 
-	/* Obtain a memory map on the DB storage */
+	/* Obtain a memory map on the DB storage (only called once on server startup) */
 	mbase = NIL;
 
 	while((i = open(a_PG_GRAY_DB_NAME, (O_RDONLY
@@ -1719,18 +1720,21 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 		goto jleave;
 	}
 
-	p.c = NIL;
-
-	if(!su_pathinfo_fstat(&pi, i))
+	if(!su_pathinfo_fstat(&pi, i)){
 		su_log_write(su_LOG_ERR, _("cannot fstat(2) gray DB in %s: %s"), pgp->pg_store_path, V_(su_err_doc(-1)));
-	else if((p.v = mmap(NIL, S(uz,pi.pi_size)/* (max 2GB) */, PROT_READ, MAP_SHARED, i, 0)) == NIL)
-		su_log_write(su_LOG_ERR, _("cannot mmap(2) gray DB in %s: %s"),
-			pgp->pg_store_path, V_(su_err_doc(su_err_no_by_errno())));
+		p.l = -1;
+	}else{
+		p.v = mmap(NIL, S(uz,pi.pi_size)/* (max 2GB) */, PROT_READ, MAP_SHARED, i, 0);
+		if(p.l == -1)
+			su_log_write(su_LOG_ERR, _("cannot mmap(2) gray DB in %s: %s"),
+				pgp->pg_store_path, V_(su_err_doc(su_err_no_by_errno())));
+	}
 
 	close(i);
 
-	if((mbase = p.v) == NIL)
+	if(p.l == -1)
 		goto jleave;
+	mbase = p.v;
 
 	pgp->pg_master->pgm_base_epoch = su_timespec_current(&ts)->ts_sec;
 
