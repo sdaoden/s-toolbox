@@ -1457,7 +1457,15 @@ jcli_del:
 			(--pgmp->pgm_cli_no - client) * sizeof(pgmp->pgm_cli_fds[0]));
 	}else{
 		all += osx;
-		rem -= S(uz,osx); /* (always sufficiently spaced) */
+		rem -= S(uz,osx);
+
+		/* Buffer is always sufficiently spaced, unless bogus */
+		if(rem == 0){
+			su_err_set_no(su_ERR_MSGSIZE);
+			goto jcli_err;
+		}
+
+		/* Terminated by \0\0, without data: shutdown */
 		if(all < 2 || pgp->pg_buf[all - 1] != '\0' || pgp->pg_buf[all - 2] != '\0')
 			goto jredo;
 
