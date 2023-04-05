@@ -105,7 +105,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
-/* Sandbox */
+/* Sandbox might impose the necessity to use a dedicated logger process */
 #undef a_HAVE_LOG_FIFO
 #if VAL_OS_SANDBOX > 0
 # if su_OS_LINUX
@@ -418,7 +418,10 @@ static s32 a_client__req(struct a_pg *pgp);
 /* server */
 static s32 a_server(struct a_pg *pgp, char const *sockpath, s32 reafd);
 
-/* (signals blocked in __setup() path (for __wb_setup() not with reset)) */
+/* (signals blocked in (__logger() and) __setup() path (for __wb_setup() not with reset)) */
+#ifdef a_HAVE_LOG_FIFO
+static void a_server__logger(struct a_pg *pgp, pid_t srvpid);
+#endif
 static s32 a_server__setup(struct a_pg *pgp);
 static s32 a_server__reset(struct a_pg *pgp);
 static s32 a_server__wb_setup(struct a_pg *pgp, boole reset);
@@ -468,6 +471,9 @@ static boole a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path
 
 /* misc */
 
+/* If err refers to an out of resource error, delay a bit, and return true */
+static boole a_misc_os_resource_delay(s32 err);
+
 /* getline(3) replacement (EOF, or size of space-normalized and trimmed line in .pg_rl_buf */
 static sz a_misc_getline(struct a_pg *pgp, FILE *fp, char iobuf[a_BUF_SIZE]);
 
@@ -513,11 +519,8 @@ jretry_all:
 	while((reafd = open(a_PG_REA_NAME, O_WRONLY | O_CREAT, 0644)) == -1){
 		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
 			continue;
-		if(rv == su_ERR_MFILE || rv == su_ERR_NFILE || rv == su_ERR_NOBUFS/*hm*/ || rv == su_ERR_NOMEM){
-			a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, cannot open lock, waiting a bit");)
-			su_time_msleep(250, TRU1);
+		if(a_misc_os_resource_delay(rv))
 			continue;
-		}
 		su_log_write(su_LOG_CRIT, _("cannot create/open client/server reassurance lock %s/%s: %s"),
 			pgp->pg_store_path, a_PG_REA_NAME, V_(su_err_doc(rv)));
 		rv = su_EX_CANTCREAT;
@@ -573,11 +576,8 @@ jretry_all:
 	while((pgp->pg_clima_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1){
 		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
 			continue;
-		if(rv == su_ERR_MFILE || rv == su_ERR_NFILE || rv == su_ERR_NOBUFS/*hm*/ || rv == su_ERR_NOMEM){
-			a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, socket(2) failed, waiting a bit");)
-			su_time_msleep(250, TRU1);
+		if(a_misc_os_resource_delay(rv))
 			continue;
-		}
 		su_log_write(su_LOG_CRIT, _("cannot open client/server socket %s/%s: %s"),
 			pgp->pg_store_path, soaun.sun_path, V_(su_err_doc(su_err_no_by_errno())));
 		rv = su_EX_NOINPUT;
@@ -1056,9 +1056,13 @@ jserver:
 	 * Like this the log process can gracefully synchronize on the SIGCHLD of the "real server" */
 #ifdef a_HAVE_LOG_FIFO
 	if(!(pgp->pg_flags & a_PG_F_UNTAMED)){
+		pid_t srvpid;
+
 		/* So to avoid fork if log process will not work out */
 		while((pgp->pg_logfd = open(a_PG_FIFO_NAME, O_RDONLY)) == -1){
 			if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+				continue;
+			if(a_misc_os_resource_delay(rv))
 				continue;
 			su_log_write(su_LOG_CRIT, _("cannot open privsep log fifo for reading %s/%s: %s"),
 				pgp->pg_store_path, a_PG_FIFO_NAME, V_(su_err_doc(rv)));
@@ -1067,9 +1071,9 @@ jserver:
 		}
 		f |= a_FIFO_FD;
 
-		switch(fork()){
+		switch((srvpid = fork())){
 		case -1: goto jefork;
-		default: /* Parent (logger) */ goto jlogger;
+		default: /* Parent (logger); does not return */ a_server__logger(pgp, srvpid);
 		case 0: /* Child (server) */ break;
 		}
 
@@ -1100,67 +1104,124 @@ jserver:
 
 	su_state_gut(rv == su_EX_OK ? su_STATE_GUT_ACT_NORM /*DVL(| su_STATE_GUT_MEM_TRACE)*/ : su_STATE_GUT_ACT_QUICK);
 	exit(rv);
+}
 
 #ifdef a_HAVE_LOG_FIFO
-jlogger:
-	ASSERT(f & a_FIFO_FD);
-	su_program = VAL_NAME "/log";
+static void
+a_server__logger(struct a_pg *pgp, pid_t srvpid){
+	/* Cannot use ASSERT or any other thing that could log */
+	sigset_t ssn;
+	uz i;
+	s32 rv;
+	NYD_IN;
+
+	su_program = VAL_NAME;
+	su_state_clear(su_STATE_LOG_SHOW_PID);
 	rv = su_EX_OK;
 
 	/* The logger shall die only when the "real server" terminates.  Note it keeps reafd open! */
 	signal(SIGCHLD, &a_server__on_sig);
-	sigdelset(&ssn, SIGCHLD);
-#if VAL_OS_SANDBOX > 1
-	sigdelset(&ssn, SIGSYS);
-#endif
-	sigprocmask(SIG_SETMASK, &ssn, NIL);
+	sigemptyset(&ssn);
+	sigaddset(&ssn, SIGCHLD);
+# if VAL_OS_SANDBOX > 1
+	sigaddset(&ssn, SIGSYS);
+# endif
+	sigprocmask(SIG_UNBLOCK, &ssn, NIL);
 
 	if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE))){
 		closelog();
-		openlog(su_program, a_OPENLOG_FLAGS, LOG_MAIL);
+		openlog(su_program, a_OPENLOG_FLAGS_LOGGER, LOG_MAIL);
 	}
 
 	while(!a_server_chld){
-		ssize_t r;
-		char *cp;
+		boole sync;
+		char c;
+		ssize_t ra, r;
 
-		r = read(pgp->pg_logfd, cp = pgp->pg_buf, MIN(sizeof(pgp->pg_buf) - 1, a_FIFO_IO_MAX));
+		/* The message is [0]=1(server)|2(client), [1]=log prio, [3,4]=length (11 bit).
+		 * If that is not what there is, read bytewise until we synchronized.
+		 * The length is always smaller than what a pipe can serve atomically */
+		ra = 0;
+jsynced:
+		do if((r = read(pgp->pg_logfd, &pgp->pg_buf[S(uz,ra)], 4 - ra)) <= 0){
+			if(r == 0 || a_server_chld)
+				goto jeio;
+			if(su_err_no_by_errno() != su_ERR_INTR)
+				goto jeio;
+			goto jsynced;
+		}while((ra += r) != 4);
 
-		while(r > 2){
-			char c;
-			uz i;
-
-			for(i = 2; i < r; ++i){
-				c = cp[i];
-				if(c == '\0'){
-					r = 0;
-					break;
-				}else if(c == '\01' || c == '\02')
-					break;
-			}
-
-			r -= i;
-			cp[i] = '\0';
-			if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE)))
-				syslog(S(int,cp[1]), &cp[2]);
-			else
-				write(STDERR_FILENO, &cp[2], i - 2);
-			cp[i] = c;
-			cp += i;
+		if((c = pgp->pg_buf[0]) == '\01' || c == '\02'){
+			sync = TRU1;
+			i = S(sz,pgp->pg_buf[2]) | (S(sz,pgp->pg_buf[3]) << 8);
+			i -= 4;
+		}else{
+			for(ra = 1; ra < 4; ++i)
+				if((c = pgp->pg_buf[S(uz,ra)]) == '\01' || c == '\02'){
+					su_mem_move(pgp->pg_buf, &pgp->pg_buf[ra], 4 - ra);
+					goto jsynced;
+				}
+jneedsync:
+			sync = FAL0;
+			ra = 0;
+			i = 1;
 		}
+
+		do{
+			r = read(pgp->pg_logfd, &pgp->pg_buf[S(uz,ra)], i);
+			if(r <= 0){
+				if(r == 0 || a_server_chld)
+					goto jeio;
+				if(su_err_no_by_errno() != su_ERR_INTR)
+					goto jeio;
+				continue;
+			}
+			ra += r;
+			i -= r;
+		}while(i != 0);
+
+		if(!sync){
+			if((c = pgp->pg_buf[0]) == '\01' || c == '\02'){
+				ra = 1;
+				goto jsynced;
+			}
+			goto jneedsync;
+		}
+
+		/* No matter what, this is a single message for us now. */
+		if(ra < 5)
+			continue;
+		pgp->pg_buf[S(uz,ra) - 1] = '\0'; /* should be yet */
+
+		if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE)))
+			syslog(S(int,pgp->pg_buf[1]), "%s", &pgp->pg_buf[4]);
+		else
+			write(STDERR_FILENO, &pgp->pg_buf[4], S(uz,ra) - 4);
+	}
+
+	/* If we have some real I/O error (what could that be?) we have to terminate the real server */
+jeio:
+	for(i = 0; !a_server_chld; ++i){
+write(STDERR_FILENO,
+"AFTER I/O ERROR KILL\n",
+sizeof( "AFTER I/O ERROR KILL\n") -1);
+		kill((i == 10 ? SIGKILL : SIGTERM), srvpid);
+		su_time_msleep(100u * i, TRU1);
 	}
 
 	close(pgp->pg_logfd);
 	if(!su_path_rm(a_PG_FIFO_NAME)){
-		su_log_write(su_LOG_CRIT, _("cannot remove privsep log fifo: %s"), V_(su_err_doc(-1)));
+write(2, "RMFIFO\n",7);
+		/*su_log_write(su_LOG_CRIT, _("cannot remove privsep log fifo: %s"), V_(su_err_doc(-1)));*/
 		rv = su_EX_SOFTWARE;
 	}
 	/*close(pgmp->pgm_reafd);*/
 
 	su_state_gut(rv == su_EX_OK ? su_STATE_GUT_ACT_NORM /*DVL(| su_STATE_GUT_MEM_TRACE)*/ : su_STATE_GUT_ACT_QUICK);
+	NYD_OU;
 	exit(rv);
-#endif /* a_HAVE_LOG_FIFO */
 }
+#endif /* a_HAVE_LOG_FIFO */
 
 /* __(wb_)?(setup|reset)?() {{{ */
 static s32
@@ -1911,11 +1972,8 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 	while((i = open(a_PG_GRAY_DB_NAME, (O_RDONLY | a_O_NOFOLLOW | a_O_NOCTTY))) == -1){
 		if((i = su_err_no_by_errno()) == su_ERR_INTR)
 			continue;
-		if(i == su_ERR_MFILE || i == su_ERR_NFILE || i == su_ERR_NOBUFS/*hm*/ || i == su_ERR_NOMEM){
-			a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, cannot read open gray DB, waiting a bit");)
-			su_time_msleep(250, TRU1);
+		if(a_misc_os_resource_delay(i))
 			continue;
-		}
 		if(i != su_ERR_NOENT)
 			su_log_write(su_LOG_ERR, _("cannot load gray DB in %s: %s"), pgp->pg_store_path, V_(su_err_doc(-1)));
 		goto jleave;
@@ -2057,11 +2115,8 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
 			S_IRUSR | S_IWUSR)) == -1){
 		if((fd = su_err_no_by_errno()) == su_ERR_INTR)
 			continue;
-		if(fd == su_ERR_MFILE || fd == su_ERR_NFILE || fd == su_ERR_NOBUFS/*hm*/ || fd == su_ERR_NOMEM){
-			a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, cannot write open gray DB, waiting a bit");)
-			su_time_msleep(250, TRU1);
+		if(a_misc_os_resource_delay(fd))
 			continue;
-		}
 		su_log_write(su_LOG_CRIT, _("cannot create gray DB in %s: %s"),
 			pgp->pg_store_path, V_(su_err_doc(su_err_no_by_errno())));
 		rv = FAL0;
@@ -3277,6 +3332,22 @@ a_norm_triple_cname(struct a_pg *pgp){
 /* }}} */
 
 /* misc {{{ */
+static boole
+a_misc_os_resource_delay(s32 err){
+	boole rv;
+	NYD_IN;
+
+	rv = (err == su_ERR_MFILE || err == su_ERR_NFILE || err == su_ERR_NOBUFS/*hm*/ || err == su_ERR_NOMEM);
+
+	if(rv){
+		a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources while creating file descriptor, waiting a bit");)
+		su_time_msleep(250, TRU1);
+	}
+
+	NYD_OU;
+	return rv;
+}
+
 static sz
 a_misc_getline(struct a_pg *pgp, FILE *fp, char iobuf[a_BUF_SIZE]){
 	sz rv;
@@ -3359,6 +3430,10 @@ a_misc_log_open(struct a_pg *pgp, boole client, boole init){
 				rv = su_EX_OK;
 				continue;
 			}
+			if(a_misc_os_resource_delay(rv)){
+				rv = su_EX_OK;
+				continue;
+			}
 			su_log_write(su_LOG_CRIT, _("cannot open privsep log fifo for writing %s/%s: %s"),
 				pgp->pg_store_path, a_PG_FIFO_NAME, V_(su_err_doc(rv)));
 			rv = su_EX_IOERR;
@@ -3367,6 +3442,8 @@ a_misc_log_open(struct a_pg *pgp, boole client, boole init){
 
 		if(LIKELY(!repro) && rv == su_EX_OK)
 			closelog();
+
+		su_program = client ? "client" : "server";
 #endif /* HAVE_LOG_FIFO */
 	}else if(!client && LIKELY(!repro)){
 		closelog();
@@ -3393,38 +3470,34 @@ a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 		su_LOG_INFO == LOG_INFO && su_LOG_DEBUG == LOG_DEBUG);
 	LCTAV(su_LOG_PRIMASK < (1u << 6));
 
-	if(len > 0 && msg[len - 1] != '\n'){
-		if(sizeof(xb) - 3 - xl > len){
 #ifdef a_HAVE_LOG_FIFO
-			if(xl == 0 && a_pg != NIL && C(struct a_pg*,a_pg)->pg_logfd != -1){
-				xb[xl++] = (C(struct a_pg*,a_pg)->pg_flags & a_PG_F_MASTER_FLAG) ? '\01' : '\02';
-				xb[xl++] = S(char,lvl_a_flags & su_LOG_PRIMASK);
-			}
+	if(xl == 0 && a_pg != NIL && C(struct a_pg*,a_pg)->pg_logfd != -1){
+		xb[0] = (C(struct a_pg*,a_pg)->pg_flags & a_PG_F_MASTER_FLAG) ? '\01' : '\02';
+		xb[1] = S(char,lvl_a_flags & su_LOG_PRIMASK);
+		xl = 4;
+	}
 #endif
+
+	if(len > 0 && msg[len - 1] != '\n'){
+		if(sizeof(xb) - (4+1 +1) - xl > len){
 			su_mem_copy(&xb[xl], msg, len);
 			xl += len;
 			goto jleave;
 		}
 	}
 
-#ifdef a_HAVE_LOG_FIFO
-	if(xl == 0 && a_pg != NIL && C(struct a_pg*,a_pg)->pg_logfd != -1){
-		xb[xl++] = (C(struct a_pg*,a_pg)->pg_flags & a_PG_F_MASTER_FLAG) ? '\01' : '\02';
-		xb[xl++] = S(char,lvl_a_flags & su_LOG_PRIMASK);
-	}
-#endif
-
 	if(xl > 0){
 		if(len > 0 && msg[len - 1] == '\n')
 			--len;
-		if(sizeof(xb) - 4 - xl < len)
-			len = sizeof(xb) - 4 - xl;
+		if(sizeof(xb) - (4+1 +1) - xl < len)
+			len = sizeof(xb) - (4+1 +1) - xl;
 		if(len > 0){
 			su_mem_copy(&xb[xl], msg, len);
 			xl += len;
 		}
 		xb[xl++] = '\n';
-		xb[len = xl] = '\0';
+		xb[xl++] = '\0';
+		len = xl;
 		xl = 0;
 		msg = xb;
 	}
@@ -3435,8 +3508,24 @@ a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 		goto jleave;
 
 	if(C(struct a_pg*,a_pg)->pg_logfd != -1){
-		len = MIN(len, S(uz,a_FIFO_IO_MAX));
-		write(C(struct a_pg*,a_pg)->pg_logfd, msg, len);
+		ASSERT(msg == xb);
+		len = MIN(len, MIN(sizeof(a_pg->pg_buf), MIN(1024u, S(uz,a_FIFO_IO_MAX))) - (4+1 +1));
+		xb[2] = (len & 0x00FFu);
+		xb[3] = (len & 0x0700u) >> 8;
+		for(;;){
+			ssize_t w;
+
+			w = write(C(struct a_pg*,a_pg)->pg_logfd, msg, len);
+			if(w == -1){
+				if(su_err_no_by_errno() != su_ERR_INTR)
+					_exit(su_EX_IOERR);
+				continue;
+			}
+			len -= w;
+			if(len == 0)
+				break;
+			msg += w;
+		}
 	}else
 #endif
 	      if(UNLIKELY(su_state_has(su_STATE_REPRODUCIBLE)))
@@ -3558,8 +3647,8 @@ main(int argc, char *argv[]){ /* {{{ */
 	mpv = (getenv("SOURCE_DATE_EPOCH") == NIL); /* xxx su_env_get? */
 	su_state_create(su_STATE_CREATE_RANDOM, (mpv ? NIL : VAL_NAME),
 		(DVLDBGOR(su_LOG_DEBUG, (mpv ? su_LOG_ERR : su_LOG_DEBUG)) | DVL(su_STATE_DEBUG |)
-			(mpv ? (0 /*| su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID*/)
-				: (su_STATE_LOG_SHOW_PID | su_STATE_REPRODUCIBLE))),
+			(mpv ? (0 | su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID)
+				: (su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID | su_STATE_REPRODUCIBLE))),
 		su_STATE_ERR_NOPASS);
 
 #if a_DBGIF || defined su_HAVE_NYD
@@ -3835,6 +3924,7 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 	\
 	/* STDIO (GNU LibC) */\
 	a_Y(SYS_fsync), /* xxx not client musl */\
+	a_G(a_Y(SYS_lseek) su_COMMA) /* xxx not client musl */\
 	\
 	/* syslog (plus reopen) */\
 	a_OPENAT,\
