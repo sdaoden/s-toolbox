@@ -74,7 +74,8 @@
 #define a_LIMIT_DELAY_SECS 1 /* xxx configurable? */
 
 /**/
-#define a_OPENLOG_FLAGS (LOG_NDELAY | LOG_PID)
+#define a_OPENLOG_FLAGS (LOG_NDELAY)
+#define a_OPENLOG_FLAGS_LOGGER (LOG_NDELAY)
 
 /* */
 #define a_DBGIF 0
@@ -1041,7 +1042,7 @@ jerr:
 	return rv;
 
 jserver:
-	su_program = VAL_NAME "/server";
+	su_program = VAL_NAME ": server";
 	f |= a_NEED_EXIT;
 	pgp->pg_flags |= a_PG_F_MASTER_FLAG;
 
@@ -1153,14 +1154,15 @@ jsynced:
 
 		if((c = pgp->pg_buf[0]) == '\01' || c == '\02'){
 			sync = TRU1;
-			i = S(sz,pgp->pg_buf[2]) | (S(sz,pgp->pg_buf[3]) << 8);
+			i = S(u8,pgp->pg_buf[2]) | (S(u8,pgp->pg_buf[3]) << 8u);
 			i -= 4;
 		}else{
-			for(ra = 1; ra < 4; ++i)
+			for(ra = 1; ra < 4; ++i){
 				if((c = pgp->pg_buf[S(uz,ra)]) == '\01' || c == '\02'){
 					su_mem_move(pgp->pg_buf, &pgp->pg_buf[ra], 4 - ra);
 					goto jsynced;
 				}
+			}
 jneedsync:
 			sync = FAL0;
 			ra = 0;
@@ -1189,14 +1191,14 @@ jneedsync:
 		}
 
 		/* No matter what, this is a single message for us now. */
-		if(ra < 5)
+		if(ra <= (4 +1))
 			continue;
 		pgp->pg_buf[S(uz,ra) - 1] = '\0'; /* should be yet */
 
 		if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE)))
 			syslog(S(int,pgp->pg_buf[1]), "%s", &pgp->pg_buf[4]);
 		else
-			write(STDERR_FILENO, &pgp->pg_buf[4], S(uz,ra) - 4);
+			write(STDERR_FILENO, &pgp->pg_buf[4], S(uz,ra) - 4 -1);
 	}
 
 	/* If we have some real I/O error (what could that be?) we have to terminate the real server */
@@ -1962,7 +1964,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 	void *mbase;
 	NYD_IN;
 
-	/* Obtain a memory map on the DB storage (only called once on server startup) */
+	/* Obtain a memory map on the DB storage (only called once on server startup, note: pre-sandbox!) */
 	mbase = NIL;
 
 	while((i = open(a_PG_GRAY_DB_NAME, (O_RDONLY | a_O_NOFOLLOW | a_O_NOCTTY))) == -1){
@@ -2030,6 +2032,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 			goto jerr;
 		else{
 			char key[a_BUF_SIZE];
+			s32 insrv;
 			s16 nmin;
 			up d;
 
@@ -2059,13 +2062,14 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 			}
 
 			d = (d & 0xFFFF0000u) | S(u16,nmin);
-			if(su_cs_dict_insert(&pgp->pg_master->pgm_gray, key, R(void*,d)) > su_ERR_NONE){
+			insrv = su_cs_dict_insert(&pgp->pg_master->pgm_gray, key, R(void*,d));
+			if(insrv > su_ERR_NONE){
 				su_log_write(su_LOG_ERR, _("after out of memory skipping rest of gray DB in %s"),
 					pgp->pg_store_path);
 				goto jleave;
 			}
-
-			a_DBG(su_log_write(su_LOG_DEBUG, "load: acc=%d, count=%d min=%hd: %s",
+			a_DBG(su_log_write(su_LOG_DEBUG, "load%s: acc=%d, count=%d min=%hd: %s",
+				(insrv == -1 ? " -> replace" : su_empty),
 				!!(d & 0x80000000), S(ul,(d & 0x7FFF0000) >> 16), nmin, key);)
 		}
 
@@ -3507,7 +3511,7 @@ a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 		ASSERT(msg == xb);
 		len = MIN(len, MIN(sizeof(a_pg->pg_buf), MIN(1024u, S(uz,a_FIFO_IO_MAX))) - (4+1 +1));
 		xb[2] = (len & 0x00FFu);
-		xb[3] = (len & 0x0700u) >> 8;
+		xb[3] = (len >> 8) & 0x07u;
 		for(;;){
 			ssize_t w;
 
@@ -3840,12 +3844,13 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 		LCTAV(U64_MAX / a_BUF_SIZE > U32_MAX);
 		xl = S(u64,pgp->pg_limit) * ALIGN_Z(a_BUF_SIZE);
 		rl.rlim_cur = rl.rlim_max = (S(u64,xxl) <= xl) ? xxl : S(rlim_t,xl);
-
-		if(pgp->pg_flags & a_PG_F_VV)
-			su_log_write(su_LOG_INFO, "setrlimit(2) RLIMIT_FSIZE %" PRIu64, S(u64,rl.rlim_max));
 	}
-	if(setrlimit(RLIMIT_FSIZE, &rl) == -1)
-		a_sandbox__err("setrlimit", "FSIZE", 0);
+	if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE))){
+		if(!server && (pgp->pg_flags & a_PG_F_VV))
+			su_log_write(su_LOG_INFO, "setrlimit(2) RLIMIT_FSIZE %" PRIu64, S(u64,rl.rlim_max));
+		if(setrlimit(RLIMIT_FSIZE, &rl) == -1)
+			a_sandbox__err("setrlimit", "FSIZE", 0);
+	}
 
 	NYD_OU;
 }
@@ -3976,9 +3981,9 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 	a_Y(SYS_sigreturn),
 #  endif
 	a_Y(SYS_unlink),
-\
+	\
 	a_Y(SYS_munmap),\
-\
+	a_Y(SYS_madvise),\
 	/* mmap: only PROT_READ except memory alloc, so write, too */\
 	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_mmap, 0, 7),\
 	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,args[2]) + a_ARG_LO_OFF),\
@@ -4008,13 +4013,13 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 # undef a_M
 
 static struct sock_fprog const a_sandbox__client_prg = {
-        FIELD_INITN(len) S(us,NELEM(a_sandbox__client_flt)),
-        FIELD_INITN(filter) C(struct sock_filter*,a_sandbox__client_flt)
+	FIELD_INITN(len) S(us,NELEM(a_sandbox__client_flt)),
+	FIELD_INITN(filter) C(struct sock_filter*,a_sandbox__client_flt)
 };
 
 static struct sock_fprog const a_sandbox__server_prg = {
-        FIELD_INITN(len) S(us,NELEM(a_sandbox__server_flt)),
-        FIELD_INITN(filter) C(struct sock_filter*,a_sandbox__server_flt)
+	FIELD_INITN(len) S(us,NELEM(a_sandbox__server_flt)),
+	FIELD_INITN(filter) C(struct sock_filter*,a_sandbox__server_flt)
 };
 
 # if VAL_OS_SANDBOX > 1
@@ -4034,7 +4039,7 @@ a_sandbox__osdeath(int no, siginfo_t *sip, void *vp){
 			sip->si_syscall);
 	write(STDERR_FILENO, msg, i);
 
-        _exit(1);
+	_exit(1);
 }
 # endif /* VAL_OS_SANDBOX>1 */
 
