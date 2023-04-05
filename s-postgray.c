@@ -3962,8 +3962,6 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 	a_Y(SYS_nanosleep),
 #    endif
 #  endif
-	a_M(a_Y(SYS_open) su_COMMA)
-	/*a_Y(SYS_openat), in a_SHARED:syslog */
 	a_Y(SYS_pselect6),
 #  ifdef SYS_rt_sigaction
 	a_Y(SYS_rt_sigaction),
@@ -3981,7 +3979,9 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 	a_Y(SYS_sigreturn),
 #  endif
 	a_Y(SYS_unlink),
+	/*a_Y(SYS_openat), in a_SHARED:syslog */\
 	\
+	a_Y(SYS_brk), \
 	a_Y(SYS_munmap),\
 	a_Y(SYS_madvise),\
 	/* mmap: only PROT_READ except memory alloc, so write, too */\
@@ -3992,7 +3992,9 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,args[2]) + a_ARG_HI_OFF),\
 	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 1),\
 	a_ALLOW,\
-	a_LOAD_SYSNR,
+	a_LOAD_SYSNR,\
+	\
+	a_M(a_Y(SYS_open) su_COMMA)
 
 # endif /* !def VAL_OS_SERVER_RULES */
 	a_SHARED

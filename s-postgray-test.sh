@@ -4,7 +4,8 @@
 : ${KEEP_TESTS:=}
 REDIR= #'2>/dev/null'
 
-: ${PG:=../s-postgray}
+: ${PGARGS:=}
+: ${PG:=../s-postgray $PGARGS}
 
 MSG_ALLOW=xDUNNO
 MSG_BLOCK=xREJECT
@@ -15,7 +16,7 @@ MSG_DEFER='DEFER_IF_PERMIT 4.2.0 Cannot hurry love'
 LC_ALL=C SOURCE_DATE_EPOCH=844221007
 export LC_ALL SOURCE_DATE_EPOCH
 
-s4= s5= s6= s7= s8=
+s4= s5= s6= s7= s8= s9=
 while [ $# -gt 0 ]; do
 	case $1 in
 	4) s4=y;;
@@ -23,6 +24,7 @@ while [ $# -gt 0 ]; do
 	6) s6=y;;
 	7) s7=y;;
 	8) s8=y;;
+	9) s9=y;;
 	*)
 		echo >&2 'No such test to skip: '$1
 		echo >&2 'Synopsis: '$0' [:test major number to skip, eg 5:]'
@@ -965,8 +967,52 @@ else
 	doit
 fi
 # }}}
-)
 
+##
+echo '=9: gray lots of (this takes quite some time)=' # {{{
+if [ -n "$s9" ]; then
+	echo 'skipping 9'
+else
+
+rm -f *.db
+
+max=8421
+
+cat > ./9.rc <<_EOT
+4-mask 24
+count 1
+msg-defer=DeFeR
+delay-min 0
+server-timeout 10
+store-path=$pwd
+limit $((max))
+limit-delay=0
+_EOT
+
+i=0
+while [ $i -le $max ]; do
+	printf 'recipient=x'$i'@y\nsender=y'$i'@z\nclient_name=xy\n'\
+'client_address='$(((i % 253) + 2)).$(((i % 127) * 2))'.1.3\ninstance=hey'$i'\n\n'
+	if [ $i -lt $max ]; then
+		printf "action=DeFeR\n\n" >> ./9.x
+	else
+		printf "action=DUNNO\n\n" >> ./9.x
+	fi
+	i=$((i + 1))
+done | eval $PG -R ./9.rc $REDIR > ./9.0
+
+cmp -s ./9.0 ./9.x || exit 101
+[ -n "$REDIR" ] || echo ok 9.0
+
+eval $PG -R ./9.rc --status $REDIR
+[ $? -eq 0 ] || exit 101
+
+eval $PG -R ./9.rc --shutdown $REDIR
+[ $? -eq 0 ] || exit 101
+fi
+# }}}
+
+)
 exit $?
 
 # s-sht-mode
