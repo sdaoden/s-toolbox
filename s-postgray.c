@@ -1202,16 +1202,12 @@ jneedsync:
 	/* If we have some real I/O error (what could that be?) we have to terminate the real server */
 jeio:
 	for(i = 0; !a_server_chld; ++i){
-write(STDERR_FILENO,
-"AFTER I/O ERROR KILL\n",
-sizeof( "AFTER I/O ERROR KILL\n") -1);
 		kill((i == 10 ? SIGKILL : SIGTERM), srvpid);
 		su_time_msleep(100u * i, TRU1);
 	}
 
 	close(pgp->pg_logfd);
 	if(!su_path_rm(a_PG_FIFO_NAME)){
-write(2, "RMFIFO\n",7);
 		/*su_log_write(su_LOG_CRIT, _("cannot remove privsep log fifo: %s"), V_(su_err_doc(-1)));*/
 		rv = su_EX_SOFTWARE;
 	}
