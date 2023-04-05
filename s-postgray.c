@@ -22,9 +22,6 @@
  *@   come in before the next delay expires, we could auto-blacklist.
  *@   Just extend the DB format to a 64-bit integer, and use bits 32..48.
  *@   (Adding this feature should work with existing DBs.)
- *@ - XXX-ARGS May want to do parsing like in first draft: just parse it :),
- *@   keep [AaBb] in an allocated list, parse that in server or in --test-mode.
- *@   Currently -R is parsed two times.  (I messed it now it is weird.)
  *
  * Copyright (c) 2022 - 2023 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -109,8 +106,11 @@
 #include <netinet/in.h>
 
 /* Sandbox */
+#undef a_HAVE_LOG_FIFO
 #if VAL_OS_SANDBOX > 0
 # if su_OS_LINUX
+#  define a_HAVE_LOG_FIFO
+
 #  include <linux/filter.h>
 #  include <linux/seccomp.h>
 
@@ -164,43 +164,68 @@
 #define a_PG_GRAY_MIN_LIMIT 1000
 #define a_PG_GRAY_DB_NAME VAL_NAME ".db"
 
+/* MIN(sizeof(pg_buf), this) actually used (and never more than 1024-2!) */
+#ifdef a_HAVE_LOG_FIFO
+# define a_PG_FIFO_NAME VAL_NAME ".log"
+# ifdef PIPE_BUF
+#  define a_FIFO_IO_MAX PIPE_BUF
+# elif defined _POSIX_PIPE_BUF
+#  define a_FIFO_IO_MAX _POSIX_PIPE_BUF
+# else
+#  define a_FIFO_IO_MAX 512 /* POSIX Issue 7 TC2 */
+# endif
+#endif
+
+/**/
+#ifdef O_NOFOLLOW
+# define a_O_NOFOLLOW O_NOFOLLOW
+#else
+# define a_O_NOFOLLOW 0
+#endif
+#ifdef O_NOCTTY
+# define a_O_NOCTTY O_NOCTTY
+#else
+# define a_O_NOCTTY 0
+#endif
+
 enum a_pg_flags{
 	a_PG_F_NONE,
 
 	/* Setup: command line option and shared persistent flags */
-	a_PG_F_MODE_SHUTDOWN = 1u<<1, /* -. */
-	a_PG_F_MODE_STARTUP = 1u<<2, /* -@ */
+	a_PG_F_MODE_SHUTDOWN = 1u<<1, /* -. (client asks EOT,\0,\0) */
+	a_PG_F_MODE_STARTUP = 1u<<2, /* -@ (client asks ENQ,\0,\0) */
 	a_PG_F_MODE_STATUS = 1u<<3, /* -% */
 	a_PG_F_MODE_TEST = 1u<<4, /* -# */
 	a__PG_F_MODE_MASK = a_PG_F_MODE_SHUTDOWN | a_PG_F_MODE_STARTUP | a_PG_F_MODE_STATUS | a_PG_F_MODE_TEST,
 
 	a_PG_F_CLIENT_ONCE = 1u<<5, /* -o */
 	a_PG_F_FOCUS_SENDER = 1u<<6, /* -f */
-	a_PG_F_SANDBOX_UNTAMED = 1u<<7, /* -u */
+	a_PG_F_UNTAMED = 1u<<7, /* -u */
 
-	a_PG_F_SETUP_MASK = (1u<<8) - 1,
+	a_PG_F_SETUP_MASK = (1u<<12) - 1,
 
-	a_PG_F_DELAY_PROGRESSIVE = 1u<<8, /* -p */
-	a_PG_F_V = 1u<<9, /* -v */
-	a_PG_F_VV = 1u<<10,
+	a_PG_F_DELAY_PROGRESSIVE = 1u<<13, /* -p */
+	a_PG_F_V = 1u<<14, /* -v */
+	a_PG_F_VV = 1u<<15,
 	a_PG_F_V_MASK = a_PG_F_V | a_PG_F_VV,
 
 	/* */
-	a_PG_F_TEST_ERRORS = 1u<<11,
-	a_PG_F_NOFREE_MSG_ALLOW = 1u<<12,
-	a_PG_F_NOFREE_MSG_BLOCK = 1u<<13,
-	a_PG_F_NOFREE_MSG_DEFER = 1u<<14,
-	a_PG_F_NOFREE_STORE_PATH = 1u<<15,
+	a_PG_F_TEST_ERRORS = 1u<<16,
+	a_PG_F_NOFREE_MSG_ALLOW = 1u<<17,
+	a_PG_F_NOFREE_MSG_BLOCK = 1u<<18,
+	a_PG_F_NOFREE_MSG_DEFER = 1u<<19,
+	a_PG_F_NOFREE_STORE_PATH = 1u<<20,
 
 	/* Client */
 	a_PG_F_CLIENT_NONE,
 
 	/* Master (server-only control block) */
 	a_PG_F_MASTER_NONE = 0,
-	a_PG_F_MASTER_IN_SETUP = 1u<<16, /* First time config evaluation from within server */
-	a_PG_F_MASTER_ACCEPT_SUSPENDED = 1u<<17,
-	a_PG_F_MASTER_LIMIT_EXCESS_LOGGED = 1u<<18,
-	a_PG_F_MASTER_NOMEM_LOGGED = 1u<<19
+	a_PG_F_MASTER_IN_SETUP = 1u<<24, /* First time config evaluation from within server */
+	a_PG_F_MASTER_ACCEPT_SUSPENDED = 1u<<25,
+	a_PG_F_MASTER_LIMIT_EXCESS_LOGGED = 1u<<26,
+	a_PG_F_MASTER_NOMEM_LOGGED = 1u<<27,
+	a_PG_F_MASTER_FLAG = 1u<<30 /* It is the master */
 };
 
 enum a_pg_avo_flags{
@@ -258,7 +283,7 @@ struct a_pg_wb_cnt{
 
 struct a_pg_master{
 	char const *pgm_sockpath;
-	s32 pgm_rea_fd; /* Client/Master reassurance fd */
+	s32 pgm_reafd; /* Client/Master reassurance fd */
 	su_64( u8 pgm__pad[4]; )
 	s32 *pgm_cli_fds;
 	u32 pgm_cli_no;
@@ -300,6 +325,10 @@ struct a_pg{
 	char **pg_argv;
 	u32 pg_argc;
 	s32 pg_clima_fd; /* Client/Master comm fd */
+#ifdef a_HAVE_LOG_FIFO
+	s32 pg_logfd; /* Opened pre-sandbox and kept (:() */
+	su_64( u8 pg__logpad[4]; )
+#endif
 	/* Triple data plus client_name, pointing into .pg_buf */
 	char *pg_r; /* Ignored with _F_FOCUS_SENDER */
 	char *pg_s;
@@ -356,9 +385,8 @@ static char const * const a_lopts[] = {
 	NIL
 };
 
-/* What can reside in resource files (and is parsed twice) */
+/* What can reside in resource files (and is parsed twice), in long-option order */
 #define a_PG_AVOPT_CASES \
-	/* In long-option order */\
 	case '4': case '6':\
 	case 'A': case 'a': case 'B': case 'b':\
 	case 'c': case 'D': case 'd': case 'p': case 'f': case 'G': case 'g': case 'L': case 'l':\
@@ -370,7 +398,10 @@ static char const * const a_lopts[] = {
 	case 'u':\
 	case 'v':
 
-static struct a_pg_master ATOMIC *a_pgm; /* xxx only used as on/off: s32? */
+static struct a_pg ATOMIC *a_pg;
+#ifdef a_HAVE_LOG_FIFO
+static s32 ATOMIC a_server_chld;
+#endif
 static s32 ATOMIC a_server_hup;
 static s32 ATOMIC a_server_usr1;
 static s32 ATOMIC a_server_usr2;
@@ -387,7 +418,8 @@ static s32 a_client__req(struct a_pg *pgp);
 /* server */
 static s32 a_server(struct a_pg *pgp, char const *sockpath, s32 reafd);
 
-static s32 a_server__setup(struct a_pg *pgp, char const *sockpath, s32 reafd);
+/* (signals blocked in __setup() path (for __wb_setup() not with reset)) */
+static s32 a_server__setup(struct a_pg *pgp);
 static s32 a_server__reset(struct a_pg *pgp);
 static s32 a_server__wb_setup(struct a_pg *pgp, boole reset);
 static void a_server__wb_reset(struct a_pg_master *pgmp);
@@ -428,10 +460,10 @@ static void a_sandbox_client(struct a_pg *pgp);
 static void a_sandbox_server(struct a_pg *pgp);
 #if VAL_OS_SANDBOX > 0 && (su_OS_OPENBSD)
 # define a_HAVE_ADD_PATH_ACCESS
-static void a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path);
+static boole a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path);
 #else
 # undef a_HAVE_ADD_PATH_ACCESS
-# define a_sandbox_server_add_path_access(PGP,PATH) do{}while(0)
+# define a_sandbox_server_add_path_access(PGP,PATH) (TRU1)
 #endif
 
 /* misc */
@@ -439,7 +471,8 @@ static void a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path)
 /* getline(3) replacement (EOF, or size of space-normalized and trimmed line in .pg_rl_buf */
 static sz a_misc_getline(struct a_pg *pgp, FILE *fp, char iobuf[a_BUF_SIZE]);
 
-/* Unless when running on a terminal, log via this */
+/* init states whether called (from a_client()) for first init: "this does not fail" */
+static s32 a_misc_log_open(struct a_pg *pgp, boole client, boole init);
 static void a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len);
 
 static void a_misc_usage(FILE *fp);
@@ -455,14 +488,11 @@ static void a_misc_oncrash__dump(up cookie, char const *buf, uz blen);
 static s32
 a_client(struct a_pg *pgp){
 	struct sockaddr_un soaun;
-	boole islock;
+	boole isstartup, islock;
 	s32 reafd, rv;
 	NYD_IN;
 
-	if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE))){
-		openlog(VAL_NAME, a_OPENLOG_FLAGS, LOG_MAIL);
-		su_log_set_write_fun(&a_misc_log_write);
-	}
+	(void)a_misc_log_open(pgp, TRU1, TRU1);
 
 	if(!su_path_chdir(pgp->pg_store_path)){
 		su_log_write(su_LOG_CRIT, _("cannot change directory to %s: %s"), pgp->pg_store_path, V_(su_err_doc(-1)));
@@ -470,6 +500,7 @@ a_client(struct a_pg *pgp){
 		goto j_leave;
 	}
 
+	isstartup = FAL0;
 	rv = su_EX_OK;/* xxx uninit? */
 	if(0){
 jretry_all:
@@ -503,7 +534,7 @@ jretry_all:
 				rv = su_EX_OK;
 				goto jleave;
 			}
-			if(pgp->pg_flags & a_PG_F_MODE_STARTUP){
+			if(!isstartup && (pgp->pg_flags & a_PG_F_MODE_STARTUP)){
 				a_DBG(su_log_write(su_LOG_DEBUG, "--startup could not acquire write lock: server running");)
 				rv = su_EX_TEMPFAIL;
 				goto jleave;
@@ -536,8 +567,8 @@ jretry_all:
 
 	STRUCT_ZERO(struct sockaddr_un, &soaun);
 	soaun.sun_family = AF_UNIX;
-	LCTAV(FIELD_SIZEOF(struct sockaddr_un,sun_path) >= sizeof(VAL_NAME) -1 + sizeof(".socket"));
-	su_cs_pcopy(su_cs_pcopy(soaun.sun_path, VAL_NAME), ".socket");
+	LCTAV(FIELD_SIZEOF(struct sockaddr_un,sun_path) >= sizeof(VAL_NAME ".socket"));
+	su_mem_copy(soaun.sun_path, VAL_NAME ".socket", sizeof(VAL_NAME ".socket"));
 
 	while((pgp->pg_clima_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1){
 		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
@@ -594,10 +625,14 @@ jretry_bind:
 		}
 	}else{
 		ASSERT(!(pgp->pg_flags & a_PG_F_MODE_SHUTDOWN));
+		/* If we were here already something is borked, fail fast, leave even cleanup to next invocation */
+		if(isstartup){
+			rv = su_EX_SOFTWARE;
+			goto jleave;
+		}
 		if((rv = a_server(pgp, soaun.sun_path, reafd)) != su_EX_OK)
 			goto jleave;
-		if(pgp->pg_flags & a_PG_F_MODE_STARTUP)
-			goto j_leave;
+		isstartup = ((pgp->pg_flags & a_PG_F_MODE_STARTUP) != 0);
 		goto jretry_all;
 	}
 
@@ -621,8 +656,8 @@ jretry_bind:
 		goto jleave;
 	}
 
-	if(pgp->pg_flags & a_PG_F_MODE_SHUTDOWN)
-		goto jshutdown;
+	if(pgp->pg_flags & (a_PG_F_MODE_STARTUP | a_PG_F_MODE_SHUTDOWN))
+		goto jstartup_shutdown;
 
 	close(reafd);
 	reafd = -1;
@@ -645,14 +680,32 @@ j_leave:
 	NYD_OU;
 	return rv;
 
-jshutdown:
-	a_sandbox_client(pgp);
+jstartup_shutdown:/* C99 */{
+	char xb[3];
+	ssize_t xl;
 
+	(void)a_misc_log_open(pgp, TRU1, FAL0);
+	a_sandbox_client(pgp); /* (sec overkill) */
+
+	xb[1] = xb[2] = '\0';
+	xb[0] = (pgp->pg_flags & a_PG_F_MODE_STARTUP) ? '\05' : '\04';
+	xl = 0;
+	do{
+		ssize_t y;
+
+		if((y = write(pgp->pg_clima_fd, &xb[xl], 3u - xl)) == -1){
+			if(su_err_no_by_errno() == su_ERR_INTR)
+				continue;
+			rv = su_EX_IOERR;
+			goto jleave;
+		}
+		xl += y;
+	}while(xl != 3);
+
+	/* Blocks until descriptor goes away, or reads ENQ again (xxx check?) */
 	for(;;){
-		static char const nulnul[2] = {'\0','\0'};
-
-		if(write(pgp->pg_clima_fd, nulnul, 2) == -1){
-			if(su_err_no_by_errno() == su_ERR_INTR)/* xxx why? */
+		if(read(pgp->pg_clima_fd, &soaun, 1) == -1){
+			if(su_err_no_by_errno() == su_ERR_INTR)
 				continue;
 			rv = su_EX_IOERR;
 			goto jleave;
@@ -660,17 +713,8 @@ jshutdown:
 		break;
 	}
 
-	/* Blocks until descriptor goes away */
-	for(;;){
-		if(read(pgp->pg_clima_fd, &soaun, 1) == -1){
-			if(su_err_no_by_errno() == su_ERR_INTR)/* xxx why? */
-				continue;
-		}
-		break;
-	}
-
 	rv = su_EX_OK;
-	goto jleave;
+	}goto jleave;
 }
 
 static s32
@@ -681,15 +725,14 @@ a_client__loop(struct a_pg *pgp){
 	s32 rv;
 	NYD_IN;
 
-	/* Ignore signals that may happen */
-	signal(SIGCHLD, SIG_IGN);
+	/* Ignore signals that may happen (beside a possible SIGCHLD that is ignored per se) */
 	signal(SIGHUP, SIG_IGN);
 	signal(SIGUSR1, SIG_IGN);
 	signal(SIGUSR2, SIG_IGN);
 
+	if((rv = a_misc_log_open(pgp, TRU1, FAL0)) != su_EX_OK)
+		goto jleave;
 	a_sandbox_client(pgp);
-
-	rv = su_EX_OK;
 
 	/* Main loop: while we receive policy queries, collect the triple(s) we are looking for, ask our server what he
 	 * thinks about that, act accordingly */
@@ -773,8 +816,7 @@ jblock:
 
 			/* XXX We do have no control over inet_ntop(3) formatting, so in order
 			 * XXX to be able, reserve INET6_A8N bytes! -> SU ip_addr */
-			if(UCMP(z, lnr, >=,
-					P2UZ(&pgp->pg_buf[sizeof(pgp->pg_buf) - ALIGN_Z(INET6_ADDRSTRLEN+1) -1] - bp))){
+			if(UCMP(z, lnr, >=, P2UZ(&pgp->pg_buf[sizeof(pgp->pg_buf) - ALIGN_Z(INET6_ADDRSTRLEN+1) -1] - bp))){
 				a_DBG(su_log_write(su_LOG_DEBUG, "client buffer too small!!!");)
 				use_this = FAL0;
 			}else{
@@ -792,6 +834,7 @@ jblock:
 	if(rv == su_EX_OK && !feof(stdin) && !(pgp->pg_flags & a_PG_F_CLIENT_ONCE))
 		rv = su_EX_IOERR;
 
+jleave:
 	NYD_OU;
 	return rv;
 }
@@ -816,6 +859,7 @@ a_client__req(struct a_pg *pgp){
 	if(!a_norm_triple_cname(pgp))
 		goto jex_nodefer;
 
+	/* Requests are terminated with \0\0 */
 	if(pgp->pg_flags & a_PG_F_FOCUS_SENDER){
 		iov[0].iov_base = UNCONST(char*,su_empty);
 		iov[0].iov_len = sizeof(su_empty[0]);
@@ -871,7 +915,6 @@ jioerr:
 	rv = su_EX_OK;
 
 	switch(resp){
-	default:
 	case a_PG_ANSWER_ALLOW:
 		cp = pgp->pg_msg_allow;
 		break;
@@ -884,6 +927,7 @@ jioerr:
 	case a_PG_ANSWER_DEFER:
 		cp = pgp->pg_msg_defer;
 		break;
+	default:
 	case a_PG_ANSWER_NODEFER:
 jex_nodefer:
 		cp = a_MSG_NODEFER;
@@ -903,9 +947,17 @@ jex_nodefer:
 /* server {{{ */
 static s32
 a_server(struct a_pg *pgp, char const *sockpath, s32 reafd){
+	enum a__f {a_NONE, a_SIGBLOCK = 1u<<0, a_NEED_EXIT = 1u<<1, a_FIFO_PATH = 1u<<2, a_FIFO_FD = 1u<<3};
+
 	struct a_pg_master pgm;
+	sigset_t ssn, sso;
 	s32 rv;
+	BITENUM_IS(u32,a__f) f;
 	NYD_IN;
+
+	STRUCT_ZERO(struct a_pg_master, &pgm);
+
+	f = a_NONE;
 
 	/* We listen(2) before we fork(2) the server so the client can connect(2)
 	 * race-free without getting ECONNREFUSED */
@@ -913,10 +965,66 @@ a_server(struct a_pg *pgp, char const *sockpath, s32 reafd){
 		su_log_write(su_LOG_CRIT, _("cannot listen on server socket %s/%s: %s"),
 			pgp->pg_store_path, sockpath, V_(su_err_doc(su_err_no_by_errno())));
 		rv = su_EX_IOERR;
-	}else switch(fork()){
+		goto jerr;
+	}
+
+	/* Dependent upon sandbox approach we need a log FIFO.  Also prepare this first */
+#ifdef a_HAVE_LOG_FIFO
+	if(!(pgp->pg_flags & a_PG_F_UNTAMED)){
+		while(mkfifo(a_PG_FIFO_NAME, S_IWUSR | S_IRUSR) == -1){
+			if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+				continue;
+			if(rv == su_ERR_EXIST){
+				struct su_pathinfo pi;
+				char const *emsg;
+
+				emsg = NIL;
+				if(!su_pathinfo_lstat(&pi, a_PG_FIFO_NAME)){
+				}else if(!su_pathinfo_is_fifo(&pi))
+					emsg = _("refused removing non-fifo");
+				else if(su_path_rm(a_PG_FIFO_NAME))
+					continue;
+
+				if(emsg == NIL)
+					emsg = V_(su_err_doc(-1));
+				su_log_write(su_LOG_CRIT, _("cannot remove stale privsep log fifo %s/%s: %s"),
+					pgp->pg_store_path, a_PG_FIFO_NAME, emsg);
+			}else
+				su_log_write(su_LOG_CRIT, _("cannot create privsep log fifo %s/%s: %s"),
+					pgp->pg_store_path, a_PG_FIFO_NAME, V_(su_err_doc(rv)));
+			rv = su_EX_SOFTWARE;
+			goto jerr;
+		}
+
+		f |= a_FIFO_PATH;
+	}
+#endif /* a_HAVE_LOG_FIFO */
+
+	sigfillset(&ssn);
+	sigprocmask(SIG_BLOCK, &ssn, &sso);
+	f |= a_SIGBLOCK;
+
+	switch(fork()){
 	case -1: /* Error */
+#ifdef a_HAVE_LOG_FIFO
+jefork:
+#endif
 		su_log_write(su_LOG_CRIT, _("cannot start server process: %s"), V_(su_err_doc(su_err_no_by_errno())));
 		rv = su_EX_OSERR;
+jerr:
+#ifdef a_HAVE_LOG_FIFO
+		if(f & a_FIFO_FD)
+			close(pgp->pg_logfd);
+		if((f & a_FIFO_PATH) && !su_path_rm(a_PG_FIFO_NAME))
+			su_log_write(su_LOG_CRIT, _("cannot remove privsep log fifo: %s"), V_(su_err_doc(-1)));
+#endif
+
+		if(!su_path_rm(sockpath))
+			su_log_write(su_LOG_CRIT, _("cannot remove socket %s/%s: %s"),
+				pgp->pg_store_path, sockpath, V_(su_err_doc(-1)));
+
+		if(f & a_NEED_EXIT)
+			_exit(rv);
 		break;
 	default: /* Parent (client) */
 		rv = su_EX_OK;
@@ -925,34 +1033,62 @@ a_server(struct a_pg *pgp, char const *sockpath, s32 reafd){
 		goto jserver;
 	}
 
-	if(rv != su_EX_OK && !su_path_rm(sockpath))
-		su_log_write(su_LOG_CRIT, _("cannot remove socket %s/%s: %s"),
-			pgp->pg_store_path, sockpath, V_(su_err_doc(-1)));
+	ASSERT(!(f & a_NEED_EXIT));
+	if(f & a_SIGBLOCK)
+		sigprocmask(SIG_SETMASK, &sso, NIL);
 
 	NYD_OU;
 	return rv;
 
 jserver:
+	su_program = VAL_NAME "/server";
+	f |= a_NEED_EXIT;
+	pgp->pg_flags |= a_PG_F_MASTER_FLAG;
+
 	/* Close the channels postfix(8)s spawn(8) opened for us; in test mode we
 	 * need to keep STDERR open, of course */
 	close(STDIN_FILENO);
 	close(STDOUT_FILENO);
 
-	if(UNLIKELY(su_state_has(su_STATE_REPRODUCIBLE)))
-		su_program = VAL_NAME "/server";
-	else{
-		closelog();
-#if VAL_OS_SANDBOX < 2
-		close(STDERR_FILENO);
-#endif
-		openlog(VAL_NAME "/server", a_OPENLOG_FLAGS, LOG_MAIL);
+	setsid();
 
-		setsid();
+	/* In HAVE_LOG_FIFO sandbox mode we fork again, and use the first level for only logging.
+	 * Like this the log process can gracefully synchronize on the SIGCHLD of the "real server" */
+#ifdef a_HAVE_LOG_FIFO
+	if(!(pgp->pg_flags & a_PG_F_UNTAMED)){
+		/* So to avoid fork if log process will not work out */
+		while((pgp->pg_logfd = open(a_PG_FIFO_NAME, O_RDONLY)) == -1){
+			if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+				continue;
+			su_log_write(su_LOG_CRIT, _("cannot open privsep log fifo for reading %s/%s: %s"),
+				pgp->pg_store_path, a_PG_FIFO_NAME, V_(su_err_doc(rv)));
+			rv = su_EX_SOFTWARE;
+			goto jerr;
+		}
+		f |= a_FIFO_FD;
+
+		switch(fork()){
+		case -1: goto jefork;
+		default: /* Parent (logger) */ goto jlogger;
+		case 0: /* Child (server) */ break;
+		}
+
+		close(pgp->pg_logfd);
+		pgp->pg_logfd = -1;
+		f &= ~(a_FIFO_PATH | a_FIFO_FD);
 	}
+#endif /* HAVE_LOG_FIFO */
+
+	if((rv = a_misc_log_open(pgp, TRU1, FAL0)) != su_EX_OK)
+		goto jerr;
 
 	pgp->pg_master = &pgm;
-	if((rv = a_server__setup(pgp, sockpath, reafd)) == su_EX_OK)
+	pgm.pgm_sockpath = sockpath;
+	pgm.pgm_reafd = reafd;
+	if((rv = a_server__setup(pgp)) == su_EX_OK){
+		sigprocmask(SIG_SETMASK, &sso, NIL);
 		rv = a_server__loop(pgp);
+	}
 
 	/* C99 */{
 		s32 xrv;
@@ -964,28 +1100,86 @@ jserver:
 
 	su_state_gut(rv == su_EX_OK ? su_STATE_GUT_ACT_NORM /*DVL(| su_STATE_GUT_MEM_TRACE)*/ : su_STATE_GUT_ACT_QUICK);
 	exit(rv);
+
+#ifdef a_HAVE_LOG_FIFO
+jlogger:
+	ASSERT(f & a_FIFO_FD);
+	su_program = VAL_NAME "/log";
+	rv = su_EX_OK;
+
+	/* The logger shall die only when the "real server" terminates.  Note it keeps reafd open! */
+	signal(SIGCHLD, &a_server__on_sig);
+	sigdelset(&ssn, SIGCHLD);
+#if VAL_OS_SANDBOX > 1
+	sigdelset(&ssn, SIGSYS);
+#endif
+	sigprocmask(SIG_SETMASK, &ssn, NIL);
+
+	if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE))){
+		closelog();
+		openlog(su_program, a_OPENLOG_FLAGS, LOG_MAIL);
+	}
+
+	while(!a_server_chld){
+		ssize_t r;
+		char *cp;
+
+		r = read(pgp->pg_logfd, cp = pgp->pg_buf, MIN(sizeof(pgp->pg_buf) - 1, a_FIFO_IO_MAX));
+
+		while(r > 2){
+			char c;
+			uz i;
+
+			for(i = 2; i < r; ++i){
+				c = cp[i];
+				if(c == '\0'){
+					r = 0;
+					break;
+				}else if(c == '\01' || c == '\02')
+					break;
+			}
+
+			r -= i;
+			cp[i] = '\0';
+			if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE)))
+				syslog(S(int,cp[1]), &cp[2]);
+			else
+				write(STDERR_FILENO, &cp[2], i - 2);
+			cp[i] = c;
+			cp += i;
+		}
+	}
+
+	close(pgp->pg_logfd);
+	if(!su_path_rm(a_PG_FIFO_NAME)){
+		su_log_write(su_LOG_CRIT, _("cannot remove privsep log fifo: %s"), V_(su_err_doc(-1)));
+		rv = su_EX_SOFTWARE;
+	}
+	/*close(pgmp->pgm_reafd);*/
+
+	su_state_gut(rv == su_EX_OK ? su_STATE_GUT_ACT_NORM /*DVL(| su_STATE_GUT_MEM_TRACE)*/ : su_STATE_GUT_ACT_QUICK);
+	exit(rv);
+#endif /* a_HAVE_LOG_FIFO */
 }
 
-/* __(white_)(setup|reset)?() {{{ */
+/* __(wb_)?(setup|reset)?() {{{ */
 static s32
-a_server__setup(struct a_pg *pgp, char const *sockpath, s32 reafd){
-	sigset_t ssn, sso;
+a_server__setup(struct a_pg *pgp){
+	/* Signals blocked xxx _INTR thus no longer happens.. */
 	s32 rv;
 	struct a_pg_master *pgmp;
 	NYD_IN;
 
-	pgp->pg_r = su_ienc_sz(pgp->pg_buf, S(sz,getpid()), 10);
+	pgmp = pgp->pg_master;
 
-	sigfillset(&ssn);
-	sigprocmask(SIG_BLOCK, &ssn, &sso);
-
-	while(ftruncate(reafd, 0) == -1){
+	while(ftruncate(pgmp->pgm_reafd, 0) == -1){
 		if((rv = su_err_no_by_errno()) != su_ERR_INTR)
 			goto jepid;
 	}
 	/* C99 */{
 		uz i;
 
+		pgp->pg_r = su_ienc_sz(pgp->pg_buf, S(sz,getpid()), 10);
 		i = su_cs_len(pgp->pg_r);
 		pgp->pg_r[i++] = '\n';
 		pgp->pg_r[i] = '\0';
@@ -993,7 +1187,7 @@ a_server__setup(struct a_pg *pgp, char const *sockpath, s32 reafd){
 		while(i > 0){
 			ssize_t j;
 
-			j = write(reafd, pgp->pg_r, 1);
+			j = write(pgmp->pgm_reafd, pgp->pg_r, 1);
 			if(j == -1 && (rv = su_err_no_by_errno()) != su_ERR_INTR)
 				goto jepid;
 			pgp->pg_r += S(uz,j);
@@ -1001,11 +1195,6 @@ a_server__setup(struct a_pg *pgp, char const *sockpath, s32 reafd){
 		}
 	}
 
-	pgmp = pgp->pg_master;
-	STRUCT_ZERO(struct a_pg_master, pgmp);
-
-	pgmp->pgm_sockpath = sockpath;
-	pgmp->pgm_rea_fd = reafd;
 	pgmp->pgm_cli_fds = su_TALLOC(s32, pgp->pg_server_queue);
 
 	su_cs_dict_create(&pgmp->pgm_white.pgwb_ca, a_PG_WB_CA_FLAGS, NIL);
@@ -1018,8 +1207,6 @@ a_server__setup(struct a_pg *pgp, char const *sockpath, s32 reafd){
 	a_server__gray_create(pgp);
 
 jleave:
-	sigprocmask(SIG_SETMASK, &sso, NIL);
-
 	NYD_OU;
 	return rv;
 
@@ -1068,9 +1255,7 @@ a_server__reset(struct a_pg *pgp){
 	}
 
 	/* Reassurance lock FD last. */
-	close(pgmp->pgm_rea_fd);
-
-	closelog();
+	close(pgmp->pgm_reafd);
 
 	sigprocmask(SIG_SETMASK, &sso, NIL);
 
@@ -1175,7 +1360,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 	NYD_IN;
 
 	rv = su_EX_OK;
-	a_pgm = S(struct a_pg_master ATOMIC*,pgmp = pgp->pg_master);
+	pgmp = pgp->pg_master;
 	ograycnt = su_cs_dict_count(&pgmp->pgm_gray) + a_PG_GRAY_MIN_LIMIT;
 	ASSERT(su_cs_dict_flags(&pgmp->pgm_gray) & su_CS_DICT_FROZEN);
 
@@ -1191,9 +1376,11 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 	sigaddset(&psigset, SIGUSR2);
 	sigprocmask(SIG_BLOCK, &psigset, &psigseto);
 
+	if((rv = a_misc_log_open(pgp, FAL0, FAL0)) != su_EX_OK)
+		goto j_leave;
 	a_sandbox_server(pgp);
 
-	while(a_pgm != NIL){
+	while(a_pg != NIL){
 		u32 i;
 		s32 maxfd, x, e;
 		struct timespec *tosp;
@@ -1202,7 +1389,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 		/* Recreate w/b lists? */
 		if(UNLIKELY(a_server_hup)){
 			a_server_hup = 0;
-			if((rv = a_server__wb_setup(pgp, TRU1)) != su_EX_OK)
+			if((rv = a_server__wb_setup(pgp, TRU1)) != su_EX_OK) /* xxx block sigs? */
 				goto jleave;
 		}
 
@@ -1233,9 +1420,9 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 			/* Had accept(2) failure, have no clients: only sleep a bit */
 			if(maxfd < 0){
 				rfdsp = NIL;
-				a_DBG2( su_log_write(su_LOG_DEBUG, "select: suspend,sleep"); )
+				a_DBG2(su_log_write(su_LOG_DEBUG, "select: suspend,sleep");)
 			}else{
-				a_DBG2( su_log_write(su_LOG_DEBUG, "select: suspend,maxfd=%d", maxfd); )
+				a_DBG2(su_log_write(su_LOG_DEBUG, "select: suspend,maxfd=%d", maxfd);)
 			}
 		}else if(pgmp->pgm_cli_no < pgp->pg_server_queue){
 			if(maxfd < 0 && pgp->pg_server_timeout != 0){
@@ -1308,11 +1495,11 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 		for(i = 0; i < pgmp->pgm_cli_no; ++i)
 			if(FD_ISSET(pgmp->pgm_cli_fds[i], &rfds)){
 				a_server__cli_ready(pgp, i);
-				if(a_pgm == NIL)
+				if(a_pg == NIL)
 					goto jleave;
 			}
 
-		if(a_pgm == NIL)
+		if(a_pg == NIL)
 			goto jleave;
 
 		/* */
@@ -1349,6 +1536,7 @@ jleave:
 	if(!a_server__gray_save(pgp) && rv == su_EX_OK)
 		rv = su_EX_CANTCREAT;
 
+j_leave:
 	sigprocmask(SIG_SETMASK, &psigseto, NIL);
 
 	/*
@@ -1465,18 +1653,25 @@ jcli_del:
 			goto jcli_err;
 		}
 
-		/* Terminated by \0\0, without data: shutdown */
-		if(all < 2 || pgp->pg_buf[all - 1] != '\0' || pgp->pg_buf[all - 2] != '\0')
+		/* Client requests are terminated with \0\0, at least one byte payload */
+		if(all < 3 || pgp->pg_buf[all - 1] != '\0' || pgp->pg_buf[all - 2] != '\0')
 			goto jredo;
 
-		/* Is it a forced SHUTDOWN request? */
-		if(all == 2){
-			a_DBG2(su_log_write(su_LOG_DEBUG, "client fd=%d shutdown request", pgmp->pgm_cli_fds[client]);)
-			a_pgm = NIL;
-			goto jleave;
-		}
-
-		pgp->pg_buf[0] = a_server__cli_req(pgp, client, S(uz,all));
+		/* Is it a special payload? */
+		if(all == 3){
+			/* ENQ: startup acknowledge, EOT: shutdown request */
+			ASSERT(pgp->pg_buf[0] == '\05' || pgp->pg_buf[0] == '\04');
+			if(pgp->pg_buf[0] == '\05'){
+				a_DBG2(su_log_write(su_LOG_DEBUG, "client fd=%d startup acknowledge request",
+					pgmp->pgm_cli_fds[client]);)
+			}else{
+				a_DBG2(su_log_write(su_LOG_DEBUG, "client fd=%d shutdown request",
+					pgmp->pgm_cli_fds[client]);)
+				a_pg = NIL;
+				goto jleave;
+			}
+		}else
+			pgp->pg_buf[0] = a_server__cli_req(pgp, client, S(uz,all));
 
 		for(;;){
 			if(write(pgmp->pgm_cli_fds[client], pgp->pg_buf, sizeof(pgp->pg_buf[0])) == -1){
@@ -1660,10 +1855,15 @@ jleave:
 
 static void
 a_server__on_sig(int sig){
-	if(sig == SIGHUP)
+#ifdef a_HAVE_LOG_FIFO
+	if(sig == SIGCHLD)
+		a_server_chld = 1;
+	else
+#endif
+	     if(sig == SIGHUP)
 		a_server_hup = 1;
 	else if(sig == SIGTERM)
-		a_pgm = NIL;
+		a_pg = NIL;
 	else if(sig == SIGUSR1)
 		a_server_usr1 = 1;
 	else if(sig == SIGUSR2)
@@ -1708,14 +1908,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 	/* Obtain a memory map on the DB storage (only called once on server startup) */
 	mbase = NIL;
 
-	while((i = open(a_PG_GRAY_DB_NAME, (O_RDONLY
-#ifdef O_NOFOLLOW
-			| O_NOFOLLOW
-#endif
-#ifdef O_NOCTTY
-			| O_NOCTTY /* hmm */
-#endif
-			))) == -1){
+	while((i = open(a_PG_GRAY_DB_NAME, (O_RDONLY | a_O_NOFOLLOW | a_O_NOCTTY))) == -1){
 		if((i = su_err_no_by_errno()) == su_ERR_INTR)
 			continue;
 		if(i == su_ERR_MFILE || i == su_ERR_NFILE || i == su_ERR_NOBUFS/*hm*/ || i == su_ERR_NOMEM){
@@ -1860,14 +2053,8 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
 	NYD_IN;
 
 	rv = TRU1;
-	while((fd = open(a_PG_GRAY_DB_NAME, (O_WRONLY | O_CREAT | O_TRUNC
-#ifdef O_NOFOLLOW
-			| O_NOFOLLOW
-#endif
-#ifdef O_NOCTTY
-			| O_NOCTTY /* hmm, II. */
-#endif
-			), S_IRUSR | S_IWUSR)) == -1){
+	while((fd = open(a_PG_GRAY_DB_NAME, (O_WRONLY | O_CREAT | O_TRUNC | a_O_NOFOLLOW | a_O_NOCTTY),
+			S_IRUSR | S_IWUSR)) == -1){
 		if((fd = su_err_no_by_errno()) == su_ERR_INTR)
 			continue;
 		if(fd == su_ERR_MFILE || fd == su_ERR_NFILE || fd == su_ERR_NOBUFS/*hm*/ || fd == su_ERR_NOMEM){
@@ -2447,13 +2634,13 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fla
 			if((su_idec_u8(p.i8, arg, UZ_MAX, 10, NIL) & (su_IDEC_STATE_EMASK | su_IDEC_STATE_CONSUMED)
 					) != su_IDEC_STATE_CONSUMED || *p.i8 > max){
 				a_conf__err(pgp, _("Invalid IPv%c mask: %s (max: %hhu)\n"), o, arg, max);
-				o = -su_EX_USAGE;
+				o = -su_EX_DATAERR;
 			}
 		}break;
 
 	case 'A':
-		if(pgp->pg_flags & a_PG_F_MASTER_IN_SETUP)
-			a_sandbox_server_add_path_access(pgp, arg);
+		if((pgp->pg_flags & a_PG_F_MASTER_IN_SETUP) && !a_sandbox_server_add_path_access(pgp, arg))
+			goto jepath;
 		if(f & a_PG_AVO_FULL)
 			o = a_conf__AB(pgp, arg, ((pgp->pg_flags & a_PG_F_MODE_TEST
 					) ? R(struct a_pg_wb*,0x1) : &pgp->pg_master->pgm_white));
@@ -2465,8 +2652,8 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fla
 		break;
 
 	case 'B':
-		if(pgp->pg_flags & a_PG_F_MASTER_IN_SETUP)
-			a_sandbox_server_add_path_access(pgp, arg);
+		if((pgp->pg_flags & a_PG_F_MASTER_IN_SETUP) && !a_sandbox_server_add_path_access(pgp, arg))
+			goto jepath;
 		if(f & a_PG_AVO_FULL)
 			o = a_conf__AB(pgp, arg, ((pgp->pg_flags & a_PG_F_MODE_TEST
 					) ? NIL : &pgp->pg_master->pgm_black));
@@ -2494,8 +2681,8 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fla
 	case 'o': pgp->pg_flags |= a_PG_F_CLIENT_ONCE; break;
 
 	case 'R':
-		if(pgp->pg_flags & a_PG_F_MASTER_IN_SETUP)
-			a_sandbox_server_add_path_access(pgp, arg);
+		if((pgp->pg_flags & a_PG_F_MASTER_IN_SETUP) && !a_sandbox_server_add_path_access(pgp, arg))
+			goto jepath;
 		o = a_conf__R(pgp, arg, f);
 		break;
 
@@ -2520,7 +2707,7 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_pg_avo_fla
 		pgp->pg_store_path = su_cs_dup(arg, su_STATE_ERR_NOPASS);
 		break;
 
-	case 'u': pgp->pg_flags |= a_PG_F_SANDBOX_UNTAMED; break;
+	case 'u': pgp->pg_flags |= a_PG_F_UNTAMED; break;
 
 	case 'v':
 		if(!(f & a_PG_AVO_FULL)){
@@ -2559,7 +2746,12 @@ ji32:
 
 jeiuse:
 	a_conf__err(pgp, _("Invalid number or limit excess of -%c argument: %s\n"), o, arg);
-	o = -su_EX_USAGE;
+	o = -su_EX_DATAERR;
+	goto jleave;
+
+jepath:
+	a_conf__err(pgp, _("Invalid path argument to -%c argument: %s: %s\n"), o, arg, V_(su_err_doc(-1)));
+	o = -su_EX_DATAERR;
 	goto jleave;
 
 jmsg:
@@ -3144,40 +3336,115 @@ jskip:
 	}
 }
 
+static s32
+a_misc_log_open(struct a_pg *pgp, boole client, boole init){
+	boole repro;
+	s32 rv;
+	NYD2_IN;
+	ASSERT(!init || client);
+	UNUSED(pgp);
+
+	rv = su_EX_OK;
+	repro = su_state_has(su_STATE_REPRODUCIBLE);
+
+	if(init){
+		ASSERT(client);
+		if(LIKELY(!repro))
+			openlog(VAL_NAME, a_OPENLOG_FLAGS, LOG_MAIL);
+		su_log_set_write_fun(&a_misc_log_write);
+#ifdef a_HAVE_LOG_FIFO
+	}else if(!(pgp->pg_flags & a_PG_F_UNTAMED)){
+		while((pgp->pg_logfd = open(a_PG_FIFO_NAME, O_WRONLY)) == -1){
+			if((rv = su_err_no_by_errno()) == su_ERR_INTR){
+				rv = su_EX_OK;
+				continue;
+			}
+			su_log_write(su_LOG_CRIT, _("cannot open privsep log fifo for writing %s/%s: %s"),
+				pgp->pg_store_path, a_PG_FIFO_NAME, V_(su_err_doc(rv)));
+			rv = su_EX_IOERR;
+			break;
+		}
+
+		if(LIKELY(!repro) && rv == su_EX_OK)
+			closelog();
+#endif /* HAVE_LOG_FIFO */
+	}else if(!client && LIKELY(!repro)){
+		closelog();
+		openlog(su_program, a_OPENLOG_FLAGS, LOG_MAIL);
+	}
+
+#if VAL_OS_SANDBOX < 2
+	if(!repro && !init && rv == su_EX_OK)
+		close(STDERR_FILENO);
+#endif
+
+	NYD2_OU;
+	return rv;
+}
+
 static void
 a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 	/* We need to deal with CANcelled newlines .. */
 	static char xb[1024];
 	static uz xl;
-	UNUSED(len);
 
 	LCTAV(su_LOG_EMERG == LOG_EMERG && su_LOG_ALERT == LOG_ALERT && su_LOG_CRIT == LOG_CRIT &&
 		su_LOG_ERR == LOG_ERR && su_LOG_WARN == LOG_WARNING && su_LOG_NOTICE == LOG_NOTICE &&
 		su_LOG_INFO == LOG_INFO && su_LOG_DEBUG == LOG_DEBUG);
+	LCTAV(su_LOG_PRIMASK < (1u << 6));
 
 	if(len > 0 && msg[len - 1] != '\n'){
-		if(sizeof(xb) - 2 - xl > len){
+		if(sizeof(xb) - 3 - xl > len){
+#ifdef a_HAVE_LOG_FIFO
+			if(xl == 0 && a_pg != NIL && C(struct a_pg*,a_pg)->pg_logfd != -1){
+				xb[xl++] = (C(struct a_pg*,a_pg)->pg_flags & a_PG_F_MASTER_FLAG) ? '\01' : '\02';
+				xb[xl++] = S(char,lvl_a_flags & su_LOG_PRIMASK);
+			}
+#endif
 			su_mem_copy(&xb[xl], msg, len);
 			xl += len;
 			goto jleave;
 		}
 	}
 
+#ifdef a_HAVE_LOG_FIFO
+	if(xl == 0 && a_pg != NIL && C(struct a_pg*,a_pg)->pg_logfd != -1){
+		xb[xl++] = (C(struct a_pg*,a_pg)->pg_flags & a_PG_F_MASTER_FLAG) ? '\01' : '\02';
+		xb[xl++] = S(char,lvl_a_flags & su_LOG_PRIMASK);
+	}
+#endif
+
 	if(xl > 0){
 		if(len > 0 && msg[len - 1] == '\n')
 			--len;
-		if(sizeof(xb) - 2 - xl < len)
-			len = sizeof(xb) - 2 - xl;
-		su_mem_copy(&xb[xl], msg, len);
-		xl += len;
+		if(sizeof(xb) - 4 - xl < len)
+			len = sizeof(xb) - 4 - xl;
+		if(len > 0){
+			su_mem_copy(&xb[xl], msg, len);
+			xl += len;
+		}
 		xb[xl++] = '\n';
-		xb[xl] = '\0';
+		xb[len = xl] = '\0';
 		xl = 0;
 		msg = xb;
 	}
 
-	/* Restrict to < 1024 so no memory allocator kicks in! */
-	syslog(S(int,lvl_a_flags & su_LOG_PRIMASK), "%.950s", msg);
+#ifdef a_HAVE_LOG_FIFO
+	/* In the sandbox, not after termination request XXX wrong: --untamed would be ok! */
+	if(a_pg == NIL)
+		goto jleave;
+
+	if(C(struct a_pg*,a_pg)->pg_logfd != -1){
+		len = MIN(len, S(uz,a_FIFO_IO_MAX));
+		write(C(struct a_pg*,a_pg)->pg_logfd, msg, len);
+	}else
+#endif
+	      if(UNLIKELY(su_state_has(su_STATE_REPRODUCIBLE)))
+		write(STDERR_FILENO, msg, len);
+	else
+		/* Restrict to < 1024 so no memory allocator kicks in! */
+		syslog(S(int,lvl_a_flags & su_LOG_PRIMASK), "%.950s", msg);
+
 jleave:;
 }
 
@@ -3306,6 +3573,10 @@ main(int argc, char *argv[]){ /* {{{ */
 #endif
 
 	STRUCT_ZERO(struct a_pg, &pg);
+	a_pg = S(struct a_pg ATOMIC*,&pg);
+#ifdef a_HAVE_LOG_FIFO
+	pg.pg_logfd = -1;
+#endif
 	a_conf_setup(&pg, a_PG_AVO_NONE);
 	pg.pg_argc = S(u32,(argc > 0) ? --argc : argc);
 	pg.pg_argv = ++argv;
@@ -3458,13 +3729,7 @@ a_sandbox__err(char const *emsg, char const *arg, s32 err){
 	if(err == 0)
 		err = su_err_no_by_errno();
 
-	su_log_write(
-# if su_OS_OPENBSD
-		su_LOG_EMERG
-# else
-		su_LOG_CRIT
-# endif
-		, "%s failed: %s: %s", V_(emsg), arg, V_(su_err_doc(err)));
+	su_log_write(su_LOG_EMERG, "%s failed: %s: %s", V_(emsg), arg, V_(su_err_doc(err)));
 }
 
 static void
@@ -3502,37 +3767,53 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 #endif /* !HAVE_SANITIZER */
 
 #if VAL_OS_SANDBOX > 0 && su_OS_LINUX /* {{{ */
+# define a_LOAD_SYSNR BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,nr))
+# define a_ALLOW BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW)
 # if VAL_OS_SANDBOX > 1
-#  define a_FAIL SECCOMP_RET_TRAP
+#  define a_FAIL BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP)
 # else
 #  ifdef SECCOMP_RET_KILL_PROCESS
-#   define a_FAIL SECCOMP_RET_KILL_PROCESS
+#   define a_FAIL BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS)
 #  else
-#   define a_FAIL SECCOMP_RET_KILL
+#   define a_FAIL BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL)
 #  endif
 # endif
 
-# define a_ALLOW(SCNO) BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SCNO, 0, 1), BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ALLOW)
-# define a_A a_ALLOW /* ..for the makefile-provided _RULES.. */
-
-# ifdef SYS_send
-#  define a_SEND a_ALLOW(SYS_send)
+  /* Always 64-bit */
+# if su_CC_BOM == su_CC_BOM_LITTLE
+#  define a_ARG_LO_OFF 0
+#  define a_ARG_HI_OFF sizeof(u32)
 # else
-#  define a_SEND a_ALLOW(SYS_sendto)
+#  define a_ARG_LO_OFF sizeof(u32)
+#  define a_ARG_HI_OFF 0
 # endif
+
+# define a_Y(SYSNO) BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYSNO, 0, 1), a_ALLOW
+
 # ifdef SYS_exit_group
-#  define a_EXIT a_ALLOW(SYS_exit_group)
+#  define a_EXIT a_Y(SYS_exit_group),a_Y(SYS_exit)
 # else
-#  define a_EXIT a_ALLOW(SYS_exit)
+#  define a_EXIT a_Y(SYS_exit)
 # endif
 # ifdef SYS_newfstatat
-#  define a_FSTAT a_ALLOW(SYS_newfstatat)
+#  define a_FSTAT a_Y(SYS_newfstatat)
 # elif defined SYS_fstatat64
-#  define a_FSTAT a_ALLOW(SYS_fstatat64)
+#  define a_FSTAT a_Y(SYS_fstatat64)
 # else
-#  define a_FSTAT a_ALLOW(SYS_fstat)
+#  define a_FSTAT a_Y(SYS_fstat)
+# endif
+# ifdef SYS_openat
+#  define a_OPENAT a_Y(SYS_openat)
+# else
+#  define a_OPENAT a_Y(SYS_open)
+# endif
+# ifdef SYS_send
+#  define a_SEND a_Y(SYS_send)
+# else
+#  define a_SEND a_Y(SYS_sendto)
 # endif
 
+  /* GLibC, musl */
 # ifdef __GLIBC__
 #  define a_G(X) X
 #  define a_M(X)
@@ -3545,77 +3826,97 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 # define a_SHARED \
 	/* futex C lib? */\
 	\
-	a_ALLOW(SYS_close),\
+	a_Y(SYS_read),\
+	a_Y(SYS_write),\
+	a_Y(SYS_writev),\
+	a_Y(SYS_close),\
+	a_FSTAT,\
 	a_EXIT,\
-	a_ALLOW(SYS_read),\
-	a_ALLOW(SYS_write),\
 	\
 	/* STDIO (GNU LibC) */\
-	a_FSTAT,\
-	a_ALLOW(SYS_fsync), /* xxx not client musl */\
+	a_Y(SYS_fsync), /* xxx not client musl */\
 	\
 	/* syslog (plus reopen) */\
-	a_SEND,\
-	a_ALLOW(SYS_connect),\
-	a_ALLOW(SYS_getpid),\
-	a_G(a_ALLOW(SYS_lseek) su_COMMA)\
-	a_G(a_ALLOW(SYS_openat) su_COMMA)\
-	a_G(a_ALLOW(SYS_socket) su_COMMA)\
+	a_OPENAT,\
+	a_Y(SYS_getpid),\
 	\
-        BPF_STMT(BPF_RET | BPF_K, a_FAIL),
+	a_FAIL
 
 static struct sock_filter const a_sandbox__client_flt[] = {
 	/* See seccomp(2).  Load syscall number into accu */
-	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,nr)),
+	a_LOAD_SYSNR,
 # ifdef VAL_OS_SANDBOX_CLIENT_RULES
 	VAL_OS_SANDBOX_CLIENT_RULES
 # else
-	a_M(a_ALLOW(SYS_ioctl) su_COMMA)
-	a_ALLOW(SYS_writev),
+	a_M(a_Y(SYS_ioctl) su_COMMA)
 # endif
 	a_SHARED
 };
 
 static struct sock_filter const a_sandbox__server_flt[] = {
-	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,nr)),
+	a_LOAD_SYSNR,
 # ifdef VAL_OS_SANDBOX_SERVER_RULES
 	VAL_OS_SANDBOX_SERVER_RULES
 # else
-	a_ALLOW(SYS_accept),
-	a_ALLOW(SYS_clock_gettime),
-	a_G(a_ALLOW(SYS_clock_nanosleep) su_COMMA)
-	a_M(a_ALLOW(SYS_nanosleep) su_COMMA)
-	a_ALLOW(SYS_mmap),
-	a_ALLOW(SYS_munmap),
-	a_M(a_ALLOW(SYS_open) su_COMMA)
-	/*a_ALLOW(SYS_openat), in a_SHARED:syslog */
-	a_ALLOW(SYS_pselect6),
-#  ifdef SYS_rt_sigaction
-	a_ALLOW(SYS_rt_sigaction),
+	a_Y(SYS_accept),
+	a_Y(SYS_clock_gettime),
+#  if 0
+	a_G(a_Y(SYS_clock_nanosleep) su_COMMA)
+	a_M(a_Y(SYS_nanosleep) su_COMMA)
 #  else
-	a_ALLOW(SYS_sigaction),
+#    ifdef SYS_clock_nanosleep
+	a_Y(SYS_clock_nanosleep),
+#    endif
+#    ifdef SYS_nanosleep
+	a_Y(SYS_nanosleep),
+#    endif
+#  endif
+	a_M(a_Y(SYS_open) su_COMMA)
+	/*a_Y(SYS_openat), in a_SHARED:syslog */
+	a_Y(SYS_pselect6),
+#  ifdef SYS_rt_sigaction
+	a_Y(SYS_rt_sigaction),
+#  else
+	a_Y(SYS_sigaction),
 #  endif
 #  ifdef SYS_rt_sigprocmask
-	a_ALLOW(SYS_rt_sigprocmask),
+	a_Y(SYS_rt_sigprocmask),
 #  else
-	a_ALLOW(SYS_sigprocmask),
+	a_Y(SYS_sigprocmask),
 #  endif
 #  ifdef SYS_rt_sigreturn
-	a_ALLOW(SYS_rt_sigreturn),
+	a_Y(SYS_rt_sigreturn),
 #  else
-	a_ALLOW(SYS_sigreturn),
+	a_Y(SYS_sigreturn),
 #  endif
-	a_ALLOW(SYS_unlink),
+	a_Y(SYS_unlink),
+\
+	a_Y(SYS_munmap),\
+\
+	/* mmap: only PROT_READ except memory alloc, so write, too */\
+	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_mmap, 0, 7),\
+	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,args[2]) + a_ARG_LO_OFF),\
+	BPF_STMT(BPF_ALU | BPF_AND | BPF_K, ~S(u32,PROT_READ | PROT_WRITE)),\
+	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 3),\
+	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,args[2]) + a_ARG_HI_OFF),\
+	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 1),\
+	a_ALLOW,\
+	a_LOAD_SYSNR,
+
 # endif /* !def VAL_OS_SERVER_RULES */
 	a_SHARED
 };
 
-# undef a_FAIL
+# undef a_LOAD_SYSNR
 # undef a_ALLOW
-# undef a_A
-# undef a_SEND
+# undef a_FAIL
+# undef a_ARG_LO_OFF
+# undef a_ARG_HI_OFF
+# undef a_Y
 # undef a_EXIT
 # undef a_FSTAT
+# undef a_OPENAT
+# undef a_SEND
 # undef a_SHARED
 # undef a_G
 # undef a_M
@@ -3646,6 +3947,7 @@ a_sandbox__osdeath(int no, siginfo_t *sip, void *vp){
 			VAL_NAME ": seccomp(2) violation (syscall %d); please report this bug\n",
 			sip->si_syscall);
 	write(STDERR_FILENO, msg, i);
+
         _exit(1);
 }
 # endif /* VAL_OS_SANDBOX>1 */
@@ -3729,7 +4031,7 @@ a_sandbox_client(struct a_pg *pgp){
 	a_sandbox__rlimit(pgp, FAL0);
 #endif
 #if VAL_OS_SANDBOX > 0 && (su_OS_LINUX || su_OS_OPENBSD)
-	if(!(pgp->pg_flags & a_PG_F_SANDBOX_UNTAMED))
+	if(!(pgp->pg_flags & a_PG_F_UNTAMED))
 		a_sandbox__os(pgp, FAL0);
 #endif
 
@@ -3744,7 +4046,7 @@ a_sandbox_server(struct a_pg *pgp){
 	a_sandbox__rlimit(pgp, TRU1);
 #endif
 #if VAL_OS_SANDBOX > 0 && (su_OS_LINUX || su_OS_OPENBSD)
-	if(!(pgp->pg_flags & a_PG_F_SANDBOX_UNTAMED))
+	if(!(pgp->pg_flags & a_PG_F_UNTAMED))
 		a_sandbox__os(pgp, TRU1);
 #endif
 
@@ -3752,8 +4054,9 @@ a_sandbox_server(struct a_pg *pgp){
 }
 
 #ifdef a_HAVE_ADD_PATH_ACCESS
-static void
+static boole
 a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path){
+	boole rv;
 	NYD_IN;
 	UNUSED(pgp);
 
@@ -3764,9 +4067,12 @@ a_sandbox_server_add_path_access(struct a_pg *pgp, char const *path){
 
 	a_sandbox__paths[a_sandbox__paths_cnt++] = su_cs_dup(path, su_STATE_ERR_NOPASS);
 
+	rv = TRU1;
+
 	NYD_OU;
+	return rv;
 }
-#endif
+#endif /* HAVE_ADD_PATH_ACCESS */
 /* sandbox }}} */
 
 #include "su/code-ou.h"

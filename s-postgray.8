@@ -77,27 +77,27 @@ Operating-system dependent best-effort sandboxing is used, possibly
 .Fl Fl untamed .
 .
 .Pp
-This program is intended to be started via the
+The program is intended to be started via the
 .Xr postfix 1
 .Xr spawn 8
 daemon, which takes care of the correct user and group credentials;
 Its single-instance server is then managed automatically, with
-a configurable lifetime; by (compile-time) default it terminates itself
-after some time without a client connection.
-The server may
+a configurable lifetime: by (compile-time) default it times out without
+active client connections.
+An explicit server
 .Fl Fl startup
-directly:
+may be enforced:
 .Fl Fl server-timeout
 is ignored in this mode.
-The server writes its PID into a file
+The server
+.Fl Fl status
+can be queried, and its synchronized
+.Fl Fl shutdown
+can be enforced.
+The server PID is managed in the synchronized file
 .Ql NAME.pid
 within
 .Fl Fl store-path .
-A synchronized server
-.Fl Fl shutdown
-can be enforced, or an asynchronous termination by sending a
-.Ql TERM
-signal.
 .
 .Pp
 Sending the
@@ -116,6 +116,9 @@ s may have imposed sandbox restrictions that cannot be runtime adjusted.
 (The client ignores these signals:
 .Xr pkill 1
 may be used.)
+Sending
+.Ql TERM
+initiates a server shutdown, and causes active clients to terminate.
 .
 .Pp
 As recommendet by RFC 6647 messages are identified by their recipient /

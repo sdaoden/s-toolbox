@@ -39,7 +39,8 @@ trap 'exit 1' HUP INT TERM
 
 (
 cd ./.test || exit 2
-pwd=$(pwd) || exit 3
+#pwd=$(pwd) || exit 3
+pwd=. #$(pwd) || exit 3
 
 ### First of all fetch+adjust compile time defaults, create some resources {{{
 
