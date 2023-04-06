@@ -63,7 +63,7 @@ SULIB_BLD=#$(SULIB_TARGET)
 SUFLVLC=#-std=c89
 STRIP=#strip
 SUFOPT=-O1 -g -Dsu_HAVE_DEVEL -Dsu_HAVE_DEBUG -Dsu_HAVE_NYD #-I./include
-#SUFOPT=-O2 -DNDEBUG #-I./include
+#SUFOPT=-DNDEBUG -O2 #-I./include
 
 ## >8 -- 8<
 

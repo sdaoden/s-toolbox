@@ -1107,7 +1107,7 @@ jserver:
 	exit(rv);
 }
 
-#ifdef a_HAVE_LOG_FIFO
+#ifdef a_HAVE_LOG_FIFO /* {{{ */
 static void
 a_server__logger(struct a_pg *pgp, pid_t srvpid){
 	/* Cannot use ASSERT or any other thing that could log */
@@ -1152,9 +1152,12 @@ jsynced:
 			goto jsynced;
 		}while((ra += r) != 4);
 
-		if((c = pgp->pg_buf[0]) == '\01' || c == '\02'){
+		if(((c = pgp->pg_buf[0]) == '\01' || c == '\02') &&
+				(S(u8,pgp->pg_buf[1]) & ~su_LOG_PRIMASK) == 0){
 			sync = TRU1;
 			i = S(u8,pgp->pg_buf[2]) | (S(u8,pgp->pg_buf[3]) << 8u);
+			if(i >= sizeof(pgp->pg_buf) - (4+1 +1))
+				goto jneedsync;
 			i -= 4;
 		}else{
 			for(ra = 1; ra < 4; ++i){
@@ -1219,7 +1222,7 @@ jeio:
 	NYD_OU;
 	exit(rv);
 }
-#endif /* a_HAVE_LOG_FIFO */
+#endif /* a_HAVE_LOG_FIFO }}} */
 
 /* __(wb_)?(setup|reset)?() {{{ */
 static s32
@@ -3512,6 +3515,19 @@ a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 		len = MIN(len, MIN(sizeof(a_pg->pg_buf), MIN(1024u, S(uz,a_FIFO_IO_MAX))) - (4+1 +1));
 		xb[2] = (len & 0x00FFu);
 		xb[3] = (len >> 8) & 0x07u;
+
+		/* Normalize content (xxx total overkill) */
+		if(len > 6){
+			char *cp, *cpmax;
+
+			cpmax = cp = xb;
+			cp += 4;
+			cpmax += len - 2;
+			for(; cp < cpmax; ++cp)
+				if(!su_cs_is_print(*cp) && !su_cs_is_blank(*cp))
+					*cp = '?';
+		}
+
 		for(;;){
 			ssize_t w;
 
@@ -3578,7 +3594,7 @@ a_misc_dump_doc(up cookie, boole has_arg, char const *sopt, char const *lopt, ch
 	return TRU1;
 }
 
-#if a_DBGIF || defined su_HAVE_NYD
+#if a_DBGIF || defined su_HAVE_NYD /* {{{ */
 static void
 a_misc_oncrash(int signo){
 	char s2ibuf[32], *cp;
@@ -3634,7 +3650,7 @@ static void
 a_misc_oncrash__dump(up cookie, char const *buf, uz blen){
 	write(S(int,cookie), buf, blen);
 }
-#endif /* a_DBGIF || defined su_HAVE_NYD */
+#endif /* a_DBGIF || defined su_HAVE_NYD }}} */
 /* }}} */
 
 int
@@ -3981,7 +3997,7 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 	a_Y(SYS_unlink),
 	/*a_Y(SYS_openat), in a_SHARED:syslog */\
 	\
-	a_Y(SYS_brk), \
+	a_Y(SYS_brk),\
 	a_Y(SYS_munmap),\
 	a_Y(SYS_madvise),\
 	/* mmap: only PROT_READ except memory alloc, so write, too */\
@@ -4119,6 +4135,7 @@ a_sandbox__os(struct a_pg *pgp, boole server){
 static void
 a_sandbox_client(struct a_pg *pgp){
 	NYD_IN;
+	UNUSED(pgp);
 
 #ifndef HAVE_SANITIZER
 	a_sandbox__rlimit(pgp, FAL0);
@@ -4134,6 +4151,7 @@ a_sandbox_client(struct a_pg *pgp){
 static void
 a_sandbox_server(struct a_pg *pgp){
 	NYD_IN;
+	UNUSED(pgp);
 
 #ifndef HAVE_SANITIZER
 	a_sandbox__rlimit(pgp, TRU1);

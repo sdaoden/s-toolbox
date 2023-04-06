@@ -969,14 +969,13 @@ fi
 # }}}
 
 ##
-echo '=9: gray lots of (this takes quite some time)=' # {{{
+max=11111
+echo '=9: gray lots of ('$max': this takes quite some time)=' # {{{
 if [ -n "$s9" ]; then
 	echo 'skipping 9'
 else
 
 rm -f *.db
-
-max=8421
 
 cat > ./9.rc <<_EOT
 4-mask 24
@@ -998,8 +997,10 @@ while [ $i -le $max ]; do
 	else
 		printf "action=DUNNO\n\n" >> ./9.x
 	fi
+	[ $((i % 100)) -eq 0 ] && printf >&2 '\r'$i
 	i=$((i + 1))
 done | eval $PG -R ./9.rc $REDIR > ./9.0
+printf >&2 '\r'
 
 cmp -s ./9.0 ./9.x || exit 101
 [ -n "$REDIR" ] || echo ok 9.0
