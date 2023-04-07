@@ -3941,7 +3941,7 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 	\
 	/* STDIO (GNU LibC) */\
 	a_Y(SYS_fsync), /* xxx not client musl */\
-	a_G(a_Y(SYS_lseek) su_COMMA) /* xxx not client musl */\
+	a_Y(SYS_lseek),\
 	\
 	/* syslog (plus reopen) */\
 	a_OPENAT,\
