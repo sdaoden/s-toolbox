@@ -3862,7 +3862,7 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 		rl.rlim_cur = rl.rlim_max = (S(u64,xxl) <= xl) ? xxl : S(rlim_t,xl);
 	}
 	if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE))){
-		if(!server && (pgp->pg_flags & a_PG_F_VV))
+		if(server && (pgp->pg_flags & a_PG_F_VV))
 			su_log_write(su_LOG_INFO, "setrlimit(2) RLIMIT_FSIZE %" PRIu64, S(u64,rl.rlim_max));
 		if(setrlimit(RLIMIT_FSIZE, &rl) == -1)
 			a_sandbox__err("setrlimit", "FSIZE", 0);
