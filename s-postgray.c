@@ -119,6 +119,11 @@
 #  include <sys/syscall.h>
 # elif su_OS_OPENBSD
 # endif
+
+#else /* VAL_OS_SANDBOX > 0 */
+# if su_OS_LINUX
+#  include <sys/syscall.h>
+# endif
 #endif
 
 #include <fcntl.h>
@@ -187,6 +192,21 @@
 # define a_O_NOCTTY O_NOCTTY
 #else
 # define a_O_NOCTTY 0
+#endif
+
+/* xxx Low quality effort to close open file descriptors: as we are normally started in a controlled manner not "from
+ * xxx within the wild" this seems superfluous even */
+#if su_OS_DRAGONFLY || su_OS_NETBSD || su_OS_OPENBSD
+# define a_CLOSE_ALL_FDS() (closefrom(STDERR_FILENO + 1) == 0)
+#elif su_OS_FREEBSD
+# define a_CLOSE_ALL_FDS() (closefrom(STDERR_FILENO + 1), TRU1)
+#elif su_OS_LINUX
+# ifdef __NR_close_range
+#  define a_CLOSE_ALL_FDS() (syscall(__NR_close_range, STDERR_FILENO + 1, ~0u, 0) == 0)
+# endif
+#endif
+#ifndef a_CLOSE_ALL_FDS
+# define a_CLOSE_ALL_FDS() (TRU1)
 #endif
 
 enum a_pg_flags{
@@ -496,8 +516,18 @@ static s32
 a_client(struct a_pg *pgp){
 	struct sockaddr_un soaun;
 	boole isstartup, islock;
-	s32 reafd, rv;
+	s32 rv, reafd;
 	NYD_IN;
+
+	/* Best-effort only */
+	while(!a_CLOSE_ALL_FDS()){
+		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+			continue;
+		if(rv != su_ERR_BADF){
+			a_DBG(write(STDERR_FILENO, "CLOSE_ALL_FDS()\n", sizeof("CLOSE_ALL_FDS()\n") -1);)
+		}
+		break;
+	}
 
 	(void)a_misc_log_open(pgp, TRU1, TRU1);
 
@@ -3896,27 +3926,27 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 
 # define a_Y(SYSNO) BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYSNO, 0, 1), a_ALLOW
 
-# ifdef SYS_exit_group
-#  define a_EXIT a_Y(SYS_exit_group),a_Y(SYS_exit)
+# ifdef __NR_exit_group
+#  define a_EXIT a_Y(__NR_exit_group),a_Y(__NR_exit)
 # else
-#  define a_EXIT a_Y(SYS_exit)
+#  define a_EXIT a_Y(__NR_exit)
 # endif
-# ifdef SYS_newfstatat
-#  define a_FSTAT a_Y(SYS_newfstatat)
-# elif defined SYS_fstatat64
-#  define a_FSTAT a_Y(SYS_fstatat64)
+# ifdef __NR_newfstatat
+#  define a_FSTAT a_Y(__NR_newfstatat)
+# elif defined __NR_fstatat64
+#  define a_FSTAT a_Y(__NR_fstatat64)
 # else
-#  define a_FSTAT a_Y(SYS_fstat)
+#  define a_FSTAT a_Y(__NR_fstat)
 # endif
-# ifdef SYS_openat
-#  define a_OPENAT a_Y(SYS_openat)
+# ifdef __NR_openat
+#  define a_OPENAT a_Y(__NR_openat)
 # else
-#  define a_OPENAT a_Y(SYS_open)
+#  define a_OPENAT a_Y(__NR_open)
 # endif
-# ifdef SYS_send
-#  define a_SEND a_Y(SYS_send)
+# ifdef __NR_send
+#  define a_SEND a_Y(__NR_send)
 # else
-#  define a_SEND a_Y(SYS_sendto)
+#  define a_SEND a_Y(__NR_sendto)
 # endif
 
   /* GLibC, musl */
@@ -3928,24 +3958,24 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 #  define a_M(X) X
 # endif
 
-/* SYS_futex? */
+/* __NR_futex? */
 # define a_SHARED \
 	/* futex C lib? */\
 	\
-	a_Y(SYS_read),\
-	a_Y(SYS_write),\
-	a_Y(SYS_writev),\
-	a_Y(SYS_close),\
+	a_Y(__NR_read),\
+	a_Y(__NR_write),\
+	a_Y(__NR_writev),\
+	a_Y(__NR_close),\
 	a_FSTAT,\
 	a_EXIT,\
 	\
 	/* STDIO (GNU LibC) */\
-	a_Y(SYS_fsync), /* xxx not client musl */\
-	a_Y(SYS_lseek),\
+	a_Y(__NR_fsync), /* xxx not client musl */\
+	a_Y(__NR_lseek),\
 	\
 	/* syslog (plus reopen) */\
 	a_OPENAT,\
-	a_Y(SYS_getpid),\
+	a_Y(__NR_getpid),\
 	\
 	a_FAIL
 
@@ -3955,7 +3985,7 @@ static struct sock_filter const a_sandbox__client_flt[] = {
 # ifdef VAL_OS_SANDBOX_CLIENT_RULES
 	VAL_OS_SANDBOX_CLIENT_RULES
 # else
-	a_M(a_Y(SYS_ioctl) su_COMMA)
+	a_M(a_Y(__NR_ioctl) su_COMMA)
 # endif
 	a_SHARED
 };
@@ -3965,43 +3995,43 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 # ifdef VAL_OS_SANDBOX_SERVER_RULES
 	VAL_OS_SANDBOX_SERVER_RULES
 # else
-	a_Y(SYS_accept),
-	a_Y(SYS_clock_gettime),
+	a_Y(__NR_accept),
+	a_Y(__NR_clock_gettime),
 #  if 0
-	a_G(a_Y(SYS_clock_nanosleep) su_COMMA)
-	a_M(a_Y(SYS_nanosleep) su_COMMA)
+	a_G(a_Y(__NR_clock_nanosleep) su_COMMA)
+	a_M(a_Y(__NR_nanosleep) su_COMMA)
 #  else
-#    ifdef SYS_clock_nanosleep
-	a_Y(SYS_clock_nanosleep),
+#    ifdef __NR_clock_nanosleep
+	a_Y(__NR_clock_nanosleep),
 #    endif
-#    ifdef SYS_nanosleep
-	a_Y(SYS_nanosleep),
+#    ifdef __NR_nanosleep
+	a_Y(__NR_nanosleep),
 #    endif
 #  endif
-	a_Y(SYS_pselect6),
-#  ifdef SYS_rt_sigaction
-	a_Y(SYS_rt_sigaction),
+	a_Y(__NR_pselect6),
+#  ifdef __NR_rt_sigaction
+	a_Y(__NR_rt_sigaction),
 #  else
-	a_Y(SYS_sigaction),
+	a_Y(__NR_sigaction),
 #  endif
-#  ifdef SYS_rt_sigprocmask
-	a_Y(SYS_rt_sigprocmask),
+#  ifdef __NR_rt_sigprocmask
+	a_Y(__NR_rt_sigprocmask),
 #  else
-	a_Y(SYS_sigprocmask),
+	a_Y(__NR_sigprocmask),
 #  endif
-#  ifdef SYS_rt_sigreturn
-	a_Y(SYS_rt_sigreturn),
+#  ifdef __NR_rt_sigreturn
+	a_Y(__NR_rt_sigreturn),
 #  else
-	a_Y(SYS_sigreturn),
+	a_Y(__NR_sigreturn),
 #  endif
-	a_Y(SYS_unlink),
-	/*a_Y(SYS_openat), in a_SHARED:syslog */\
+	a_Y(__NR_unlink),
+	/*a_Y(__NR_openat), in a_SHARED:syslog */\
 	\
-	a_Y(SYS_brk),\
-	a_Y(SYS_munmap),\
-	a_Y(SYS_madvise),\
+	a_Y(__NR_brk),\
+	a_Y(__NR_munmap),\
+	a_Y(__NR_madvise),\
 	/* mmap: only PROT_READ except memory alloc, so write, too */\
-	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_mmap, 0, 7),\
+	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mmap, 0, 7),\
 	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,args[2]) + a_ARG_LO_OFF),\
 	BPF_STMT(BPF_ALU | BPF_AND | BPF_K, ~S(u32,PROT_READ | PROT_WRITE)),\
 	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 3),\
@@ -4010,7 +4040,7 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 	a_ALLOW,\
 	a_LOAD_SYSNR,\
 	\
-	a_M(a_Y(SYS_open) su_COMMA)
+	a_M(a_Y(__NR_open) su_COMMA)
 
 # endif /* !def VAL_OS_SERVER_RULES */
 	a_SHARED
