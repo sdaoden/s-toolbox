@@ -224,6 +224,7 @@ smtpd_recipient_restrictions =
 #(VERIFY i would not)   reject_unverified_recipient,
    permit
 
+smtpd_policy_service_default_action = DUNNO
 \&...
 .Ed
 .
@@ -266,7 +267,7 @@ If the first non-whitespace character is the number-sign
 the line is a comment and discarded.
 Empty lines are ignored.
 .Ar path
-is added to sandbox constraints.
+may have to adhere to strict sandbox constraints.
 .
 .Mx Fl allow
 .It Fl Fl allow Ar spec , Fl a Ar spec
@@ -333,7 +334,8 @@ Load a file of blacklist entries in the syntax described for
 from within the server or
 .Fl Fl test-mode .
 .Ar path
-is added to sandbox constraints.
+may have to adhere to strict sandbox constraints.
+.
 .
 .Mx Fl block
 .It Fl Fl block Ar spec , Fl b Ar spec
@@ -543,7 +545,7 @@ Empty lines are ignored.
 The server parses the configuration a second time, and from within
 .Fl Fl store-path !
 .Ar path
-is added to sandbox constraints.
+may have to adhere to strict sandbox constraints.
 .
 .Mx Fl server-queue
 .It Fl Fl server-queue Ar no , Fl q Ar no
