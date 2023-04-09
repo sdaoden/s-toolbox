@@ -68,11 +68,11 @@ fi
 echo '=def: calibration=' # {{{
 
 eval $PGX -# > ./tdef1 || exit 1
-sed '/^store-path/,$d' < def > ./defx || exit 2
-echo 'store-path '"$pwd"'' >> ./defx
+sed '/^msg-/,$d' < def > ./defx || exit 2
 echo 'msg-allow '"$MSG_ALLOW" >> ./defx
 echo 'msg-block '"$MSG_BLOCK" >> ./defx
 echo 'msg-defer '"$MSG_DEFER" >> ./defx
+echo 'store-path '"$pwd"'' >> ./defx
 cmp -s tdef1 defx || exit 3
 
 eval $PGx -# > ./tdef2 || exit 4
@@ -454,8 +454,35 @@ printf 'action=DUNNO\n\n' > ./4.5x
 cmp -s ./4.5 ./4.5x || exit 101
 [ -n "$REDIR" ] || echo ok 4.5
 
+# And signals!
 eval $PG -R ./x.rc --shutdown $REDIR
 [ $? -ne 75 ] || exit 102
+[ -n "$REDIR" ] || echo ok 4.sig-1
+
+eval $PG -R ./x.rc --startup $REDIR
+[ $? -eq 0 ] || exit 102
+[ -n "$REDIR" ] || echo ok 4.sig-2
+
+spid=$(cat *.pid);
+kill -HUP $spid || exit 101
+eval $PG -R ./x.rc --status $REDIR
+[ $? -eq 0 ] || exit 102
+[ -n "$REDIR" ] || echo ok 4.sig-3
+
+kill -USR1 $spid || exit 101
+eval $PG -R ./x.rc --status $REDIR
+[ $? -eq 0 ] || exit 102
+[ -n "$REDIR" ] || echo ok 4.sig-4
+
+kill -USR2 $spid || exit 101
+eval $PG -R ./x.rc --status $REDIR
+[ $? -eq 0 ] || exit 102
+[ -n "$REDIR" ] || echo ok 4.sig-5
+
+kill -TERM $spid || exit 101
+delay
+eval $PG -R ./x.rc --status $REDIR
+[ $? -eq 1 ] || exit 102
 fi
 # }}}
 
