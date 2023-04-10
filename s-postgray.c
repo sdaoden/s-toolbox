@@ -770,7 +770,7 @@ jstartup_shutdown:/* C99 */{
 	do{
 		ssize_t y;
 
-		if((y = write(pgp->pg_clima_fd, &xb[xl], 3u - xl)) == -1){
+		if((y = write(pgp->pg_clima_fd, &xb[xl], 3lu - S(uz,xl))) == -1){
 			if(su_err_no_by_errno() == su_ERR_INTR)
 				continue;
 			rv = su_EX_IOERR;
@@ -1613,10 +1613,9 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 
 		/* ..if no DB was loaded */
 		mp->m_epoch = su_timespec_current(&t.s)->ts_sec;
-		if(mp->m_base_epoch == 0){
+		if(mp->m_base_epoch == 0)
 			mp->m_base_epoch = mp->m_epoch;
-			i = 0;
-		}else{
+		else{
 			/* XXX-MONO */
 			s64 be;
 
