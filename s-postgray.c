@@ -93,20 +93,7 @@
 
 #include <su/code.h>
 
-/* TODO all std or posix, nono */
-#include <sys/file.h>
-#include <sys/mman.h>
-#include <sys/resource.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/un.h>
-#include <sys/uio.h>
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
-
-/* Sandbox might impose the necessity to use a dedicated logger process */
+/* Sandbox may impose the necessity to use a dedicated logger process */
 #undef a_HAVE_LOG_FIFO
 #undef a_SANDBOX_SIGNAL
 #if VAL_OS_SANDBOX > 0
@@ -140,12 +127,26 @@
 #  undef VAL_OS_SANDBOX
 #  define VAL_OS_SANDBOX 0
 # endif
+#endif /* VAL_OS_SANDBOX > 0 */
 
-#else /* VAL_OS_SANDBOX > 0 */
+#if VAL_OS_SANDBOX == 0
 # if su_OS_LINUX
 #  include <sys/syscall.h> /* __NR_close_range */
 # endif
 #endif
+
+/* TODO all std or posix, nono */
+#include <sys/file.h>
+#include <sys/mman.h>
+#include <sys/resource.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
+#include <sys/uio.h>
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
 
 #include <fcntl.h>
 #include <signal.h>
@@ -4246,11 +4247,6 @@ a_sandbox_sock_accepted(struct a_pg *pgp, s32 sockfd){
 # else
 #  define a_OPENAT a_Y(__NR_open)
 # endif
-# ifdef __NR_send
-#  define a_SEND a_Y(__NR_send)
-# else
-#  define a_SEND a_Y(__NR_sendto)
-# endif
 
   /* GLibC, musl */
 # ifdef __GLIBC__
@@ -4271,10 +4267,6 @@ a_sandbox_sock_accepted(struct a_pg *pgp, s32 sockfd){
 	a_Y(__NR_close),\
 	a_FSTAT,\
 	a_EXIT,\
-	\
-	/* STDIO (GNU LibC) */\
-	a_Y(__NR_fsync), /* xxx not client musl */\
-	a_Y(__NR_lseek),\
 	\
 	/* syslog (plus reopen) */\
 	a_OPENAT,\
@@ -4312,6 +4304,7 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 #    endif
 #  endif
 	a_Y(__NR_fcntl),
+	a_Y(__NR_fsync),
 	a_Y(__NR_pselect6),
 #  ifdef __NR_rt_sigaction
 	a_Y(__NR_rt_sigaction),
@@ -4359,7 +4352,6 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 # undef a_EXIT
 # undef a_FSTAT
 # undef a_OPENAT
-# undef a_SEND
 # undef a_G
 # undef a_M
 # undef a_SHARED
