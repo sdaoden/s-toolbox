@@ -57,7 +57,7 @@
  * The maximum total length of a domain name or number is 255 octets.
  * We also store client_name for configurable domain whitelisting, but be easy and treat that as local+domain, too.
  * And finally we also use the buffer for gray savings and stdio getline(3) replacement (for ditto): add plenty
- * (a_misc_getline() complains and skips lines longer than that; note: stack buffers!) */
+ * (a_misc_line_get() complains and skips lines longer than that; note: stack buffers!) */
 #define a_BUF_SIZE (ALIGN_Z(INET6_ADDRSTRLEN +1) + ((64 + 256 +1) * 3) + 1 + su_IENC_BUFFER_SIZE + 1)
 
 /* Minimum number of minutes in between DB cleanup runs.
@@ -150,7 +150,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <stdarg.h>
-#include <stdio.h>
+#include <stdio.h> /* XXX fmtcodec, then all *printf -> unroll! */
 #include <stdlib.h>
 #include <syslog.h>
 #include <unistd.h>
@@ -309,6 +309,15 @@ struct a_srch{
 	u8 s__pad[su_6432(6,2)];
 	union a_srch_ip s_ip;
 };
+
+struct a_line{
+	u32 l_curr;
+	u32 l_fill;
+	s32 l_err; /* Error; su_ERR_NONE with 0 result: EOF */
+	/* First a_BUF_SIZE bytes are "end-user storage" xxx could be optimized */
+	char l_buf[MAX(a_BUF_SIZE * 4, su_PAGE_SIZE - 32) - 4];
+};
+#define a_LINE_SETUP(LP) do{(LP)->l_curr = (LP)->l_fill = 0;}while(0)
 
 struct a_wb{
 	struct a_srch *wb_srch; /* ca list, fuzzy */
@@ -506,10 +515,11 @@ static boole a_norm_triple_cname(struct a_pg *pgp);
 static boole a_misc_os_resource_delay(s32 err);
 
 /* Open RDONLY a (possibly sandbox-enabled) file */
-static FILE *a_misc_fopen(struct a_pg *pgp, char const *path);
+static s32 a_misc_open(struct a_pg *pgp, char const *path);
 
-/* getline(3) replacement (EOF, or size of space-normalized and trimmed line in .pg_rl_buf */
-static sz a_misc_getline(struct a_pg *pgp, FILE *fp, char iobuf[a_BUF_SIZE]);
+/* getline(3) replacement (-1, or size of space-normalized and trimmed line) */
+static sz a_misc_line_get(struct a_pg *pgp, s32 fd, struct a_line *lp);
+static s32 a_misc_line__uflow(s32 fd, struct a_line *lp);
 
 /* init states whether called (from a_client()) for first init: "this does not fail" */
 static s32 a_misc_log_open(struct a_pg *pgp, boole client, boole init);
@@ -796,7 +806,8 @@ jstartup_shutdown:/* C99 */{
 
 static s32
 a_client__loop(struct a_pg *pgp){
-	char iobuf[a_BUF_SIZE], *bp;
+	struct a_line line;
+	char *bp;
 	ssize_t lnr;
 	boole use_this, seen_any;
 	s32 rv;
@@ -813,13 +824,14 @@ a_client__loop(struct a_pg *pgp){
 
 	/* Main loop: while we receive policy queries, collect the triple(s) we are looking for, ask our server what he
 	 * thinks about that, act accordingly */
+	a_LINE_SETUP(&line);
 jblock:
 	bp = pgp->pg_buf;
 	pgp->pg_r = pgp->pg_s = pgp->pg_ca = pgp->pg_cname = NIL;
 	use_this = TRU1;
 	seen_any = FAL0;
 
-	while((lnr = a_misc_getline(pgp, stdin, iobuf)) != EOF){
+	while((lnr = a_misc_line_get(pgp, STDIN_FILENO, &line)) != -1){
 		/* Until an empty line ends one block, collect data */
 		if(lnr == 0){
 			/* Query complete?  Normalize data and ask server about triple */
@@ -848,7 +860,7 @@ jblock:
 			if(!use_this)
 				continue;
 
-			cp = iobuf;
+			cp = line.l_buf;
 
 			if((xcp = su_cs_find_c(cp, '=')) == NIL){
 				rv = su_EX_PROTOCOL;
@@ -908,7 +920,7 @@ jblock:
 			}
 		}
 	}
-	if(rv == su_EX_OK && !feof(stdin) && !(pgp->pg_flags & a_F_CLIENT_ONCE))
+	if(rv == su_EX_OK && line.l_err != su_ERR_NONE && !(pgp->pg_flags & a_F_CLIENT_ONCE))
 		rv = su_EX_IOERR;
 
 jleave:
@@ -2923,32 +2935,31 @@ jmsg:
 
 static s32
 a_conf__AB(struct a_pg *pgp, char const *path, struct a_wb *wbp){
-	char iobuf[a_BUF_SIZE];
+	struct a_line line;
 	sz lnr;
-	s32 rv;
-	FILE *fp;
+	s32 fd, rv;
 	NYD2_IN;
 
-	if((fp = a_misc_fopen(pgp, path)) == NIL){
+	if((fd = a_misc_open(pgp, path)) == -1){
 		rv = su_err_no();
 		a_conf__err(pgp, _("Cannot open file %s: %s\n"), path, V_(su_err_doc(rv)));
 		rv = -rv;
 		goto jleave;
 	}
 
+	a_LINE_SETUP(&line);
 	rv = su_EX_OK;
-
-	while((lnr = a_misc_getline(pgp, fp, iobuf)) != EOF){
-		if(lnr != 0 && (rv = a_conf__ab(pgp, iobuf, wbp)) != su_EX_OK){
+	while((lnr = a_misc_line_get(pgp, fd, &line)) != -1){
+		if(lnr != 0 && (rv = a_conf__ab(pgp, line.l_buf, wbp)) != su_EX_OK){
 			if(!(pgp->pg_flags & a_F_MODE_TEST))
 				break;
 			rv = su_EX_OK;
 		}
 	}
-	if(rv == su_EX_OK && !feof(fp))
+	if(rv == su_EX_OK && line.l_err != su_ERR_NONE)
 		rv = -su_EX_IOERR;
 
-	fclose(fp);
+	close(fd);
 
 jleave:
 	NYD2_OU;
@@ -3148,28 +3159,29 @@ jedata:
 
 static s32
 a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_avo_flags) f){
-	char iobuf[a_BUF_SIZE];
+	struct a_line line;
 	struct su_avopt avo;
 	sz lnr;
-	s32 mpv;
-	FILE *fp;
+	s32 fd, mpv;
 	NYD2_IN;
 
-	if((fp = a_misc_fopen(pgp, path)) == NIL){
+	if((fd = a_misc_open(pgp, path)) == -1){
 		mpv = su_err_no();
-		a_conf__err(pgp, _("Cannot open --resource-file %s: %s\n"), path, V_(su_err_doc(mpv)));
+jerrno:
+		a_conf__err(pgp, _("Cannot handle --resource-file %s: %s\n"), path, V_(su_err_doc(mpv)));
 		mpv = -mpv;
 		goto jleave;
 	}
 
 	su_avopt_setup(&avo, 0, NIL, NIL, a_lopts);
 
-	while((lnr = a_misc_getline(pgp, fp, iobuf)) != EOF){
+	a_LINE_SETUP(&line);
+	while((lnr = a_misc_line_get(pgp, fd, &line)) != -1){
 		/* Empty lines are ignored */
 		if(lnr == 0)
 			continue;
 
-		switch((mpv = su_avopt_parse_line(&avo, iobuf))){
+		switch((mpv = su_avopt_parse_line(&avo, line.l_buf))){
 		a_AVOPT_CASES
 			if((mpv = a_conf_arg(pgp, mpv, avo.avo_current_arg, f)) < 0 &&
 					!(pgp->pg_flags & a_F_MODE_TEST))
@@ -3179,18 +3191,20 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_avo_flags) f){
 		default:
 			if(pgp->pg_flags & a_F_MODE_TEST){
 				a_conf__err(pgp, _("Option unknown or invalid in --resource-file: %s: %s\n"),
-					path, iobuf);
+					path, line.l_buf);
 				break;
 			}
 			mpv = -su_EX_USAGE;
 			goto jleave;
 		}
 	}
+	if((mpv = line.l_err) != su_ERR_NONE)
+		goto jerrno;
 
 	mpv = su_EX_OK;
 jleave:
-	if(fp != NIL)
-		fclose(fp);
+	if(fd != -1)
+		close(fd);
 
 	NYD2_OU;
 	return mpv;
@@ -3452,57 +3466,46 @@ a_misc_os_resource_delay(s32 err){
 	return rv;
 }
 
-static FILE *
-a_misc_fopen(struct a_pg *pgp, char const *path){
-	FILE *fp;
+static s32
+a_misc_open(struct a_pg *pgp, char const *path){
+	s32 fd;
 	NYD_IN;
 	UNUSED(pgp);
 
-	fp = NIL;
 	for(;;){
-		s32 fd;
-
 		fd = a_sandbox_open(pgp, path, O_RDONLY | a_O_NOFOLLOW | a_O_NOCTTY, 0);
 		if(fd == -1){
 			if((fd = su_err_no_by_errno()) == su_ERR_INTR)
 				continue;
 			if(a_misc_os_resource_delay(fd))
 				continue;
-			break;
-		}
-
-		fp = fdopen(fd, "r");
-		if(fp == NIL){
-			s32 e;
-
-			e = su_err_no_by_errno();
-			close(fd);
-			su_err_set(e);
 		}
 		break;
 	}
 
 	NYD_OU;
-	return fp;
+	return fd;
 }
 
 static sz
-a_misc_getline(struct a_pg *pgp, FILE *fp, char iobuf[a_BUF_SIZE]){
+a_misc_line_get(struct a_pg *pgp, s32 fd, struct a_line *lp){
+	/* XXX a_LINE_GETC(): tremendous optimization possible! */
+#define a_LINE_GETC(LP,FD) ((LP)->l_curr < (LP)->l_fill ? (LP)->l_buf[(LP)->l_curr++] : a_misc_line__uflow(FD, LP))
 	sz rv;
 	char *cp, *top, cx;
 	NYD_IN;
 	UNUSED(pgp);
 
 jredo:
-	cp = iobuf;
+	cp = lp->l_buf;
 	top = &cp[a_BUF_SIZE - 1];
 	cx = '\0';
 
 	for(;;){
-		int c;
+		s32 c;
 
-		if((c = getc_unlocked(fp)) == EOF){
-			if(cp != iobuf && feof(fp))
+		if((c = a_LINE_GETC(lp, fd)) == -1){
+			if(cp != lp->l_buf && lp->l_err == su_ERR_NONE)
 				goto jfakenl;
 			rv = -1;
 			break;
@@ -3510,7 +3513,7 @@ jredo:
 
 		if(c == '\n'){
 jfakenl:
-			rv = S(sz,P2UZ(cp - iobuf));
+			rv = S(sz,P2UZ(cp - lp->l_buf));
 			if(rv > 0 && su_cs_is_space(cp[-1])){
 				--cp;
 				--rv;
@@ -3537,14 +3540,47 @@ jelong:
 	su_log_write(su_LOG_ERR, _("line too long, skip: %s"), cp);
 jskip:
 	for(;;){
-		int c;
+		s32 c;
 
-		if((c = getc_unlocked(fp)) == EOF){
+		if((c = a_LINE_GETC(lp, fd)) == -1){
 			rv = -1;
 			goto jleave;
 		}else if(c == '\n')
 			goto jredo;
 	}
+#undef a_LINE_GETC
+}
+
+static s32
+a_misc_line__uflow(s32 fd, struct a_line *lp){
+	s32 rv;
+	NYD_IN;
+
+	for(;;){
+		ssize_t r;
+
+		if((r = read(fd, &lp->l_buf[a_BUF_SIZE + 1], FIELD_SIZEOF(struct a_line,l_buf) - a_BUF_SIZE - 2)) == -1){
+			if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+				continue;
+			lp->l_err = rv;
+			rv = -1;
+		}else{
+			lp->l_err = su_ERR_NONE;
+
+			if(r == 0){
+				a_DBG2(lp->l_curr = lp->l_fill = 0;)
+				rv = -1;
+			}else{
+				rv = lp->l_buf[a_BUF_SIZE + 1];
+				lp->l_curr = a_BUF_SIZE + 1 + 1;
+				lp->l_fill = a_BUF_SIZE + 1 + S(u32,r);
+			}
+		}
+		break;
+	}
+
+	NYD_OU;
+	return rv;
 }
 
 static s32
