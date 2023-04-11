@@ -4318,6 +4318,7 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 #    endif
 #  endif
 	a_Y(__NR_fcntl),
+	a_M(a_Y(__NR_fstat)),
 	a_Y(__NR_fsync),
 	a_Y(__NR_pselect6),
 #  ifdef __NR_rt_sigaction
