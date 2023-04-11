@@ -4244,22 +4244,25 @@ a_sandbox_sock_accepted(struct a_pg *pgp, s32 sockfd){
 
 # define a_Y(SYSNO) BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYSNO, 0, 1), a_ALLOW
 
+# define a_EXIT_GROUP
+# define a_NEWFSTATAT
+# define a_FSTATAT64
+# define a_OPENAT
 # ifdef __NR_exit_group
-#  define a_EXIT a_Y(__NR_exit_group),a_Y(__NR_exit)
-# else
-#  define a_EXIT a_Y(__NR_exit)
+#  undef a_EXIT_GROUP
+#  define a_EXIT_GROUP a_Y(__NR_exit_group),
 # endif
 # ifdef __NR_newfstatat
-#  define a_FSTAT a_Y(__NR_newfstatat)
-# elif defined __NR_fstatat64
-#  define a_FSTAT a_Y(__NR_fstatat64)
-# else
-#  define a_FSTAT a_Y(__NR_fstat)
+#  undef a_NEWFSTATAT
+#  define a_NEWFSTATAT a_Y(__NR_newfstatat),
+# endif
+# ifdef __NR_fstatat64
+#  undef a_FSTATAT64
+#  define a_FSTATAT64 a_Y(__NR_fstatat64),
 # endif
 # ifdef __NR_openat
-#  define a_OPENAT a_Y(__NR_openat)
-# else
-#  define a_OPENAT a_Y(__NR_open)
+#  undef a_OPENAT
+#  define a_OPENAT a_Y(__NR_openat),
 # endif
 
   /* GLibC, musl */
@@ -4275,16 +4278,14 @@ a_sandbox_sock_accepted(struct a_pg *pgp, s32 sockfd){
 # define a_SHARED \
 	/* futex C lib? */\
 	\
+	a_Y(__NR_close),\
+	a_Y(__NR_exit),a_EXIT_GROUP \
+	a_Y(__NR_fstat),a_FSTATAT64 a_NEWFSTATAT \
+	a_Y(__NR_getpid),\
+	a_Y(__NR_open),a_OPENAT \
 	a_Y(__NR_read),\
 	a_Y(__NR_write),\
 	a_Y(__NR_writev),\
-	a_Y(__NR_close),\
-	a_FSTAT,\
-	a_EXIT,\
-	\
-	/* syslog (plus reopen) */\
-	a_OPENAT,\
-	a_Y(__NR_getpid),\
 	\
 	a_FAIL
 
@@ -4306,55 +4307,50 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 # else
 	a_Y(__NR_accept),
 	a_Y(__NR_clock_gettime),
-#  if 0
-	a_G(a_Y(__NR_clock_nanosleep) su_COMMA)
-	a_M(a_Y(__NR_nanosleep) su_COMMA)
-#  else
-#    ifdef __NR_clock_nanosleep
+#  ifdef __NR_clock_nanosleep
 	a_Y(__NR_clock_nanosleep),
-#    endif
-#    ifdef __NR_nanosleep
-	a_Y(__NR_nanosleep),
-#    endif
+#  endif
+#  ifdef __NR_nanosleep
+		a_Y(__NR_nanosleep),
 #  endif
 	a_Y(__NR_fcntl),
-	a_M(a_Y(__NR_fstat)),
 	a_Y(__NR_fsync),
 	a_Y(__NR_pselect6),
 #  ifdef __NR_rt_sigaction
 	a_Y(__NR_rt_sigaction),
-#  else
-	a_Y(__NR_sigaction),
+#  endif
+#  ifdef __NR_sigaction
+		a_Y(__NR_sigaction),
 #  endif
 #  ifdef __NR_rt_sigprocmask
 	a_Y(__NR_rt_sigprocmask),
-#  else
-	a_Y(__NR_sigprocmask),
+#  endif
+#  ifdef __NR_sigprocmask
+		a_Y(__NR_sigprocmask),
 #  endif
 #  ifdef __NR_rt_sigreturn
 	a_Y(__NR_rt_sigreturn),
-#  else
-	a_Y(__NR_sigreturn),
+#  endif
+#  ifdef __NR_sigreturn
+		a_Y(__NR_sigreturn),
 #  endif
 	a_Y(__NR_unlink),
-	/*a_Y(__NR_openat), in a_SHARED:syslog */\
-	\
-	a_Y(__NR_brk),\
-	a_Y(__NR_munmap),\
-	a_Y(__NR_madvise),\
-	/* mmap: only PROT_READ except memory alloc, so write, too */\
-	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mmap, 0, 7),\
-	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,args[2]) + a_ARG_LO_OFF),\
-	BPF_STMT(BPF_ALU | BPF_AND | BPF_K, ~S(u32,PROT_READ | PROT_WRITE)),\
-	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 3),\
-	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,args[2]) + a_ARG_HI_OFF),\
-	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 1),\
-	a_ALLOW,\
-	a_LOAD_SYSNR,\
-	\
-	a_M(a_Y(__NR_open) su_COMMA)
+	/*a_Y(__NR_openat), in a_SHARED:syslog */
 
-# endif /* !def VAL_OS_SERVER_RULES */
+	a_Y(__NR_brk),
+	a_Y(__NR_munmap),
+	a_Y(__NR_madvise),
+	/* mmap: only PROT_READ except memory alloc, so write, too */
+	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mmap, 0, 7),
+	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,args[2]) + a_ARG_LO_OFF),
+	BPF_STMT(BPF_ALU | BPF_AND | BPF_K, ~S(u32,PROT_READ | PROT_WRITE)),
+	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 3),
+	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, FIELD_OFFSETOF(struct seccomp_data,args[2]) + a_ARG_HI_OFF),
+	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 1),
+	a_ALLOW,
+	a_LOAD_SYSNR,
+
+# endif /* !VAL_OS_SANDBOX_SERVER_RULES */
 	a_SHARED
 };
 
@@ -4364,8 +4360,9 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 # undef a_ARG_LO_OFF
 # undef a_ARG_HI_OFF
 # undef a_Y
-# undef a_EXIT
-# undef a_FSTAT
+# undef a_EXIT_GROUP
+# undef a_NEWFSTATAT
+# undef a_STATAT64
 # undef a_OPENAT
 # undef a_G
 # undef a_M

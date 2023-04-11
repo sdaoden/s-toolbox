@@ -245,7 +245,7 @@ distclean: clean
 install: all
 	$(MKDIR) -p -m 0755 "$(LIBEXECDIR)"
 	$(INSTALL) -m 0755 "$(VAL_NAME)" "$(LIBEXECDIR)"/
-	if [ -n "$(STRIP)" ]; then $(STRIP) "$(LIBEXECDIR)/$(VAL_NAME)"; fi
+	if [ -n "$(STRIP)" ]; then $(STRIP) -s "$(LIBEXECDIR)/$(VAL_NAME)"; fi
 	$(MKDIR) -p -m 0755 "$(MANDIR)"
 	$(INSTALL) -m 0644 s-postgray.8 "$(MANDIR)/$(VAL_NAME).8"
 
