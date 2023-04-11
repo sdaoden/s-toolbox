@@ -2943,7 +2943,7 @@ a_conf__AB(struct a_pg *pgp, char const *path, struct a_wb *wbp){
 
 	if((fd = a_misc_open(pgp, path)) == -1){
 		rv = su_err_no();
-		a_conf__err(pgp, _("Cannot open file %s: %s\n"), path, V_(su_err_doc(rv)));
+		a_conf__err(pgp, _("Cannot open --allow or --block file %s: %s\n"), path, V_(su_err_doc(rv)));
 		rv = -rv;
 		goto jleave;
 	}
@@ -3480,6 +3480,19 @@ a_misc_open(struct a_pg *pgp, char const *path){
 				continue;
 			if(a_misc_os_resource_delay(fd))
 				continue;
+			break;
+		}else{
+			/* Ensure regular file */
+			struct su_pathinfo pi;
+
+			if(!su_pathinfo_fstat(&pi, fd)){
+			}else if(!su_pathinfo_is_reg(&pi))
+				su_err_set(su_ERR_INVAL);
+			else
+				break;
+
+			close(fd);
+			fd = -1;
 		}
 		break;
 	}
@@ -3619,17 +3632,18 @@ a_misc_log_open(struct a_pg *pgp, boole client, boole init){
 		if(LIKELY(!repro) && rv == su_EX_OK)
 			closelog();
 
-		su_program = client ? "client" : "server";
 #endif /* HAVE_LOG_FIFO */
 	}else if(!client && LIKELY(!repro)){
 		closelog();
-		openlog(su_program, a_OPENLOG_FLAGS, LOG_MAIL);
+		openlog(VAL_NAME, a_OPENLOG_FLAGS, LOG_MAIL);
 	}
 
 #if VAL_OS_SANDBOX < 2
 	if(!repro && !init && rv == su_EX_OK)
 		close(STDERR_FILENO);
 #endif
+
+	su_program = client ? "client" : "server";
 
 	NYD2_OU;
 	return rv;
