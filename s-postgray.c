@@ -578,7 +578,7 @@ a_client(struct a_pg *pgp){
 
 	/* Best-effort only */
 	while(!a_CLOSE_ALL_FDS()){
-		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+		if((rv = su_err_by_errno()) == su_ERR_INTR)
 			continue;
 		if(rv != su_ERR_BADF){
 			a_DBG(write(STDERR_FILENO, "CLOSE_ALL_FDS()\n", sizeof("CLOSE_ALL_FDS()\n") -1);)
@@ -605,7 +605,7 @@ jretry_all:
 	pgp->pg_clima_fd = reafd = -1;
 
 	while((reafd = open(a_REA_NAME, O_WRONLY | O_CREAT | a_O_NOFOLLOW | a_O_NOCTTY, 0644)) == -1){
-		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+		if((rv = su_err_by_errno()) == su_ERR_INTR)
 			continue;
 		if(a_misc_os_resource_delay(rv))
 			continue;
@@ -618,7 +618,7 @@ jretry_all:
 	/* If we can grap a write lock no server exists */
 	islock = TRU1;
 	while(flock(reafd, LOCK_EX | LOCK_NB) == -1){
-		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+		if((rv = su_err_by_errno()) == su_ERR_INTR)
 			continue;
 		if(LIKELY(rv == su_ERR_WOULDBLOCK)){
 			if(pgp->pg_flags & a_F_MODE_STATUS){
@@ -662,19 +662,19 @@ jretry_all:
 	su_mem_copy(soaun.sun_path, VAL_NAME ".socket", sizeof(VAL_NAME ".socket"));
 
 	while((pgp->pg_clima_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1){
-		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+		if((rv = su_err_by_errno()) == su_ERR_INTR)
 			continue;
 		if(a_misc_os_resource_delay(rv))
 			continue;
 		su_log_write(su_LOG_CRIT, _("cannot open client/server socket %s/%s: %s"),
-			pgp->pg_store_path, soaun.sun_path, V_(su_err_doc(su_err_no_by_errno())));
+			pgp->pg_store_path, soaun.sun_path, V_(su_err_doc(su_err_by_errno())));
 		rv = su_EX_NOINPUT;
 		goto jleave;
 	}
 
 jretry_bind:
 	if(bind(pgp->pg_clima_fd, R(struct sockaddr const*,&soaun), sizeof(soaun))){
-		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+		if((rv = su_err_by_errno()) == su_ERR_INTR)
 			goto jretry_bind;
 		if(rv == su_ERR_NOBUFS/*hm*/ || rv == su_ERR_NOMEM){
 			a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, bind(2) failed, waiting a bit");)
@@ -726,7 +726,7 @@ jretry_bind:
 
 	/* */
 	while(connect(pgp->pg_clima_fd, R(struct sockaddr const*,&soaun), sizeof(soaun))){
-		if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+		if((rv = su_err_by_errno()) == su_ERR_INTR)
 			continue;
 
 		a_DBG(su_log_write(su_LOG_DEBUG, "out of OS resources, connect(2) failed, waiting a bit");)
@@ -782,7 +782,7 @@ jstartup_shutdown:/* C99 */{
 		ssize_t y;
 
 		if((y = write(pgp->pg_clima_fd, &xb[xl], 3lu - S(uz,xl))) == -1){
-			if(su_err_no_by_errno() == su_ERR_INTR)
+			if(su_err_by_errno() == su_ERR_INTR)
 				continue;
 			rv = su_EX_IOERR;
 			goto jleave;
@@ -793,7 +793,7 @@ jstartup_shutdown:/* C99 */{
 	/* Blocks until descriptor goes away, or reads ENQ again (xxx check?) */
 	for(;;){
 		if(read(pgp->pg_clima_fd, &soaun, 1) == -1){
-			if(su_err_no_by_errno() == su_ERR_INTR)
+			if(su_err_by_errno() == su_ERR_INTR)
 				continue;
 			rv = su_EX_IOERR;
 			goto jleave;
@@ -971,7 +971,7 @@ a_client__req(struct a_pg *pgp){
 jredo_write:
 	srvx = writev(pgp->pg_clima_fd, iovp, c);
 	if(srvx == -1){
-		if((rv = su_err_no_by_errno()) == su_ERR_INTR)/* XXX no more in client */
+		if((rv = su_err_by_errno()) == su_ERR_INTR)/* XXX no more in client */
 			goto jredo_write;
 		goto jioerr;
 	}else{
@@ -990,7 +990,7 @@ jredo_write:
 jredo_read:
 	srvx = read(pgp->pg_clima_fd, &resp, sizeof(resp));
 	if(srvx == -1){
-		if((rv = su_err_no_by_errno()) == su_ERR_INTR)/* XXX no more in client */
+		if((rv = su_err_by_errno()) == su_ERR_INTR)/* XXX no more in client */
 			goto jredo_read;
 jioerr:
 		su_log_write(su_LOG_ERR, _("I/O error in server communication: %s"), V_(su_err_doc(rv)));
@@ -1002,6 +1002,7 @@ jioerr:
 		rv = su_ERR_AGAIN;
 		goto jioerr;
 	}
+
 	rv = su_EX_OK;
 
 	switch(resp){
@@ -1053,7 +1054,7 @@ a_server(struct a_pg *pgp, char const *sockpath, s32 reafd){
 	 * race-free without getting ECONNREFUSED */
 	if(listen(pgp->pg_clima_fd, a_SERVER_LISTEN)){
 		su_log_write(su_LOG_CRIT, _("cannot listen on server socket %s/%s: %s"),
-			pgp->pg_store_path, sockpath, V_(su_err_doc(su_err_no_by_errno())));
+			pgp->pg_store_path, sockpath, V_(su_err_doc(su_err_by_errno())));
 		rv = su_EX_IOERR;
 		goto jerr;
 	}
@@ -1062,7 +1063,7 @@ a_server(struct a_pg *pgp, char const *sockpath, s32 reafd){
 #ifdef a_HAVE_LOG_FIFO
 	if(!(pgp->pg_flags & a_F_UNTAMED)){
 		while(mkfifo(a_FIFO_NAME, S_IWUSR | S_IRUSR) == -1){
-			if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+			if((rv = su_err_by_errno()) == su_ERR_INTR)
 				continue;
 			if(rv == su_ERR_EXIST){
 				struct su_pathinfo pi;
@@ -1097,7 +1098,7 @@ a_server(struct a_pg *pgp, char const *sockpath, s32 reafd){
 #ifdef a_HAVE_LOG_FIFO
 jefork:
 #endif
-		su_log_write(su_LOG_CRIT, _("cannot start server process: %s"), V_(su_err_doc(su_err_no_by_errno())));
+		su_log_write(su_LOG_CRIT, _("cannot start server process: %s"), V_(su_err_doc(su_err_by_errno())));
 		rv = su_EX_OSERR;
 jerr:
 #ifdef a_HAVE_LOG_FIFO
@@ -1147,7 +1148,7 @@ jserver:
 
 		/* So to avoid fork if log process will not work out */
 		while((pgp->pg_logfd = open(a_FIFO_NAME, O_RDONLY | a_O_NOFOLLOW | a_O_NOCTTY)) == -1){
-			if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+			if((rv = su_err_by_errno()) == su_ERR_INTR)
 				continue;
 			if(a_misc_os_resource_delay(rv))
 				continue;
@@ -1233,7 +1234,7 @@ jsynced:
 		do if((r = read(pgp->pg_logfd, &pgp->pg_buf[S(uz,ra)], 4 - ra)) <= 0){
 			if(r == 0 || a_server_chld)
 				goto jeio;
-			if(su_err_no_by_errno() != su_ERR_INTR)
+			if(su_err_by_errno() != su_ERR_INTR)
 				goto jeio;
 			goto jsynced;
 		}while((ra += r) != 4);
@@ -1263,7 +1264,7 @@ jneedsync:
 			if(r <= 0){
 				if(r == 0 || a_server_chld)
 					goto jeio;
-				if(su_err_no_by_errno() != su_ERR_INTR)
+				if(su_err_by_errno() != su_ERR_INTR)
 					goto jeio;
 				continue;
 			}
@@ -1322,7 +1323,7 @@ a_server__setup(struct a_pg *pgp){
 	mp = pgp->pg_master;
 
 	while(ftruncate(mp->m_reafd, 0) == -1){
-		if((rv = su_err_no_by_errno()) != su_ERR_INTR)
+		if((rv = su_err_by_errno()) != su_ERR_INTR)
 			goto jepid;
 	}
 	/* C99 */{
@@ -1337,7 +1338,7 @@ a_server__setup(struct a_pg *pgp){
 			ssize_t j;
 
 			j = write(mp->m_reafd, pgp->pg_r, 1);
-			if(j == -1 && (rv = su_err_no_by_errno()) != su_ERR_INTR)
+			if(j == -1 && (rv = su_err_by_errno()) != su_ERR_INTR)
 				goto jepid;
 			pgp->pg_r += S(uz,j);
 			i -= S(uz,j);
@@ -1607,7 +1608,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 
 		/* Poll descriptors interruptable */
 		if((x = pselect(maxfd + 1, rfdsp, NIL, NIL, tosp, &psigseto)) == -1){
-			if((e = su_err_no_by_errno()) == su_ERR_INTR)
+			if((e = su_err_by_errno()) == su_ERR_INTR)
 				continue;
 			su_log_write(su_LOG_CRIT, _("select(2) failed: %s"), V_(su_err_doc(e)));
 			rv = su_EX_IOERR;
@@ -1790,7 +1791,7 @@ a_server__cli_ready(struct a_pg *pgp, u32 client){ /* {{{ */
 jredo:
 	osx = read(mp->m_cli_fds[client], &pgp->pg_buf[S(uz,all)], rem);
 	if(osx == -1){
-		if(su_err_no_by_errno() == su_ERR_INTR)
+		if(su_err_by_errno() == su_ERR_INTR)
 			goto jredo;
 
 jcli_err:
@@ -1812,7 +1813,7 @@ jcli_del:
 
 		/* Buffer is always sufficiently spaced, unless bogus */
 		if(rem == 0){
-			su_err_set_no(su_ERR_MSGSIZE);
+			su_err_set(su_ERR_MSGSIZE);
 			goto jcli_err;
 		}
 
@@ -1838,7 +1839,7 @@ jcli_del:
 
 		for(;;){
 			if(write(mp->m_cli_fds[client], pgp->pg_buf, sizeof(pgp->pg_buf[0])) == -1){
-				if(su_err_no_by_errno() == su_ERR_INTR)
+				if(su_err_by_errno() == su_ERR_INTR)
 					continue;
 				goto jcli_err;
 			}
@@ -2072,7 +2073,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 	mbase = NIL;
 
 	while((i = a_sandbox_open(pgp, a_GRAY_DB_NAME, (O_RDONLY | a_O_NOFOLLOW | a_O_NOCTTY), 0)) == -1){
-		if((i = su_err_no_by_errno()) == su_ERR_INTR)
+		if((i = su_err_by_errno()) == su_ERR_INTR)
 			continue;
 		if(a_misc_os_resource_delay(i))
 			continue;
@@ -2088,7 +2089,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 		p.v = mmap(NIL, S(uz,pi.pi_size)/* (max 2GB) */, PROT_READ, MAP_SHARED, i, 0);
 		if(p.l == -1)
 			su_log_write(su_LOG_ERR, _("cannot mmap(2) gray DB in %s: %s"),
-				pgp->pg_store_path, V_(su_err_doc(su_err_no_by_errno())));
+				pgp->pg_store_path, V_(su_err_doc(su_err_by_errno())));
 	}
 
 	close(i);
@@ -2217,12 +2218,12 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
 	rv = TRU1;
 	while((fd = a_sandbox_open(pgp, a_GRAY_DB_NAME, (O_WRONLY | O_CREAT | O_TRUNC | a_O_NOFOLLOW | a_O_NOCTTY),
 			S_IRUSR | S_IWUSR)) == -1){
-		if((fd = su_err_no_by_errno()) == su_ERR_INTR)
+		if((fd = su_err_by_errno()) == su_ERR_INTR)
 			continue;
 		if(a_misc_os_resource_delay(fd))
 			continue;
 		su_log_write(su_LOG_CRIT, _("cannot create gray DB in %s: %s"),
-			pgp->pg_store_path, V_(su_err_doc(su_err_no_by_errno())));
+			pgp->pg_store_path, V_(su_err_doc(su_err_by_errno())));
 		rv = FAL0;
 		goto jleave;
 	}
@@ -2313,7 +2314,7 @@ jleave:
 
 jerr:
 	su_log_write(su_LOG_CRIT, _("cannot write gray DB in %s: %s"),
-		pgp->pg_store_path, V_(su_err_doc(su_err_no_by_errno())));
+		pgp->pg_store_path, V_(su_err_doc(su_err_by_errno())));
 
 	if(!su_path_rm(a_GRAY_DB_NAME))
 		su_log_write(su_LOG_CRIT, _("cannot even unlink corrupt gray DB in %s: %s"),
@@ -2868,7 +2869,7 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_avo_flags)
 		if(f & (a_AVO_FULL | a_AVO_RELOAD))
 			break;
 		if(su_cs_len(arg) + sizeof("/" a_GRAY_DB_NAME) >= PATH_MAX){
-			o = su_err_no_by_errno();
+			o = su_err_by_errno();
 			a_conf__err(pgp, _("-s / --store-path argument is a path too long: %s\n"), V_(su_err_doc(o)));
 			o = -o;
 			goto jleave;
@@ -2942,7 +2943,7 @@ a_conf__AB(struct a_pg *pgp, char const *path, struct a_wb *wbp){
 	NYD2_IN;
 
 	if((fd = a_misc_open(pgp, path)) == -1){
-		rv = su_err_no();
+		rv = su_err();
 		a_conf__err(pgp, _("Cannot open --allow or --block file %s: %s\n"), path, V_(su_err_doc(rv)));
 		rv = -rv;
 		goto jleave;
@@ -3167,7 +3168,7 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_avo_flags) f){
 	NYD2_IN;
 
 	if((fd = a_misc_open(pgp, path)) == -1){
-		mpv = su_err_no();
+		mpv = su_err();
 jerrno:
 		a_conf__err(pgp, _("Cannot handle --resource-file %s: %s\n"), path, V_(su_err_doc(mpv)));
 		mpv = -mpv;
@@ -3476,7 +3477,7 @@ a_misc_open(struct a_pg *pgp, char const *path){
 	for(;;){
 		fd = a_sandbox_open(pgp, path, O_RDONLY | a_O_NOFOLLOW | a_O_NOCTTY, 0);
 		if(fd == -1){
-			if((fd = su_err_no_by_errno()) == su_ERR_INTR)
+			if((fd = su_err_by_errno()) == su_ERR_INTR)
 				continue;
 			if(a_misc_os_resource_delay(fd))
 				continue;
@@ -3574,7 +3575,7 @@ a_misc_line__uflow(s32 fd, struct a_line *lp){
 		ssize_t r;
 
 		if((r = read(fd, &lp->l_buf[a_BUF_SIZE + 1], FIELD_SIZEOF(struct a_line,l_buf) - a_BUF_SIZE - 2)) == -1){
-			if((rv = su_err_no_by_errno()) == su_ERR_INTR)
+			if((rv = su_err_by_errno()) == su_ERR_INTR)
 				continue;
 			lp->l_err = rv;
 			rv = -1;
@@ -3615,7 +3616,7 @@ a_misc_log_open(struct a_pg *pgp, boole client, boole init){
 #ifdef a_HAVE_LOG_FIFO
 	}else if(!(pgp->pg_flags & a_F_UNTAMED)){
 		while((pgp->pg_logfd = open(a_FIFO_NAME, O_WRONLY | a_O_NOFOLLOW | a_O_NOCTTY)) == -1){
-			if((rv = su_err_no_by_errno()) == su_ERR_INTR){
+			if((rv = su_err_by_errno()) == su_ERR_INTR){
 				rv = su_EX_OK;
 				continue;
 			}
@@ -3720,7 +3721,7 @@ a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 
 			w = write(C(struct a_pg*,a_pg)->pg_logfd, msg, len);
 			if(w == -1){
-				if(su_err_no_by_errno() != su_ERR_INTR)
+				if(su_err_by_errno() != su_ERR_INTR)
 					_exit(su_EX_IOERR);
 				continue;
 			}
@@ -3997,7 +3998,7 @@ static void a_sandbox__os(struct a_pg *pgp, boole server);
 static void
 a_sandbox__err(char const *emsg, char const *arg, s32 err){
 	if(err == 0)
-		err = su_err_no_by_errno();
+		err = su_err_by_errno();
 
 	su_log_write(su_LOG_EMERG, "%s failed: %s: %s", V_(emsg), arg, V_(su_err_doc(err)));
 }
@@ -4210,7 +4211,7 @@ a_sandbox_sock_accepted(struct a_pg *pgp, s32 sockfd){
 	if(!(pgp->pg_flags & a_F_UNTAMED)){
 		cap_rights_init(&rights, CAP_EVENT, CAP_READ, CAP_WRITE);
 		if(cap_rights_limit(sockfd, &rights) == -1){
-			if((e = su_err_no_by_errno()) == su_ERR_NOSYS)
+			if((e = su_err_by_errno()) == su_ERR_NOSYS)
 				e = su_ERR_NONE;
 		}
 	}
