@@ -73,7 +73,7 @@ All the data is stored in main memory, synchronization with backing
 store is only performed when the server process is started or stopped,
 and the graylist database which needs to handle network data uses
 a cryptographically secure hash function.
-Operating-system dependent best-effort sandboxing is used, possibly
+Operating-system dependent best-effort sandboxing is used, optionally
 .Fl Fl untamed .
 .
 .Pp
@@ -106,19 +106,21 @@ signal will save the graylist database,
 whereas
 .Ql USR1
 logs some statistics.
-Sending a
+Dependent upon the operating-system sandbox, and
+.Fl Fl untamed ,
+sending a
 .Ql HUP
-signal re-evaluates the configuration: because sandboxing may be active,
-changes to, or additions of directory and file paths could cause security
-violations, and
+signal will re-evaluate the configuration;
+if supported, it may not be possible to change or add file paths
+(without violating security constraints), and raising
 .Fl Fl limit Ns
-s may have imposed sandbox restrictions that cannot be runtime adjusted.
-(The client ignores these signals:
-.Xr pkill 1
-may be used.)
+s can never be hard-reflected by the (already entered) sandbox.
 Sending
 .Ql TERM
 initiates a server shutdown, and causes active clients to terminate.
+(The client ignores these signals:
+.Xr pkill 1
+may be used.)
 .
 .Pp
 As recommendet by RFC 6647 messages are identified by their recipient /
@@ -266,8 +268,6 @@ If the first non-whitespace character is the number-sign
 .Ql #
 the line is a comment and discarded.
 Empty lines are ignored.
-.Ar path
-may have to adhere to strict sandbox constraints.
 .
 .Mx Fl allow
 .It Fl Fl allow Ar spec , Fl a Ar spec
@@ -333,9 +333,6 @@ Load a file of blacklist entries in the syntax described for
 .Fl Fl allow-file
 from within the server or
 .Fl Fl test-mode .
-.Ar path
-may have to adhere to strict sandbox constraints.
-.
 .
 .Mx Fl block
 .It Fl Fl block Ar spec , Fl b Ar spec
@@ -466,7 +463,7 @@ format that is passed to
 for
 .Fl Fl allow Ns
 ed (recipient /) sender / client_address value combinations.
-This setting cannot be changed at runtime.
+This setting cannot be changed at runtime; there is a length limit.
 Defaults to
 .Ql DUNNO ,
 but
@@ -487,6 +484,7 @@ Defaults to
 but
 .Ql 5.7.1 Please go away
 seems reasonable.
+This setting cannot be changed at runtime; there is a length limit.
 .
 .Mx Fl msg-defer
 .It Fl Fl msg-defer Ar msg , Fl m Ar msg
@@ -523,6 +521,7 @@ graylisting (maybe second-last and) before it, and return
 .Ql DEFER 4.2.0
 instead, so that the more expensive address verification is performed
 only when graylisting permits continuation.
+This setting cannot be changed at runtime; there is a length limit.
 .
 .Mx Fl long-help
 .It Fl Fl long-help , H
@@ -544,8 +543,6 @@ the line is a comment and discarded.
 Empty lines are ignored.
 The server parses the configuration a second time, and from within
 .Fl Fl store-path !
-.Ar path
-may have to adhere to strict sandbox constraints.
 .
 .Mx Fl server-queue
 .It Fl Fl server-queue Ar no , Fl q Ar no
@@ -588,8 +585,8 @@ An accessible
 .Pa path
 to which \*(Xx will change, and where the DB, server PID lock file,
 and server/client communication socket will be created.
-The directory should only be accessible by the \*(xx driving user (and
-group), no effort is taken to modify
+The directory should only be accessible by the user (and group) driving
+\*(xx, no effort is taken to modify
 .Xr umask 2
 or path modes
 .Pf ( Xr chmod 2 ) !
@@ -619,8 +616,10 @@ sandbox; dependent upon operating-system and compile-time
 an even more restricted compartment is entered.
 In order to be as strict as possible the latter, however, may make false
 assumptions on the internals of the used C library, causing security
-violations at runtime.
-Using this option skips the latter.
+violations at runtime (causing the
+.Ql smtpd_policy_service_default_action
+to take \*(xx's place).
+This setting skips the latter, and cannot be changed at runtime.
 .
 .Mx Fl verbose
 .It Fl Fl verbose , v
