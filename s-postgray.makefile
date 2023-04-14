@@ -60,33 +60,41 @@ VAL_SERVER_TIMEOUT = 30
 
 ##
 
-#SULIB=$(SULIB_TARGET)
-#SULIB_BLD=$(SULIB_TARGET)
 SULIB=-lsu-dvldbg#-asan
 SULIB_BLD=
+#SULIB=$(SULIB_TARGET)
+#SULIB_BLD=$(SULIB_TARGET)
 SUFLVLC=#-std=c89
-STRIP=#strip
-SUFOPT=-O1 -g -Dsu_HAVE_DEVEL -Dsu_HAVE_DEBUG -Dsu_HAVE_NYD #-I./include
+SUFDEVEL=-Dsu_HAVE_DEBUG -Dsu_HAVE_DEVEL -Dsu_NYD_ENABLE
+#SUFDEVEL=
+SUFOPT=-O1 -g #-I./include
 #SUFOPT=-DNDEBUG -O2 #-I./include
+SULDF=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed,--enable-new-dtags -fpie
+SULDFOPT=
+#SULDFOPT=-Wl,-O1,--sort-common
+SUSTRIP=
+#SUSTRIP=strip
 
 ## >8 -- 8<
 
 LIBEXECDIR = $(DESTDIR)$(PREFIX)/$(LIBEXEC)
 MANDIR = $(DESTDIR)$(PREFIX)/share/man/man8
-
 SULIB_TARGET=./libsu.a
 
-SUFWWW = #-Weverything
-SUFWW = -W -Wall -pedantic $(SUFWWW) \
+SUF = $(SUFDEVEL) \
+
+SUFWW = #-Weverything
+SUFW = -W -Wall -pedantic $(SUFWW) \
+	\
 	-Wno-atomic-implicit-seq-cst \
 	-Wno-c++98-compat \
 	-Wno-documentation-unknown-command \
 	-Wno-duplicate-enum \
 	-Wno-reserved-identifier \
 	-Wno-reserved-macro-identifier \
-	-Wno-unused-macros
-
-SUFW = -W -Wall -pedantic
+	-Wno-unused-macros \
+	\
+	-Werror=format-security -Werror=int-conversion \
 
 SUFS = -fPIE \
 	-fno-common \
@@ -98,11 +106,8 @@ SUFS = -fPIE \
 #		-fsanitize=undefined \
 #		-fsanitize=address \
 
-CFLAGS += $(SUFLVLC) $(SUF) $(SUFWW) $(SUFS) $(SUFOPT)
-
-LDFLAGS += -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
-	-Wl,--enable-new-dtags \
-	-fpie
+CFLAGS += $(SUFLVLC) $(SUF) $(SUFW) $(SUFS) $(SUFOPT)
+LDFLAGS += $(SULDF) $(SULDFOPT)
 
 CC = cc
 INSTALL = install
@@ -245,7 +250,7 @@ distclean: clean
 install: all
 	$(MKDIR) -p -m 0755 "$(LIBEXECDIR)"
 	$(INSTALL) -m 0755 "$(VAL_NAME)" "$(LIBEXECDIR)"/
-	if [ -n "$(STRIP)" ]; then $(STRIP) -s "$(LIBEXECDIR)/$(VAL_NAME)"; fi
+	if [ -n "$(SUSTRIP)" ]; then $(SUSTRIP) -s "$(LIBEXECDIR)/$(VAL_NAME)"; fi
 	$(MKDIR) -p -m 0755 "$(MANDIR)"
 	$(INSTALL) -m 0644 s-postgray.8 "$(MANDIR)/$(VAL_NAME).8"
 
