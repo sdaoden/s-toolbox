@@ -552,7 +552,7 @@ static void a_sandbox_server(struct a_pg *pgp);
 /* Some things are more .. hard to handle.  path_reset() is called for configuration reset */
 #define a_sandbox_path_check(PGP,P) (P)
 #define a_sandbox_path_reset(PGP,ISEXIT) do{}while(0)
-#define a_sandbox_open(PGP,P,F,M) open(P, (F | a_O_NOFOLLOW | a_O_NOCTTY), M)
+#define a_sandbox_open(PGP,SP,P,F,M) open(P, (F | a_O_NOFOLLOW | a_O_NOCTTY), M)
 #define a_sandbox_sock_accepted(PGP,SFD) (TRU1)
 #if VAL_OS_SANDBOX > 0
   /* On FreeBSD any path may be openat(2)ed relative to / descriptor, so a config-reload can replace all paths.
@@ -1039,7 +1039,7 @@ jex_nodefer:
 	a_DBG(su_log_write(su_LOG_DEBUG, "answer %s", cp);)
 	c = snprintf(pgp->pg_buf, FIELD_SIZEOF(struct a_pg,pg_buf), "action=%s\n\n", cp);
 	while(c > 0){
-		srvx = write(STDOUT_FILENO, pgp->pg_buf, c);
+		srvx = write(STDOUT_FILENO, pgp->pg_buf, S(u32,c));
 		if(srvx == -1){
 			if(su_err_by_errno() == su_ERR_INTR)/* XXX no more in client */
 				continue;
@@ -1184,13 +1184,13 @@ jserver:
 
 		switch((srvpid = fork())){
 		case -1: goto jefork;
-		default: /* Parent (logger); does not return */ a_server__logger(pgp, srvpid);
+		default: /* Parent (logger); does not return */ a_server__logger(pgp, srvpid); break;
 		case 0: /* Child (server) */ break;
 		}
 
 		close(pgp->pg_logfd);
 		pgp->pg_logfd = -1;
-		f &= ~(a_FIFO_PATH | a_FIFO_FD);
+		f &= ~S(u32,a_FIFO_PATH | a_FIFO_FD);
 	}
 #endif /* HAVE_LOG_FIFO */
 
@@ -1251,7 +1251,7 @@ a_server__logger(struct a_pg *pgp, pid_t srvpid){
 		 * The length is always smaller than what a pipe can serve atomically */
 		ra = 0;
 jsynced:
-		do if((r = read(pgp->pg_logfd, &pgp->pg_buf[S(uz,ra)], 4 - ra)) <= 0){
+		do if((r = read(pgp->pg_logfd, &pgp->pg_buf[S(uz,ra)], 4 - S(uz,ra))) <= 0){
 			if(r == 0 || a_server_chld)
 				goto jeio;
 			if(su_err_by_errno() != su_ERR_INTR)
@@ -1260,16 +1260,16 @@ jsynced:
 		}while((ra += r) != 4);
 
 		if(((c = pgp->pg_buf[0]) == '\01' || c == '\02') &&
-				(S(u8,pgp->pg_buf[1]) & ~su_LOG_PRIMASK) == 0){
+				(C2UZ(pgp->pg_buf[1]) & ~S(uz,su_LOG_PRIMASK)) == 0){
 			sync = TRU1;
-			i = S(u8,pgp->pg_buf[2]) | (S(u8,pgp->pg_buf[3]) << 8u);
+			i = C2UZ(pgp->pg_buf[2]) | (C2UZ(pgp->pg_buf[3]) << 8u);
 			if(i >= sizeof(pgp->pg_buf) - (4+1 +1)) /* (see misc_log_write()) */
 				goto jneedsync;
 			i -= 4;
 		}else{
-			for(ra = 1; ra < 4; ++i){
+			for(ra = 1; ra < 4; ++ra){
 				if((c = pgp->pg_buf[S(uz,ra)]) == '\01' || c == '\02'){
-					su_mem_move(pgp->pg_buf, &pgp->pg_buf[ra], 4 - ra);
+					su_mem_move(pgp->pg_buf, &pgp->pg_buf[ra], 4 - S(uz,ra));
 					goto jsynced;
 				}
 			}
@@ -1289,7 +1289,7 @@ jneedsync:
 				continue;
 			}
 			ra += r;
-			i -= r;
+			i -= S(uz,r);
 		}while(i != 0);
 
 		if(!sync){
@@ -1324,11 +1324,6 @@ jeio:
 		/*su_log_write(su_LOG_CRIT, _("cannot remove privsep log fifo: %s"), V_(su_err_doc(-1)));*/
 		rv = su_EX_OSERR;
 	}
-
-# if su_OS_FREEBSD /* XXX path_rm(sockpath) -> rm_at() and only in server__reset() */
-	if(su_path_rm(pgp->pg_master->m_sockpath))
-		rv = su_EX_OK;
-# endif
 
 	/* Goes home with exit close(m.m_reafd);*/
 
@@ -1434,15 +1429,19 @@ a_server__reset(struct a_pg *pgp){
 	su_FREE(mp->m_cli_fds);
 #endif
 
-#if !su_OS_FREEBSD /* XXX path_rm(sockpath) -> rm_at() and remove from server__logger() */
-	if(su_path_rm(mp->m_sockpath))
+	if(su_path_rm_at(
+#if su_OS_FREEBSD
+			pgp->pg_rootfd
+#else
+			su_PATH_AT_FDCWD
+#endif
+			, mp->m_sockpath, su_IOPF_AT_NONE))
 		rv = su_EX_OK;
 	else{
 		su_log_write(su_LOG_CRIT, _("cannot remove client/server socket %s/%s: %s"),
 			pgp->pg_store_path, mp->m_sockpath, V_(su_err_doc(-1)));
 		rv = su_EX_OSERR;
 	}
-#endif
 
 #if a_DBGIF
 # if su_OS_FREEBSD /* XXX */
@@ -3756,8 +3755,8 @@ a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 	if(C(struct a_pg*,a_pg)->pg_logfd != -1){
 		ASSERT(msg == xb);
 		len = MIN(len, MIN(sizeof(C(struct a_pg*,a_pg)->pg_buf), MIN(1024u, S(uz,a_FIFO_IO_MAX))) - (4+1 +1));
-		xb[2] = (len & 0x00FFu);
-		xb[3] = (len >> 8) & 0x07u;
+		xb[2] = S(char,len & 0x00FFu);
+		xb[3] = S(char,(len >> 8) & 0x07u);
 
 		/* Normalize content (xxx total overkill) */
 		if(len > 6){
@@ -3780,7 +3779,7 @@ a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 					_exit(su_EX_IOERR);
 				continue;
 			}
-			len -= w;
+			len -= S(uz,w);
 			if(len == 0)
 				break;
 			msg += w;
@@ -4102,27 +4101,6 @@ static char **a_sandbox__paths; /* TODO su_vector */
 static uz a_sandbox__paths_cnt;
 static uz a_sandbox__paths_size;
 
-# if VAL_OS_SANDBOX > 1
-static void a_sandbox__osdeath(int no, siginfo_t *sip, void *vp);
-# endif
-
-# if VAL_OS_SANDBOX > 1
-static void
-a_sandbox__osdeath(int no, siginfo_t *sip, void *vp){
-	char msg[80];
-	int i;
-	UNUSED(no);
-	UNUSED(vp);
-
-	i = snprintf(msg, sizeof(msg),
-			VAL_NAME ": capsicum(4) violation (syscall %d); please report this bug\n",
-			sip->si_errno);
-	write(STDERR_FILENO, msg, i);
-
-	_exit(1);
-}
-# endif
-
 static void
 a_sandbox__os(struct a_pg *pgp, boole server){
 # if VAL_OS_SANDBOX > 1
@@ -4134,17 +4112,6 @@ a_sandbox__os(struct a_pg *pgp, boole server){
 	NYD_IN;
 
 	pid = getpid();
-
-# if VAL_OS_SANDBOX > 1
-	STRUCT_ZERO(struct sigaction,&sa);
-	sa.sa_sigaction = &a_sandbox__osdeath;
-	sa.sa_flags = SA_SIGINFO;
-	sigaction(a_SANDBOX_SIGNAL, &sa, NIL);
-
-	e = PROC_TRAPCAP_CTL_ENABLE;
-	if(procctl(P_PID, pid, PROC_TRAPCAP_CTL, &e) == -1)
-		a_sandbox__err("procctl", "PROC_TRAPCAP_CTL->PROC_TRAPCAP_CTL_ENABLE", 0);
-# endif
 
 #ifdef PROC_NO_NEW_PRIVS_ENABLE
 	e = PROC_NO_NEW_PRIVS_ENABLE;
@@ -4192,6 +4159,7 @@ a_sandbox__os(struct a_pg *pgp, boole server){
 	}
 	if(cap_rights_limit(pgp->pg_logfd, &rights) == -1 && (e = su_err_by_errno()) != su_ERR_NOSYS)
 		a_sandbox__err("cap_rights_limit", "logger FD", e);
+	/* STDERR depends */
 	if(su_state_has(su_STATE_REPRODUCIBLE) && cap_rights_limit(STDERR_FILENO, &rights) == -1 &&
 			(e = su_err_by_errno()) != su_ERR_NOSYS)
 		a_sandbox__err("cap_rights_limit", "STDERR", e);
@@ -4265,7 +4233,7 @@ a_sandbox_open(struct a_pg *pgp, boole store_path, char const *path, int flags, 
 
 	flags |= a_O_NOFOLLOW | a_O_NOCTTY;
 
-	/* Heavy only if in sandbox */
+	/* Heavy if in sandbox */
 	if(/*(pgp->pg_flags & a_F_UNTAMED) ||*/ pgp->pg_rootfd == -1)
 		rv = open(path, flags, mode);
 	else{
@@ -4353,7 +4321,10 @@ a_sandbox_sock_accepted(struct a_pg *pgp, s32 sockfd){
 # endif
 
   /* Always 64-bit */
-# if su_CC_BOM == su_CC_BOM_LITTLE
+# ifndef su_CC_BOM
+#  error SU does not offer CC_BOM via compiler (should come from su/code.h)
+# endif
+# if su_BOM_IS_LITTLE()
 #  define a_ARG_LO_OFF 0
 #  define a_ARG_HI_OFF sizeof(u32)
 # else
