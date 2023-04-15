@@ -103,11 +103,17 @@
 #  undef VAL_OS_SANDBOX
 #  define VAL_OS_SANDBOX 0
 # elif su_OS_FREEBSD
-#  define a_HAVE_CONFIG_RELOAD_UNTAMED
-#  define a_HAVE_LOG_FIFO
+#  ifndef su_HAVE_PATH_RM_AT
+#   warning There is no unlinkat(2), turning off OS sandbox
+#   undef VAL_OS_SANDBOX
+#   define VAL_OS_SANDBOX 0
+#  else
+#   define a_HAVE_CONFIG_RELOAD_UNTAMED
+#   define a_HAVE_LOG_FIFO
 
-#  include <sys/capsicum.h>
-#  include <sys/procctl.h>
+#   include <sys/capsicum.h>
+#   include <sys/procctl.h>
+#  endif
 # elif su_OS_LINUX
 #  ifdef __UCLIBC__
 #   warning uclibc never tried, turning off OS sandbox
@@ -1408,13 +1414,13 @@ a_server__reset(struct a_pg *pgp){
 	su_FREE(mp->m_cli_fds);
 #endif
 
-	if(su_path_rm_at(
+	if(
 #if defined a_HAVE_LOG_FIFO && su_OS_FREEBSD
-			pgp->pg_store_path_fd
+		su_path_rm_at(pgp->pg_store_path_fd, mp->m_sockpath, su_IOPF_AT_NONE)
 #else
-			su_PATH_AT_FDCWD
+		su_path_rm(mp->m_sockpath)
 #endif
-			, mp->m_sockpath, su_IOPF_AT_NONE))
+	)
 		rv = su_EX_OK;
 	else{
 		su_log_write(su_LOG_CRIT, _("cannot remove client/server socket %s/%s: %s"),
@@ -3885,6 +3891,8 @@ main(int argc, char *argv[]){ /* {{{ */
 			(mpv ? (0 | su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID)
 				: (su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID | su_STATE_REPRODUCIBLE))),
 		su_STATE_ERR_NOPASS);
+	/* Avoid possible security violations due to resource access xxx SU generic approach? */
+	su_random_builtin_set_reseed_after(TRU1, 0);
 
 #if a_DBGIF || defined su_HAVE_NYD
 	signal(SIGABRT, &a_misc_oncrash);
@@ -4320,7 +4328,6 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 		a_Y(__NR_sigreturn),
 #  endif
 	a_Y(__NR_unlink),
-	/*a_Y(__NR_openat), in a_SHARED:syslog */
 
 	a_Y(__NR_brk),
 	a_Y(__NR_munmap),

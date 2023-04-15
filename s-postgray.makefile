@@ -61,9 +61,9 @@ VAL_SERVER_TIMEOUT = 30
 ##
 
 SULIB=-lsu-dvldbg#-asan
+#SULIB=$(SULIB_BLD)
 SULIB_BLD=
-#SULIB=$(SULIB_TARGET)
-#SULIB_BLD=$(SULIB_TARGET)
+#SULIB_BLD=src/su/.clib.a
 SUFLVLC=#-std=c89
 SUFDEVEL=-Dsu_HAVE_DEBUG -Dsu_HAVE_DEVEL -Dsu_NYD_ENABLE
 #SUFDEVEL=
@@ -79,7 +79,6 @@ SUSTRIP=
 
 LIBEXECDIR = $(DESTDIR)$(PREFIX)/$(LIBEXEC)
 MANDIR = $(DESTDIR)$(PREFIX)/share/man/man8
-SULIB_TARGET=./libsu.a
 
 SUF = $(SUFDEVEL) \
 
@@ -117,9 +116,8 @@ RM = rm
 .PHONY: all clean distclean install uninstall
 all: $(SULIB_BLD) $(VAL_NAME)
 
-$(SULIB_TARGET):
-	cd src/su && $(MAKE) -f .makefile .clib.a &&\
-	$(INSTALL) -m 0644 .clib.a ../../$(SULIB_TARGET)
+src/su/.clib.a:
+	cd src/su && $(MAKE) -f .makefile .clib.a
 
 $(VAL_NAME): $(SULIB_BLD) s-postgray.c
 	CRULES= SRULES=;\
@@ -243,7 +241,7 @@ clean:
 	if [ -n "$(SULIB_BLD)" ]; then \
 		cd src/su && $(MAKE) -f .makefile clean rm="$(RM)" CC="$(CC)";\
 	fi
-	$(RM) -f $(SULIB_TARGET) "$(VAL_NAME)"
+	$(RM) -f "$(VAL_NAME)"
 
 distclean: clean
 
