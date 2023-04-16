@@ -796,9 +796,13 @@ to create the app registration.
 
 ]
 For Microsoft we need a client_id=, and (optionally?) a tenant=.
-Detected in March 2023: they seem to have stopped supporting RFC 6749,
-6. Refreshing an Access Token, but now always require RFC 6749,
-4.1.1. Authorization Request; configure via refresh_needs_authorize=y.
+   (Detected in March 2023: they seem to have stopped supporting RFC 6749,
+    6. Refreshing an Access Token, but now always require RFC 6749,
+    4.1.1. Authorization Request; configure via refresh_needs_authorize=y.)
+-> Thanks to Ian Collier of Oxford University on mutt-dev@ the solution
+   to that is easy: simple say tenant=common instead of a real UUID.
+   Then it works again, without any refresh_token, only with access_token.
+
 			''')
 		if VAL_NAME:
 			print('For %s we have a built-in configuration for this provider' % VAL_NAME)
@@ -820,15 +824,14 @@ Also devicecode_grant_type=device_code.
 	print('Finally run "--action=authorize" with --resourcee to go.')
 	return EX_OK
 if VAL_NAME:
-	bfgw = (b'gASVhgEAAAAAAAB9lCiMBkdvb2dsZZR9lCiMCWNsaWVudF9pZJSMSDE2NzMyMjcw'
+	bfgw = (b'gASVaAEAAAAAAAB9lCiMBkdvb2dsZZR9lCiMCWNsaWVudF9pZJSMSDE2NzMyMjcw'
 			b'NjAyMi1rc2dzbXEyYmtsZzYzaGFuY3FxMjF1bG52amk3azdobC5hcHBzLmdvb2ds'
 			b'ZXVzZXJjb250ZW50LmNvbZSMDWNsaWVudF9zZWNyZXSUjCNHT0NTUFgtbFRING54'
 			b'Y2V6QmR5YXJxekthTXdIWGRaOW5zbZR1jAlNaWNyb3NvZnSUfZQoaAOMJGJmMGY0'
-			b'NDg4LTA4OWUtNDZlZS1hNDhkLThmMDcxNzM4OGJlM5SMBnRlbmFudJSMJDczMDcx'
-			b'NWEyLWRmOTgtNDBhYS04NTdiLWU1MTVkZGQxYWFmOJR1jAZZYW5kZXiUfZQoaAOM'
-			b'IDRkMWQ5OTYxM2UwYzRmMWFhZDcyNTBiNjI4Zjc3YjljlGgFjCAzZGRlOWFkOTRi'
-			b'MmU0NWJiYjQwM2RkOTRiM2ExY2Y2OZSMHGZsb3dfcmVkaXJlY3RfdXJpX3BvcnRf'
-			b'Zml4ZWSUjAUzMzMzM5R1dS4=')
+			b'NDg4LTA4OWUtNDZlZS1hNDhkLThmMDcxNzM4OGJlM5SMBnRlbmFudJSMBmNvbW1v'
+			b'bpR1jAZZYW5kZXiUfZQoaAOMIDRkMWQ5OTYxM2UwYzRmMWFhZDcyNTBiNjI4Zjc3'
+			b'YjljlGgFjCAzZGRlOWFkOTRiMmU0NWJiYjQwM2RkOTRiM2ExY2Y2OZSMHGZsb3df'
+			b'cmVkaXJlY3RfdXJpX3BvcnRfZml4ZWSUjAUzMzMzM5R1dS4=')
 #}}}
 
 if __name__ == '__main__':
