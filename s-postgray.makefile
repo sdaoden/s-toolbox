@@ -64,11 +64,13 @@ SULIB=-lsu-dvldbg#-asan
 #SULIB=$(SULIB_BLD)
 SULIB_BLD=
 #SULIB_BLD=src/su/.clib.a
+SUINC=
+#SUINC=-I./include
 SUFLVLC=#-std=c89
 SUFDEVEL=-Dsu_HAVE_DEBUG -Dsu_HAVE_DEVEL -Dsu_NYD_ENABLE
 #SUFDEVEL=
-SUFOPT=-O1 -g #-I./include
-#SUFOPT=-DNDEBUG -O2 #-I./include
+SUFOPT=-O1 -g $(SUINC)
+#SUFOPT=-DNDEBUG -O2 $(SUINC)
 SULDF=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed,--enable-new-dtags -fpie
 SULDFOPT=
 #SULDFOPT=-Wl,-O1,--sort-common

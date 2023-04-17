@@ -172,7 +172,11 @@
 #include <su/path.h>
 #include <su/time.h>
 
-#if a_DBGIF || defined su_HAVE_NYD
+#if VAL_OS_SANDBOX > 0
+# include <su/random.h>
+#endif
+
+#ifdef su_NYD_ENABLE
 /*# define NYDPROF_ENABLE*/
 # define NYD_ENABLE
 # define NYD2_ENABLE
@@ -462,11 +466,12 @@ static char const * const a_lopts[] = {
 	case 'u':\
 	case 'v':
 
-static struct a_pg ATOMIC *a_pg;
 #ifdef a_HAVE_LOG_FIFO
+static struct a_pg *a_pg_i;
 static s32 ATOMIC a_server_chld;
 #endif
 static s32 ATOMIC a_server_hup;
+static s32 ATOMIC a_server_term;
 static s32 ATOMIC a_server_usr1;
 static s32 ATOMIC a_server_usr2;
 /* }}} */
@@ -541,7 +546,7 @@ static void a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len);
 static void a_misc_usage(FILE *fp);
 static boole a_misc_dump_doc(up cookie, boole has_arg, char const *sopt, char const *lopt, char const *doc);
 
-#if a_DBGIF || defined su_HAVE_NYD
+#ifdef su_NYD_ENABLE
 static void a_misc_oncrash(int signo);
 static void a_misc_oncrash__dump(up cookie, char const *buf, uz blen);
 #endif
@@ -1116,8 +1121,10 @@ jefork:
 		rv = su_EX_OSERR;
 jerr:
 #ifdef a_HAVE_LOG_FIFO
-		if(f & a_FIFO_FD)
+		if(f & a_FIFO_FD){
 			close(pgp->pg_log_fd);
+			pgp->pg_log_fd = -1;
+		}
 		if((f & a_FIFO_PATH) && !su_path_rm(a_FIFO_NAME))
 			su_log_write(su_LOG_CRIT, _("cannot remove privsep log fifo: %s"), V_(su_err_doc(-1)));
 #endif
@@ -1187,7 +1194,7 @@ jserver:
 		pgp->pg_log_fd = -1;
 		f &= ~S(u32,a_FIFO_PATH | a_FIFO_FD);
 	}
-#endif /* HAVE_LOG_FIFO */
+#endif /* a_HAVE_LOG_FIFO */
 
 	if((rv = a_misc_log_open(pgp, FAL0, FAL0)) != su_EX_OK)
 		goto jerr;
@@ -1247,11 +1254,13 @@ a_server__logger(struct a_pg *pgp, pid_t srvpid){
 		ra = 0;
 jsynced:
 		do if((r = read(pgp->pg_log_fd, &pgp->pg_buf[S(uz,ra)], 4 - S(uz,ra))) <= 0){
-			if(r == 0 || a_server_chld)
+			if(r == -1){
+				if(su_err_by_errno() != su_ERR_INTR)
+					goto jeio;
+				goto jsynced;
+			}
+			if(r == 0)
 				goto jeio;
-			if(su_err_by_errno() != su_ERR_INTR)
-				goto jeio;
-			goto jsynced;
 		}while((ra += r) != 4);
 
 		if(((c = pgp->pg_buf[0]) == '\01' || c == '\02') &&
@@ -1276,13 +1285,13 @@ jneedsync:
 
 		do{
 			r = read(pgp->pg_log_fd, &pgp->pg_buf[S(uz,ra)], i);
-			if(r <= 0){
-				if(r == 0 || a_server_chld)
-					goto jeio;
+			if(r == -1){
 				if(su_err_by_errno() != su_ERR_INTR)
 					goto jeio;
 				continue;
 			}
+			if(r == 0)
+				goto jeio;
 			ra += r;
 			i -= S(uz,r);
 		}while(i != 0);
@@ -1315,6 +1324,8 @@ jeio:
 	}
 
 	close(pgp->pg_log_fd);
+	pgp->pg_log_fd = -1;
+
 	if(!su_path_rm(a_FIFO_NAME)){
 		/*su_log_write(su_LOG_CRIT, _("cannot remove privsep log fifo: %s"), V_(su_err_doc(-1)));*/
 		rv = su_EX_OSERR;
@@ -1569,7 +1580,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 
 	a_sandbox_server(pgp);
 
-	while(a_pg != NIL){
+	while(!a_server_term){
 		u32 i;
 		s32 maxfd, x, e;
 		struct timespec *tosp;
@@ -1577,7 +1588,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 
 		/* Recreate w/b lists? */
 		if(UNLIKELY(a_server_hup)){
-			a_server_hup = 0;
+			a_server_hup = FAL0;
 #ifdef a_HAVE_CONFIG_RELOAD_UNTAMED
 			if(!(pgp->pg_flags & a_F_UNTAMED))
 				su_log_write(su_LOG_ERR, _("reloading configuration via SIGHUP only with --untamed"));
@@ -1588,12 +1599,12 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 		}
 
 		if(UNLIKELY(a_server_usr2)){
-			a_server_usr2 = 0;
+			a_server_usr2 = FAL0;
 			a_server__gray_save(pgp);
 		}
 
 		if(UNLIKELY(a_server_usr1)){
-			a_server_usr1 = 0;
+			a_server_usr1 = FAL0;
 			a_server__log_stat(pgp);
 		}
 
@@ -1688,11 +1699,11 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 		for(i = 0; i < mp->m_cli_no; ++i)
 			if(FD_ISSET(mp->m_cli_fds[i], &rfds)){
 				a_server__cli_ready(pgp, i);
-				if(a_pg == NIL)
+				if(a_server_term)
 					goto jleave;
 			}
 
-		if(a_pg == NIL)
+		if(a_server_term)
 			goto jleave;
 
 		/* */
@@ -1862,7 +1873,7 @@ jcli_del:
 			}else{
 				a_DBG2(su_log_write(su_LOG_DEBUG, "client fd=%d shutdown request",
 					mp->m_cli_fds[client]);)
-				a_pg = NIL;
+				a_server_term = TRU1;
 				goto jleave;
 			}
 		}else
@@ -2052,17 +2063,17 @@ static void
 a_server__on_sig(int sig){
 #ifdef a_HAVE_LOG_FIFO
 	if(sig == SIGCHLD)
-		a_server_chld = 1;
+		a_server_chld = TRU1;
 	else
 #endif
 	     if(sig == SIGHUP)
-		a_server_hup = 1;
+		a_server_hup = TRU1;
 	else if(sig == SIGTERM)
-		a_pg = NIL;
+		a_server_term = TRU1;
 	else if(sig == SIGUSR1)
-		a_server_usr1 = 1;
+		a_server_usr1 = TRU1;
 	else if(sig == SIGUSR2)
-		a_server_usr2 = 1;
+		a_server_usr2 = TRU1;
 }
 
 /* gray {{{ */
@@ -2336,7 +2347,7 @@ jclose:
 		struct su_timespec ts2;
 
 		su_timespec_sub(su_timespec_current(&ts2), &ts);
-		su_log_write(su_LOG_INFO, _("saved %lu entries in %lu:%09lu seconds to gray DB in %s"),
+		su_log_write(su_LOG_ALERT, _("saved %lu entries in %lu:%09lu seconds to gray DB in %s"),
 			S(ul,cnt), S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), pgp->pg_store_path);
 	}
 
@@ -3210,7 +3221,8 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_avo_flags) f){
 	if((fd = a_misc_open(pgp, path)) == -1){
 		mpv = su_err();
 jerrno:
-		a_conf__err(pgp, _("Cannot handle --resource-file %s: %s\n"), path, V_(su_err_doc(mpv)));
+		a_conf__err(pgp, _("Cannot handle --resource-file %s: %s (--store-path issue?)\n"),
+			path, V_(su_err_doc(mpv)));
 		mpv = -mpv;
 		goto jleave;
 	}
@@ -3521,6 +3533,7 @@ a_misc_open(struct a_pg *pgp, char const *path){
 				continue;
 			if(a_misc_os_resource_delay(fd))
 				continue;
+			fd = -1;
 			break;
 		}else{
 			/* Ensure regular file */
@@ -3673,7 +3686,7 @@ a_misc_log_open(struct a_pg *pgp, boole client, boole init){
 		if(LIKELY(!repro) && rv == su_EX_OK)
 			closelog();
 
-#endif /* HAVE_LOG_FIFO */
+#endif /* a_HAVE_LOG_FIFO */
 	}else if(!client && LIKELY(!repro)){
 		closelog();
 		openlog(VAL_NAME, a_OPENLOG_FLAGS, LOG_MAIL);
@@ -3702,8 +3715,8 @@ a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 	LCTAV(su_LOG_PRIMASK < (1u << 6));
 
 #ifdef a_HAVE_LOG_FIFO
-	if(xl == 0 && a_pg != NIL && C(struct a_pg*,a_pg)->pg_log_fd != -1){
-		xb[0] = (C(struct a_pg*,a_pg)->pg_flags & a_F_MASTER_FLAG) ? '\01' : '\02';
+	if(xl == 0 && a_pg_i->pg_log_fd != -1){
+		xb[0] = (a_pg_i->pg_flags & a_F_MASTER_FLAG) ? '\01' : '\02';
 		xb[1] = S(char,lvl_a_flags & su_LOG_PRIMASK);
 		xl = 4;
 	}
@@ -3734,13 +3747,9 @@ a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 	}
 
 #ifdef a_HAVE_LOG_FIFO
-	/* In the sandbox, not after termination request xxx wrong: --untamed would be ok! */
-	if(a_pg == NIL)
-		goto jleave;
-
-	if(C(struct a_pg*,a_pg)->pg_log_fd != -1){
+	if(a_pg_i->pg_log_fd != -1){
 		ASSERT(msg == xb);
-		len = MIN(len, MIN(sizeof(C(struct a_pg*,a_pg)->pg_buf), MIN(1024u, S(uz,a_FIFO_IO_MAX))) - (4+1 +1));
+		len = MIN(len, MIN(sizeof(a_pg_i->pg_buf), MIN(1024u, S(uz,a_FIFO_IO_MAX))) - (4+1 +1));
 		xb[2] = S(char,len & 0x00FFu);
 		xb[3] = S(char,(len >> 8) & 0x07u);
 
@@ -3759,7 +3768,7 @@ a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 		for(;;){
 			ssize_t w;
 
-			w = write(C(struct a_pg*,a_pg)->pg_log_fd, msg, len);
+			w = write(a_pg_i->pg_log_fd, msg, len);
 			if(w == -1){
 				if(su_err_by_errno() != su_ERR_INTR)
 					_exit(su_EX_IOERR);
@@ -3771,7 +3780,7 @@ a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 			msg += w;
 		}
 	}else
-#endif
+#endif /* a_HAVE_LOG_FIFO */
 	      if(UNLIKELY(su_state_has(su_STATE_REPRODUCIBLE)))
 		write(STDERR_FILENO, msg, len);
 	else
@@ -3819,7 +3828,7 @@ a_misc_dump_doc(up cookie, boole has_arg, char const *sopt, char const *lopt, ch
 	return TRU1;
 }
 
-#if a_DBGIF || defined su_HAVE_NYD /* {{{ */
+#ifdef su_NYD_ENABLE /* {{{ */
 static void
 a_misc_oncrash(int signo){
 	char s2ibuf[32], *cp;
@@ -3828,7 +3837,7 @@ a_misc_oncrash(int signo){
 
 	su_nyd_set_disabled(TRU1);
 
-	if((fd = a_sandbox_open(C(struct a_pg*,a_pg), FAL0, a_NYD_FILE, O_WRONLY | O_CREAT | O_EXCL, 0666)) == -1)
+	if((fd = a_sandbox_open(a_pg_i, FAL0, a_NYD_FILE, O_WRONLY | O_CREAT | O_EXCL, 0666)) == -1)
 		fd = STDERR_FILENO;
 
 # undef _X
@@ -3875,7 +3884,7 @@ static void
 a_misc_oncrash__dump(up cookie, char const *buf, uz blen){
 	write(S(int,cookie), buf, blen);
 }
-#endif /* a_DBGIF || defined su_HAVE_NYD }}} */
+#endif /* def su_NYD_ENABLE }}} */
 /* }}} */
 
 int
@@ -3892,9 +3901,11 @@ main(int argc, char *argv[]){ /* {{{ */
 				: (su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID | su_STATE_REPRODUCIBLE))),
 		su_STATE_ERR_NOPASS);
 	/* Avoid possible security violations due to resource access xxx SU generic approach? */
+#if VAL_OS_SANDBOX > 0
 	su_random_builtin_set_reseed_after(TRU1, 0);
+#endif
 
-#if a_DBGIF || defined su_HAVE_NYD
+#ifdef su_NYD_ENABLE
 	signal(SIGABRT, &a_misc_oncrash);
 # ifdef SIGBUS
 	signal(SIGBUS, &a_misc_oncrash);
@@ -3905,8 +3916,8 @@ main(int argc, char *argv[]){ /* {{{ */
 #endif
 
 	STRUCT_ZERO(struct a_pg, &pg);
-	a_pg = S(struct a_pg ATOMIC*,&pg);
 #ifdef a_HAVE_LOG_FIFO
+	a_pg_i = &pg;
 	pg.pg_log_fd = pg.pg_store_path_fd = -1;
 #endif
 	a_conf_setup(&pg, a_AVO_NONE);
@@ -4059,10 +4070,11 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 		a_sandbox__err("setrlimit", "NPROC", 0);
 
 	if(!server){
-# if !(a_DBGIF || defined su_HAVE_NYD)
+# ifdef su_NYD_ENABLE
+		rl.rlim_cur = rl.rlim_max = 2;
+# endif
 		if(setrlimit(RLIMIT_NOFILE, &rl) == -1)
 			a_sandbox__err("setrlimit", "NOFILE", 0);
-# endif
 
 		rl.rlim_cur = rl.rlim_max = ALIGN_Z(a_BUF_SIZE);
 	}else{
@@ -4101,7 +4113,7 @@ a_sandbox__os(struct a_pg *pgp, boole server){
 # endif
 
 	if(server
-# if a_DBGIF || defined su_HAVE_NYD
+# ifdef su_NYD_ENABLE
 		|| TRU1
 # endif
 	){
@@ -4450,7 +4462,7 @@ a_sandbox__os(struct a_pg *pgp, boole server){
 			a_sandbox__err("unveil", pgp->pg_master->m_sockpath, 0);
 		if(unveil(a_GRAY_DB_NAME, "rwc") == -1)
 			a_sandbox__err("unveil", a_GRAY_DB_NAME, 0);
-# if a_DBGIF
+# ifdef su_NYD_ENABLE
 		unveil(a_NYD_FILE, "w");
 # endif
 
