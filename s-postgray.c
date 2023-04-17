@@ -1440,6 +1440,10 @@ a_server__reset(struct a_pg *pgp){
 	}
 
 #if a_DBGIF
+# if defined a_HAVE_LOG_FIFO && su_OS_FREEBSD
+	if(pgp->pg_store_path_fd >= 0)
+		close(pgp->pg_store_path_fd);
+# endif
 	a_sandbox_path_reset(pgp, TRU1);
 #endif
 
@@ -1591,7 +1595,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 			a_server_hup = FAL0;
 #ifdef a_HAVE_CONFIG_RELOAD_UNTAMED
 			if(!(pgp->pg_flags & a_F_UNTAMED))
-				su_log_write(su_LOG_ERR, _("reloading configuration via SIGHUP only with --untamed"));
+				su_log_write(su_LOG_ERR, _("reloading configuration via SIGHUP needs --untamed"));
 			else
 #endif
 			     if((rv = a_server__wb_setup(pgp, TRU1)) != su_EX_OK)
@@ -3918,7 +3922,8 @@ main(int argc, char *argv[]){ /* {{{ */
 	STRUCT_ZERO(struct a_pg, &pg);
 #ifdef a_HAVE_LOG_FIFO
 	a_pg_i = &pg;
-	pg.pg_log_fd = pg.pg_store_path_fd = -1;
+	pg.pg_log_fd = -1;
+	pg.pg_store_path_fd = su_PATH_AT_FDCWD;
 #endif
 	a_conf_setup(&pg, a_AVO_NONE);
 	pg.pg_argc = S(u32,(argc > 0) ? --argc : argc);
@@ -4070,11 +4075,10 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 		a_sandbox__err("setrlimit", "NPROC", 0);
 
 	if(!server){
-# ifdef su_NYD_ENABLE
-		rl.rlim_cur = rl.rlim_max = 2;
-# endif
+# ifndef su_NYD_ENABLE
 		if(setrlimit(RLIMIT_NOFILE, &rl) == -1)
 			a_sandbox__err("setrlimit", "NOFILE", 0);
+# endif
 
 		rl.rlim_cur = rl.rlim_max = ALIGN_Z(a_BUF_SIZE);
 	}else{
@@ -4122,7 +4126,7 @@ a_sandbox__os(struct a_pg *pgp, boole server){
 			a_sandbox__err("open", "--store-path for capsicum(4) openat(2) support", e);
 
 		cap_rights_init(&rights, CAP_FSYNC, CAP_READ, CAP_WRITE, CAP_LOOKUP, CAP_FSTAT, CAP_FTRUNCATE,
-			CAP_CREATE);
+			CAP_CREATE | CAP_UNLINKAT);
 		if(cap_rights_limit(pgp->pg_store_path_fd, &rights) == -1 && (e = su_err_by_errno()) != su_ERR_NOSYS)
 			a_sandbox__err("cap_rights_limit", "--store-path, for openat(2)", e);
 	}
@@ -4172,7 +4176,7 @@ a_sandbox_open(struct a_pg *pgp, boole store_path, char const *path, int flags, 
 	flags |= a_O_NOFOLLOW | a_O_NOCTTY;
 
 	/* Heavy if in sandbox */
-	if(/*(pgp->pg_flags & a_F_UNTAMED) ||*/ pgp->pg_store_path_fd == -1)
+	if(/*(pgp->pg_flags & a_F_UNTAMED) ||*/ pgp->pg_store_path_fd < 0)
 		rv = open(path, flags, mode);
 	else{
 		while((rv = openat(pgp->pg_store_path_fd, path, flags, mode)) == -1 &&
