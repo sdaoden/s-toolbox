@@ -4411,19 +4411,20 @@ a_sandbox__os(struct a_pg *pgp, boole server){
 	NYD_IN;
 	UNUSED(pgp);
 
-	/* (Avoid ptrace) */
-# if defined PR_SET_DUMPABLE && !defined HAVE_SANITIZER
+	/* Avoid ptrace; as this assigns /proc/PID to (some user namespace's) root:root the "user" will not be able
+	 * to call "kill -TERM" on the program, only root can; as we are not privileged, and so as to avoid to play
+	 * -TERM pong from logger process to actual (unreachable) server, .. bail and do not do that */
+# if 0 && defined PR_SET_DUMPABLE && !defined HAVE_SANITIZER
 	if(prctl(PR_SET_DUMPABLE, 0) == -1)
 		a_sandbox__err("prctl", "SET_DUMPABLE=0", 0);
 # endif
 
-	/* Prepare seccomp */
+	/* seccomp */
 # ifdef PR_SET_NO_NEW_PRIVS
 	if(prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
 		a_sandbox__err("prctl", "SET_NO_NEW_PRIVS", 0);
 # endif
 
-	/**/
 # if VAL_OS_SANDBOX > 1
 	STRUCT_ZERO(struct sigaction,&sa);
 	sa.sa_sigaction = &a_sandbox__osdeath;
