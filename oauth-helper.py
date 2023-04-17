@@ -528,6 +528,8 @@ def act_authorize(args, cfg, dt): #{{{
 	# Not according to RFC, but pass if available
 	if cfg.get('client_secret'):
 		p['client_secret'] = cfg['client_secret']
+	if cfg.get('scope'):
+		p['scope'] = cfg['scope']
 	if cfg.get('tenant'):
 		p['tenant'] = cfg['tenant']
 	p = urlencode(p).encode('ascii')
