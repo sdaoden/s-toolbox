@@ -2753,6 +2753,8 @@ a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_avo_flags) f){
 	if(!(f & a_AVO_RELOAD)){
 		if(pgp->pg_server_queue == U32_MAX)
 			pgp->pg_server_queue = VAL_SERVER_QUEUE;
+		/* Note: sandbox__rlimit() builds upon _this_ maximum! */
+		pgp->pg_server_queue = MIN(S32_MAX - 10, pgp->pg_server_queue);
 
 		if(pgp->pg_msg_allow == NIL){
 			char const * const ccp = VAL_MSG_ALLOW;
@@ -4110,6 +4112,10 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 	}else{
 		rlim_t const xxl = (S(u64,S(rlim_t,-1)) - 1 > S(u64,S32_MAX)) ? S(rlim_t,S32_MAX) : S(rlim_t,-1) - 1;
 		u64 xl;
+
+		rl.rlim_cur = rl.rlim_max = pgp->pg_server_queue + 10; /* Note: ensured by a_conf_finish()! */
+		if(setrlimit(RLIMIT_NOFILE, &rl) == -1)
+			a_sandbox__err("setrlimit", "NOFILE", 0);
 
 		LCTAV(U64_MAX / a_BUF_SIZE > U32_MAX);
 		xl = S(u64,pgp->pg_limit) * ALIGN_Z(a_BUF_SIZE);
