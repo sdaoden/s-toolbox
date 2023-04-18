@@ -1,21 +1,19 @@
 A repo of some small tools
 ==========================
 
-pam_xdg.c (plus support) v0.8.1:
+pam_xdg.c (plus support) v0.8.1 (2022-08-02):
    XDG Base Directories support via PAM: creation of $XDG_RUNTIME_DIRs,
    injection of environment variables into sessions.  libpam and OpenPAM.
-   ...
-   2021-07-29: port to OpenPAM (BSD).  (Jan Beich)
-   ...
-   2021-09-16: Allow non-XDG-standard paths via make options. (Jan Beich)
-   2022-08-02: Support XDG standard 0.8; make ball release v0.8.1.
+   [- port to OpenPAM (BSD).  (Jan Beich)]
+   [- Allow non-XDG-standard paths via make options. (Jan Beich)]
+   - Support XDG standard 0.8; make ball release v0.8.1.
 
-s-cdda.c (plus support) v0.8.5:
+s-cdda.c (plus support) v0.8.5 (2021-01-28):
    Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
    Developed in 2020 on then current operating-systems and hardware.
    Not tested with CD-Extra etc (only proofed logically).  Linux and *BSD.
 
-s-cdda-to-db.pl (plus support) v0.8.0:
+s-cdda-to-db.pl (plus support) v0.8.0 (2021-06-18):
    Queries content and data of audio CDs through s-cdda(1), collects
    informations (artist, album, song titles, etc.) of desired tracks,
    if possible correlates data with a web query against MusicBrainz,
@@ -27,51 +25,46 @@ s-cdda-to-db.pl (plus support) v0.8.0:
    will be given a hand for the rather sophisticated, classical music
    aware) database layout while doing so.)
    (P.P.S.: nice foundation for link farms.)
-   ...
-   2021-06-18: use POSIX::setlocale() instead of relying on PERL5OPT=-C.
-               The latter roots in old habits originating in perl(1) evolution
-               problems Y2K2-3 (5.8.0 and 5.8.1).  Time to move on: v0.8.0.
+   [.]
+   - use POSIX::setlocale() instead of relying on PERL5OPT=-C.
+     The latter roots in old habits originating in perl(1) evolution
+     problems Y2K2-3 (5.8.0 and 5.8.1).
 
-s-postgray.c (plus support) v0.8.1:
+s-postgray.c (plus support) v0.8.1 (2023-04-19):
    postfix(1) graylisting policy daemon.  See its README + manual for more.
-   v0.8.1:
-   - Add operating-system dependent sandboxing features.
-   - FIX a possible error path crash during program startup.
-   - FIX: add missing su_log_set_level(): now --verbose works in non-
-     development code.  (Jens Schleusener)
-     --- s-postgray-0.8.0.old/s-postgray.c	2023-03-13 17:32:14.676764628 +0100
-     +++ s-postgray-0.8.0/s-postgray.c	2023-03-13 17:34:05.376771408 +0100
-     @@ -2547,6 +2547,10 @@ a_conf__arg(struct a_pg *pgp, s32 o, cha
-            if(!(f & a_PG_AVO_FULL)){
-               uz i;
-      
-     +#if DVLDBGOR(0, 1)
-     +         if(!(pgp->pg_flags & a_PG_F_V))
-     +            su_log_set_level(su_LOG_INFO);
-     +#endif
-               i = ((pgp->pg_flags << 1) | a_PG_F_V) & a_PG_F_V_MASK;
-               pgp->pg_flags = (pgp->pg_flags & ~S(uz,a_PG_F_V_MASK)) | i;
-            }break;
+   [.]
+   * Many, many thanks to Jens Schleusener, and his cron job!
+   + Add --status to query server status.
+   + Server PID is now stored in the lock file (renamed to VAL_NAME.pid),
+     and --startup now waits for server response (like --shutdown does).
+   + Add sandboxing: generic setrlimit(2) based, plus an OS-dependent
+     strict sandboxing that can be disabled via --untamed.  (Because it may
+     require an additional, internally managed, logger process, and may be
+     incompatible to (future) C library changes (see makefile).)
+     (On OpenBSD configured file paths are now even fixed byte-by-byte.)
+   - FIX memory map return check.
+   - FIX possible error path crash during program startup (missing fmt arg).
+   - fix: add missing su_log_set_level() and make --verbose work for users!
+   - fix: --startup was missing short -@ equivalent.
+   - fix: --test-mode did not include "focus-sender", "once" and "verbose".
+   - fix: VAL_MSG_* could not be overwritten on make(1) command line.
    - Typos: treshold->threshold.  (Jens Schleusener)
-   - (Syntax change: space indentation/80 columns -> tab/120+; etc.)
+   - (Source code style change spaces/80 -> tab/120+, saves ~12KB; etc.)
 
 Not for the masses:
 -------------------
 
 btrfs-snapshot.sh:
    Simple script to deal with BTRFS snapshots.
-   ...
-   2021-07-03: drop unused/broken "setmounts", add "setvols" command.
-   2022-01-02: subvol sync after removal; if receiving a snapshot fails,
-               remove it immediately via trap(1) EXIT, 'hope this works.
-   2023-03-04: (tar)ball support is gone; new syntax fixed.
+   [.]
+   - (tar)ball support is gone; new syntax fixed.
 
 entropy-saver.c:
    Linux: for my use cases i find it annoying that "entropy_avail" is not
    incremented when i restore the saved random seed that machines have
    collected so hard.  This little program touches this count also.
    (Thanks Bernd Petrovitsch for pointing out EAGAIN and EBUSY.)
-   ...
+   [.]
    2022-02-23: work when /proc/sys/kernel/random/entropy_avail is not de-
                cremented when reading /dev/random.
    2022-04-20: Jason Donenfeld wrote something more generic that made it
@@ -100,7 +93,7 @@ gmane-fetch.pl:
 
 oauth-helper.py:
    Handles OAuth 2.0 credentials.  Supports Google, Microsoft, Yandex.
-
+   [.]
    2023-03-14: add refresh_needs_authorize=, Microsoft seems to no
                longer support RFC 6749, 6. Refreshing an Access Token,
                but only  RFC 6749, 4.1.1. Authorization Request.
@@ -108,8 +101,7 @@ oauth-helper.py:
 quote-rndtrip.sh:
    Round trip quote strings in POSIX (and elder) shell(s).
    Thanks to Robert Elz (kre).
-
-   2019-05-27: ensure outer driver(s) do not leak variabes. (Steven Penny)
+   [- ensure outer driver(s) do not leak variabes. (Steven Penny)]
 
 In the fog:
 -----------
@@ -122,9 +114,7 @@ backup.sh:
    My private backup script.  Simple (uses tar(1)), but does some stuff
    which i need for my work flow (backups data which is in local repo
    clones but not yet pushed to their "real" counterparts).  Needs perl(1).
-   ...
-   2016-08-27: FIX faulty xarg/tar -c invocations. (Ralph Corderoy)
-   ...
+   [- FIX faulty xarg/tar -c invocations. (Ralph Corderoy)]
    XXX No longer used: i switched to (subsets of) filesystem snapshots.
 
 cdoc-freebsd.S:

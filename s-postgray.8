@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd April 1, 2023
+.Dd April 19, 2023
 .ds VV \\%v0.8.1
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
@@ -81,7 +81,7 @@ The program is intended to be started via the
 .Xr postfix 1
 .Xr spawn 8
 daemon, which takes care of the correct user and group credentials;
-Its single-instance server is then managed automatically, with
+It's single-instance server is then managed automatically, with
 a configurable lifetime: by (compile-time) default it times out without
 active client connections.
 An explicit server
@@ -112,7 +112,7 @@ sending a
 .Ql HUP
 signal will re-evaluate the configuration;
 if supported, it may not be possible to change or add file paths
-(without violating security constraints), and raising
+(without violating security constraints), and modifying
 .Fl Fl limit Ns
 s can never be hard-reflected by the (already entered) sandbox.
 Sending
@@ -184,9 +184,9 @@ smtpd_helo_restrictions =
 
 # MAIL FROM Checks
 smtpd_sender_restrictions =
+#RELAY   reject_authenticated_sender_login_mismatch,
 #   permit_inet_interfaces, OR
    permit_mynetworks,
-#RELAY   reject_authenticated_sender_login_mismatch,
 #RELAY   permit_tls_clientcerts,
 #[RELAY]   permit_sasl_authenticated,
    reject_non_fqdn_sender,
@@ -231,7 +231,7 @@ smtpd_policy_service_default_action = DUNNO
 .Ed
 .
 .
-.Ss "Options"
+.Sh OPTIONS
 .
 Options may be given in short or long form,
 .Fl Fl resource-file Ns

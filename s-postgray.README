@@ -9,42 +9,42 @@ A(gent)s, but can help against simple spam producing programs.
 Please see the manual for more.
 
 To build this software simply run "make install".  At the top of the
-makefile there are some variables, they can be overwritten from the
+makefile there are some variables, which may be overwritten from the
 command line:
 
   $ make DESTDIR=.xxx PREFIX=/usr LIBEXEC=sbin \
       VAL_STORE_PATH=/var/lib/postgray \
+      VAL_MSG_DEFER="DEFER 4.2.0 Hit da road, come back (later)?" \
+      VAL_OS_SANDBOX=0 \
       install
 
 This will build and install the binary under [.xxx]/usr/sbin.
-The default built-in path for database storage and the client/server
-communication socket will be /var/lib/postgray, and it should be ensured
-that this directory exists and is accessible by the desired user; it
-must _not_ be accessible by other users or groups, as user mask and
-file modes (umask(2), chmod(2)) are "not handled".
+The default built-in path for database storage, the client/server
+communication socket, as well as the server PID (and lock) file will be
+/var/lib/postgray, and it should be ensured that this directory exists
+and is accessible by the desired user; it must _not_ be accessible by
+other users or groups, as user mask and file modes (umask(2), chmod(2))
+are "not handled".
 
 RELEASES
 --------
 
-v0.8.1, 2023-03-21:
-- Add operating-system dependent sandboxing features.
-- FIX a possible error path crash during program startup.
-- FIX: add missing su_log_set_level(): now --verbose works in non-development
-  code.  (Jens Schleusener)
-    diff -Napru s-postgray-0.8.0.old/s-postgray.c s-postgray-0.8.0/s-postgray.c
-    --- s-postgray-0.8.0.old/s-postgray.c	2023-03-13 17:32:14.676764628 +0100
-    +++ s-postgray-0.8.0/s-postgray.c	2023-03-13 17:34:05.376771408 +0100
-    @@ -2547,6 +2547,10 @@ a_conf__arg(struct a_pg *pgp, s32 o, cha
-           if(!(f & a_PG_AVO_FULL)){
-              uz i;
-     
-    +#if DVLDBGOR(0, 1)
-    +         if(!(pgp->pg_flags & a_PG_F_V))
-    +            su_log_set_level(su_LOG_INFO);
-    +#endif
-              i = ((pgp->pg_flags << 1) | a_PG_F_V) & a_PG_F_V_MASK;
-              pgp->pg_flags = (pgp->pg_flags & ~S(uz,a_PG_F_V_MASK)) | i;
-           }break;
+v0.8.1, 2023-04-19:
+* Many, many thanks to Jens Schleusener, and his cron job!
++ Add --status to query server status.
++ Server PID is now stored in the lock file (renamed to VAL_NAME.pid),
+  and --startup now waits for server response (like --shutdown does).
++ Add sandboxing: generic setrlimit(2) based, plus an OS-dependent
+  strict sandboxing that can be disabled via --untamed.  (Because it may
+  require an additional, internally managed, logger process, and may be
+  incompatible to (future) C library changes (see makefile).)
+  (On OpenBSD configured file paths are now even fixed byte-by-byte.)
+- FIX memory map return check.
+- FIX possible error path crash during program startup (missing fmt arg).
+- fix: add missing su_log_set_level() and make --verbose work for users!
+- fix: --startup was missing short -@ equivalent.
+- fix: --test-mode did not include "focus-sender", "once" and "verbose".
+- fix: VAL_MSG_* could not be overwritten on make(1) command line.
 - Typos: treshold->threshold.  (Jens Schleusener)
 - (Source code style change spaces/80 -> tab/120+, saves ~12KB; etc.)
 
