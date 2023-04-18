@@ -57,7 +57,7 @@
  * The maximum total length of a domain name or number is 255 octets.
  * We also store client_name for configurable domain whitelisting, but be easy and treat that as local+domain, too.
  * And finally we also use the buffer for gray savings and stdio getline(3) replacement (for ditto): add plenty
- * (a_misc_line_get() complains and skips lines longer than that; note: stack buffers!) */
+ * (a_misc_line_get() complaints and skips lines longer than that; note: stack buffers!) */
 #define a_BUF_SIZE (ALIGN_Z(INET6_ADDRSTRLEN +1) + ((64 + 256 +1) * 3) + 1 + su_IENC_BUFFER_SIZE + 1)
 
 /* Minimum number of minutes in between DB cleanup runs.
@@ -104,7 +104,7 @@
 #  define VAL_OS_SANDBOX 0
 # elif su_OS_FREEBSD
 #  ifndef su_HAVE_PATH_RM_AT
-#   warning There is no unlinkat(2), turning off OS sandbox
+#   warning There is no unlinkat(2), turning off OS sandbox /* (cannot happen on timeline though) */
 #   undef VAL_OS_SANDBOX
 #   define VAL_OS_SANDBOX 0
 #  else
@@ -700,7 +700,7 @@ jretry_bind:
 			goto jleave;
 		}
 
-		/* ADDRINUSE with taken write lock: former server not properly shutdown (hard power cycle?) */
+		/* ADDRINUSE with taken write lock: former server not properly shutdown */
 		if(islock){
 			struct su_pathinfo pi;
 			char const *emsg;
@@ -1051,8 +1051,19 @@ jex_nodefer:
 	}
 
 	a_DBG(su_log_write(su_LOG_DEBUG, "answer %s", cp);)
-	c = snprintf(pgp->pg_buf, FIELD_SIZEOF(struct a_pg,pg_buf), "action=%s\n\n", cp);
-	cp = pgp->pg_buf;
+	/* C99 */{
+		char *xp;
+
+		xp = pgp->pg_buf;
+		xp = su_cs_pcopy(xp, "action=");
+		xp = su_cs_pcopy(xp, cp);
+		xp[0] = '\n';
+		xp[1] = '\n';
+		xp[2] = '\0'; /* hmm */
+		xp += 2;
+		cp = pgp->pg_buf;
+		c = S(s32,xp - cp);
+	}
 	while(c > 0){
 		srvx = write(STDOUT_FILENO, cp, S(u32,c));
 		if(srvx == -1){
@@ -1668,7 +1679,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 			a_DBG(su_log_write(su_LOG_DEBUG, "select(2): reached server_queue=%d, no accept-waiting", maxfd);)
 		}
 
-		/* Poll descriptors interruptable */
+		/* Poll descriptors interruptably */
 		if((x = pselect(maxfd + 1, rfdsp, NIL, NIL, tosp, &psigseto)) == -1){
 			if((e = su_err_by_errno()) == su_ERR_INTR)
 				continue;
@@ -2002,9 +2013,9 @@ a_server__cli_lookup(struct a_pg *pgp, struct a_wb *wbp, struct a_wb_cnt *wbcp){
 
 			if((u.p = su_cs_dict_lookup(&wbp->wb_cname, cp)) != NIL && (first || u.v != TRU1)){
 				if(first)
-				  ++wbcp->wbc_cname;
+					++wbcp->wbc_cname;
 				else
-				  ++wbcp->wbc_cname_fuzzy;
+					++wbcp->wbc_cname_fuzzy;
 				if(pgp->pg_flags & a_F_V)
 					su_log_write(su_LOG_INFO, "### %s %sdomain: %s",
 						me, (first ? su_empty : _("wildcard ")), cp);
@@ -2147,8 +2158,10 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 	if(!su_pathinfo_fstat(&pi, i)){
 		su_log_write(su_LOG_ERR, _("cannot fstat(2) gray DB in %s: %s"), pgp->pg_store_path, V_(su_err_doc(-1)));
 		p.l = -1;
-	}else{
-		p.v = mmap(NIL, S(uz,pi.pi_size)/* (max 2GB) */, PROT_READ, MAP_SHARED, i, 0);
+	}else if(pi.pi_size > S(u32,S32_MAX))
+		goto jerr;
+	else{
+		p.v = mmap(NIL, S(u32,pi.pi_size), PROT_READ, MAP_SHARED, i, 0);
 		if(p.l == -1)
 			su_log_write(su_LOG_ERR, _("cannot mmap(2) gray DB in %s: %s"),
 				pgp->pg_store_path, V_(su_err_doc(su_err_by_errno())));
@@ -2162,8 +2175,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 
 	pgp->pg_master->m_base_epoch = su_timespec_current(&ts)->ts_sec;
 
-	/* (Saving DB stops before S32_MAX bytes, but .. do) */
-	for(min = S16_MAX, base = p.c, i = MIN(S32_MAX, S(s32,pi.pi_size)); i > 0; ++p.c, --i){
+	for(min = S16_MAX, base = p.c, i = S(s32,pi.pi_size); i > 0; ++p.c, --i){
 		s64 ibuf;
 		union {u32 f; uz z;} u;
 
@@ -2243,7 +2255,6 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 jskip:
 		base = &p.c[1];
 	}
-
 	if(base != p.c)
 jerr:
 		su_log_write(su_LOG_WARN, _("corrupt gray DB in %s"), pgp->pg_store_path);
@@ -2259,10 +2270,9 @@ jerr:
 
 jleave:
 	if(mbase != NIL)
-		munmap(mbase, S(uz,pi.pi_size));
+		munmap(mbase, S(u32,pi.pi_size));
 
 	NYD_OU;
-	return;
 } /* }}} */
 
 static boole
@@ -2367,7 +2377,7 @@ jclose:
 		struct su_timespec ts2;
 
 		su_timespec_sub(su_timespec_current(&ts2), &ts);
-		su_log_write(su_LOG_ALERT, _("saved %lu entries in %lu:%09lu seconds to gray DB in %s"),
+		su_log_write(su_LOG_INFO, _("saved %lu entries in %lu:%09lu seconds to gray DB in %s"),
 			S(ul,cnt), S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), pgp->pg_store_path);
 	}
 
@@ -4392,6 +4402,7 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 	a_Y(__NR_pselect6),
 	a_Y(__NR_unlink),
 
+	/* Possible memory allocator stuff */
 	a_Y(__NR_brk),
 	a_Y(__NR_munmap),
 	a_Y(__NR_madvise),
@@ -4448,15 +4459,15 @@ static void a_sandbox__osdeath(int no, siginfo_t *sip, void *vp);
 # if VAL_OS_SANDBOX > 1
 static void
 a_sandbox__osdeath(int no, siginfo_t *sip, void *vp){
-	char msg[80];
-	int i;
+	char ieb[su_IENC_BUFFER_SIZE], msg[80 + sizeof("999999")], *cp;
 	UNUSED(no);
 	UNUSED(vp);
 
-	i = snprintf(msg, sizeof(msg),
-			VAL_NAME ": seccomp(2) violation (syscall %d); please report this bug\n",
-			sip->si_syscall);
-	write(STDERR_FILENO, msg, i);
+	cp = msg;
+	cp = su_cs_pcopy(cp, VAL_NAME ": seccomp(2) violation (syscall ");
+	cp = su_cs_pcopy(cp, su_ienc_u32(ieb, S(u32,sip->si_syscall), 10));
+	cp = su_cs_pcopy(cp, "); please report this bug\n");
+	write(STDERR_FILENO, msg, P2UZ(cp - msg));
 
 	_exit(1);
 }

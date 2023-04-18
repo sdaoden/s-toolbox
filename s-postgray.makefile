@@ -264,6 +264,8 @@ d-release:
 	cd $$VER &&\
 	mv s-postgray.makefile makefile &&\
 	mv s-postgray.README README &&\
+	sh ../../nail.git/mk/mdocmx.sh < ../s-postgray.8 > s-postgray.8 &&\
+	< s-postgray.8 MDOCMX_ENABLE=1 s-roff -Thtml -mdoc > /tmp/s-postgray-manual.html &&\
 	mkdir include src mk &&\
 	cp -r ../../nail.git/include/su include/ &&\
 	cp -r ../../nail.git/src/su src/ &&\
