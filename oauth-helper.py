@@ -798,12 +798,8 @@ to create the app registration.
 
 ]
 For Microsoft we need a client_id=, and (optionally?) a tenant=.
-   (Detected in March 2023: they seem to have stopped supporting RFC 6749,
-    6. Refreshing an Access Token, but now always require RFC 6749,
-    4.1.1. Authorization Request; configure via refresh_needs_authorize=y.)
--> Thanks to Ian Collier of Oxford University on mutt-dev@ the solution
-   to that is easy: simple say tenant=common instead of a real UUID.
-   Then it works again, without any refresh_token, only with access_token.
+Thanks to Ian Collier of Oxford University on mutt-dev@ one solution
+for problems may be to say tenant=common instead of using the tenant ID.
 
 			''')
 		if VAL_NAME:
