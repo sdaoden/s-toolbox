@@ -559,13 +559,16 @@ static void a_sandbox_server(struct a_pg *pgp);
 #define a_sandbox_path_check(PGP,P) (P)
 #define a_sandbox_path_reset(PGP,ISEXIT) do{}while(0)
 #define a_sandbox_open(PGP,SP,P,F,M) open(P, (F | a_O_NOFOLLOW | a_O_NOCTTY), M)
+#define a_sandbox_rm_in_store_path(PGP,P) su_path_rm(P)
 #define a_sandbox_sock_accepted(PGP,SFD) (TRU1)
 #if VAL_OS_SANDBOX > 0
 # if su_OS_FREEBSD
 #  undef a_sandbox_open
 #  undef a_sandbox_sock_accepted
+#  undef a_sandbox_rm_in_store_path
 static int a_sandbox_open(struct a_pg *pgp, boole store_path, char const *path, int flags, int mode);
 static boole a_sandbox_sock_accepted(struct a_pg *pgp, s32 sockfd);
+#  define a_sandbox_rm_in_store_path(PGP,P) su_path_rm_at((PGP)->pg_store_path_fd, P, su_IOPF_AT_NONE)
 
   /* On OpenBSD paths are unveil(2)-fixed on startup */
 # elif su_OS_OPENBSD
@@ -1452,13 +1455,7 @@ a_server__reset(struct a_pg *pgp){
 	su_FREE(mp->m_cli_fds);
 #endif
 
-	if(
-#if defined a_HAVE_LOG_FIFO && su_OS_FREEBSD
-		su_path_rm_at(pgp->pg_store_path_fd, mp->m_sockpath, su_IOPF_AT_NONE)
-#else
-		su_path_rm(mp->m_sockpath)
-#endif
-	)
+	if(a_sandbox_rm_in_store_path(pgp, mp->m_sockpath))
 		rv = su_EX_OK;
 	else{
 		su_log_write(su_LOG_CRIT, _("cannot remove client/server socket %s/%s: %s"),
@@ -2144,8 +2141,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 
 	/* Obtain a memory map on the DB storage (only called once on server startup, note: pre-sandbox!) */
 	mbase = NIL;
-
-	while((i = a_sandbox_open(pgp, TRU1, a_GRAY_DB_NAME, O_RDONLY, 0)) == -1){
+	while((i = open(a_GRAY_DB_NAME, O_RDONLY | a_O_NOFOLLOW | a_O_NOCTTY)) == -1){
 		if((i = su_err_by_errno()) == su_ERR_INTR)
 			continue;
 		if(a_misc_os_resource_delay(i))
@@ -2389,7 +2385,7 @@ jerr:
 	su_log_write(su_LOG_CRIT, _("cannot write gray DB in %s: %s"),
 		pgp->pg_store_path, V_(su_err_doc(su_err_by_errno())));
 
-	if(!su_path_rm(a_GRAY_DB_NAME))
+	if(!a_sandbox_rm_in_store_path(pgp, a_GRAY_DB_NAME))
 		su_log_write(su_LOG_CRIT, _("cannot even unlink corrupt gray DB in %s: %s"),
 			pgp->pg_store_path, V_(su_err_doc(-1)));
 
