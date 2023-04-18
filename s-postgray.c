@@ -4273,6 +4273,18 @@ a_sandbox_sock_accepted(struct a_pg *pgp, s32 sockfd){
 # define a_NEWFSTATAT
 # define a_FSTATAT64
 # define a_OPENAT
+
+# define a_RT_SIGACTION
+# define a_SIGACTION
+# define a_RT_SIGPROCMASK
+# define a_SIGPROCMASK
+# define a_RT_SIGRETURN
+# define a_SIGRETURN
+# define a_GETTID
+# define a_TGKILL
+# define a_TKILL
+# define a_KILL
+
 # ifdef __NR_exit_group
 #  undef a_EXIT_GROUP
 #  define a_EXIT_GROUP a_Y(__NR_exit_group),
@@ -4290,13 +4302,46 @@ a_sandbox_sock_accepted(struct a_pg *pgp, s32 sockfd){
 #  define a_OPENAT a_Y(__NR_openat),
 # endif
 
-  /* GLibC, musl */
-# ifdef __GLIBC__
-#  define a_G(X) X
-#  define a_M(X)
-# else
-#  define a_G(X)
-#  define a_M(X) X
+  /* LOG_EMERG may abort, which is not easy */
+# ifdef __NR_rt_sigaction
+#  undef a_RT_SIGACTION
+#  define a_RT_SIGACTION a_Y(__NR_rt_sigaction),
+# endif
+# ifdef __NR_sigaction
+#  undef a_SIGACTION
+#  define a_SIGACTION a_Y(__NR_sigaction),
+# endif
+# ifdef __NR_rt_sigprocmask
+#  undef a_RT_SIGPROCMASK
+#  define a_RT_SIGPROCMASK a_Y(__NR_rt_sigprocmask),
+# endif
+# ifdef __NR_sigprocmask
+#  undef a_SIGPROCMASK
+#  define a_SIGPROCMASK a_Y(__NR_sigprocmask),
+# endif
+# ifdef __NR_rt_sigreturn
+#  undef a_RT_SIGRETURN
+#  define a_RT_SIGRETURN a_Y(__NR_rt_sigreturn),
+# endif
+# ifdef __NR_sigreturn
+#  undef a_SIGRETURN
+#  define a_SIGRETURN a_Y(__NR_sigreturn),
+# endif
+# ifdef __NR_gettid
+#  undef a_GETTID
+#  define a_GETTID a_Y(__NR_gettid),
+# endif
+# ifdef __NR_tgkill
+#  undef a_TGKILL
+#  define a_TGKILL a_Y(__NR_tgkill),
+# endif
+# ifdef __NR_tkill
+#  undef a_TKILL
+#  define a_TKILL a_Y(__NR_tkill),
+# endif
+# ifdef __NR_kill
+#  undef a_KILL
+#  define a_KILL a_Y(__NR_kill),
 # endif
 
 /* __NR_futex? */
@@ -4311,6 +4356,11 @@ a_sandbox_sock_accepted(struct a_pg *pgp, s32 sockfd){
 	a_Y(__NR_read),\
 	a_Y(__NR_write),\
 	a_Y(__NR_writev),\
+	\
+	a_RT_SIGACTION a_SIGACTION \
+		a_RT_SIGPROCMASK a_SIGPROCMASK \
+		a_RT_SIGRETURN a_SIGRETURN \
+	a_GETTID a_TGKILL a_TKILL a_KILL \
 	\
 	a_FAIL
 
@@ -4340,24 +4390,6 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 	a_Y(__NR_fcntl),
 	a_Y(__NR_fsync),
 	a_Y(__NR_pselect6),
-#  ifdef __NR_rt_sigaction
-	a_Y(__NR_rt_sigaction),
-#  endif
-#  ifdef __NR_sigaction
-		a_Y(__NR_sigaction),
-#  endif
-#  ifdef __NR_rt_sigprocmask
-	a_Y(__NR_rt_sigprocmask),
-#  endif
-#  ifdef __NR_sigprocmask
-		a_Y(__NR_sigprocmask),
-#  endif
-#  ifdef __NR_rt_sigreturn
-	a_Y(__NR_rt_sigreturn),
-#  endif
-#  ifdef __NR_sigreturn
-		a_Y(__NR_sigreturn),
-#  endif
 	a_Y(__NR_unlink),
 
 	a_Y(__NR_brk),
@@ -4387,8 +4419,16 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 # undef a_NEWFSTATAT
 # undef a_STATAT64
 # undef a_OPENAT
-# undef a_G
-# undef a_M
+# undef a_RT_SIGACTION
+# undef a_SIGACTION
+# undef a_RT_SIGPROCMASK
+# undef a_SIGPROCMASK
+# undef a_RT_SIGRETURN
+# undef a_SIGRETURN
+# undef a_GETTID
+# undef a_TGKILL
+# undef a_TKILL
+# undef a_KILL
 # undef a_SHARED
 
 static struct sock_fprog const a_sandbox__client_prg = {
