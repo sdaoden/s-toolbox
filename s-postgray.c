@@ -852,9 +852,23 @@ jblock:
 				if((rv = a_client__req(pgp)) != su_EX_OK)
 					break;
 			}else if(seen_any){
-				if(fputs("action=" a_MSG_NODEFER "\n\n", stdout) == EOF || fflush(stdout) == EOF){
-					rv = su_EX_IOERR;
-					break;
+				static char const asw[] = "action=" a_MSG_NODEFER "\n\n";
+
+				sz c;
+				char const *cp;
+
+				ASSERT(rv == su_EX_OK);
+				a_DBG(su_log_write(su_LOG_DEBUG, "answer incomplete block end %s", asw);)
+				for(cp = asw, c = sizeof(asw) -1; c > 0;){
+					lnr = write(STDOUT_FILENO, cp, S(uz,c));
+					if(lnr == -1){
+						if(su_err_by_errno() == su_ERR_INTR)/* XXX no more in client */
+							continue;
+						rv = su_EX_IOERR;
+						goto jleave;
+					}
+					cp += lnr;
+					c -= lnr;
 				}
 			}
 
@@ -876,7 +890,7 @@ jblock:
 
 			if((xcp = su_cs_find_c(cp, '=')) == NIL){
 				rv = su_EX_PROTOCOL;
-				break;
+				goto jleave;
 			}
 
 			i = P2UZ(xcp++ - cp);
@@ -1038,14 +1052,16 @@ jex_nodefer:
 
 	a_DBG(su_log_write(su_LOG_DEBUG, "answer %s", cp);)
 	c = snprintf(pgp->pg_buf, FIELD_SIZEOF(struct a_pg,pg_buf), "action=%s\n\n", cp);
+	cp = pgp->pg_buf;
 	while(c > 0){
-		srvx = write(STDOUT_FILENO, pgp->pg_buf, S(u32,c));
+		srvx = write(STDOUT_FILENO, cp, S(u32,c));
 		if(srvx == -1){
 			if(su_err_by_errno() == su_ERR_INTR)/* XXX no more in client */
 				continue;
 			rv = su_EX_IOERR;
 			break;
 		}
+		cp += srvx;
 		c -= srvx;
 	}
 
@@ -4304,7 +4320,6 @@ static struct sock_filter const a_sandbox__client_flt[] = {
 # ifdef VAL_OS_SANDBOX_CLIENT_RULES
 	VAL_OS_SANDBOX_CLIENT_RULES
 # else
-	a_M(a_Y(__NR_ioctl) su_COMMA)
 # endif
 	a_SHARED
 };
