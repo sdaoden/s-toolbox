@@ -259,6 +259,7 @@ uninstall:
 
 d-release:
 	VER=.s-postgray-$$(sed -Ee '/a_VERSION/b V;d;:V; s/^.+"([^"]+)"/\1/;q' < s-postgray.c) &&\
+	umask 0022 &&\
 	mkdir $$VER &&\
 	cp s-postgray* $$VER/ &&\
 	cd $$VER &&\
@@ -274,6 +275,7 @@ d-release:
 	sh ../../nail.git/mk/su-make-strip-cxx.sh &&\
 	cd include/su && perl ../../../../nail.git/mk/su-doc-strip.pl *.h &&\
 	git reset&&\
-	echo now edit makefile and src/su/.makefile
+	echo 'now edit makefile and src/su/.makefile, then run' &&\
+	echo 's-nail -Aich -Snofollowup-to -Sreply-to=ich -Ssmime-sign s-announce@lists.sdaoden.eu'
 
 # s-mk-mode
