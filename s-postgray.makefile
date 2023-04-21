@@ -13,7 +13,7 @@ LIBEXEC = libexec
 # Should not be accessible by anyone else.
 VAL_STORE_PATH = /var/lib/postgray
 
-# 0=disable, 1=enable, 2=enable+debug (DO NOT USE REGULARY; May log to STDERR!)
+# 0=disable, 1=enable, 2=enable+debug (DO NOT USE REGULARLY: logs to STDERR!)
 # A setrlimit(2) sandbox is _always_ used, this uses in addition on
 # - FreeBSD
 #   capsicum(4) (plus a bit of procctl(2)).
