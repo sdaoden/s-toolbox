@@ -755,6 +755,8 @@ chosen.]
 
 ]
 For Google we need a client_id= and a client_secret=.
+As of 2023-04-27 authorization requests require flow=redirect;
+Once established flow=auth is (seems to be) possible.
 			''')
 		if VAL_NAME:
 			print('For %s we have a built-in configuration for this provider' % VAL_NAME)
@@ -800,7 +802,7 @@ to create the app registration.
 For Microsoft we need a client_id=, and (optionally?) a tenant=.
 Thanks to Ian Collier of Oxford University on mutt-dev@ one solution
 for problems may be to say tenant=common instead of using the tenant ID.
-
+flow=auth works as of 2023-04-27.
 			''')
 		if VAL_NAME:
 			print('For %s we have a built-in configuration for this provider' % VAL_NAME)
@@ -812,8 +814,8 @@ for problems may be to say tenant=common instead of using the tenant ID.
 Yandex has a clear, clean and logical documentation at oauth.yandex.com.
 Note that for flow=redirect you need to add the http://localhost:PORT
 URL, _including_ PORT (best outside the "user-inaccessible" port numbers
-0-1024), and flow_redirect_uri_port_fixed=THAT-PORT must be set!
-Also devicecode_grant_type=device_code.
+0-1024) in the GUI, and flow_redirect_uri_port_fixed=THAT-PORT must be set!
+Also devicecode_grant_type=device_code.  Works just fine as of 2023-04-27.
 			''')
 		if VAL_NAME:
 			print('For %s we have a built-in configuration for this provider' % VAL_NAME)
