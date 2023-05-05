@@ -755,8 +755,8 @@ chosen.]
 
 ]
 For Google we need a client_id= and a client_secret=.
-As of 2023-04-27 authorization requests require flow=redirect;
-Once established flow=auth is (seems to be) possible.
+As of 2023-04-27 authorization requests require flow=redirect (reminder that
+script and browser must run in same namespace/container/sandbox for this).
 			''')
 		if VAL_NAME:
 			print('For %s we have a built-in configuration for this provider' % VAL_NAME)
