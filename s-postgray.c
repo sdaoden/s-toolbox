@@ -199,7 +199,7 @@
  * Always in FROZEN state to delay resize costs to balance()!
  * MIN_LIMIT is also used to consider whether _this_ balance() is needed */
 #define a_GRAY_FLAGS (su_CS_DICT_HEAD_RESORT | su_CS_DICT_STRONG /*| su_CS_DICT_ERR_PASS*/)
-#define a_GRAY_TS 4
+#define a_GRAY_THRESH 4
 #define a_GRAY_MIN_LIMIT 1000
 #define a_GRAY_DB_NAME VAL_NAME ".db" /* (len LE REA_NAME!) */
 
@@ -2114,9 +2114,9 @@ a_server__gray_create(struct a_pg *pgp){
 
 	/* Perform the initial allocation without _ERR_PASS so that we panic if we
 	 * cannot create it, then set _ERR_PASS to handle (ignore) errors */
-	su_cs_dict_resize(su_cs_dict_set_min_size(su_cs_dict_set_threshold_shift(
+	su_cs_dict_resize(su_cs_dict_set_min_size(su_cs_dict_set_threshold(
 				su_cs_dict_create(&mp->m_gray, (a_GRAY_FLAGS | su_CS_DICT_FROZEN), NIL),
-			a_GRAY_TS), a_GRAY_MIN_LIMIT), 1);
+			a_GRAY_THRESH), a_GRAY_MIN_LIMIT), 1);
 
 	a_server__gray_load(pgp);
 
