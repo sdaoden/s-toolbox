@@ -4206,26 +4206,20 @@ a_sandbox_open(struct a_pg *pgp, boole store_path, char const *path, int flags, 
 	/* Heavy if in sandbox */
 	if(/*(pgp->pg_flags & a_F_UNTAMED) ||*/ pgp->pg_store_path_fd < 0)
 		rv = open(path, flags, mode);
-	else{
-		while((rv = openat(pgp->pg_store_path_fd, path, flags, mode)) == -1 &&
-				su_err_by_errno() == su_ERR_INTR){
-		}
+	else if((rv = openat(pgp->pg_store_path_fd, path, flags, mode)) != -1){
+		cap_rights_t rights;
 
-		if(rv != -1){
-			cap_rights_t rights;
+		if(flags & O_WRONLY)
+			cap_rights_init(&rights, CAP_FSTAT, CAP_FSYNC, CAP_WRITE);
+		else if(flags & O_RDWR)
+			cap_rights_init(&rights, CAP_FSTAT, CAP_FSYNC, CAP_READ, CAP_WRITE);
+		else
+			cap_rights_init(&rights, CAP_FSTAT, CAP_READ);
 
-			if(flags & O_WRONLY)
-				cap_rights_init(&rights, CAP_FSTAT, CAP_FSYNC, CAP_WRITE);
-			else if(flags & O_RDWR)
-				cap_rights_init(&rights, CAP_FSTAT, CAP_FSYNC, CAP_READ, CAP_WRITE);
-			else
-				cap_rights_init(&rights, CAP_FSTAT, CAP_READ);
-
-			if(cap_rights_limit(rv, &rights) == -1 && (mode = su_err_by_errno()) != su_ERR_NOSYS){
-				close(rv);
-				a_sandbox__err("cap_rights_limit", path, mode);
-				rv = -1;
-			}
+		if(cap_rights_limit(rv, &rights) == -1 && (mode = su_err_by_errno()) != su_ERR_NOSYS){
+			close(rv);
+			a_sandbox__err("cap_rights_limit", path, mode);
+			rv = -1;
 		}
 	}
 
