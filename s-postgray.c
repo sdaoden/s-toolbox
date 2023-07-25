@@ -41,7 +41,7 @@
 #define su_FILE s_postgray
 
 /* */
-#define a_VERSION "0.8.1"
+#define a_VERSION "0.8.2"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* Maximum accept(2) backlog */
@@ -899,8 +899,9 @@ jblock:
 			i = P2UZ(xcp++ - cp);
 			lnr -= i + 1;
 
-			if(lnr == 0)
-				continue;
+			/* An empty sender= we dig; rest fails later upon normalization */
+			/*if(lnr == 0)
+			 *	continue;*/
 
 			if(i == sizeof("request") -1 && !su_mem_cmp(cp, "request", sizeof("request") -1)){
 				if(lnr != sizeof("smtpd_access_policy") -1 || su_mem_cmp(xcp, "smtpd_access_policy",
@@ -970,7 +971,8 @@ a_client__req(struct a_pg *pgp){
 
 	if(!(pgp->pg_flags & a_F_FOCUS_SENDER) && !a_norm_triple_r(pgp))
 		goto jex_nodefer;
-	if(!a_norm_triple_s(pgp))
+	/* xxx We explicitly allow empty from=<>, seen for automated responses */
+	if(*pgp->pg_s != '\0' && !a_norm_triple_s(pgp))
 		goto jex_nodefer;
 	if(!a_norm_triple_ca(pgp))
 		goto jex_nodefer;

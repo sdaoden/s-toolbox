@@ -294,7 +294,7 @@ eval $PGX --shutdown $REDIR
 ### Configuration seems to work, go for the real thing!!  (./defx clobbered)
 
 ##
-echo '=4: allow and block=' # {{{
+echo '=4: allow and block (+once, +signals, +corner cases)=' # {{{
 if [ -n "$s4" ]; then
 	echo 'skipping 4'
 else
@@ -483,6 +483,24 @@ kill -TERM $spid || exit 101
 delay
 eval $PG -R ./x.rc --status $REDIR
 [ $? -eq 1 ] || exit 102
+
+## corner cases
+# empty sender=, whitelisted client
+printf 'recipient=x@y\nsender=\nclient_address=127.0.0.1\nclient_name=du.bi\n\n' |
+	eval $PG -R ./x.rc > ./4.corner-1 $REDIR
+printf 'action=xDUNNO\n\n' > ./4.corner-1x
+cmp -s ./4.corner-1 ./4.corner-1x || exit 101
+[ -n "$REDIR" ] || echo ok 4.corner-1x
+
+# empty sender=
+printf 'recipient=x@y\nsender=\nclient_address=128.0.0.1\nclient_name=du.bi\n\n' |
+	eval $PG -R ./x.rc > ./4.corner-2 $REDIR
+printf 'action='"$MSG_DEFER"'\n\n' > ./4.corner-2x
+cmp -s ./4.corner-2 ./4.corner-2x || exit 101
+[ -n "$REDIR" ] || echo ok 4.corner-2x
+
+eval $PG -R ./x.rc --shutdown $REDIR
+[ $? -ne 75 ] || exit 102
 fi
 # }}}
 
