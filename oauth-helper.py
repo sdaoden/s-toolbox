@@ -432,13 +432,15 @@ def act_authorize(args, cfg, dt): #{{{
 		if b:
 			b = b + " '" + u + "'"
 			print(b, file=sys.stderr)
-			i = input('\n    - Shall i invoke this command? [y/else] ')
+			print('\n    - Shall i invoke this command? [y/else] ', end='', file=sys.stderr)
+			i = input()
 			if i == 'Y' or i == 'y':
 				os.system(b)
 		else:
 			print('   %s' % u, file=sys.stderr)
 
-		auth_code = input('\nPlease enter authorization [URI?code=]token: ')
+		print('\nPlease enter authorization [URI?code=]token: ', end='', file=sys.stderr)
+		auth_code = input()
 	elif cfg['flow'] == 'redirect':
 		try:
 			s = socket.socket()
