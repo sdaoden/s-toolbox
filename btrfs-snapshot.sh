@@ -21,7 +21,7 @@
 #@ TODO and/or to set the vars directly: THEVOL,DIRS,ACCUDIR.
 #@
 #@ Synopsis: btrfs-snapshot.sh create-dir-tree
-#@ Synopsis: btrfs-snapshot.sh create|trim|setvols
+#@ Synopsis: btrfs-snapshot.sh create|trim|trim-ival|setvols
 #@ Synopsis: btrfs-snapshot.sh clone-to-cwd|sync-to-cwd
 #@
 #@ - "create-dir-tree" creates all $DIRS and their snapshot mirrors,
@@ -33,9 +33,10 @@
 #@
 #@ - "trim" deletes all but the last snapshot of each folder under snapshots/.
 #@   It also removes anything (!) in .old/.
+#@   "trim-ival" is identical but also keeps the first snapshot.
 #@
 #@ - "setvols" moves any existing $DIRS (subvolumes) to $THEVOL/.old/$now/
-#@   (covered by "trim"), and recreates them from the latest corresponding
+#@   ("trim[-ival]" covered), and recreates them from the latest corresponding
 #@   entry within snapshots/.
 #@
 #@ - "clone-to-cwd" and "sync-to-cwd" need one existing snapshot (series),
@@ -49,7 +50,7 @@
 #@ + the_worker() drives the logic, and may become adjusted, if simply
 #@   setting other values for $THEVOL, $DIRS and $ACCUDIR does not suffice.
 #
-# 2019 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
+# 2019 - 2023 Steffen Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain
 
 : ${HOSTNAME:=$(uname -n)}
@@ -111,10 +112,10 @@ the_worker() ( # (output redirected)
 		for d in $DIRS; do
 			create_one "$d"
 		done
-	elif [ $1 = trim ]; then
+	elif [ $1 = trim ] || [ $1 = trim-ival ]; then
 		echo '= Trimming snapshots for '$DIRS
 		for d in $DIRS; do
-			trim_one "$d"
+			trim_one "$d" "${1#trim*}"
 		done
 		for d in $DIRS; do
 			(
@@ -187,7 +188,7 @@ create_one() {
 trim_one() {
 	(
 	mydir=$1
-	dosync=$2
+	ival=$2
 	cd snapshots/"$mydir" || exit 11
 
 	set -- $(find . -maxdepth 1 -type d -not -path . | sort)
@@ -197,15 +198,12 @@ trim_one() {
 	fi
 
 	echo '== Trimming snapshots in snapshots/'$mydir
+	[ -n "$ival" ] && shift
 	while [ $# -gt 1 ]; do
 		echo '=== Deleting '$1
 		act btrfs subvolume delete "$1"
 		shift
 	done
-	if [ -n "$dosync" ]; then
-		echo '=== Syncing on removal(s)'
-		act btrfs subvolume sync .
-	fi
 	) || exit $?
 }
 
@@ -352,7 +350,7 @@ mymail() {
 
 syno() {
 	echo 'Synopsis: btrfs-snapshot.sh create-dir-tree'
-	echo 'Synopsis: btrfs-snapshot.sh create|trim|setvols'
+	echo 'Synopsis: btrfs-snapshot.sh create|trim|trim-ival|setvols'
 	echo 'Synopsis: btrfs-snapshot.sh clone-to-cwd|sync-to-cwd'
 	echo
 	echo 'See script head for documentation: '$0
@@ -364,9 +362,7 @@ tmpl=$2
 [ $# -ne 1 ] && syno 1
 case $cmd in
 help) syno 0;;
-create-dir-tree) ;;
-create) ;; trim) ;; setvols) ;;
-clone-to-cwd) ;; sync-to-cwd) ;;
+create-dir-tree | create|trim|trim-ival|setvols | clone-to-cwd|sync-to-cwd) ;;
 *) syno 1;;
 esac
 
