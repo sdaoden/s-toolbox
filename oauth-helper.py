@@ -697,6 +697,11 @@ def main(): #{{{
 	if args.action == 'template':
 		return act_template(args, dt)
 
+	if not sys.stdin.isatty():
+		print('! Standard input is not a terminal; as we may need input now, this is unsupported',
+			file=sys.stderr)
+		return EX_USAGE
+
 	cfg = config_load(args, dt)
 	if not isinstance(cfg, dict):
 		return cfg
