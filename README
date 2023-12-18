@@ -59,19 +59,6 @@ btrfs-snapshot.sh:
    [.]
    - (tar)ball support is gone; new syntax fixed.
 
-entropy-saver.c:
-   Linux: for my use cases i find it annoying that "entropy_avail" is not
-   incremented when i restore the saved random seed that machines have
-   collected so hard.  This little program touches this count also.
-   (Thanks Bernd Petrovitsch for pointing out EAGAIN and EBUSY.)
-   [.]
-   2022-02-23: work when /proc/sys/kernel/random/entropy_avail is not de-
-               cremented when reading /dev/random.
-   2022-04-20: Jason Donenfeld wrote something more generic that made it
-               into busybox etc, and is therefore preferable:
-                  https://git.zx2c4.com/seedrng/plain/seedrng.c
-               P.S.: most preferable would be "echo seed > /dev/random"
-
 find-command.sh:
    Find an executable command within a POSIX shell.
    which(1) is not standardized, and command(1) -v may return non-executable,
@@ -122,6 +109,19 @@ cdoc-freebsd.S:
    newer ones, but have not tried it in a while.  It had 416 object
    file bytes when everything was placed in ``.text`` (no .EH frames
    back then).
+
+entropy-saver.c:
+   Linux: for my use cases i find it annoying that "entropy_avail" is not
+   incremented when i restore the saved random seed that machines have
+   collected so hard.  This little program touches this count also.
+   (Thanks Bernd Petrovitsch for pointing out EAGAIN and EBUSY.)
+   [.]
+   2022-02-23: work when /proc/sys/kernel/random/entropy_avail is not de-
+               cremented when reading /dev/random.
+   2022-04-20: Jason Donenfeld wrote something more generic that made it
+               into busybox etc, and is therefore preferable:
+                  https://git.zx2c4.com/seedrng/plain/seedrng.c
+               P.S.: most preferable would be "echo seed > /dev/random"
 
 fan-adaptive.sh:
    "Adaptive", more generic, and much more easily adaptable successor of
