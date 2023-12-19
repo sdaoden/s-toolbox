@@ -321,7 +321,7 @@ union a_srch_ip{
 /* Fuzzy search white/blacklist */
 struct a_srch{
 	struct a_srch *s_next;
-	BITENUM_IS(u8,a_srch_flags) s_flags;
+	BITENUM(u8,a_srch_flags) s_flags;
 	u8 s_mask; /* SRCH_IP*: CIDR mask */
 	u8 s__pad[su_6432(6,2)];
 	union a_srch_ip s_ip;
@@ -370,7 +370,7 @@ struct a_master{
 };
 
 struct a_pg{
-	BITENUM_IS(uz,a_flags) pg_flags;
+	BITENUM(uz,a_flags) pg_flags;
 	struct a_master *pg_master;
 	/* Configuration; values always <= signed type max */
 	u8 pg_4_mask;
@@ -509,14 +509,14 @@ static void a_server__gray_cleanup(struct a_pg *pgp, boole force);
 static char a_server__gray_lookup(struct a_pg *pgp, char const *key);
 
 /* conf; _conf__(arg|A|a)() return a negative exit status on error */
-static void a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_avo_flags) f);
-static void a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_avo_flags) f);
+static void a_conf_setup(struct a_pg *pgp, BITENUM(u32,a_avo_flags) f);
+static void a_conf_finish(struct a_pg *pgp, BITENUM(u32,a_avo_flags) f);
 static void a_conf_list_values(struct a_pg *pgp);
-static s32 a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_avo_flags) f);
+static s32 a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM(u32,a_avo_flags) f);
 
 static s32 a_conf__AB(struct a_pg *pgp, char const *path, struct a_wb *wbp);
 static s32 a_conf__ab(struct a_pg *pgp, char *entry, struct a_wb *wbp);
-static s32 a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_avo_flags) f);
+static s32 a_conf__R(struct a_pg *pgp, char const *path, BITENUM(u32,a_avo_flags) f);
 static void a_conf__err(struct a_pg *pgp, char const *msg, ...);
 
 /* normalization; can fail for effectively empty or bogus input!
@@ -1094,7 +1094,7 @@ a_server(struct a_pg *pgp, char const *sockpath, s32 reafd){
 	struct a_master m;
 	sigset_t ssn, sso;
 	s32 rv;
-	BITENUM_IS(u32,a__f) f;
+	BITENUM(u32,a__f) f;
 	NYD_IN;
 
 	STRUCT_ZERO(struct a_master, &m);
@@ -1487,7 +1487,7 @@ a_server__wb_setup(struct a_pg *pgp, boole reset){
 	sigset_t ssn, sso;
 	struct su_avopt avo;
 	s32 rv;
-	BITENUM_IS(u32,a_avo_flags) f;
+	BITENUM(u32,a_avo_flags) f;
 	struct a_master *mp;
 	NYD_IN;
 
@@ -2682,7 +2682,7 @@ jleave:
 
 /* conf {{{ */
 static void
-a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_avo_flags) f){
+a_conf_setup(struct a_pg *pgp, BITENUM(u32,a_avo_flags) f){
 	NYD2_IN;
 
 	pgp->pg_flags &= ~S(uz,a_F_SETUP_MASK);
@@ -2722,7 +2722,7 @@ a_conf_setup(struct a_pg *pgp, BITENUM_IS(u32,a_avo_flags) f){
 }
 
 static void
-a_conf_finish(struct a_pg *pgp, BITENUM_IS(u32,a_avo_flags) f){
+a_conf_finish(struct a_pg *pgp, BITENUM(u32,a_avo_flags) f){
 	NYD2_IN;
 
 	if(pgp->pg_4_mask == U8_MAX)
@@ -2854,7 +2854,7 @@ a_conf_list_values(struct a_pg *pgp){
 }
 
 static s32
-a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM_IS(u32,a_avo_flags) f){
+a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM(u32,a_avo_flags) f){
 	union {u8 *i8; u16 *i16; u32 *i32; char const *cp; char const **cpp;} p;
 	NYD2_IN;
 
@@ -3241,7 +3241,7 @@ jedata:
 } /* }}} */
 
 static s32
-a_conf__R(struct a_pg *pgp, char const *path, BITENUM_IS(u32,a_avo_flags) f){
+a_conf__R(struct a_pg *pgp, char const *path, BITENUM(u32,a_avo_flags) f){
 	struct a_line line;
 	struct su_avopt avo;
 	sz lnr;
@@ -3921,7 +3921,7 @@ int
 main(int argc, char *argv[]){ /* {{{ */
 	struct su_avopt avo;
 	struct a_pg pg;
-	BITENUM_IS(u32,a_avo_flags) f;
+	BITENUM(u32,a_avo_flags) f;
 	s32 mpv;
 
 	mpv = (getenv("SOURCE_DATE_EPOCH") == NIL); /* xxx su_env_get? */
