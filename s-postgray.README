@@ -29,6 +29,9 @@ are "not handled".
 RELEASES
 --------
 
+v0.8.2, 2024-??-??:
+- Linux seccomp: no need for open(2)/openat(2) in client.
+
 v0.8.1, 2023-04-19:
 * Many, many thanks to Jens Schleusener, and his cron job!
 + Add --status to query server status.

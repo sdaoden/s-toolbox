@@ -3949,7 +3949,9 @@ main(int argc, char *argv[]){ /* {{{ */
 #ifdef a_HAVE_LOG_FIFO
 	a_pg_i = &pg;
 	pg.pg_log_fd = -1;
+# if su_OS_FREEBSD
 	pg.pg_store_path_fd = su_PATH_AT_FDCWD;
+# endif
 #endif
 	a_conf_setup(&pg, a_AVO_NONE);
 	pg.pg_argc = S(u32,(argc > 0) ? --argc : argc);
@@ -4360,7 +4362,6 @@ a_sandbox_sock_accepted(struct a_pg *pgp, s32 sockfd){
 	a_Y(__NR_exit),a_EXIT_GROUP \
 	a_Y(__NR_fstat),a_FSTATAT64 a_NEWFSTATAT \
 	a_Y(__NR_getpid),\
-	a_Y(__NR_open),a_OPENAT \
 	a_Y(__NR_read),\
 	a_Y(__NR_write),\
 	a_Y(__NR_writev),\
@@ -4378,6 +4379,9 @@ static struct sock_filter const a_sandbox__client_flt[] = {
 # ifdef VAL_OS_SANDBOX_CLIENT_RULES
 	VAL_OS_SANDBOX_CLIENT_RULES
 # else
+# endif
+# ifdef su_NYD_ENABLE
+	a_Y(__NR_open),a_OPENAT
 # endif
 	a_SHARED
 };
@@ -4397,6 +4401,7 @@ static struct sock_filter const a_sandbox__server_flt[] = {
 #  endif
 	a_Y(__NR_fcntl),
 	a_Y(__NR_fsync),
+	a_Y(__NR_open),a_OPENAT
 	a_Y(__NR_pselect6),
 	a_Y(__NR_unlink),
 
