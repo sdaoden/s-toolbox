@@ -31,6 +31,9 @@ RELEASES
 
 v0.8.2, 2024-??-??:
 - Linux seccomp: no need for open(2)/openat(2) in client.
+- FreeBSD capsicum: used CAP1|CAP2 not CAP1,CAP2 for _rights_init().
+  Worked in practice though (right_to_index() is identical, and then the
+  OR simply assigns it both).
 
 v0.8.1, 2023-04-19:
 * Many, many thanks to Jens Schleusener, and his cron job!

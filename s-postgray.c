@@ -4157,8 +4157,8 @@ a_sandbox__os(struct a_pg *pgp, boole server){
 				(e = su_err_by_errno()) != su_ERR_INTR)
 			a_sandbox__err("open", "--store-path for capsicum(4) openat(2) support", e);
 
-		cap_rights_init(&rights, CAP_FSYNC, CAP_READ, CAP_WRITE, CAP_LOOKUP, CAP_FSTAT, CAP_FTRUNCATE,
-			CAP_CREATE | CAP_UNLINKAT);
+		cap_rights_init(&rights, CAP_CREATE, CAP_FSTAT, CAP_FSYNC, CAP_FTRUNCATE, CAP_LOOKUP, CAP_READ,
+				CAP_UNLINKAT, CAP_WRITE);
 		if(cap_rights_limit(pgp->pg_store_path_fd, &rights) == -1 && (e = su_err_by_errno()) != su_ERR_NOSYS)
 			a_sandbox__err("cap_rights_limit", "--store-path, for openat(2)", e);
 	}
