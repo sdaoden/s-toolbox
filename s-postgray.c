@@ -94,7 +94,7 @@
 #include <su/code.h>
 
 /* Sandbox may impose the necessity to use a dedicated logger process */
-#undef a_HAVE_CONFIG_RELOAD_UNTAMED
+#undef a_HAVE_CONF_RELOAD_UNTAMED
 #undef a_HAVE_LOG_FIFO
 #undef a_HAVE_SANDBOX_SIGNAL
 #if VAL_OS_SANDBOX > 0
@@ -108,7 +108,7 @@
 #   undef VAL_OS_SANDBOX
 #   define VAL_OS_SANDBOX 0
 #  else
-#   define a_HAVE_CONFIG_RELOAD_UNTAMED
+#   define a_HAVE_CONF_RELOAD_UNTAMED
 #   define a_HAVE_LOG_FIFO
 
 #   include <sys/capsicum.h>
@@ -289,9 +289,8 @@ enum a_flags{
 
 enum a_avo_flags{
 	a_AVO_NONE,
-	a_AVO_FULLER = 1u<<0, /* Like _FULL less AaBb */
-	a_AVO_FULL = 1u<<1,
-	a_AVO_RELOAD = 1u<<2
+	a_AVO_FULL = 1u<<0,
+	a_AVO_RELOAD = 1u<<1
 };
 
 enum a_answer{
@@ -1619,7 +1618,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 		/* Recreate w/b lists? */
 		if(UNLIKELY(a_server_hup)){
 			a_server_hup = FAL0;
-#ifdef a_HAVE_CONFIG_RELOAD_UNTAMED
+#ifdef a_HAVE_CONF_RELOAD_UNTAMED
 			if(!(pgp->pg_flags & a_F_UNTAMED))
 				su_log_write(su_LOG_ERR, _("reloading configuration via SIGHUP needs --untamed"));
 			else

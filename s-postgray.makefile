@@ -60,6 +60,9 @@ VAL_SERVER_TIMEOUT = 30
 
 ##
 
+MYNAME = s-postgray
+MYMANEXT = 8
+
 SULIB=-lsu-dvldbg#-asan
 #SULIB=$(SULIB_BLD)
 SULIB_BLD=
@@ -80,7 +83,7 @@ SUSTRIP=
 ## >8 -- 8<
 
 LIBEXECDIR = $(DESTDIR)$(PREFIX)/$(LIBEXEC)
-MANDIR = $(DESTDIR)$(PREFIX)/share/man/man8
+MANDIR = $(DESTDIR)$(PREFIX)/share/man/man$(MYMANEXT)
 
 SUF = $(SUFDEVEL) \
 
@@ -121,7 +124,7 @@ all: $(SULIB_BLD) $(VAL_NAME)
 src/su/.clib.a:
 	cd src/su && $(MAKE) -f .makefile .clib.a
 
-$(VAL_NAME): $(SULIB_BLD) s-postgray.c
+$(VAL_NAME): $(SULIB_BLD) $(MYNAME).c
 	CRULES= SRULES=;\
 	if [ -n "$(VAL_OS_SANDBOX_CLIENT_RULES)" ]; then \
 		CRULES='-DVAL_OS_SANDBOX_CLIENT_RULES="$(VAL_OS_SANDBOX_CLIENT_RULES)"';\
@@ -156,10 +159,10 @@ $(VAL_NAME): $(SULIB_BLD) s-postgray.c
 		\
 		\
 		$(CFLAGS) $(LDFLAGS) \
-		-o $(@) s-postgray.c $(SULIB)
+		-o $(@) $(MYNAME).c $(SULIB)
 
 test: all
-	PG="../$(VAL_NAME)" exec ./s-postgray-test.sh
+	PG="../$(VAL_NAME)" exec ./$(MYNAME)-test.sh
 
 # test-strace {{{
 test-strace: all
@@ -252,21 +255,24 @@ install: all
 	$(INSTALL) -m 0755 "$(VAL_NAME)" "$(LIBEXECDIR)"/
 	if [ -n "$(SUSTRIP)" ]; then $(SUSTRIP) -s "$(LIBEXECDIR)/$(VAL_NAME)"; fi
 	$(MKDIR) -p -m 0755 "$(MANDIR)"
-	$(INSTALL) -m 0644 s-postgray.8 "$(MANDIR)/$(VAL_NAME).8"
+	$(INSTALL) -m 0644 $(MYNAME).$(MYMANEXT) $(MANDIR)/$(VAL_NAME).$(MYMANEXT)"
 
 uninstall:
-	$(RM) -f "$(LIBEXECDIR)/$(VAL_NAME)" "$(MANDIR)/$(VAL_NAME).8"
+	$(RM) -f "$(LIBEXECDIR)/$(VAL_NAME)" "$(MANDIR)/$(VAL_NAME).$(MYMANEXT)"
 
 d-release:
-	VER=.s-postgray-$$(sed -Ee '/a_VERSION/b V;d;:V; s/^.+"([^"]+)"/\1/;q' < s-postgray.c) &&\
+	XVER=$$(sed -Ee '/a_VERSION/b V;d;:V; s/^.+"([^"]+)"/\1/;q' < $(MYNAME).c) &&\
+	VER=.$(MYNAME)-$$XVER &&\
 	umask 0022 &&\
 	mkdir $$VER &&\
-	cp s-postgray* $$VER/ &&\
+	sed -i'' -E -e 's/^\.Dd .+$$/.Dd '"$$(date +"%B %d, %Y")"'/' \
+		-e 's/^\.ds VV .+$$/.ds VV \\%v'"$$XVER"'/' $(MYNAME).$(MYMANEXT) &&\
+	cp $(MYNAME)* $$VER/ &&\
 	cd $$VER &&\
-	mv s-postgray.makefile makefile &&\
-	mv s-postgray.README README &&\
-	sh ../../nail.git/mk/mdocmx.sh < ../s-postgray.8 > s-postgray.8 &&\
-	< s-postgray.8 MDOCMX_ENABLE=1 s-roff -Thtml -mdoc > /tmp/s-postgray-manual.html &&\
+	mv $(MYNAME).makefile makefile &&\
+	mv $(MYNAME).README README &&\
+	sh ../../nail.git/mk/mdocmx.sh < ../$(MYNAME).$(MYMANEXT) > $(MYNAME).$(MYMANEXT) &&\
+	< $(MYNAME).$(MYMANEXT) MDOCMX_ENABLE=1 s-roff -Thtml -mdoc > /tmp/$(MYNAME)-manual.html &&\
 	mkdir include src mk &&\
 	cp -r ../../nail.git/include/su include/ &&\
 	cp -r ../../nail.git/src/su src/ &&\
