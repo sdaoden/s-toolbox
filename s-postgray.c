@@ -23,7 +23,7 @@
  *@   Just extend the DB format to a 64-bit integer, and use bits 32..48.
  *@   (Adding this feature should work with existing DBs.)
  *
- * Copyright (c) 2022 - 2023 Steffen Nurpmeso <steffen@sdaoden.eu>.
+ * Copyright (c) 2022 - 2024 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -4107,7 +4107,7 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 			a_sandbox__err("setrlimit", "NOFILE", 0);
 # endif
 
-		rl.rlim_cur = rl.rlim_max = ALIGN_Z(a_BUF_SIZE);
+		rl.rlim_cur = rl.rlim_max = ALIGN_PAGE(a_BUF_SIZE);
 	}else{
 		rlim_t const xxl = (S(u64,S(rlim_t,-1)) - 1 > S(u64,S32_MAX)) ? S(rlim_t,S32_MAX) : S(rlim_t,-1) - 1;
 		u64 xl;
@@ -4117,7 +4117,7 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 			a_sandbox__err("setrlimit", "NOFILE", 0);
 
 		LCTAV(U64_MAX / a_BUF_SIZE > U32_MAX);
-		xl = S(u64,pgp->pg_limit) * ALIGN_Z(a_BUF_SIZE);
+		xl = S(u64,pgp->pg_limit) * ALIGN_PAGE(a_BUF_SIZE);
 		rl.rlim_cur = rl.rlim_max = (S(u64,xxl) <= xl) ? xxl : S(rlim_t,xl);
 	}
 	if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE))){
