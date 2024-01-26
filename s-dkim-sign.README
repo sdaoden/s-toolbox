@@ -1,0 +1,56 @@
+S - d k i m - s i g n
+=====================
+
+A postfix(1)-only RFC 6376/[8301]/8463 D(omain)K(eys) I(dentified)
+M(ail) sign-only milter.  DKIM permits a person, role, or organization
+to claim responsibility for a message by associating a domain name (RFC
+1034; rather: RFC 5321) with the message (RFC 5322) through
+a cryptographically verifiable signature, which is inserted into the
+message as a mail header.  The signature can be validated by fetching
+the appropriate public key from the signer's domain DNS (RFC 8499)
+record.
+
+The program is intended to be started via the postfix(1) spawn(8)
+daemon, which takes care of the correct user and group credentials,
+timeouts and stale server garbage collection etc.; efficient operation
+requires postfix versions which support the milter operation
+'SMFIC_QUIT_NC' (likely version 3.9 and above), elder versions will
+start a new spawn(8) + s-dkim-sign(8) program couple for every SMTP or
+local connection.
+
+Dependencies are OpenSSL 1.1.0+ (-compatible) and a POSIX environment
+(make, sh, awk etc).  libmilter is not needed.  To build this software
+run "make install".  At the top of the makefile there are some
+variables, which may be overwritten from the command line:
+
+  $ make DESTDIR=.xxx PREFIX=/usr LIBEXEC=sbin install
+
+This will build and install all binaries under [.xxx]/usr/sbin (the
+s-dkim-sign-key-create helper will always be installed there).
+
+RELEASES
+--------
+
+v0.5.0, 2024-03-20: (first release)
+
+THANKS
+------
+
+People contributed by reporting problems, suggesting various
+improvements, whether directly or indirectly, or submitting actual code.
+Here is a list of those people.  I hope the list is complete and free of
+errors.
+
+Joachim Lindenberg      postfix-users at lindenberg dot one
+Matus UHLAR - fantomas  uhlar at fantomas dot sk
+
+Thank you!
+
+P.S.
+----
+
+For now the build system is rudimentary.  Either it works, then
+the software should, too, or it will not.  This will surely change in
+the future.
+
+# s-ts-mode

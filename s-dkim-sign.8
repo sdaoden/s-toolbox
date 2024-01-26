@@ -1,0 +1,505 @@
+.\"@ s-dkim-sign - [postfix-only] RFC 6376//8463 DKIM-sign-only milter.
+.\"
+.\" Copyright (c) 2024 Steffen Nurpmeso <steffen@sdaoden.eu>.
+.\" SPDX-License-Identifier: ISC
+.\"
+.\" Permission to use, copy, modify, and/or distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.
+.Dd March 08, 2024
+.ds VV \\%v0.5.0
+.ds XX \\%S-DKIM-SIGN
+.ds Xx \\%S-dkim-sign
+.ds xx \\%s-dkim-sign
+.
+.Dt \*(XX 8
+.Os
+.Mx -enable
+.
+.
+.Sh NAME
+.Nm \*(Xx \%[\*(VV]
+.Nd RFC 6376/8463 DKIM sign-only milter
+.
+.
+.Sh SYNOPSIS
+.
+.Nm \*(xx
+.Op options
+.Nm \*(xx
+.Op options
+.Fl Fl test-mode
+.Op options
+.Pp
+.Nm \*(xx-key-create
+.Op Ar ed25519 Ns | Ns Ar rsa Ns Op :bits
+.Ar path-prefix
+.
+.
+.Mx -toc -tree html pdf ps xhtml
+.
+.
+.Sh DESCRIPTION
+.
+A
+.Xr postfix 1 Ns
+-only RFC 6376/[8301]/8463 D(omain)K(eys) I(dentified) M(ail)
+sign-only milter.
+DKIM permits a person, role, or organization to claim responsibility for
+a message by associating a domain name (RFC 1034; rather: RFC 5321) with
+the message (RFC 5322) through a cryptographically verifiable signature,
+which is inserted into the message as a mail header.
+The signature can be validated by fetching the appropriate public key
+from the signer's domain DNS (RFC 8499) record.
+.
+.Pp
+The program is intended to be started via the
+.Xr postfix 1
+.Xr spawn 8
+daemon, which takes care of the correct user and group credentials,
+timeouts and stale server garbage collection etc.;
+efficient operation requires postfix versions which support the
+milter operation
+.Ql SMFIC_QUIT_NC
+(version 3.9 and above), elder versions will start a new
+.Xr spawn 8 Ns \~+
+.Xr s-dkim-sign 8
+program couple for every SMTP or local connection.
+.
+.Pp
+The general operation of milters is that they see all messages that pass
+the mail server, without knowing whether a message is
+.Dq incoming
+or
+.Dq outgoing .
+This DKIM sign-only milter will sign all messages from
+.Ql localhost
+or configured
+.Fl Fl client Ns
+s with all registered
+.Fl Fl key Ns
+s; with
+.Fl Fl milter-macro-sign
+only server connections announcing the macro (with an appropriate value)
+are considered.
+.
+.Pp
+Fine-grained control of signing activity is available via
+.Fl Fl sign
+relations that link specific
+.Fl Fl key Ns
+s to mail addresses, plain domain names, or domain name wildcards,
+as are extracted from (the first address of)
+.Ql From:
+headers of messages seen by the milter.
+Receivers will search for the public key DNS record of either the domain
+defined by the matching
+.Fl Fl sign
+relation, the
+.Ql From:
+header address otherwise.
+.
+.Pp
+In the following example all messages from
+.Ql localhost
+via all deliveries
+.Pf ( Ql milter_macro_daemon_name
+global) of the user
+.Ql joe
+at domain
+.Ql his.domain ,
+including all subdomains, for example
+.Ql at.home.his.domain ,
+are signed with the key
+.Ql edape ,
+all messages from
+.Ql my.domain
+including all subdomains with the keys
+.Ql edape
+and
+.Ql rsape
+(receivers will search the public key according to milter macro
+.Ql j ) ,
+however, if messages come from the domain
+.Ql bla.my.domain
+only the
+.Ql edape
+key will be used.
+Other messages will not be signed.
+.
+.Bd -literal -offset indent
+#@ /etc/postfix/main.cf:
+..
+milter_default_action = accept
+non_smtpd_milters = unix:private/dkim-sign
+smtpd_milters = unix:private/dkim-sign
+milter_macro_daemon_name = signit
+
+#@ /etc/postfix/master.cf:
+..
+dkim-sign unix - n n - - spawn
+  user=ANON-USR
+  argv=/usr/libexec/s-dkim-sign -R /etc/dkim-sign.rc
+
+#@ /etc/s-dkim-sign.rc
+key ed25519-sha256, edape, /etc/dkim-pri-ed25519.pem
+key rsa-sha256, rsape, /etc/dkim-pri-rsa.pem
+
+milter-macro-sign {daemon_name}, signit
+#client localhost
+
+sign .my.domain
+sign bla.my.domain ,  my.domain  ,  ::edape : :
+sign joe@.his.domain,my.domain,edape
+
+#header-seal @
+.Ed
+.
+.Pp
+.Nm \*(xx-key-create
+is a simple shell script which uses
+.St -p1003.2
+standard tools and
+.Xr openssl 1
+to create the private/public key tuple to anticipate in DKIM, as well
+as readily formatting the according DNS record.
+In interactive usage it will print a result abstract.
+.
+.
+.Sh OPTIONS
+.
+Options may be given in short or long form,
+.Fl Fl resource-file Ns
+s only support the long form, and only a (logical) option subset.
+.Fl Fl test-mode
+performs a dry-run configuration syntax test, and outputs a normalized
+resource file.
+.
+.
+.Bl -tag -width ".It Fl BaNg"
+.Mx Fl a-r-remove
+.It Fl Fl a-r-remove Ar list , Fl A Ns ..
+Define (comma-separated)
+.Ar list
+of domain names for which RFC 8601
+.Ql Authentication-Results:
+headers shall be removed from messages.
+An empty
+.Ar list
+(no argument in a
+.Fl Fl resource-file )
+causes usage of the mail server milter macro
+.Ql j
+(which
+.Xr postfix 1
+always expands to
+.Ql $myhostname ) .
+Domain names are matched exactly unless starting with a period
+.Ql \&.
+to enforce wildcard matches for it and its subdomains.
+(Literal( addresse)s are not supported.)
+.Sy Remarks:
+this is an isolated operation mode, unrelated to DKIM signing.
+.
+.Mx Fl client
+.It Fl Fl client Oo Ar action, Oc Ns Ar spec , Fl C Ns ..
+Define rules for connecting clients as announced by the milter macro
+.Ql _ .
+The optional
+.Ar action
+is either
+.Ql s[ign]
+(default) or
+.\"b[oth],[v]erify
+.Ql p[ass]
+(no action),
+.Ar spec
+is either a domain name or an IPv4 or IPv6 internet address, optionally
+in RFC 1519 CIDR notation with network mask.
+Domain names are matched exactly unless starting with a period
+.Ql \&.
+to enforce wildcard matches for it and its subdomains.
+These are matched by dictionary except for CIDR ranges, which are
+matched last, and in the given order.
+The implied default action is always
+.Ql pass, \&. ,
+defining any rule replaces the built-in
+.Ql sign, localhost
+.Pf ( Xr postfix 1
+passes only
+.Dq validated client name and address Ns
+).
+.Bd -literal -offset indent
+--client 127.0.0.1
+--client=exact.match
+# Match d.a.s but also a.b.c.d.a.s
+-C \&.d.a.s
+--client=pass,2a03:2880:20:6f06::/64
+.Ed
+.
+.Mx Fl client-file
+.It Fl Fl client-file Oo Ar action, Oc Ns Ar path , Fl c Ns ..
+Load a file of entries in the syntax described for the
+.Ar spec
+argument of
+.Fl Fl client ;
+Lines are read as via
+.Fl Fl resource-file .
+An optional
+.Ar action
+applies to all entries.
+.
+.Mx Fl debug
+.It Fl Fl debug
+Dry-run sandbox: no real action is performed, but only logged.
+All messages remain umodified.
+.
+.Mx Fl header-sign
+.It Fl Fl header-sign Ar list , Fl ~ Ns ..
+Define (comma-separated)
+.Ar list
+of case-insensitive header fields (names) to sign.
+Alternatively the built-in defaults may be modified by starting
+.Ar list
+with a commercial at
+.Ql @ ;
+remaining entries may then be prefixed with exclamation mark
+.Ql \&!
+do denote desired exclusion from the default list.
+Attempts to exclude
+.Ql From
+is an error, no other rules apply (untested: name validity, duplicates).
+The built-in defaults extend RFC 6376, section 5.4.1.
+An effectively empty list is not used.
+.Bd -literal -offset indent
+--header-sign=@!message-id,,,!to,!cc
+--header-sign '@  !message-id ,  !to ,, !cc , ,'
+.Ed
+.
+.Mx Fl header-sign-show
+.It Fl Fl header-sign-show
+Show the default
+.Fl Fl header-sign
+list, then exit.
+.
+.Mx Fl header-seal
+.It Fl Fl header-seal Ar list , Fl ! Ns ..
+Like
+.Fl Fl header-sign ,
+but
+.Dq oversign
+aka seal the given headers, meaning that the DKIM signature includes
+an (additional) empty instance of each given header, as such preventing
+attempts to inject headers not covered by, and therefore not verified
+through the signature (without causing errors).
+A default list is built-in, but sealing needs to be activated explicitly;
+.Dq signing non-present fields
+(sealing, oversigning) is described in RFC 6376 from 2011, however.
+.
+.Mx Fl header-seal-show
+.It Fl Fl header-seal-show
+Show the default
+.Fl Fl header-seal
+list, then exit.
+.
+.Mx Fl key
+.It Fl Fl key Ar algo-digest,selector,path , Fl k Ns ..
+Add a key to be used.
+Unless
+.Fl Fl sign
+relations have been established messages will be signed with all keys.
+In a comma-separated list of three fields, the first defines
+.Ar algo Ns
+rithm and
+.Ar digest ,
+separated by
+.Ql -
+hyphen-minus,
+for example
+.Cm rsa-sha1 .
+Supported are
+.Cm ed25519-sha256 ,
+.Cm rsa-sha256 ,
+and
+.Cm rsa-sha1
+(this was obsoleted by RFC 8301 and will cause a warning), dependent on
+the used crypto library; the output of
+.Fl Fl long-help
+shows what is built-in.
+The second field specifies the (DNS)
+.Ar selector
+of the public key (please see
+.Fl Fl sign ) ;
+it must obey domain name syntax, and can thus start with
+RFC 20 ASCII letters and digits, followed by also
+.Ql \&.
+period and
+.Ql -
+hyphen-minus; no length test is applied.
+The third field is the
+.Ar path
+to the private key file in PEM format.
+.
+.Mx Fl long-help
+.It Fl Fl long-help , H
+A long help listing that also shows available signature algorithms.
+.
+.Mx Fl milter-macro-sign
+.It Fl Fl milter-macro-sign Ar name Ns Oo Ar ,value.. Oc , Fl M Ns ..
+Only sign messages from servers announcing
+.Ar macro
+(with any of the given
+.Ar value Ns
+(s)).
+With
+.Xr postfix 1
+one should
+.Xr postconf 5
+.Ql milter_macro_daemon_name=VAL1 ,
+seen by the milter as the
+.Ql {daemon_name}
+macro with
+.Ql VAL1 ,
+therefore
+.Fl Fl \&\&milter-macro-sign Ns Ar ={daemon_name},VAL1,VAL2
+could be needed.
+The macro is expected to be received when clients connect.
+.
+.Mx Fl resource-file
+.It Fl Fl resource-file Ar path , Fl R Ns ..
+A configuration file with long options (without
+.Ql Fl Fl
+double hyphen-minus).
+Each line forms an entry, leading and trailing whitespace is removed.
+If the first non-whitespace character is the
+.Ql #
+number-sign the line is a comment and discarded.
+Empty lines are ignored, other lines can be folded over multiple input
+lines with a reverse-solidus
+.Ql \e
+before the newline: all leading whitespace of the next line is ignored.
+.Bd -literal -offset indent
+# Comment \e
+  line
+milter-\e
+  macro-\e
+    sign {daemon_name}
+.Ed
+.
+.
+.Mx Fl sign
+.It Fl Fl sign Ar spec Ns Oo , Ns Ar domain Ns Oo , Ns Ar selector.. Oc Oc , Fl S Ns ..
+Establish a relation in between
+.Ar spec
+and none to maximally five
+.Ar selector Ns
+(s), which (in the end) have to relate to
+.Fl Fl key Ns
+s; fields form a comma-separated, multiple selectors instead a
+.Ql \&:
+colon-separated list;
+all keys are used if there are none.
+If any sign relation is established only those messages which match
+a relation will be signed.
+.
+.Pp
+Receivers will try to locate the public key(s) identified by the chosen
+.Fl Fl key Ns
+s selectors as DNS TXT records for the given
+.Ar domain
+(in the form
+.Ql Ar selector Ns ._domainkey. Ns Ar domain ) .
+Without domain or sign relations the domain of the (first)
+.Ql From:
+header address is used.
+The DKIM standard requires a real
+.Ar domain
+name, literal( addresse)s are not allowed.
+.
+.Pp
+.Ar spec
+is matched against the (first address of the)
+.Ql From:
+header of processed messages;
+It can be a mail address like
+.Ql local-part@dom.ain ,
+or only a domain without
+.Ql local-part@ ;
+a leading
+.Ql \&.
+period, as in
+.Ql .dom.ain ,
+will match all subdomains, for example
+.Ql a.b.c.dom.ain ,
+or
+.Ql joe@.ain
+and
+.Ql joe@c.dom.ain .
+Only a period is a
+.Dq super-wildcard
+that matches all domains, for example
+.Ql joe@. .
+.
+.Pp
+.Sy Remarks:
+Some
+.Ql local-part Ns
+s require quoting, for example
+.Ql t\(dqi(%;)@\(dq@gh.t .
+Since normalization is applied during actual processing,
+.Ql \(dqti(%;)@\(dq@gh.t
+will have to be written in order for this to match.
+.Pf ( Fl Fl test-mode
+will catch this.)
+Remarks: commas cannot be used even in a quoted
+.Ql local-part .
+.
+.
+.Mx Fl sign-file
+.It Fl Fl sign-file Ar path , Fl s Ns ..
+Load a file of
+.Fl Fl sign
+relations; Lines are read as via
+.Fl Fl resource-file .
+.
+.Mx Fl test-mode
+.It Fl Fl test-mode , #
+Enable test mode: all options are evaluated, thereafter the final
+settings are shown in resource file format.
+The exit status indicates error.
+It is highly recommended to use this for configuration checks.
+.
+.Mx Fl ttl
+.It Fl Fl ttl Ar seconds , Fl t Ns ..
+Impose a time-to-live expiration upon generated DKIM signatures after
+which newly receiving parties shall treat them invalid.
+.Ar seconds
+must not be smaller than 30 and greater than 86400000 (1000 days).
+.
+.Mx Fl verbose
+.It Fl Fl verbose
+Increase log verbosity (two levels).
+.El
+.
+.
+.Sh "SEE ALSO"
+.
+.Xr postfix 1 ,
+.Xr postconf 5 ,
+.Xr spawn 8 ,
+.
+.
+.Sh AUTHORS
+.
+.An "Steffen Nurpmeso" Aq steffen@sdaoden.eu .
+.
+.\" s-ts-mode
