@@ -29,11 +29,15 @@ are "not handled".
 RELEASES
 --------
 
-v0.8.2, 2024-??-??:
+v0.8.2, 2024-02-29:
+- FIX: deal with allow empty from<> aka sender= seen in automated
+  responses: failing them with DUNNO was suboptimal at best.
+- Disable Linux seccomp on non-x86: each platform needs specifics, and
+  seccomp is de facto not needed at all in the second line, anyway.
 - Linux seccomp: no need for open(2)/openat(2) in client.
 - FreeBSD capsicum: used CAP1|CAP2 not CAP1,CAP2 for _rights_init().
-  Worked in practice though (right_to_index() is identical, and then the
-  OR simply assigns it both).
+  Worked in practice though (because its implementations'
+  right_to_index() is identical, and then OR simply assigns it both).
 
 v0.8.1, 2023-04-19:
 * Many, many thanks to Jens Schleusener, and his cron job!

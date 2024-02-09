@@ -26,6 +26,7 @@ VAL_STORE_PATH = /var/lib/postgray
 #   then compile with VAL_OS_SANDBOX=0 and use the test-strace make(1) target.
 #   It outputs two lines which can then be used -- but note these contain _all_
 #   used system calls, not only those required in the sandbox(es).
+#   NOTE: seccomp(2) is a maintenance mess, it is turned off but on x86(-64).
 # - OpenBSD
 #   pledge(2)/unveil(2) -- just works
 VAL_OS_SANDBOX = 1

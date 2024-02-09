@@ -119,6 +119,10 @@
 #   warning uclibc never tried, turning off OS sandbox
 #   undef VAL_OS_SANDBOX
 #   define VAL_OS_SANDBOX 0
+#  elif !defined __i386 && !defined __x86_64
+#   warning Linux seccomp is a maintenance mess, turning it off on non-x86 platform
+#   undef VAL_OS_SANDBOX
+#   define VAL_OS_SANDBOX 0
 #  else
 #   define a_HAVE_LOG_FIFO
 #   define a_HAVE_SANDBOX_SIGNAL SIGSYS
@@ -406,6 +410,7 @@ struct a_pg{
 
 static char const a_sopts[] = "4:6:" "A:a:B:b:" "c:D:d:pfG:g:L:l:" "m:~:!:" "o" "R:" "q:t:" "s:" "u" "v" ".@%#" "Hh";
 static char const * const a_lopts[] = {
+	/* long option order */
 	"4-mask:;4;" N_("IPv4 mask to strip off addresses before match"),
 	"6-mask:;6;" N_("IPv6 mask to strip off addresses before match"),
 
@@ -428,6 +433,7 @@ static char const * const a_lopts[] = {
 	"msg-block:;!;" N_("blacklist message (\")"),
 	"msg-defer:;m;" N_("defer_if_permit message (\")"),
 
+	/**/
 	"once;o;" N_("process only one request per client invocation"),
 
 	"resource-file:;R;" N_("path to configuration file with long options"),
@@ -458,6 +464,7 @@ static char const * const a_lopts[] = {
 	case 'A': case 'a': case 'B': case 'b':\
 	case 'c': case 'D': case 'd': case 'p': case 'f': case 'G': case 'g': case 'L': case 'l':\
 	case '~': case '!': case 'm':\
+	/**/\
 	case 'o':\
 	case 'R':\
 	case 'q': case 't':\
