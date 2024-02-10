@@ -2948,16 +2948,15 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM(u32,a_avo_flags) f)
 		if(f & (a_AVO_FULL | a_AVO_RELOAD))
 			break;
 		if(su_cs_len(arg) + sizeof("/" a_REA_NAME) >= PATH_MAX){
-			o = su_err_by_errno();
-			a_conf__err(pgp, _("--store-path is a path too long: %s\n"), V_(su_err_doc(o)));
-			o = -o;
+			a_conf__err(pgp, _("--store-path: %s\n"), V_(su_err_doc(su_ERR_NAMETOOLONG)));
+			o = -su_EX_DATAERR;
 			goto jleave;
 		}else{
 			struct su_pathinfo pi;
 
 			if(!su_pathinfo_stat(&pi, arg) || !su_pathinfo_is_dir(&pi)){
 				a_conf__err(pgp, _("--store-path is not a directory\n"));
-				o = -su_ERR_NOTDIR;
+				o = -su_EX_CONFIG;
 				goto jleave;
 			}
 		}
@@ -3259,7 +3258,7 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM(u32,a_avo_flags) f){
 jerrno:
 		a_conf__err(pgp, _("Cannot handle --resource-file %s: %s (--store-path issue?)\n"),
 			path, V_(su_err_doc(mpv)));
-		mpv = -mpv;
+		mpv = -su_EX_NOINPUT;
 		goto jleave;
 	}
 
