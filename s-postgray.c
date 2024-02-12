@@ -3029,9 +3029,8 @@ a_conf__AB(struct a_pg *pgp, char const *path, struct a_wb *wbp){
 	NYD2_IN;
 
 	if((fd = a_misc_open(pgp, path)) == -1){
-		rv = su_err();
-		a_conf__err(pgp, _("Cannot open --allow or --block file %s: %s\n"), path, V_(su_err_doc(rv)));
-		rv = -rv;
+		a_conf__err(pgp, _("Cannot open --allow or --block file %s: %s\n"), path, V_(su_err_doc(su_err())));
+		rv = -su_EX_IOERR;
 		goto jleave;
 	}
 
