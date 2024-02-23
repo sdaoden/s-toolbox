@@ -3614,6 +3614,12 @@ jredo:
 		}
 
 		if(c == '\n'){
+			/* Support escaped LF */
+			if(cx == '\\'){
+				--cp;
+				cx = ' ';
+				continue;
+			}
 jfakenl:
 			rv = S(sz,P2UZ(cp - lp->l_buf));
 			if(rv > 0 && su_cs_is_space(cp[-1])){
@@ -3623,14 +3629,15 @@ jfakenl:
 			}
 			*cp = '\0';
 			break;
-		}else if(c == '#' && cx == '\0')
+		}
+		if(c == '#' && cx == '\0')
 			goto jskip;
-		else if(su_cs_is_space(c) && (cx == '\0' || su_cs_is_space(cx)))
+		if(su_cs_is_space(c) && (cx == '\0' || su_cs_is_space(cx)))
 			continue;
-		else if(cp == top)
+
+		if(cp == top)
 			goto jelong;
-		else
-			*cp++ = cx = S(char,c);
+		*cp++ = cx = S(char,c);
 	}
 
 jleave:
@@ -3641,14 +3648,18 @@ jelong:
 	*cp = '\0';
 	su_log_write(su_LOG_ERR, _("line too long, skip: %s"), cp);
 jskip:
-	for(;;){
+	for(cx = '#';;){
 		s32 c;
 
 		if((c = a_LINE_GETC(lp, fd)) == -1){
 			rv = -1;
 			goto jleave;
-		}else if(c == '\n')
-			goto jredo;
+		}else if(c == '\n'){
+			/* Support escaped LF */
+			if(cx != '\\')
+				goto jredo;
+		}
+		cx = c;
 	}
 #undef a_LINE_GETC
 }
