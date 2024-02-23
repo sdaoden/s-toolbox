@@ -2861,7 +2861,7 @@ a_conf_list_values(struct a_pg *pgp){
 
 static s32
 a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM(u32,a_avo_flags) f){
-	union {u8 *i8; u16 *i16; u32 *i32; char const *cp; char const **cpp;} p;
+	union {void *vp; u8 *i8; u16 *i16; u32 *i32; char const *cp; char const **cpp;} p;
 	NYD2_IN;
 
 	/* In long-option order */
@@ -2872,10 +2872,10 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM(u32,a_avo_flags) f)
 			u8 max;
 
 			if(o == '4'){
-				p.i8 = &pgp->pg_4_mask;
+				p.vp = &pgp->pg_4_mask;
 				max = 32;
 			}else{
-				p.i8 = &pgp->pg_6_mask;
+				p.vp = &pgp->pg_6_mask;
 				max = 128;
 			}
 
@@ -3153,8 +3153,8 @@ jcname:
 
 jca:/* C99 */{
 	char buf[INET6_ADDRSTRLEN];
-	boole exact;
-	u8 g_m;
+	union a_srch_ip sip_test;
+	boole redo, exact;
 
 	if(inet_pton(rv, entry, (rv == AF_INET ? S(void*,&sip.v4) : S(void*,&sip.v6))) != 1){
 		sip.cp = N_("Invalid internet address: %s\n");
@@ -3162,13 +3162,21 @@ jca:/* C99 */{
 		goto jedata;
 	}
 
-	/* We have the implicit global masks! */
-	g_m = (rv == AF_INET) ? pgp->pg_4_mask : pgp->pg_6_mask;
-	if(g_m != 0 && m >= g_m){
-		m = g_m;
-		exact = TRU1;
-	}else
-		exact = (m == U32_MAX);
+	redo = (m != U32_MAX && (pgp->pg_flags & a_F_MODE_TEST) != 0);
+	if(UNLIKELY(redo)){
+		su_mem_copy(&sip_test, &sip, sizeof(sip));
+		exact = redo;
+	}else Jca_redo:{
+		u8 g_m;
+
+		/* We have the implicit global masks! */
+		g_m = (rv == AF_INET) ? pgp->pg_4_mask : pgp->pg_6_mask;
+		if(g_m != 0 && m >= g_m){
+			m = g_m;
+			exact = TRU1;
+		}else
+			exact = (m == U32_MAX);
+	}
 
 	if(m != U32_MAX){
 		uz max, i;
@@ -3202,6 +3210,21 @@ jca:/* C99 */{
 
 			ip[i] &= su_boswap_net_32(xm);
 		}while(++i != max);
+
+		if(UNLIKELY(redo)){
+			redo = ((max == 1) ? !su_mem_cmp(&sip.v4.s_addr, &sip_test.v4.s_addr, sizeof(sip.v4.s_addr))
+					: !su_mem_cmp(sip.v6.s6_addr, sip_test.v6.s6_addr, sizeof(sip.v6.s6_addr)));
+			if(!redo){
+				if(inet_ntop(rv, (rv == AF_INET ? S(void*,&sip.v4) : S(void*,&sip.v6)),
+						buf, INET6_ADDRSTRLEN) == NIL)
+					goto jca_err;
+				*--cp = '/';
+				a_conf__err(pgp, _("Address masked, should be %s/%s not %s\n"), buf, &cp[1], entry);
+				*cp = '\0';
+			}
+			redo = FAL0;
+			goto Jca_redo;
+		}
 	}
 
 	/* We need to normalize through the system's C library to match it!
@@ -3209,6 +3232,7 @@ jca:/* C99 */{
 	if((exact || (pgp->pg_flags & a_F_MODE_TEST)) &&
 			inet_ntop(rv, (rv == AF_INET ? S(void*,&sip.v4) : S(void*,&sip.v6)), buf, INET6_ADDRSTRLEN
 				) == NIL){
+jca_err:
 		sip.cp = N_("Invalid internet address: %s\n");
 		cp = UNCONST(char*,su_empty);
 		goto jedata;

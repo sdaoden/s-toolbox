@@ -269,7 +269,9 @@ Lines are read as via
 .Mx Fl allow
 .It Fl Fl allow Ar spec , Fl a Ar spec
 Add a domain name or an IPv4 or IPv6 internet address, optionally in
-RFC 1519 CIDR notation with network mask, to the list of allowed
+RFC 1519 CIDR notation with network mask
+.Pf ( Fl Fl test-mode
+hints incorrect networks), to the list of allowed
 clients (whitelist) that are accepted with
 .Fl Fl msg-allow .
 Domain names are matched exactly unless the first character is a period
@@ -293,7 +295,7 @@ also.exact.match
 127.0.0.1
 
 # with --6-mask=64 really 2a03:2880:20:6f06::/64
-# instead of 2a03:2880:20:6f06:c000::/66!
+# --test-mode hints 2a03:2880:20:6f06:c000::/66
 2a03:2880:20:6f06:face:b00c:0:14/66
 
 # with --6-mask=64 nonetheless 2a03:2880:20:4f00::/56
