@@ -3277,11 +3277,11 @@ jerrno:
 			break;
 
 		default:
-			if(pgp->pg_flags & a_F_MODE_TEST){
-				a_conf__err(pgp, _("Option unknown or invalid in --resource-file: %s: %s\n"),
-					path, line.l_buf);
+			a_conf__err(pgp,
+				_("Option unknown or falsely used (in --resource-file; see --long-help): %s: %s\n"),
+				path, line.l_buf);
+			if(pgp->pg_flags & a_F_MODE_TEST)
 				break;
-			}
 			mpv = -su_EX_USAGE;
 			goto jleave;
 		}
@@ -3838,14 +3838,15 @@ jleave:;
 static void
 a_misc_usage(FILE *fp){
 	static char const a_u[] = N_(
-"%s (s-postgray %s): postfix RFC 6647 (graylisting) policy server\n"
+"%s (%s%s%s): postfix RFC 6647 (graylisting) policy server\n"
 "\n"
 ". Please use --long-help (-H) for option summary\n"
-"  (Options marked [*] cannot be placed in a resource file.)\n"
+"  (Options marked [*] cannot be placed in a resource file)\n"
 ". Bugs/Contact via %s\n");
 	NYD2_IN;
 
-	fprintf(fp, V_(a_u), VAL_NAME, a_VERSION, a_CONTACT);
+	fprintf(fp, V_(a_u), VAL_NAME, (VAL_NAME_IS_MYNAME ? "" : MYNAME), (VAL_NAME_IS_MYNAME ? "" : " "),
+		a_VERSION, a_CONTACT);
 
 	NYD2_OU;
 }
@@ -4041,7 +4042,10 @@ jeusage:
 		}
 
 		if(avo.avo_argc != 0){
-			fprintf(stderr, _("Excess arguments given\n"));
+			fprintf(stderr, _("%d excess arguments given: "), avo.avo_argc);
+			while(avo.avo_argc-- != 0)
+				fprintf(stderr, "%s%s", *avo.avo_argv++, (avo.avo_argc > 0 ? ", " : su_empty));
+			putc('\n', stderr);
 			if(!(pg.pg_flags & a_F_MODE_TEST))
 				goto jeusage;
 			pg.pg_flags |= a_F_TEST_ERRORS;

@@ -59,7 +59,7 @@ VAL_MSG_DEFER = NIL
 VAL_SERVER_QUEUE = 64
 VAL_SERVER_TIMEOUT = 30
 
-##
+## >8 -- 8<
 
 MYNAME = s-postgray
 MYMANEXT = 8
@@ -136,6 +136,7 @@ $(VAL_NAME): $(SULIB_BLD) $(MYNAME).c
 	VA="$(VAL_MSG_ALLOW)"; if [ "$$VA" != NIL ]; then VA='"\"$(VAL_MSG_ALLOW)\""'; fi;\
 	VB="$(VAL_MSG_BLOCK)"; if [ "$$VB" != NIL ]; then VB='"\"$(VAL_MSG_BLOCK)\""'; fi;\
 	VD="$(VAL_MSG_DEFER)"; if [ "$$VD" != NIL ]; then VD='"\"$(VAL_MSG_DEFER)\""'; fi;\
+	\
 	eval $(CC) \
 		-DVAL_NAME="\\\"$(VAL_NAME)\\\"" \
 		\
@@ -157,6 +158,10 @@ $(VAL_NAME): $(SULIB_BLD) $(MYNAME).c
 		-DVAL_MSG_ALLOW=$$VA -DVAL_MSG_BLOCK=$$VB -DVAL_MSG_DEFER=$$VD \
 		-DVAL_SERVER_QUEUE=$(VAL_SERVER_QUEUE) \
 		-DVAL_SERVER_TIMEOUT=$(VAL_SERVER_TIMEOUT) \
+		\
+		\
+		-DVAL_NAME_IS_MYNAME=$$([ "$(VAL_NAME)" != "$(MYNAME)" ]; echo $$?) \
+		-DMYNAME="\\\"$(MYNAME)\\\"" \
 		\
 		\
 		$(CFLAGS) $(LDFLAGS) \
@@ -281,8 +286,8 @@ d-release:
 	rm -f src/su/*.cxx src/su/.*.cxx &&\
 	sh ../../nail.git/mk/su-make-strip-cxx.sh &&\
 	cd include/su && perl ../../../../nail.git/mk/su-doc-strip.pl *.h &&\
-	git reset&&\
+	git reset &&\
 	echo 'now edit makefile and src/su/.makefile, then run' &&\
-	echo 's-nail -Aich -Snofollowup-to -Sreply-to=ich -Ssmime-sign s-announce@lists.sdaoden.eu'
+	echo 's-nail -Aich -Snofollowup-to -Sreply-to=ich -Ssmime-sign -Sno-on-compose-leave -a ~/src/www.git/steffen.asc -a ~/src/www.git/steffen@sdaoden.eu.pem s-announce@lists.sdaoden.eu'
 
 # s-mk-mode
