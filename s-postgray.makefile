@@ -272,7 +272,7 @@ d-release:
 	umask 0022 &&\
 	mkdir $$VER &&\
 	sed -i'' -E -e 's/^\.Dd .+$$/.Dd '"$$(date +"%B %d, %Y")"'/' \
-		-e 's/^\.ds VV .+$$/.ds VV \\%v'"$$XVER"'/' $(MYNAME).$(MYMANEXT) &&\
+		-e 's/^\.ds VV .+$$/.ds VV \\\\%v'"$$XVER"'/' $(MYNAME).$(MYMANEXT) &&\
 	cp $(MYNAME)* $$VER/ &&\
 	cd $$VER &&\
 	mv $(MYNAME).makefile makefile &&\

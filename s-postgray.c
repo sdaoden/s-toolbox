@@ -2,6 +2,7 @@
  *@ We assume postfix(1) protocol constraints:
  *@ - No whitespace (at BOL and EOL, nor) in between key, =, and value.
  *@ - Lowercase keys.
+ *@ - TODO - -# could check blacklist members are not shadowed by white ones.
  *@ - XXX-1 - VERP delimiters are +=, and are not configurable.
  *@ - XXX-2 - We assume numeric IDs in VERP addresses come after the delimiter.
  *@ - XXX-3 - E-Mail addresses must be normalized and stripped of comments etc.
@@ -3221,6 +3222,7 @@ jca:/* C99 */{
 				*--cp = '/';
 				a_conf__err(pgp, _("Address masked, should be %s/%s not %s\n"), buf, &cp[1], entry);
 				*cp = '\0';
+				/*su_mem_copy(&sip, &sip_test, sizeof(sip));*/
 			}
 			redo = FAL0;
 			goto Jca_redo;

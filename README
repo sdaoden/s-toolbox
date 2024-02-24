@@ -30,26 +30,16 @@ s-cdda-to-db.pl (plus support) v0.8.0 (2021-06-18):
      The latter roots in old habits originating in perl(1) evolution
      problems Y2K2-3 (5.8.0 and 5.8.1).
 
-s-postgray.c (plus support) v0.8.1 (2023-04-19):
+s-postgray.c (plus support) v0.8.2 (2024-02-29):
    postfix(1) graylisting policy daemon.  See its README + manual for more.
-   [.]
-   * Many, many thanks to Jens Schleusener, and his cron job!
-   + Add --status to query server status.
-   + Server PID is now stored in the lock file (renamed to VAL_NAME.pid),
-     and --startup now waits for server response (like --shutdown does).
-   + Add sandboxing: generic setrlimit(2) based, plus an OS-dependent
-     strict sandboxing that can be disabled via --untamed.  (Because it may
-     require an additional, internally managed, logger process, and may be
-     incompatible to (future) C library changes (see makefile).)
-     (On OpenBSD configured file paths are now even fixed byte-by-byte.)
-   - FIX memory map return check.
-   - FIX possible error path crash during program startup (missing fmt arg).
-   - fix: add missing su_log_set_level() and make --verbose work for users!
-   - fix: --startup was missing short -@ equivalent.
-   - fix: --test-mode did not include "focus-sender", "once" and "verbose".
-   - fix: VAL_MSG_* could not be overwritten on make(1) command line.
-   - Typos: treshold->threshold.  (Jens Schleusener)
-   - (Source code style change spaces/80 -> tab/120+, saves ~12KB; etc.)
+   [* Many, many thanks to Jens Schleusener, and his cron job!]
+   - FIX: allow empty from=<> aka sender=, do not DUNNO those!
+     (Empty from=<> was seen in some automated response emails.)
+   - --test-mode mentions if CIDR address/mask do not fit.
+   - --resource-file supports line continuation.
+   - fix some exit status codes which uses _ERR_ not _EX_ constants.
+   - fix a bit FreeBSD capsicum call ("no problem").
+
 
 Not for the masses:
 -------------------
