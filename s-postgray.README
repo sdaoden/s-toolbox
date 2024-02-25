@@ -30,8 +30,12 @@ RELEASES
 --------
 
 v0.8.2, 2024-02-29:
+- FIX: actually match small --allow/--block CIDR in order!
 - FIX: deal with allow empty from<> aka sender= seen in automated
   responses: failing them with DUNNO was suboptimal at best.
+- --test-mode mentions if CIDR address/mask do not fit.
+- --resource-file supports line continuation.
+- fix some exit status codes which uses _ERR_ not _EX_ constants.
 - Disable Linux seccomp on non-x86: each platform needs specifics, and
   seccomp is de facto not needed at all in the second line, anyway.
 - Linux seccomp: no need for open(2)/openat(2) in client.

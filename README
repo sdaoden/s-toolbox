@@ -38,9 +38,7 @@ s-postgray.c (plus support) v0.8.2 (2024-02-29):
    - FIX: actually match small --allow/--block CIDR in order!
    - --test-mode mentions if CIDR address/mask do not fit.
    - --resource-file supports line continuation.
-   - fix some exit status codes which uses _ERR_ not _EX_ constants.
    - fix a bit FreeBSD capsicum call ("no problem").
-
 
 Not for the masses:
 -------------------
