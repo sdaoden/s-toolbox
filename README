@@ -35,6 +35,7 @@ s-postgray.c (plus support) v0.8.2 (2024-02-29):
    [* Many, many thanks to Jens Schleusener, and his cron job!]
    - FIX: allow empty from=<> aka sender=, do not DUNNO those!
      (Empty from=<> was seen in some automated response emails.)
+   - FIX: actually match small --allow/--block CIDR in order!
    - --test-mode mentions if CIDR address/mask do not fit.
    - --resource-file supports line continuation.
    - fix some exit status codes which uses _ERR_ not _EX_ constants.

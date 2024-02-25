@@ -3,6 +3,7 @@
  *@ - No whitespace (at BOL and EOL, nor) in between key, =, and value.
  *@ - Lowercase keys.
  *@ - TODO - -# could check blacklist members are not shadowed by white ones.
+ *@ - TODO - But statistics IPs and names could share dict, as for s-dkim-sign.
  *@ - XXX-1 - VERP delimiters are +=, and are not configurable.
  *@ - XXX-2 - We assume numeric IDs in VERP addresses come after the delimiter.
  *@ - XXX-3 - E-Mail addresses must be normalized and stripped of comments etc.
@@ -306,29 +307,23 @@ enum a_answer{
 	a_ANSWER_NODEFER
 };
 
-/* Fuzzy search */
-enum a_srch_flags{
-	a_SRCH_NONE,
-	a_SRCH_IPV4 = 1u<<0,
-	a_SRCH_IPV6 = 1u<<1
-};
-
-union a_srch_ip{
-	/* (Let us just place that align thing, ok?  I feel better that way) */
-	u64 align;
-	struct in_addr v4;
-	struct in6_addr v6;
-	/* And whatever else is needed to use this */
-	char *cp;
-};
-
 /* Fuzzy search white/blacklist */
 struct a_srch{
 	struct a_srch *s_next;
-	BITENUM(u8,a_srch_flags) s_flags;
-	u8 s_mask; /* SRCH_IP*: CIDR mask */
-	u8 s__pad[su_6432(6,2)];
-	union a_srch_ip s_ip;
+	enum a_srch_type{
+		a_SRCH_TYPE_NONE,
+		a_SRCH_TYPE_IPV4,
+		a_SRCH_TYPE_IPV6
+	} s_type;
+	u32 s_mask; /* CIDR mask */
+	union a_srch_ip{
+		/* (Let us just place that align thing, ok?  I feel better that way) */
+		u64 align;
+		struct in_addr v4;
+		struct in6_addr v6;
+		/* And whatever else is needed to use this */
+		char *cp;
+	} s_ip;
 };
 
 struct a_line{
@@ -342,6 +337,7 @@ struct a_line{
 
 struct a_wb{
 	struct a_srch *wb_srch; /* ca list, fuzzy */
+	struct a_srch **wb_srch_tail;
 	struct su_cs_dict wb_ca; /* client_address=, exact */
 	struct su_cs_dict wb_cname; /* client_name=, exact + fuzzy */
 };
@@ -1583,6 +1579,13 @@ a_server__wb_reset(struct a_master *mp){
 		mp->m_white.wb_srch = pgsp->s_next;
 		su_FREE(pgsp);
 	}
+	mp->m_white.wb_srch_tail = NIL;
+
+	while((pgsp = mp->m_black.wb_srch) != NIL){
+		mp->m_black.wb_srch = pgsp->s_next;
+		su_FREE(pgsp);
+	}
+	mp->m_black.wb_srch_tail = NIL;
 
 	NYD_OU;
 }
@@ -2051,11 +2054,11 @@ a_server__cli_lookup(struct a_pg *pgp, struct a_wb *wbp, struct a_wb_cnt *wbcp){
 			u32 *ip, max, m, xm, i;
 
 			if(c_af == AF_INET){
-				if(!(pgsp->s_flags & a_SRCH_IPV4))
+				if(pgsp->s_type != a_SRCH_TYPE_IPV4)
 					continue;
 				ip = R(u32*,&pgsp->s_ip.v4.s_addr);
 				max = 1;
-			}else if(!(pgsp->s_flags & a_SRCH_IPV6))
+			}else if(pgsp->s_type != a_SRCH_TYPE_IPV6)
 				continue;
 			else{
 				ip = S(u32*,R(void*,pgsp->s_ip.v6.s6_addr));
@@ -3217,7 +3220,7 @@ jca:/* C99 */{
 					: !su_mem_cmp(sip.v6.s6_addr, sip_test.v6.s6_addr, sizeof(sip.v6.s6_addr)));
 			if(!redo){
 				if(inet_ntop(rv, (rv == AF_INET ? S(void*,&sip.v4) : S(void*,&sip.v6)),
-						buf, INET6_ADDRSTRLEN) == NIL)
+						buf, sizeof(buf)) == NIL)
 					goto jca_err;
 				*--cp = '/';
 				a_conf__err(pgp, _("Address masked, should be %s/%s not %s\n"), buf, &cp[1], entry);
@@ -3232,8 +3235,7 @@ jca:/* C99 */{
 	/* We need to normalize through the system's C library to match it!
 	 * This only for exact match or test mode, however */
 	if((exact || (pgp->pg_flags & a_F_MODE_TEST)) &&
-			inet_ntop(rv, (rv == AF_INET ? S(void*,&sip.v4) : S(void*,&sip.v6)), buf, INET6_ADDRSTRLEN
-				) == NIL){
+			inet_ntop(rv, (rv == AF_INET ? S(void*,&sip.v4) : S(void*,&sip.v6)), buf, sizeof(buf)) == NIL){
 jca_err:
 		sip.cp = N_("Invalid internet address: %s\n");
 		cp = UNCONST(char*,su_empty);
@@ -3246,10 +3248,14 @@ jca_err:
 		else{
 			ASSERT(m != U32_MAX);
 			pgsp = su_TALLOC(struct a_srch, 1);
-			pgsp->s_next = wbp->wb_srch;
-			wbp->wb_srch = pgsp;
-			pgsp->s_flags = (rv == AF_INET) ? a_SRCH_IPV4 : a_SRCH_IPV6;
-			pgsp->s_mask = S(u8,m);
+			if(wbp->wb_srch == NIL)
+				wbp->wb_srch = pgsp;
+			else
+				*wbp->wb_srch_tail = pgsp;
+			wbp->wb_srch_tail = &pgsp->s_next;
+			pgsp->s_next = NIL;
+			pgsp->s_type = (rv == AF_INET) ? a_SRCH_TYPE_IPV4 : a_SRCH_TYPE_IPV6;
+			pgsp->s_mask = m;
 			su_mem_copy(&pgsp->s_ip, &sip, sizeof(sip));
 		}
 	}else{
