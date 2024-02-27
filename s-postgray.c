@@ -3007,12 +3007,12 @@ ji32:
 	goto jleave;
 
 jeiuse:
-	a_conf__err(pgp, _("Invalid number or limit excess of -%c argument: %s\n"), o, arg);
+	a_conf__err(pgp, _("-%c: invalid number or limit excess: %s\n"), o, arg);
 	o = -su_EX_DATAERR;
 	goto jleave;
 
 jepath:
-	a_conf__err(pgp, _("Invalid path argument to -%c argument: %s: %s\n"), o, arg, V_(su_err_doc(-1)));
+	a_conf__err(pgp, _("-%c: invalid path: %s: %s\n"), o, arg, V_(su_err_doc(-1)));
 	o = -su_EX_DATAERR;
 	goto jleave;
 
@@ -3033,7 +3033,7 @@ a_conf__AB(struct a_pg *pgp, char const *path, struct a_wb *wbp){
 	NYD2_IN;
 
 	if((fd = a_misc_open(pgp, path)) == -1){
-		a_conf__err(pgp, _("Cannot open --allow or --block file %s: %s\n"), path, V_(su_err_doc(su_err())));
+		a_conf__err(pgp, _("--allow/--block: cannot open file %s: %s\n"), path, V_(su_err_doc(-1)));
 		rv = -su_EX_IOERR;
 		goto jleave;
 	}
@@ -3287,7 +3287,7 @@ a_conf__R(struct a_pg *pgp, char const *path, BITENUM(u32,a_avo_flags) f){
 	if((fd = a_misc_open(pgp, path)) == -1){
 		mpv = su_err();
 jerrno:
-		a_conf__err(pgp, _("Cannot handle --resource-file %s: %s (--store-path issue?)\n"),
+		a_conf__err(pgp, _("--resource-file: cannot open: %s: %s (--store-path issue?)\n"),
 			path, V_(su_err_doc(mpv)));
 		mpv = -su_EX_NOINPUT;
 		goto jleave;
