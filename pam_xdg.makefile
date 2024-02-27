@@ -29,9 +29,12 @@ CFLAGS = -DNDEBUG \
 	-fno-asynchronous-unwind-tables -fno-unwind-tables \
 	-fno-common \
 	-fstrict-aliasing -fstrict-overflow \
-	-fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE
+	-fstack-protector-strong \
+	-D_FORTIFY_SOURCE=3 \
+	-fcf-protection=full \
+	-fPIE
 LDFLAGS = -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
-	-Wl,--enable-new-dtags -fpie -shared
+	-Wl,--enable-new-dtags -pie -fPIE -shared
 LDLIBS = -lpam
 
 INSTALL = install

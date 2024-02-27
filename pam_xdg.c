@@ -4,8 +4,10 @@
  *@ - Supports libpam (Linux) and OpenPAM.
  *@ - Requires C preprocessor with __VA_ARGS__ support!
  *@ - Uses "rm -rf" to drop per-user directories. XXX Unroll this?  nftw?
+ *@   Problems are (also dependent on operating system)
+ *@   E[MN]FILE failures, ordering issues, mode changes, mounts, subvolumes..
  *
- * Copyright (c) 2021 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
+ * Copyright (c) 2021 - 2024 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -256,6 +258,8 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 		}
 		f |= a_MPV;
 
+		/* (On at least Linux, in containers/namespaces and whatever weird execution environments,
+		 * we need to do this to get it graceful (i think of it as a PAM bug; undocumented, anyway)) */
 		oumask = umask(0000);
 		oegid = getegid();
 		setegid(0);
@@ -288,14 +292,11 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 
 		/* XDG_RUNTIME_DIR */
 		cp = xbuf;
-		memcpy(cp, "XDG_RUNTIME_DIR=", sizeof("XDG_RUNTIME_DIR=") -1);
-		cp += sizeof("XDG_RUNTIME_DIR=") -1;
-		memcpy(cp, a_RUNTIME_DIR_OUTER, sizeof(a_RUNTIME_DIR_OUTER) -1);
-		cp += sizeof(a_RUNTIME_DIR_OUTER) -1;
-		*cp++ = '/';
-		memcpy(cp, a_RUNTIME_DIR_BASE, sizeof(a_RUNTIME_DIR_BASE) -1);
-		cp += sizeof(a_RUNTIME_DIR_BASE) -1;
-		*cp++ = '/';
+		memcpy(cp, "XDG_RUNTIME_DIR=" a_RUNTIME_DIR_OUTER "/" a_RUNTIME_DIR_BASE "/",
+			sizeof("XDG_RUNTIME_DIR=") -1 + sizeof(a_RUNTIME_DIR_OUTER) -1 + 1 +
+				sizeof(a_RUNTIME_DIR_BASE) -1 + 1);
+		cp += sizeof("XDG_RUNTIME_DIR=") -1 + sizeof(a_RUNTIME_DIR_OUTER) -1 + 1 +
+				sizeof(a_RUNTIME_DIR_BASE) -1 + 1;
 		memcpy(cp, &uidbuf[4], uidbuflen);
 
 		if(pam_putenv(pamh, xbuf) != PAM_SUCCESS)
@@ -415,10 +416,10 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 		else if(sessions > 0)
 			--sessions;
 
-		if(!isopen && sessions == 0){ /* former.. hmmm. */
+		if(/*!isopen &&*/ sessions == 0){
 			/* Ridiculously simple, but everything else would be the opposite.
-			 * Ie, E[MN]FILE failures, or whatever else */
-			char const cmd[] = "rm -rf " a_RUNTIME_DIR_OUTER "/" a_RUNTIME_DIR_BASE "/";
+			 * Ie, E[MN]FILE failures, ordering issues, mode changes, mounts, subvolumes.. */
+			static char const cmd[] = "rm -rf " a_RUNTIME_DIR_OUTER "/" a_RUNTIME_DIR_BASE "/";
 
 			memcpy(xbuf, cmd, sizeof(cmd) -1);
 			memcpy(&xbuf[sizeof(cmd) -1], &uidbuf[4], uidbuflen +1);
