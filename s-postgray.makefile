@@ -106,7 +106,7 @@ SUFS = -fPIE \
 	-fstrict-aliasing -fstrict-overflow \
 	-fstack-protector-strong \
 	-D_FORTIFY_SOURCE=3 \
-	-fcf-protection=full \
+	$$(x=$$(uname -m); [ "${x}" != "${x#x86*}" ] && echo -fcf-protection=full) \
 	\
 #	-DHAVE_SANITIZER \
 #		-fsanitize=undefined \
@@ -161,7 +161,7 @@ $(VAL_NAME): $(SULIB_BLD) $(MYNAME).c
 		-DVAL_SERVER_TIMEOUT=$(VAL_SERVER_TIMEOUT) \
 		\
 		\
-		-DVAL_NAME_IS_MYNAME=$$([ "$(VAL_NAME)" != "$(MYNAME)" ]; echo $$?) \
+		-DVAL_NAME_IS_MYNAME=$$([ "$(VAL_NAME)" != "$(MYNAME)" ] && echo 1 || echo 0) \
 		-DMYNAME="\\\"$(MYNAME)\\\"" \
 		\
 		\
@@ -274,19 +274,22 @@ d-release:
 	mkdir $$VER &&\
 	sed -i'' -E -e 's/^\.Dd .+$$/.Dd '"$$(date +"%B %d, %Y")"'/' \
 		-e 's/^\.ds VV .+$$/.ds VV \\\\%v'"$$XVER"'/' $(MYNAME).$(MYMANEXT) &&\
+	\
 	cp $(MYNAME)* $$VER/ &&\
 	cd $$VER &&\
 	mv $(MYNAME).makefile makefile &&\
 	mv $(MYNAME).README README &&\
-	sh ../../nail.git/mk/mdocmx.sh < ../$(MYNAME).$(MYMANEXT) > $(MYNAME).$(MYMANEXT) &&\
+	\
+	sh $$HOME/src/nail.git/mk/mdocmx.sh < ../$(MYNAME).$(MYMANEXT) > $(MYNAME).$(MYMANEXT) &&\
 	< $(MYNAME).$(MYMANEXT) MDOCMX_ENABLE=1 s-roff -Thtml -mdoc > /tmp/$(MYNAME)-manual.html &&\
 	mkdir include src mk &&\
-	cp -r ../../nail.git/include/su include/ &&\
-	cp -r ../../nail.git/src/su src/ &&\
-	cp ../../nail.git/mk/su-make-errors.sh mk/ &&\
+	cp -r $$HOME/src/nail.git/include/su include/ &&\
+	cp -r $$HOME/src/nail.git/src/su src/ &&\
+	cp $$HOME/src/nail.git/mk/su-make-errors.sh mk/ &&\
 	rm -f src/su/*.cxx src/su/.*.cxx &&\
-	sh ../../nail.git/mk/su-make-strip-cxx.sh &&\
-	cd include/su && perl ../../../../nail.git/mk/su-doc-strip.pl *.h &&\
+	sh $$HOME/src/nail.git/mk/su-make-strip-cxx.sh &&\
+	cd include/su && perl $$HOME/src/nail.git/mk/su-doc-strip.pl *.h &&\
+	\
 	git reset &&\
 	echo 'now edit makefile and src/su/.makefile, then run' &&\
 	echo 's-nail -Aich -Snofollowup-to -Sreply-to=ich -Ssmime-sign -Sno-on-compose-leave -a ~/src/www.git/steffen.asc -a ~/src/www.git/steffen@sdaoden.eu.pem s-announce@lists.sdaoden.eu'
