@@ -262,7 +262,7 @@ install: all
 	$(INSTALL) -m 0755 "$(VAL_NAME)" "$(LIBEXECDIR)"/
 	if [ -n "$(SUSTRIP)" ]; then $(SUSTRIP) -s "$(LIBEXECDIR)/$(VAL_NAME)"; fi
 	$(MKDIR) -p -m 0755 "$(MANDIR)"
-	$(INSTALL) -m 0644 $(MYNAME).$(MYMANEXT) $(MANDIR)/$(VAL_NAME).$(MYMANEXT)"
+	$(INSTALL) -m 0644 $(MYNAME).$(MYMANEXT) "$(MANDIR)/$(VAL_NAME).$(MYMANEXT)"
 
 uninstall:
 	$(RM) -f "$(LIBEXECDIR)/$(VAL_NAME)" "$(MANDIR)/$(VAL_NAME).$(MYMANEXT)"
