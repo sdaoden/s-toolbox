@@ -3556,9 +3556,14 @@ a_norm_triple_cname(struct a_pg *pgp){
 
 	/* "Normalize" domain */
 	ds = cp;
-	while((c = *cp) != '\0')
-		*cp++ = S(char,su_cs_to_lower(c));
-
+	while((c = *cp) != '\0'){
+		if(!su_cs_is_alnum(c) && (cp == ds || (c != '-' && c != '.'))){
+			cn = NIL;
+			break;
+		}
+		c = S(char,su_cs_to_lower(c));
+		*cp++ = c;
+	}
 	if(&ds[1] >= cp)
 		cn = NIL;
 
