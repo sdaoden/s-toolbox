@@ -754,26 +754,11 @@ struct a_line{
 };
 #define a_LINE_SETUP(LP) do{(LP)->l_curr = (LP)->l_fill = 0;}while(0)
 
-/* (not really useful no more) */
-#undef a_MACROS
-#ifdef a_MACROS
-struct a_macro{
-	struct a_macro *ma_next;
-	char *ma_name;
-	char ma_cmd;
-	char ma_dat[VFIELD_SIZE(-1)];
-};
-#endif
-
 struct a_milter{
 	s32 mi_sock;
 	u32 mi_len; /* Payload in .pd_buf */
 	struct a_pd *mi_pdp;
 	struct a_dkim *mi_dkim;
-#ifdef a_MACROS
-	struct a_macro *mi_macro;
-	struct a_macro **mi_mtail;
-#endif
 	struct su_mem_bag mi_bag;
 	char mi_buf[ALIGN_Z(a_MILTER_STD_CHUNK_SIZE + 2 +1)]; /* +CRLF +NUL; aligned for u32 */
 };
@@ -1139,12 +1124,6 @@ static void
 a_milter__cleanup(struct a_milter *mip){
 	NYD_IN;
 
-	/* Macros in LOFI */
-#ifdef a_MACROS
-	mip->mi_macro = NIL;
-	mip->mi_mtail = NIL;
-#endif
-
 	a_dkim_cleanup(mip->mi_dkim);
 
 	su_mem_bag_reset(&mip->mi_bag);
@@ -1194,14 +1173,7 @@ a_milter__loop(struct a_milter *mip){ /* {{{ */
 	} optneg;
 	u32 f;
 	s32 rv;
-#ifdef a_MACROS
-	struct su_mem_bag *membp;
-#endif
 	NYD_IN;
-
-#ifdef a_MACROS
-	membp = &mip->mi_bag;
-#endif
 
 	/* Because we may call milter__cleanup() that calls dkim_cleanup() without ever being a_SETUP, this */
 	a_dkim_setup(mip->mi_dkim, FAL0, mip->mi_pdp, &mip->mi_bag);
@@ -1351,10 +1323,8 @@ FIXME - THREE-LEVEL VERBOSITY
 			/* We are only interested in macros for a_SMFIC_CONNECT */
 			if(UNLIKELY(f & a_BASE_VV))
 				su_log_write(su_LOG_DEBUG, "macros for cmd %c/%d: %u bytes", cmd, cmd, mip->mi_len);
-#ifndef a_MACROS
 			else if(cmd != a_SMFIC_CONNECT)
 				break;
-#endif
 			for(bp = &mip->mi_buf[2], l = mip->mi_len - 2; l > 0;){
 				uz nl, dl;
 
@@ -1414,23 +1384,6 @@ FIXME - THREE-LEVEL VERBOSITY
 						}
 					}
 				}
-#ifdef a_MACROS
-				/* C99 */{
-					struct a_macro *macp;
-
-					macp = su_LOFI_ALLOC(VSTRUCT_SIZEOF(struct a_macro,ma_dat) + nl + dl);
-					macp->ma_next = NIL;
-					macp->ma_cmd = cmd;
-					if(mip->mi_macro == NIL)
-						mip->mi_macro = macp;
-					else
-						*mip->mi_mtail = macp;
-					mip->mi_mtail = &macp->ma_next;
-
-					macp->ma_ame = su_cs_pcopy(macp->ma_dat, &bp[nl]) +1;
-					su_mem_copy(macp->ma_name, bp, nl);
-				}
-#endif
 
 				bp += nl + dl;
 			}
