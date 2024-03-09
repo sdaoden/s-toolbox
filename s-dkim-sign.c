@@ -11,6 +11,7 @@
  *@ - TODO server mode missing -- must be started by spawn(8).
  *@ - xxx With multiple keys, cannot include elder generated D-S in newer ones.
  *@ - Assumes header "name" values do not end with whitespace (search @HVALWS).
+ *@   (Header body values are trimmed.)
  *
  * Copyright (c) 2024 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -237,6 +238,7 @@
  * 			Accept/reject action
  * SMFIC_HEADER (multiple)
  * 			Accept/reject action (per SMFIC_HEADER)
+ * 			[Continuation lines may contain plain LF]
  * SMFIC_EOH
  * 			Accept/reject action
  * SMFIC_BODY (multiple)
@@ -884,8 +886,8 @@ struct a_pd{
 	/* Configuration */
 	char *pd_mima_sign;
 	char *pd_mima_sign_values; /* a\0b\0\0 (storage backed by .pd_mima_sign) */
-	char *pd_header_sign; /* --header-sign: NIL: a_header_sign */
-	char *pd_header_seal; /* --header-seal: NIL: none, empty: a_header_seal, else custom */
+	char *pd_header_sign; /* --header-sign: NIL: a_HEADER_SIGN */
+	char *pd_header_seal; /* --header-seal: NIL: none */
 	struct a_key *pd_keys; /* --key */
 	struct a_md *pd_mds; /* MDs needed (may be able to share MDs in between keys) */
 	u32 pd_dkim_sig_ttl; /* --ttl */
@@ -915,21 +917,45 @@ static struct a_key_algo_tuple const a_kata[] = {
 CTAV(FIELD_SIZEOF(struct a_key,k_algo) >= sizeof("ed25519"));
 CTAV(FIELD_SIZEOF(struct a_md,md_algo) >= sizeof("sha256"));
 
-/* RFC 6376, 5.4.1; extension: author (RFC 9057), message-id */
-static char const a_header_sign[] = {
-	"author\0" "from\0" "reply-to\0" "subject\0" "date\0" "to\0" "cc\0"
-	"resent-date\0" "resent-from\0" "resent-to\0" "resent-cc\0"
-	"in-reply-to\0" "references\0" "message-id\0"
-	"list-id\0" "list-help\0" "list-unsubscribe\0" "list-subscribe\0"
-		"list-post\0" "list-owner\0" "list-archive\0"
+/* RFC 6376, 5.4.1; extension: author (RFC 9057); remains are senseless.
+ * (We need to go a bit 'round the corner to be able to detect alloc size via sizeof()) */
+#define a_HEADER_SIGSEA_SIGN \
+	"author\0" "from\0" "reply-to\0" "subject\0" "date\0" "to\0" "cc\0" \
+	"resent-date\0" "resent-from\0" "resent-to\0" "resent-cc\0" \
+	"in-reply-to\0" "references\0" \
+	"list-id\0" "list-help\0" "list-unsubscribe\0" "list-subscribe\0" \
+		"list-post\0" "list-owner\0" "list-archive\0" \
 	""
-};
-
-static char const a_header_seal[] = {
-	"author\0" "from\0" "subject\0" "date\0" "to\0" "cc\0"
-	"in-reply-to\0" "references\0" "message-id\0"
+#define a_HEADER_SIGSEA_SIGN_EXT \
+	"author\0" "from\0" "reply-to\0" "subject\0" "date\0" "to\0" "cc\0" \
+	"resent-date\0" "resent-from\0" "resent-to\0" "resent-cc\0" \
+	"in-reply-to\0" "references\0" \
+	"list-id\0" "list-help\0" "list-unsubscribe\0" "list-subscribe\0" \
+		"list-post\0" "list-owner\0" "list-archive\0" \
+	"message-id\0" \
+	"mime-version\0" "content-type\0" "content-transfer-encoding\0" \
+	"mail-followup-to\0" \
+	"openpgp\0" \
 	""
+#define a_HEADER_SIGSEA_SEAL \
+	"author\0" "from\0" "reply-to\0" "subject\0" "date\0" "to\0" "cc\0" \
+	"in-reply-to\0" "references\0" \
+	""
+#define a_HEADER_SIGSEA_SEAL_EXT \
+	"author\0" "from\0" "reply-to\0" "subject\0" "date\0" "to\0" "cc\0" \
+	"in-reply-to\0" "references\0" \
+	"list-id\0" "list-help\0" "list-unsubscribe\0" "list-subscribe\0" \
+		"list-post\0" "list-owner\0" "list-archive\0" \
+	"message-id\0" \
+	"mime-version\0" "content-type\0" "content-transfer-encoding\0" \
+	"mail-followup-to\0" \
+	"openpgp\0" \
+	""
+#define a_HEADER_SIGSEA_MAX MAX(sizeof(a_HEADER_SIGSEA_SIGN_EXT), sizeof(a_HEADER_SIGSEA_SEAL_EXT))
+static char const * const a_header_sigsea[4] = {
+	a_HEADER_SIGSEA_SIGN, a_HEADER_SIGSEA_SIGN_EXT, a_HEADER_SIGSEA_SEAL, a_HEADER_SIGSEA_SEAL_EXT
 };
+enum{a_HEADER_SIGN = 0, a_HEADER_SEAL = 2}; /* (base + EXT) */
 
 static char const a_sopts[] = "A:C:c:" "~:!:" "k:" "M:" "R:" "S:s:" "t:" "#" "Hh";
 static char const * const a_lopts[] = {
@@ -1035,7 +1061,7 @@ static s32 a_conf_arg(struct a_pd *pdp, s32 o, char *arg);
 static s32 a_conf__A(struct a_pd *pdp, char *arg);
 static s32 a_conf__C(struct a_pd *pdp, char *arg, char const *act_or_nil);
 static s32 a_conf__c(struct a_pd *pdp, char *arg);
-static s32 a_conf__header_sigsea(struct a_pd *pdp, char *arg, char **store, char const *tempd, uz templ);
+static s32 a_conf__header_sigsea(struct a_pd *pdp, char *arg, boole sign);
 static s32 a_conf__k(struct a_pd *pdp, char *arg);
 static s32 a_conf__R(struct a_pd *pdp, char *path);
 static s32 a_conf__S(struct a_pd *pdp, char *arg);
@@ -1137,30 +1163,31 @@ static s32
 a_milter__loop(struct a_milter *mip){ /* {{{ */
 	enum{
 		a_NONE,
-		a_BASE_DBG = 1u<<0,
-		a_BASE_V = 1u<<1,
-		a_BASE_VV = 1u<<2,
+		a_BASE_REPRO = 1u<<0,
+		a_BASE_DBG = 1u<<1,
+		a_BASE_V = 1u<<2,
+		a_BASE_VV = 1u<<3,
 		a_BASE_DBG_V = a_BASE_DBG | a_BASE_V,
 		a_BASE_DBG_VV = a_BASE_DBG | a_BASE_VV,
 		a_BASE_DBG_V_VV = a_BASE_DBG | a_BASE_V | a_BASE_VV,
 
-		a_BASE_RESP_CONN = 1u<<3, /* Want to respond to connection requests */
-		a_BASE_RESP_HDR = 1u<<4, /* Want (need) to respond to headers */
+		a_BASE_RESP_CONN = 1u<<4, /* Want to respond to connection requests */
+		a_BASE_RESP_HDR = 1u<<5, /* Want (need) to respond to headers */
 
-		a_BASE_MIMASI = 1u<<5, /* --milter-macro-sign */
-		a_BASE_CLI = 1u<<6, /* --client's */
-		a_BASE_SIGN = 1u<<7, /* --sign's */
+		a_BASE_MIMASI = 1u<<8, /* --milter-macro-sign */
+		a_BASE_CLI = 1u<<9, /* --client's */
+		a_BASE_SIGN = 1u<<10, /* --sign's */
 
-		a_BASE_MASK = a_BASE_DBG | a_BASE_V | a_BASE_VV |
+		a_BASE_MASK = a_BASE_REPRO | a_BASE_DBG | a_BASE_V | a_BASE_VV |
 				a_BASE_RESP_CONN | a_BASE_RESP_HDR |
 				a_BASE_MIMASI | a_BASE_CLI | a_BASE_SIGN,
 
-		a_SKIP = 1u<<8, /* (Accept and) Skip this message */
-		a_SKIP_FIXED = 1u<<9, /* Non-revertable SKIP */
+		a_SKIP = 1u<<16, /* (Accept and) Skip this message */
+		a_SKIP_FIXED = 1u<<17, /* Non-revertable SKIP */
 		a_SKIP_MASK = a_SKIP | a_SKIP_FIXED,
 
-		a_SEEN_MIMASI = 1u<<10,
-		a_SEEN_CLI = 1u<<11,
+		a_SEEN_MIMASI = 1u<<18,
+		a_SEEN_CLI = 1u<<19,
 
 		a_SETUP = 1u<<24, /* ..in a message cycle, DKIM setup performed pre-EOH, */
 		a_SETUP_EOH = 1u<<25 /* ..post EOH */
@@ -1179,6 +1206,9 @@ a_milter__loop(struct a_milter *mip){ /* {{{ */
 	a_dkim_setup(mip->mi_dkim, FAL0, mip->mi_pdp, &mip->mi_bag);
 
 	f = a_SKIP;
+	if(su_state_has(su_STATE_REPRODUCIBLE))
+		f |= a_BASE_REPRO;
+
 	/* C99 */{
 		struct a_pd *pdp;
 
@@ -1290,23 +1320,16 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 			mip->mi_buf[0] = a_SMFIC_OPTNEG;
 			su_mem_copy(&mip->mi_buf[1], &optneg, sizeof(optneg));
 
-			if(LIKELY(!(f & a_BASE_DBG) && !su_state_has(su_STATE_REPRODUCIBLE))){
+			if(LIKELY(!(f & (a_BASE_REPRO | a_BASE_DBG)))){
 				rv = a_milter__write(mip, 1 + sizeof(optneg));
 				if(rv != su_EX_OK)
 					goto jleave;
-
-				if(f & a_BASE_RESP_HDR){
-				mip->mi_buf[0] = a_SMFIR_CONTINUE;
-				rv = a_milter__write(mip, 1);
-				if(rv != su_EX_OK)
-					goto jleave;
-				}
 			}
 			break; /* }}} */
 
 		case a_SMFIC_MACRO:{ /* {{{ */
 			/* We get macros even for ignored commands */
-			uz l;
+			uz l, nl, dl;
 			char cmd, *bp;
 
 			cmd = mip->mi_buf[1];
@@ -1325,9 +1348,8 @@ FIXME - THREE-LEVEL VERBOSITY
 				su_log_write(su_LOG_DEBUG, "macros for cmd %c/%d: %u bytes", cmd, cmd, mip->mi_len);
 			else if(cmd != a_SMFIC_CONNECT)
 				break;
-			for(bp = &mip->mi_buf[2], l = mip->mi_len - 2; l > 0;){
-				uz nl, dl;
 
+			for(bp = &mip->mi_buf[2], l = mip->mi_len - 2; l > 0; bp += nl + dl){
 				nl = su_cs_len(bp) +1;
 				l -= nl;
 				if(UNLIKELY(l == 0))
@@ -1341,79 +1363,74 @@ FIXME - THREE-LEVEL VERBOSITY
 					su_log_write(su_LOG_DEBUG, "macro %lu<%s> %lu<%s>",
 						S(ul,nl) -1, bp, S(ul,dl), &bp[nl]);
 
-				if(cmd == a_SMFIC_CONNECT){
-					if((f & a_BASE_MIMASI) && !su_cs_cmp(bp, mip->mi_pdp->pd_mima_sign)){
-						char *cp;
+				if(cmd != a_SMFIC_CONNECT)
+					continue;
 
-						f |= a_SEEN_MIMASI;
-						if((cp = mip->mi_pdp->pd_mima_sign_values) == NIL)
+				if((f & a_BASE_MIMASI) && !su_cs_cmp(bp, mip->mi_pdp->pd_mima_sign)){
+					char *cp;
+
+					f |= a_SEEN_MIMASI;
+					if(f & a_SKIP_FIXED)
+						continue;
+
+					if((cp = mip->mi_pdp->pd_mima_sign_values) == NIL)
+						f &= ~a_SKIP;
+					else for(;;){
+						uz i;
+
+						i = su_cs_len(cp) +1;
+						if(i == dl && !su_mem_cmp(cp, &bp[nl], i -1)){
 							f &= ~a_SKIP;
-						else for(;;){
-							uz i;
-
-							i = su_cs_len(cp) +1;
-							if(i == dl && !su_mem_cmp(cp, &bp[nl], i -1)){
-								f &= ~a_SKIP;
-								break;
-							}
-							cp += i;
-							if(*cp == '\0'){
-								f |= a_SKIP_MASK;
-								if(UNLIKELY((f & a_BASE_DBG_V_VV)))
-									su_log_write(su_LOG_DEBUG,
-										"--milter-macro-sign mismatch: %s",
-										mip->mi_pdp->pd_mima_sign);
-								break;
-							}
+							break;
 						}
-
-						if(UNLIKELY(f & a_BASE_DBG_V_VV) && !(f & a_SKIP))
-							su_log_write(su_LOG_DEBUG, "--milter-macro-sign match ok");
-					}
-
-					if(nl == 1 +1 && bp[0] == '_'){
-						f |= a_SEEN_CLI;
-						/* Does the logging.. */
-						switch(a_milter__parse_(mip, &bp[nl], dl, ((f & a_BASE_CLI) == 0))){
-						case a_CLI_ACT_NONE: FALLTHRU
-						case a_CLI_ACT_ERR: goto jeproto;
-						case a_CLI_ACT_PASS: f |= a_SKIP_MASK; break;
-						case a_CLI_ACT_SIGN: f &= ~a_SKIP; break;
-						/*case a_CLI_ACT_VERIFY:
-						 *case a_CLI_ACT_BOTH:*/
+						cp += i;
+						if(*cp == '\0'){
+							f |= a_SKIP_MASK;
+							if(UNLIKELY((f & a_BASE_DBG_V_VV)))
+								su_log_write(su_LOG_DEBUG,
+									"--milter-macro-sign mismatch: %s: %s",
+									mip->mi_pdp->pd_mima_sign, &bp[nl]);
+							break;
 						}
 					}
+
+					if(UNLIKELY(f & a_BASE_DBG_V_VV) && !(f & a_SKIP))
+						su_log_write(su_LOG_DEBUG, "--milter-macro-sign match ok: %s", &bp[nl]);
 				}
 
-				bp += nl + dl;
-			}
+				if(nl == 1 +1 && bp[0] == '_'){
+					f |= a_SEEN_CLI;
+					if(f & a_SKIP_FIXED)
+						continue;
 
-			if(cmd == a_SMFIC_CONNECT){
-				if(UNLIKELY(!(f & a_SEEN_CLI))){
-					ASSERT(f & a_SKIP);
-					su_log_write(su_LOG_CRIT,
-						_("Mail server did not notify --client via \"_\" milter macro, "
-							"bailing out"));
-					rv = su_EX_UNAVAILABLE;
-					goto jleave;
-				}
-
-				if(UNLIKELY((f & a_BASE_DBG_V_VV))){
-					if(f & a_SKIP){
-						if((f & (a_BASE_MIMASI | a_SEEN_MIMASI)) == a_BASE_MIMASI){
-							su_log_write(su_LOG_DEBUG, "--milter-macro-sign unseen: %s",
-								mip->mi_pdp->pd_mima_sign);
-						}
+					/* Does the logging.. */
+					switch(a_milter__parse_(mip, &bp[nl], dl, ((f & a_BASE_CLI) == 0))){
+					case a_CLI_ACT_NONE: FALLTHRU
+					case a_CLI_ACT_ERR: goto jeproto;
+					case a_CLI_ACT_PASS: f |= a_SKIP_MASK; break;
+					case a_CLI_ACT_SIGN: f &= ~a_SKIP; break;
+					/*case a_CLI_ACT_VERIFY:
+					 *case a_CLI_ACT_BOTH:*/
 					}
 				}
 			}
+
+			if(UNLIKELY(!(f & a_SEEN_CLI))){
+				su_log_write(su_LOG_CRIT,
+					_("Mail server did not notify --client via \"_\" milter macro, bailing out"));
+				rv = su_EX_UNAVAILABLE;
+				goto jleave;
+			}
+			if((f & a_BASE_DBG_V_VV) && UNLIKELY((f & (a_BASE_MIMASI | a_SEEN_MIMASI)) == a_BASE_MIMASI))
+				su_log_write(su_LOG_DEBUG, "--milter-macro-sign unseen: %s", mip->mi_pdp->pd_mima_sign);
 			}break; /* }}} */
 
 		case a_SMFIC_CONNECT:
-			ASSERT(f & a_BASE_RESP_CONN);
 			if(f & a_SKIP)
 				goto jaccept;
-			if(LIKELY(!(f & a_BASE_DBG) && !su_state_has(su_STATE_REPRODUCIBLE))){
+			if(!(f & a_BASE_RESP_CONN)) /* XXX ??? */
+				break;
+			if(LIKELY(!(f & (a_BASE_REPRO | a_BASE_DBG)))){
 				mip->mi_buf[0] = a_SMFIR_CONTINUE;
 				rv = a_milter__write(mip, 1);
 				if(rv != su_EX_OK)
@@ -1428,11 +1445,12 @@ FIXME - THREE-LEVEL VERBOSITY
 
 			if(UNLIKELY(f & a_BASE_VV))
 				su_log_write(su_LOG_DEBUG, "header <%s>", &mip->mi_buf[1]);
-/* FIXME can SKIP with sKIP! */
+			if(f & a_SKIP_MASK)
+				goto jheader_done;
 
 			hname = mip->mi_pdp->pd_header_sign;
 			if(hname == NIL)
-				hname = a_header_sign;
+				hname = a_header_sigsea[a_HEADER_SIGN];
 			for(;;){
 				if(!su_cs_cmp_case(hname, &mip->mi_buf[1])) /* @HVALWS */
 					break;
@@ -1454,20 +1472,19 @@ FIXME - THREE-LEVEL VERBOSITY
 
 			i = 1 + su_cs_len(hname) +1;
 			if(UNLIKELY(f & a_BASE_VV))
-				su_log_write(su_LOG_DEBUG, "header for DKIM: %s: %s",
-					&mip->mi_buf[1], &mip->mi_buf[i]);
+				su_log_write(su_LOG_DEBUG, "using header: %s: %s", &mip->mi_buf[1], &mip->mi_buf[i]);
 
 			clia = a_dkim_push_header(mip->mi_dkim, hname, &mip->mi_buf[i], &mip->mi_bag);
 			if(clia == a_CLI_ACT_SIGN)
 				f &= ~a_SKIP;
 			else if(clia == a_CLI_ACT_PASS || clia == a_CLI_ACT_ERR)
-				f |= a_SKIP;
+				f |= a_SKIP_MASK;
 
 jheader_done:
 			if(f & a_BASE_RESP_HDR){
-				if(f & a_SKIP)
+				if(f & a_SKIP_MASK)
 					goto jaccept;
-				if(LIKELY(!(f & a_BASE_DBG) && !su_state_has(su_STATE_REPRODUCIBLE))){
+				if(LIKELY(!(f & (a_BASE_REPRO | a_BASE_DBG)))){
 					mip->mi_buf[0] = a_SMFIR_CONTINUE;
 					rv = a_milter__write(mip, 1);
 					if(rv != su_EX_OK)
@@ -1479,7 +1496,8 @@ jheader_done:
 		case a_SMFIC_BODY:
 			if(f & a_BASE_VV)
 				su_log_write(su_LOG_DEBUG, "body chunk %lu bytes", S(ul,mip->mi_len - 1));
-/* FIXME can SKIP with sKIP! */
+			if(f & a_SKIP_MASK)
+				goto jaccept;
 
 			if(mip->mi_len == 1)
 				break;
@@ -1534,20 +1552,22 @@ FIXME what is with skip, rethink
 					mip->mi_buf[1] = mip->mi_buf[2] = mip->mi_buf[3] = mip->mi_buf[4] = '\0';
 					su_mem_copy(&mip->mi_buf[5], dkrp->dr_dat, dkrp->dr_len);
 
-					if(LIKELY(!(f & a_BASE_DBG) && !su_state_has(su_STATE_REPRODUCIBLE))){
+					if(LIKELY(!(f & (a_BASE_REPRO | a_BASE_DBG)))){
 						rv = a_milter__write(mip, 1 + 4 + dkrp->dr_len);
 						if(rv != su_EX_OK)
 							goto jleave;
-					}else{
-						/* room for \015\012\0! */
-						dkrp->dr_dat[dkrp->dr_name_len] = ':';
-						dkrp->dr_dat[dkrp->dr_len - 1] = '\n';
-						if(f & a_BASE_DBG){
-							dkrp->dr_dat[dkrp->dr_len] = '\0';
-							su_log_write(su_LOG_DEBUG, "%s", dkrp->dr_dat);
-						}else
-							write(STDOUT_FILENO, dkrp->dr_dat, dkrp->dr_len);
+						if(LIKELY(!(f & a_BASE_VV)))
+							continue;
 					}
+
+					/* room for \015\012\0! */
+					dkrp->dr_dat[dkrp->dr_name_len] = ':';
+					dkrp->dr_dat[dkrp->dr_len - 1] = '\n';
+					if(!(f & a_BASE_REPRO)){
+						dkrp->dr_dat[dkrp->dr_len] = '\0';
+						su_log_write(su_LOG_DEBUG, "%s", dkrp->dr_dat);
+					}else
+						write(STDOUT_FILENO, dkrp->dr_dat, dkrp->dr_len);
 				}
 			}else
 				su_log_write(su_LOG_CRIT, _("Failure creating DKIM signature, message is unchanged"));
@@ -1555,7 +1575,7 @@ FIXME what is with skip, rethink
 jaccept:
 			if(UNLIKELY(f & a_BASE_VV))
 				su_log_write(su_LOG_DEBUG, "done with message");
-			if(LIKELY(!(f & a_BASE_DBG) && !su_state_has(su_STATE_REPRODUCIBLE))){
+			if(LIKELY(!(f & (a_BASE_REPRO | a_BASE_DBG)))){
 				mip->mi_buf[0] = a_SMFIR_ACCEPT;
 				rv = a_milter__write(mip, 1);
 				if(rv != su_EX_OK)
@@ -2224,7 +2244,7 @@ a_dkim_process(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{
 
 		/* If the body digest for that MD is not done yet, do it now */
 		if(mdcp->mdc_b_diglen == 0){
-			a.sl32 = 0; /* xxx only out param */
+			a.sl32 = 0; /* xxx is only out param here */
 			if(!EVP_DigestFinal(mdcp->mdc_md_ctx, sigp, &a.sl32)){
 				su_log_write(su_LOG_CRIT,
 					_("Cannot EVP_DigestFinal(3) %s-%s(=%s=%s): %s\n"),
@@ -2494,8 +2514,12 @@ jcrlf:
 						continue;
 					}
 				}
-				/* Treat as normal byte! */
 			}
+
+
+/*
+ * FIXME WE NEED TO TREAT LONELY CR AND LF AS WHITESPACE, SURELY
+ */
 
 			/* We store data; if we have seen some successive empty lines before, flush them now! */
 			if(UNLIKELY(/*!(fln & a_LNANY) &&*/ eln > 0)){
@@ -2982,8 +3006,8 @@ a_conf_arg(struct a_pd *pdp, s32 o, char *arg){ /* {{{ */
 	case 'C': o = a_conf__C(pdp, arg, NIL); break;
 	case 'c': o = a_conf__c(pdp, arg); break;
 
-	case '~': o = a_conf__header_sigsea(pdp, arg, &pdp->pd_header_sign, a_header_sign, sizeof a_header_sign); break;
-	case '!': o = a_conf__header_sigsea(pdp, arg, &pdp->pd_header_seal, a_header_seal, sizeof a_header_seal); break;
+	case '~': o = a_conf__header_sigsea(pdp, arg, TRU1); break;
+	case '!': o = a_conf__header_sigsea(pdp, arg, FAL0); break;
 
 	case 'k': o = a_conf__k(pdp, arg); break;
 	case 'M':/* C99 */{
@@ -3363,15 +3387,17 @@ jleave:
 } /* }}} */
 
 static s32
-a_conf__header_sigsea(struct a_pd *pdp, char *arg, char **store, char const *tempd, uz templ){ /* {{{ */
-	boole from;
-	char *xarg, *vp, *cp;
+a_conf__header_sigsea(struct a_pd *pdp, char *arg, boole sign){ /* {{{ */
+	boole tx, from;
 	uz i;
+	char **store, *xarg, *vp, *cp;
 	s32 rv;
 	NYD_IN;
 
 	rv = su_EX_OK;
-jredo:
+	store = sign ? &pdp->pd_header_sign : &pdp->pd_header_seal;
+
+jon_error_arg_nul:
 	if(*store != NIL){
 		su_FREE(*store);
 		*store = NIL;
@@ -3379,23 +3405,36 @@ jredo:
 
 	if(*arg == '\0')
 		goto jleave;
+	/* (not reached for jon_error..) */
 
-	if(*arg == '@'){
+	tx = FAL0;
+	if(*arg == '@' || (tx = (*arg == '*'))){
 		++arg;
 		xarg = (su_cs_find_c(arg, '!') == NIL) ? R(char*,-1) : arg;
-	}else if(su_cs_first_of(arg, "@!") != UZ_MAX){
-		a_conf__err(pdp, _("--header-(sign|seal): @ must be first, ! only usable then: %s\n"), arg);
+	}else if(su_cs_first_of(arg, "@*!") != UZ_MAX){
+		a_conf__err(pdp, _("--header-(sign|seal): @ or * must be first, ! only usable then: %s\n"), arg);
 		rv = -su_EX_DATAERR;
 		goto jleave;
 	}else
 		xarg = NIL;
 
 	i = su_cs_len(arg) +1;
-	*store = vp = su_TALLOC(char, i + (xarg != NIL ? i + templ : 0) +1 +1); /* \0\0 */
+	*store = vp = su_TALLOC(char, i + (xarg != NIL ? i + a_HEADER_SIGSEA_MAX : 0) +1 +1); /* \0\0 */
 	from = FAL0;
 
 	/* If we modify the default list the way is longer; practically no validity tests <> manual! */
 	if(xarg != NIL){
+		uz templ;
+		char const *tempd;
+
+		if(sign){
+			tempd = a_header_sigsea[a_HEADER_SIGN + tx];
+			templ = tx ? sizeof(a_HEADER_SIGSEA_SIGN_EXT) : sizeof(a_HEADER_SIGSEA_SIGN);
+		}else{
+			tempd = a_header_sigsea[a_HEADER_SEAL + tx];
+			templ = tx ? sizeof(a_HEADER_SIGSEA_SEAL_EXT) : sizeof(a_HEADER_SIGSEA_SEAL);
+		}
+
 		if(xarg == R(char*,-1)){
 			su_mem_copy(vp, tempd, --templ); /* \0\0 */
 			vp += templ;
@@ -3438,7 +3477,7 @@ jxt_next:
 
 	if(vp == *store){
 		arg = UNCONST(char*,su_empty);
-		goto jredo;
+		goto jon_error_arg_nul;
 	}
 
 	if(!from){
@@ -4289,18 +4328,26 @@ main(int argc, char *argv[]){ /* {{{ */
 
 		case -1: FALLTHRU /* --header-sign-show */
 		case -2:/* C99 */{ /* --header-seal-show */
-			char const *base, *cp;
+			char const * const *base, *cp;
 
-			base = (mpv == -1) ? a_header_sign : a_header_seal;
-			for(cp = base;;){
-				if(cp != base)
-					putc(' ', stdout);
+			base = &a_header_sigsea[mpv == -1 ? a_HEADER_SIGN : a_HEADER_SEAL];
+			putc('@', stdout);
+jhss_redo:
+			putc(':', stdout);
+			for(cp = *base;;){
+				putc(' ', stdout);
 				fputs(cp, stdout);
 				cp += su_cs_len(cp) +1;
 				if(*cp == '\0')
 					break;
 			}
 			putc('\n', stdout);
+
+			if(base == &a_header_sigsea[mpv == -1 ? a_HEADER_SIGN : a_HEADER_SEAL]){
+				++base;
+				putc('*', stdout);
+				goto jhss_redo;
+			}
 			mpv = su_EX_OK;
 			}goto jleave;
 
