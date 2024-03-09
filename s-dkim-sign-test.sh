@@ -7,6 +7,7 @@ REDIR= #'2>/dev/null'
 
 : ${PDARGS:=}
 : ${PD:=../s-dkim-sign $PDARGS}
+: ${AWK:=awk}
 
 ###
 
@@ -131,116 +132,59 @@ ka= kf= k= kR= k2a= k2f= k2= k2R=
 ##
 echo '=1: options=' # {{{
 
-# 1.* --header-sign (+ --resource-file with \ follow-ups) {{{
-${PD} --header-sign-show > t1.1 2>&1
-x $? 1.1
+# 1.* --header-(sign|seal) (+ --resource-file with \ follow-ups) {{{
+t1() {
+	${PD} --header-${3}-show |
+		${AWK} 'BEGIN{i=1}{if(i++ == '$4') {sub("^.+:[[:space:]]*", ""); print; exit;}}' > t1.$1.1 2>&1
+	x $? 1.$1.1
 
-${PD} --test-mode --header-sign=@ > t1.2 2>&1
-x $? 1.2
+	${PD} --test-mode --header-${3}="$2" > t1.$1.2 2>&1
+	x $? 1.$1.2
 
-${PD} -# -~@ > t1.3 2>&1
-x $? 1.3
+	${PD} -# --header-$3="$2" > t1.$1.3 2>&1
+	x $? 1.$1.3
 
-cmp -s t1.2 t1.3
-x $? 1.4
+	cmp -s t1.$1.2 t1.$1.3
+	x $? 1.$1.4
 
-unfold header-sign < t1.2 | coas_del > t1.5
-cmp -s t1.5 t1.1
-x $? 1.5
+	unfold header-$3 < t1.$1.2 | coas_del > t1.$1.5
+	cmp -s t1.$1.5 t1.$1.1
+	x $? 1.$1.5
 
-read hl < t1.5
-hl=${hl% cc *}' '${hl#* cc }
-hl=${hl% subject *}' '${hl#* subject }
-hl=${hl% date *}' '${hl#* date }
-echo $hl boah > t1.6
-x $? 1.6
+	read hl < t1.$1.5
+	hl=${hl% cc *}' '${hl#* cc }
+	hl=${hl% subject *}' '${hl#* subject }
+	hl=${hl% date *}' '${hl#* date }
+	echo $hl boah > t1.$1.6
+	x $? 1.$1.6
 
-${PD} -# -~@'!date,   !cc        ,   !subject , boah ' > t1.7 2>&1
-x $? 1.7
+	${PD} -# --header-$3 "$2"'!date,   !cc        ,   !subject , boah ' > t1.$1.7 2>&1
+	x $? 1.$1.7
 
-unfold header-sign < t1.7 | coas_del > t1.8
-cmp -s t1.6 t1.8
-x $? 1.8
+	unfold header-$3 < t1.$1.7 | coas_del > t1.$1.8
+	cmp -s t1.$1.6 t1.$1.8
+	x $? 1.$1.8
 
-cat > t1.9.rc << '_EOT'
-\
-    		  \
-\
-\
-\
-header-\
-  	 \
-	 sign	 \
-	 from
-_EOT
+	printf '\\\n   \t\t\t    \\\n\\\n\\\nheader-\\\n  \t \\\n\t '$3'\t \\\n\t from\n' > t1.$1.9.rc
+	${PD} -# -R t1.$1.9.rc > t1.$1.9 2>&1
+	x $? 1.$1.9
 
-${PD} -# -R t1.9.rc > t1.9 2>&1
-x $? 1.9
+	unfold header-$3 < t1.$1.9 | coas_del > t1.$1.10
+	read hl < t1.$1.10
+	[ "$hl" = from ]
+	x $? 1.$1.10
 
-unfold header-sign < t1.9 | coas_del > t1.10
-read hl < t1.10
-[ "$hl" = from ]
-x $? 1.10
-
-${PD} -# -~@!from > t1.11 2>&1
-y $? 1.11
-# }}}
-
-# 2.* --header-seal (+ --resource-file with \ follow-ups) {{{
-${PD} --header-seal-show > t2.1 2>&1
-x $? 2.1
-
-${PD} --test-mode --header-seal=@ > t2.2 2>&1
-x $? 2.2
-
-${PD} -# -!@ > t2.3 2>&1
-x $? 2.3
-
-cmp -s t2.2 t2.3
-x $? 2.4
-
-unfold header-seal < t2.2 | coas_del > t2.5
-cmp -s t2.5 t2.1
-x $? 2.5
-
-read hl < t2.5
-hl=${hl% cc *}' '${hl#* cc }
-hl=${hl% subject *}' '${hl#* subject }
-hl=${hl% date *}' '${hl#* date }
-echo $hl boah > t2.6
-x $? 2.6
-
-${PD} -# -!@'!date,   !cc        ,   !subject , boah ' > t2.7 2>&1
-x $? 2.7
-
-unfold header-seal < t2.7 | coas_del > t2.8
-cmp -s t2.6 t2.8
-x $? 2.8
-
-cat > t2.9.rc << '_EOT'
-\
- \
-   \
-		\
-\
-	\
- \
-header-\
-  	 \
-	 seal     \
-	 from
-_EOT
-
-${PD} -# -R t2.9.rc > t2.9 2>&1
-x $? 2.9
-
-unfold header-seal < t2.9 | coas_del > t2.10
-read hl < t2.10
-[ "$hl" = from ]
-x $? 2.10
-
-${PD} -# -!!from > t2.11 2>&1
-y $? 2.11
+	${PD} -# --header-$3="${2}!from" > t1.$1.11 2>&1
+	y $? 1.$1.11
+	${PD} -# --header-$3="  ,  ${2}" > t1.$1.12 2>&1
+	y $? 1.$1.12
+	${PD} -# --header-$3="from,!to" > t1.$1.13 2>&1
+	y $? 1.$1.13
+}
+t1 1 '@' sign 1
+t1 2 '*' sign 2
+t1 3 '@' seal 1
+t1 4 '*' seal 2
 # }}}
 
 # 3.* --key {{{
