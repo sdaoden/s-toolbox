@@ -1,6 +1,5 @@
 /*@ s-dkim-sign(8) - [postfix-only] RFC 6376/8463 DKIM sign-only milter.
  *@ - OpenSSL must be 1.1.0 or above.
- *@ - FIXME - header-seal MUST be included in header-sign!
  *@ - FIXME - -A not yet implemented; needs a complete "verify" infrastructure!
  *@   Matus UHLAR:
  *@   I am only removing Authentication-Results: headers that contain $myhostname:
@@ -883,19 +882,20 @@ struct a_pd{
 	BITENUM(u32,a_flags) pd_flags;
 	u32 pd_argc;
 	char **pd_argv;
+	s64 pd_source_date_epoch;
 	/* Configuration */
-	char *pd_mima_sign;
-	char *pd_mima_sign_values; /* a\0b\0\0 (storage backed by .pd_mima_sign) */
 	char *pd_header_sign; /* --header-sign: NIL: a_HEADER_SIGN */
 	char *pd_header_seal; /* --header-seal: NIL: none */
+	char *pd_mima_sign;
+	char *pd_mima_sign_values; /* a\0b\0\0 (storage backed by .pd_mima_sign) */
 	struct a_key *pd_keys; /* --key */
 	struct a_md *pd_mds; /* MDs needed (may be able to share MDs in between keys) */
 	u32 pd_dkim_sig_ttl; /* --ttl */
 	u32 pd_sign_longest_domain; /* (With --sign: longest domain seen, for buffer alloc purposes) */
-	struct su_cs_dict pd_sign; /* --sign */
 	struct a_srch *pd_cli_ip; /* --client CIDR list */
 	struct a_srch **pd_cli_ip_tail;
 	struct su_cs_dict pd_cli; /* --client; IPs end with ACK U+0006 +NUL so names and IPs have diff namespace */
+	struct su_cs_dict pd_sign; /* --sign */
 };
 
 /* This array is our sole availability shim, everything else should adapt automatically!  Adjust manual! */
@@ -1178,6 +1178,10 @@ a_milter__loop(struct a_milter *mip){ /* {{{ */
 		a_BASE_CLI = 1u<<9, /* --client's */
 		a_BASE_SIGN = 1u<<10, /* --sign's */
 
+		/* After step xy, a_SKIP must have been cleared to continue processing */
+		a_BASE_SKIP_CONN = a_BASE_MIMASI | a_BASE_CLI,
+		a_BASE_SKIP_HEADER = a_BASE_SIGN,
+
 		a_BASE_MASK = a_BASE_REPRO | a_BASE_DBG | a_BASE_V | a_BASE_VV |
 				a_BASE_RESP_CONN | a_BASE_RESP_HDR |
 				a_BASE_MIMASI | a_BASE_CLI | a_BASE_SIGN,
@@ -1445,8 +1449,13 @@ FIXME - THREE-LEVEL VERBOSITY
 
 			if(UNLIKELY(f & a_BASE_VV))
 				su_log_write(su_LOG_DEBUG, "header <%s>", &mip->mi_buf[1]);
-			if(f & a_SKIP_MASK)
-				goto jheader_done;
+
+			if(UNLIKELY(f & a_SKIP_MASK)){
+				if(f & a_SKIP_FIXED)
+					goto jheader_done;
+				if(f & a_BASE_SKIP_CONN)
+					goto jheader_done;
+			}
 
 			hname = mip->mi_pdp->pd_header_sign;
 			if(hname == NIL)
@@ -1496,8 +1505,13 @@ jheader_done:
 		case a_SMFIC_BODY:
 			if(f & a_BASE_VV)
 				su_log_write(su_LOG_DEBUG, "body chunk %lu bytes", S(ul,mip->mi_len - 1));
-			if(f & a_SKIP_MASK)
-				goto jaccept;
+
+			if(UNLIKELY(f & a_SKIP_MASK)){
+				if(f & a_SKIP_FIXED)
+					goto jaccept;
+				if((f & a_BASE_SKIP_HEADER) && !(f & a_SETUP))
+					goto jaccept;
+			}
 
 			if(mip->mi_len == 1)
 				break;
@@ -1584,8 +1598,7 @@ jaccept:
 			break; /* }}} */
 
 		default:
-			su_log_write(su_LOG_CRIT, _("Received undesired/-handled milter command: %c/%d"),
-				mip->mi_buf[0], mip->mi_buf[0]);
+			su_log_write(su_LOG_CRIT, _("Received undesired/-handled milter command: %d"), mip->mi_buf[0]);
 			goto jaccept;
 		}
 	}
@@ -2148,7 +2161,11 @@ a_dkim_process(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{
 	DVLDBG(for(mdcp = dkp->d_mdctxs; mdcp != NIL; mdcp = mdcp->mdc_next) ASSERT(mdcp->mdc_b_diglen == 0);)
 
 	/* (Cannot overflow on earth) */
-	su_timespec_current(&ts);
+	if(su_state_has(su_STATE_REPRODUCIBLE)){
+		ts.ts_sec = dkp->d_pdp->pd_source_date_epoch;
+		ts.ts_nano = 0;
+	}else
+		su_timespec_current(&ts);
 	ts_exp.ts_sec = (dkp->d_pdp->pd_dkim_sig_ttl != 0 ? ts.ts_sec + dkp->d_pdp->pd_dkim_sig_ttl : 0);
 	ts_exp.ts_nano = 0;
 
@@ -2664,12 +2681,12 @@ a_conf_setup(struct a_pd *pdp, boole init){
 	pdp->pd_flags &= ~S(uz,a_F_SETUP_MASK);
 
 	if(init){
-		su_cs_dict_create(&pdp->pd_sign, su_CS_DICT_HEAD_RESORT, NIL);
 		su_cs_dict_create(&pdp->pd_cli, su_CS_DICT_HEAD_RESORT, NIL);
+		su_cs_dict_create(&pdp->pd_sign, su_CS_DICT_HEAD_RESORT, NIL);
 	}
 
-	su_cs_dict_add_flags(&pdp->pd_sign, su_CS_DICT_FROZEN);
 	su_cs_dict_add_flags(&pdp->pd_cli, su_CS_DICT_FROZEN);
+	su_cs_dict_add_flags(&pdp->pd_sign, su_CS_DICT_FROZEN);
 
 	NYD_OU;
 }
@@ -2689,6 +2706,9 @@ a_conf_finish(struct a_pd *pdp){ /* {{{ */
 		if(!(pdp->pd_flags & a_F_MODE_TEST))
 			goto jleave;
 	}
+
+	/* */
+	su_cs_dict_balance(&pdp->pd_cli);
 
 	/* --sign selectors must resolve to keys */
 	su_cs_dict_balance(&pdp->pd_sign);
@@ -2721,8 +2741,32 @@ a_conf_finish(struct a_pd *pdp){ /* {{{ */
 		}
 	}
 
-	/* */
-	su_cs_dict_balance(&pdp->pd_cli);
+	/* --header-seal: verify members are part of --header-sign */
+	if(UNLIKELY(pdp->pd_flags & a_F_MODE_TEST) && pdp->pd_header_seal != NIL){
+		char const *sea, *sig;
+
+		for(sea = pdp->pd_header_seal;;){
+			sig = pdp->pd_header_sign;
+			if(sig == NIL)
+				sig = a_header_sigsea[a_HEADER_SIGN];
+
+			for(;;){
+				if(!su_cs_cmp_case(sig, sea))
+					break;
+				sig += su_cs_len(sig) +1;
+				if(*sig == '\0'){
+					a_conf__err(pdp, _("--header-seal: %s is not part of --header-sign\n"), sea);
+					pdp->pd_flags |= a_F_TEST_ERRORS;
+					rv = su_EX_CONFIG;
+					break;
+				}
+			}
+
+			sea += su_cs_len(sea) +1;
+			if(*sea == '\0')
+				break;
+		}
+	}
 
 jleave:
 	NYD_OU;
@@ -2738,13 +2782,13 @@ a_conf_cleanup(struct a_pd *pdp){ /* {{{ */
 	struct a_key *kp;
 	NYD_IN;
 
-	if(pdp->pd_mima_sign != NIL)
-		su_FREE(pdp->pd_mima_sign);
-
 	if(pdp->pd_header_sign != NIL)
 		su_FREE(pdp->pd_header_sign);
 	if(pdp->pd_header_seal != NIL)
 		su_FREE(pdp->pd_header_seal);
+
+	if(pdp->pd_mima_sign != NIL)
+		su_FREE(pdp->pd_mima_sign);
 
 	while((kp = pdp->pd_keys) != NIL){
 		pdp->pd_keys = kp->k_next;
@@ -2760,16 +2804,16 @@ a_conf_cleanup(struct a_pd *pdp){ /* {{{ */
 		su_FREE(mdp);
 	}
 
-	su_CS_DICT_FOREACH(&pdp->pd_sign, &dv)
-		su_FREE(su_cs_dict_view_data(&dv));
-	su_cs_dict_gut(&pdp->pd_sign);
-
 	while((sp = pdp->pd_cli_ip) != NIL){
 		pdp->pd_cli_ip = sp->s_next;
 		su_FREE(sp);
 	}
 	pdp->pd_cli_ip_tail = NIL;
 	su_cs_dict_gut(&pdp->pd_cli);
+
+	su_CS_DICT_FOREACH(&pdp->pd_sign, &dv)
+		su_FREE(su_cs_dict_view_data(&dv));
+	su_cs_dict_gut(&pdp->pd_sign);
 
 	NYD_OU;
 } /* }}} */
@@ -2785,8 +2829,8 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 
 	rv = su_EX_OK;
 
-	i = su_cs_dict_count(&pdp->pd_sign);
 	j = su_cs_dict_count(&pdp->pd_cli);
+	i = su_cs_dict_count(&pdp->pd_sign);
 	i = MAX(i, j);
 	arr = (i > 0) ? su_TALLOC(char const*, ++i) : NIL;
 
@@ -4287,7 +4331,8 @@ main(int argc, char *argv[]){ /* {{{ */
 	struct a_pd pd;
 	s32 mpv;
 
-	mpv = (getenv("SOURCE_DATE_EPOCH") == NIL); /* xxx su_env_get? */
+	avo.avo_current_arg = getenv("SOURCE_DATE_EPOCH"); /* xxx su_env_get? */
+	mpv = (avo.avo_current_arg == NIL);
 	su_state_create(su_STATE_CREATE_RANDOM, (mpv ? NIL : VAL_NAME),
 		(DVLDBGOR(su_LOG_DEBUG, (mpv ? su_LOG_ERR : su_LOG_DEBUG)) | DVL(su_STATE_DEBUG |)
 			(mpv ? (su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID)
@@ -4309,6 +4354,8 @@ main(int argc, char *argv[]){ /* {{{ */
 	STRUCT_ZERO(struct a_pd, &pd);
 	pd.pd_argc = S(u32,(argc > 0) ? --argc : argc);
 	pd.pd_argv = ++argv;
+	if(avo.avo_current_arg != NIL)
+		(void)su_idec_s64_cp(&pd.pd_source_date_epoch, avo.avo_current_arg, 0, NIL); /* devel option only! */
 	a_conf_setup(&pd, TRU1);
 
 	su_avopt_setup(&avo, pd.pd_argc, C(char const*const*,pd.pd_argv), a_sopts, a_lopts);

@@ -3,6 +3,7 @@
 #@ NOTE: with SOURCE_DATE_EPOCH it is allowed to specify *no*keys*!
 
 : ${KEEP_TESTS:=}
+: ${SANITIZER:=}
 REDIR= #'2>/dev/null'
 
 : ${PDARGS:=}
@@ -41,23 +42,49 @@ pwd=. #$(pwd) || exit 3
 ### First of all create some resources {{{
 
 x() {
-	[ $1 -eq 0 ] || { echo >&2 bad $2; exit 1; }
+	[ $1 -eq 0 ] || { echo >&2 'bad '$2; exit 1; }
 	[ -n "$REDIR" ] || echo ok $2
 }
 
 y() {
-	[ $1 -ne 0 ] || { echo >&2 bad $2; exit 1; }
+	[ $1 -ne 0 ] || { echo >&2 'bad '$2; exit 1; }
 	[ -n "$REDIR" ] || echo ok $2
 }
 
+cmp() {
+	[ -n "$SANITIZER" ] && { echo '$SANITIZER, fake ok '$1; return 0; }
+	command cmp -s "$2" "$3"
+	x $? $1
+}
+
+e0() {
+	if [ -n "$SANITIZER" ] && [ -s ERR ]; then
+		echo >&2 'ERR bad, but $SANITIZER fake ok, save 'err-$1
+		cp -f ERR err-$1
+		return 0
+	fi
+	[ -s ERR ] && { echo >&2 'ERR bad '$1; exit 1; }
+}
+
+eX() {
+	[ -s ERR ] || { echo >&2 'ERR bad '$1; exit 1; }
+	[ -n "$SANITIZER" ] && cp -f ERR err-$1
+}
+
 unfold() {
-	cl= foll=
+	hot= cl= foll=
 	while read l; do
+		if [ -z "$hot" ]; then
+			[ "$l" = "${l#*$1}" ] && continue
+			hot=y
+		fi
+
 		[ -n "$foll" ] && l=${l##* }
 		[ "$l" != "${l%*\\}" ] && foll=y || foll=
 		l=${l%*\\}
 		cl="$cl$l"
 	done
+	[ -z "$hot" ] && { echo >&2 'IMPL ERROR'; exit 1; }
 	[ $# -gt 0 ] && cl=${cl#$1* }
 	echo $cl
 }
@@ -122,7 +149,7 @@ _EOT
 
 ### }}}
 
-algos=$(${PD} -h | grep -F Algorithms:)
+algos=$(${PD} -h 2>/dev/null | grep -F Algorithms:)
 algo_ed25519_sha256= algo_rsa_sha256= algo_rsa_sha1=
 [ "$algos" != "${algos#* ed25519-sha256}" ] && algo_ed25519_sha256=y
 [ "$algos" != "${algos#* rsa-sha256}" ] && algo_rsa_sha256=y
@@ -144,22 +171,26 @@ echo '=1: options=' # {{{
 
 # 1.* --header-(sign|seal) (+ --resource-file with \ follow-ups) {{{
 t1() {
-	${PD} --header-${3}-show |
+	${PD} --header-${3}-show 2>ERR |
 		${AWK} 'BEGIN{i=1}{if(i++ == '$4') {sub("^.+:[[:space:]]*", ""); print; exit;}}' > t1.$1.1 2>&1
 	x $? 1.$1.1
+	e0 ERR
 
-	${PD} --test-mode --header-${3}="$2" > t1.$1.2 2>&1
+	allinc=
+	[ "$3" = seal ] && [ "$2" = '*' ] && allinc='-~'"$2"
+
+	${PD} --test-mode $allinc --header-${3}="$2" > t1.$1.2 2>ERR
 	x $? 1.$1.2
+	e0 1.$1.2
 
-	${PD} -# --header-$3="$2" > t1.$1.3 2>&1
+	${PD} -# $allinc --header-$3="$2" > t1.$1.3 2>ERR
 	x $? 1.$1.3
+	e0 1.$1.3
 
-	cmp -s t1.$1.2 t1.$1.3
-	x $? 1.$1.4
+	cmp 1.$1.4 t1.$1.2 t1.$1.3
 
 	unfold header-$3 < t1.$1.2 | coas_del > t1.$1.5
-	cmp -s t1.$1.5 t1.$1.1
-	x $? 1.$1.5
+	cmp 1.$1.5 t1.$1.5 t1.$1.1
 
 	read hl < t1.$1.5
 	hl=${hl% cc *}' '${hl#* cc }
@@ -168,16 +199,24 @@ t1() {
 	echo $hl boah > t1.$1.6
 	x $? 1.$1.6
 
-	${PD} -# --header-$3 "$2"'!date,   !cc        ,   !subject , boah ' > t1.$1.7 2>&1
+	x=
+	if [ "$3" = seal ]; then
+		x='-~'"${2}boah"
+		${PD} -# --header-$3 "$2"'!date,   !cc        ,   !subject , boah ' > t1.$1.7-fail 2>ERR
+		y $? 1.$1.7-fail
+	fi
+
+	${PD} -# $x --header-$3 "$2"'!date,   !cc        ,   !subject , boah ' > t1.$1.7 2>ERR
 	x $? 1.$1.7
+	e0 1.$1.7
 
 	unfold header-$3 < t1.$1.7 | coas_del > t1.$1.8
-	cmp -s t1.$1.6 t1.$1.8
-	x $? 1.$1.8
+	cmp 1.$1.8 t1.$1.6 t1.$1.8
 
 	printf '\\\n   \t\t\t    \\\n\\\n\\\nheader-\\\n  \t \\\n\t '$3'\t \\\n\t from\n' > t1.$1.9.rc
-	${PD} -# -R t1.$1.9.rc > t1.$1.9 2>&1
+	${PD} -# -R t1.$1.9.rc > t1.$1.9 2>ERR
 	x $? 1.$1.9
+	e0 1.$1.9
 
 	unfold header-$3 < t1.$1.9 | coas_del > t1.$1.10
 	read hl < t1.$1.10
@@ -201,55 +240,61 @@ t1 4 '*' seal 2
 if [ -z "$algo_ed25519_sha256" ]; then
 	echo >&2 no ed25519-sha256, skip 3.1-3.6
 else
-	${PD} -# --key ed25519-sha256,ed1,pri-ed25519.pem > t3.1 2>&1
+	${PD} -# --key ed25519-sha256,ed1,pri-ed25519.pem > t3.1 2>ERR
 	x $? 3.1
-	${PD} -# --key=' ed25519-sha256 ,  ed1  ,   pri-ed25519.pem  ' > t3.2 2>&1
+	e0 3.1
+	${PD} -# --key=' ed25519-sha256 ,  ed1  ,   pri-ed25519.pem  ' > t3.2 2>ERR
 	x $? 3.2
-	cmp -s t3.1 t3.2
-	x $? 3.3
+	e0 3.2
+	cmp 3.3 t3.1 t3.2
 
-	${PD} -# -k ed25519-sha256,ed1,pri-ed25519.pem > t3.4 2>&1
+	${PD} -# -k ed25519-sha256,ed1,pri-ed25519.pem > t3.4 2>ERR
 	x $? 3.4
-	${PD} -# -k' ed25519-sha256 ,  ed1  ,   pri-ed25519.pem  ' > t3.5 2>&1
+	e0 3.4
+	${PD} -# -k' ed25519-sha256 ,  ed1  ,   pri-ed25519.pem  ' > t3.5 2>ERR
 	x $? 3.5
-	cmp -s t3.4 t3.5
-	x $? 3.6
+	e0 3.5
+	cmp 3.6 t3.4 t3.5
 fi
 
 if [ -z "$algo_rsa_sha256" ]; then
 	echo no rsa-sha256, skip 4.1-4.6
 else
-	${PD} -# --key rsa-sha256,ed1,pri-rsa.pem > t4.1 2>&1
+	${PD} -# --key rsa-sha256,ed1,pri-rsa.pem > t4.1 2>ERR
 	x $? 4.1
-	${PD} -# --key=' rsa-sha256 ,  ed1  ,   pri-rsa.pem  ' > t4.2 2>&1
+	e0 4.1
+	${PD} -# --key=' rsa-sha256 ,  ed1  ,   pri-rsa.pem  ' > t4.2 2>ERR
 	x $? 4.2
-	cmp -s t4.1 t4.2
-	x $? 4.3
+	e0 4.2
+	cmp 4.3 t4.1 t4.2
 
-	${PD} -# -k rsa-sha256,ed1,pri-rsa.pem > t4.4 2>&1
+	${PD} -# -k rsa-sha256,ed1,pri-rsa.pem > t4.4 2>ERR
 	x $? 4.4
-	${PD} -# -k' rsa-sha256 ,  ed1  ,   pri-rsa.pem  ' > t4.5 2>&1
+	e0 4.4
+	${PD} -# -k' rsa-sha256 ,  ed1  ,   pri-rsa.pem  ' > t4.5 2>ERR
 	x $? 4.5
-	cmp -s t4.4 t4.5
-	x $? 4.6
+	e0 4.5
+	cmp 4.6 t4.4 t4.5
 fi
 
 if [ -z "$algo_rsa_sha1" ]; then
 	echo no rsa-sha1, skip 5.1-5.6
 else
-	${PD} -# --key rsa-sha1,ed1,pri-rsa.pem > t5.1 2>&1
+	${PD} -# --key rsa-sha1,ed1,pri-rsa.pem > t5.1 2>ERR
 	x $? 5.1
-	${PD} -# --key=' rsa-sha1 ,  ed1  ,   pri-rsa.pem  ' > t5.2 2>&1
+	e0 5.1
+	${PD} -# --key=' rsa-sha1 ,  ed1  ,   pri-rsa.pem  ' > t5.2 2>ERR
 	x $? 5.2
-	cmp -s t5.1 t5.2
-	x $? 5.3
+	e0 5.2
+	cmp 5.3 t5.1 t5.2
 
-	${PD} -# -k rsa-sha1,ed1,pri-rsa.pem > t5.4 2>&1
+	${PD} -# -k rsa-sha1,ed1,pri-rsa.pem > t5.4 2>ERR
 	x $? 5.4
-	${PD} -# -k' rsa-sha1 ,  ed1  ,   pri-rsa.pem  ' > t5.5 2>&1
+	e0 5.4
+	${PD} -# -k' rsa-sha1 ,  ed1  ,   pri-rsa.pem  ' > t5.5 2>ERR
 	x $? 5.5
-	cmp -s t5.4 t5.5
-	x $? 5.6
+	e0 5.5
+	cmp 5.6 t5.4 t5.5
 fi
 
 ${PD} -# --key rsax-sha256,no1.-,pri-rsa.pem > t6.1 2>&1
@@ -264,15 +309,17 @@ ${PD} -# --key rsa-sha256,-no,pri-rsa.pem > t6.5 2>&1
 y $? 6.5
 ${PD} -# --key 'rsa-sha256,no1.-,pri-rsax.pem' > t6.6 2>&1
 y $? 6.6
-${PD} -# --key $ka,no1.-,$kf > t6.7 2>&1
+${PD} -# --key $ka,no1.-,$kf > t6.7 2>ERR
 x $? 6.7
+e0 6.7
 
-${PD} -# --key $ka,this-is-a-very-long-selector-that-wraps-lines-i-guess,$kf > t6.8 2>&1
+${PD} -# --key $ka,this-is-a-very-long-selector-that-wraps-lines-i-guess,$kf > t6.8 2>ERR
 x $? 6.8
-${PD} -# -R t6.8 > t6.9 2>&1
+e0 6.8
+${PD} -# -R t6.8 > t6.9 2>ERR
 x $? 6.9
-cmp -s t6.8 t6.9
-x $? 6.10
+e0 6.9
+cmp 6.10 t6.8 t6.9
 { read -r i1; read i2; } < t6.9
 [ -n "$i2" ]
 x $? 6.11
@@ -286,8 +333,9 @@ y $? 6.14
 ${PD} -# --key 'rsa-sha256,s' > t6.15 2>&1
 y $? 6.15
 
-${PD} -# > t6.16 2>&1
+${PD} -# > t6.16 2>ERR
 x $? 6.16
+e0 6.16
 (	# needs at least one --key, except then
 	unset SOURCE_DATE_EPOCH
 	${PD} -# > t6.17 2>&1
@@ -296,167 +344,171 @@ x $? 6.16
 # }}}
 
 # 4.* --milter-macro-sign {{{
-${PD} -# --milter-macro-sign oha > t7.1 2>&1
+${PD} -# --milter-macro-sign oha > t7.1 2>ERR
 x $? 7.1
-${PD} -# -Moha > t7.2 2>&1
+e0 7.1
+${PD} -# -Moha > t7.2 2>ERR
 x $? 7.2
-cmp -s t7.1 t7.2
-x $? 7.3
+e0 7.2
+cmp 7.3 t7.1 t7.2
 
-${PD} -# --milter-macro-sign oha,,v1,,,v2,,, > t7.4 2>&1
+${PD} -# --milter-macro-sign oha,,v1,,,v2,,, > t7.4 2>ERR
 x $? 7.4
-${PD} -# -Moha,',,,,       v1   ,   v2     '  > t7.5 2>&1
+e0 7.4
+${PD} -# -Moha,',,,,       v1   ,   v2     '  > t7.5 2>ERR
 x $? 7.5
-cmp -s t7.4 t7.5
-x $? 7.6
+e0 7.5
+cmp 7.6 t7.4 t7.5
 echo 'milter-macro-sign oha, v1, v2' > t7.7
-cmp -s t7.5 t7.7
-x $? 7.7
+cmp 7.7 t7.5 t7.7
 
 ${PD} -# -Moha,'v1 very long value that sucks very much are what do you say?  ,'\
 'v2 and another very long value that drives you up the walls ,   '\
-'v3 oh noooooooooo, one more!,,' > t7.8 2>&1
+'v3 oh noooooooooo, one more!,,' > t7.8 2>ERR
 x $? 7.8
+e0 7.8
 i=0; while read -r l; do i=$((i + 1)); done < t7.8
 [ $i -eq 4 ]
 x $? 7.9
 # }}}
 
 # 8.* --sign {{{
-${PD} -# $k --sign a@b,b,I > t8.1 2>&1
+${PD} -# $k --sign a@b,b,I > t8.1 2>ERR
 x $? 8.1
-${PD} -# $k -S '      a@b  ,  b  ,  I '  > t8.2 2>&1
+e0 8.1
+${PD} -# $k -S '      a@b  ,  b  ,  I '  > t8.2 2>ERR
 x $? 8.2
-cmp -s t8.1 t8.2
-x $? 8.3
+e0 8.2
+cmp 8.3 t8.1 t8.2
 { echo $kR; echo 'sign a@b, b, I'; } > t8.4
-cmp -s t8.2 t8.4
-x $? 8.4
+cmp 8.4 t8.2 t8.4
 
 if [ -z "$k2a" ]; then
 	echo >&2 only one key-algo type, skip 8.5-8.13
 else
-	${PD} -# $k $k2 --sign 'a@b,b,I:II' > t8.5 2>&1
+	${PD} -# $k $k2 --sign 'a@b,b,I:II' > t8.5 2>ERR
 	x $? 8.5
-	${PD} -# $k $k2 -S '      a@b  ,  b  ,  ::I :::II:::	 ::'  > t8.6 2>&1
+	e0 8.5
+	${PD} -# $k $k2 -S '      a@b  ,  b  ,  ::I :::II:::	 ::'  > t8.6 2>ERR
 	x $? 8.6
-	cmp -s t8.5 t8.6
-	x $? 8.7
+	e0 8.6
+	cmp 8.7 t8.5 t8.6
 	{ echo $kR; echo $k2R; echo 'sign a@b, b, I:II'; } > t8.8
-	cmp -s t8.6 t8.8
-	x $? 8.8
+	cmp 8.8 t8.6 t8.8
 
 	${PD} -# $k --sign 'a@b,b,I:II' > t8.9 2>/dev/null
 	y $? 8.9
 	{ echo $kR; echo 'sign a@b, b, I'; } > t8.10
-	cmp -s t8.9 t8.10
-	x $? 8.11
+	cmp 8.11 t8.9 t8.10
 
-	${PD} -# -R t8.5 > t8.12 2>&1
+	${PD} -# -R t8.5 > t8.12 2>ERR
 	x $? 8.12
-	cmp -s t8.5 t8.12
-	x $? 8.13
+	e0 8.12
+	cmp 8.13 t8.5 t8.12
 fi
 
-${PD} -# $k --sign a@.b,,I > t8.14 2>&1
+
+${PD} -# $k --sign a@.b,,I > t8.14 2>ERR
 x $? 8.14
+e0 8.14
 { echo $kR; echo 'sign a@.b,, I'; } > t8.15
-cmp -s t8.14 t8.15
-x $? 8.15
+cmp 8.15 t8.14 t8.15
 
-${PD} -# $k --sign 'a@.b ,    ,   :::::: : ' > t8.16 2>&1
+${PD} -# $k --sign 'a@.b ,    ,   :::::: : ' > t8.16 2>ERR
 x $? 8.16
+e0 8.16
 { echo $kR; echo 'sign a@.b,,'; } > t8.17
-cmp -s t8.16 t8.17
-x $? 8.17
+cmp 8.17 t8.16 t8.17
 
-${PD} -# $k --sign 'a@.b,,' > t8.18 2>&1
+${PD} -# $k --sign 'a@.b,,' > t8.18 2>ERR
 x $? 8.18
+e0 8.18
 { echo $kR; echo 'sign a@.b,,'; } > t8.19
-cmp -s t8.18 t8.19
-x $? 8.19
+cmp 8.19 t8.18 t8.19
 
-${PD} -# $k --sign '.b,' > t8.20 2>&1
+${PD} -# $k --sign '.b,' > t8.20 2>ERR
 x $? 8.20
+e0 8.20
 { echo $kR; echo 'sign .b,,'; } > t8.21
-cmp -s t8.20 t8.21
-x $? 8.21
+cmp 8.21 t8.20 t8.21
 
-${PD} -# $k --sign '.' > t8.22 2>&1
+${PD} -# $k --sign '.' > t8.22 2>ERR
 x $? 8.22
+e0 8.22
 { echo $kR; echo 'sign .,,'; } > t8.23
-cmp -s t8.22 t8.23
-x $? 8.23
+cmp 8.23 t8.22 t8.23
 
+#
 ${PD} -# $k --sign ',,' > t8.24 2>&1
 y $? 8.24
 
-${PD} -# --sign 'a;b@.,,' > t8.25 2>&1
-y $? 8.25
-echo '--sign: spec failed parse (need quoting?): a;b@.' > t8.26
-cmp -s t8.25 t8.26
-x $? 8.26
+if [ -z "$SANITIZER" ]; then
+	${PD} -# --sign 'a;b@.,,' > t8.25 2>&1
+	y $? 8.25
+	echo '--sign: spec failed parse (need quoting?): a;b@.' > t8.26
+	cmp 8.26 t8.25 t8.26
 
-${PD} -# --sign 'a;b@.,,' > t8.27 2>&1
-y $? 8.27
-echo '--sign: spec failed parse (need quoting?): a;b@.' > t8.28
-cmp -s t8.27 t8.28
-x $? 8.28
+	${PD} -# --sign 'a;b@.,,' > t8.27 2>&1
+	y $? 8.27
+	echo '--sign: spec failed parse (need quoting?): a;b@.' > t8.28
+	cmp 8.28 t8.27 t8.28
 
-${PD} -# --sign 'a";"b@.,,' > t8.29 2>&1
-y $? 8.29
-cat > t8.30 << '_EOT'
---sign: bogus input <a";"b@.>
-  Parsed: group display <> display <> local-part <"a;b"> domain <.>
-_EOT
-cmp -s t8.29 t8.30
-x $? 8.30
+	${PD} -# --sign 'a";"b@.,,' > t8.29 2>&1
+	y $? 8.29
+	cat > t8.30 <<-'_EOT'
+	--sign: bogus input <a";"b@.>
+	  Parsed: group display <> display <> local-part <"a;b"> domain <.>
+	_EOT
+	cmp 8.30 t8.29 t8.30
+else
+	echo >&2 '$SANITIZER, skipping 8.25-8.29'
+fi
 
 ${PD} -# --sign ',' > t8.31 2>&1
 y $? 8.31
 
-${PD} -# $k -S y@.,, --sign a@.b,,I -S x@.b,, > t8.32 2>&1
+${PD} -# $k -S y@.,, --sign a@.b,,I -S x@.b,, > t8.32 2>ERR
 x $? 8.32
+e0 8.32
 cat > t8.33 << _EOT
 $kR
 sign a@.b,, I
 sign x@.b,,
 sign y@.,,
 _EOT
-cmp -s t8.32 t8.33
-x $? 8.34
+cmp 8.34 t8.32 t8.33
 
 cat > t8.35.rc << '_EOT'
 a@.b,, I
 x@.b,,
 y@.,,
 _EOT
-${PD} -# $k -s t8.35.rc > t8.35 2>&1 # --sign-file
+${PD} -# $k -s t8.35.rc > t8.35 2>ERR # --sign-file
 x $? 8.35
-cmp -s t8.32 t8.35
-x $? 8.36
+e0 8.35
+cmp 8.36 t8.32 t8.35
 # }}}
 
 # 9.* --client {{{
-${PD} -# --client=pass,. > t9.1 2>&1
+${PD} -# --client=pass,. > t9.1 2>ERR
 x $? 9.1
-${PD} -# -C '  pass    ,      .  '  > t9.2 2>&1
+e0 9.1
+${PD} -# -C '  pass    ,      .  '  > t9.2 2>ERR
 x $? 9.2
-cmp -s t9.1 t9.2
-x $? 9.3
+e0 9.2
+cmp 9.3 t9.1 t9.2
 echo 'client pass, .' > t9.4
-cmp -s t9.2 t9.4
-x $? 9.4
+cmp 9.4 t9.2 t9.4
 
-${PD} -# --client=. > t9.5 2>&1
+${PD} -# --client=. > t9.5 2>ERR
 x $? 9.5
-${PD} -# -C '        .  '  > t9.6 2>&1
+e0 9.5
+${PD} -# -C '        .  '  > t9.6 2>ERR
 x $? 9.6
-cmp -s t9.5 t9.6
-x $? 9.7
+e0 9.6
+cmp 9.7 t9.5 t9.6
 echo 'client sign, .' > t9.8
-cmp -s t9.8 t9.6
-x $? 9.8
+cmp 9.8 t9.8 t9.6
 
 cat > t9.9.rc << '_EOT'; cat > t9.10 << '_EOT'
 client .dom.ain,
@@ -492,8 +544,7 @@ _EOT
 
 ${PD} -# -R t9.9.rc > t9.9 2>&1
 y $? 9.9
-cmp -s t9.9 t9.10
-x $? 9.10
+cmp 9.10 t9.9 t9.10
 
 cat > t9.11-1 << '_EOT'; cat > t9.11-2 << '_EOT'
 ya.dom.ain
@@ -504,12 +555,13 @@ _EOT
 .dom.ain
 192.168.0.0/24
 _EOT
-${PD} -# -c t9.11-1 -c pass,t9.11-2 > t9.11 2>&1 # --client-file
+${PD} -# -c t9.11-1 -c pass,t9.11-2 > t9.11 2>ERR # --client-file
 x $? 9.11
-${PD} -# -c sign,t9.11-1 -c p,t9.11-2 > t9.12 2>&1
+e0 9.11
+${PD} -# -c sign,t9.11-1 -c p,t9.11-2 > t9.12 2>ERR
 x $? 9.12
-cmp -s t9.11 t9.12
-x $? 9.13
+e0 9.12
+cmp 9.13 t9.11 t9.12
 
 cat > t9.14 << '_EOT'
 client sign, 127.0.0.1
@@ -520,8 +572,7 @@ client sign, 2a03:2880:20:6f06:c000::/66
 client sign, 2a03:3000:20:6f06::/80
 client pass, 192.168.0.0/24
 _EOT
-cmp -s t9.12 t9.14
-x $? 9.14
+cmp 9.14 t9.12 t9.14
 # }}}
 
 # 10.* --ttl {{{
@@ -529,16 +580,16 @@ ${PD} -# --ttl 30 > t10.1 2>&1
 x $? 10.1
 ${PD} -# -t 30 > t10.2 2>&1
 x $? 10.2
-cmp -s t10.1 t10.2
-x $? 10.3
+cmp 10.3 t10.1 t10.2
 
-${PD} -# --ttl $((60*60*24*1000)) > t10.4 2>&1
+${PD} -# --ttl $((60*60*24*1000)) > t10.4 2>ERR
 x $? 10.4
-${PD} -# -t $((60*60*24*1000)) > t10.5 2>&1
+e0 10.4
+${PD} -# -t $((60*60*24*1000)) > t10.5 2>ERR
 x $? 10.5
-cmp -s t10.4 t10.5
-x $? 10.6
-[ -s t10.t ]
+e0 10.5
+cmp 10.6 t10.4 t10.5
+[ -s t10.4 ]
 y $? 10.7
 
 ${PD} -# --ttl 29 > t10.8 2>&1
@@ -590,10 +641,10 @@ header-sign from, subject, date
 header-seal from, subject, date
 _EOT
 
-${PD} -R t100.rc -# > t100 2>&1
+${PD} -R t100.rc -# > t100 2>ERR
 x $? 100
-cmp -s t100 t100-x
-x $? 101
+e0 100
+cmp 101 t100 t100-x
 # }}}
 # }}}
 
@@ -613,22 +664,33 @@ echo 'header-seal from' >> x.rc
 } | ${PD} -R x.rc --key=$ka,this.is.a.very.long.selector,$kf \
 	--sign .,dOEDel.de,this.is.a.very.long.selector \
 	--sign '.y   ,auA.DE,I' \
-	--debug > t201 2>&1 || exit 1
-[ -n "$REDIR" ] || echo ok 200
+	> t200 2>ERR
+x $? 200
+#FIXME e0 200
+printf 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
+' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\r\n'\
+'  3hSuFU=; b=XZsTsoDGBj1ThBUusPXOlKZnJPfTWAcOXp1lLFITL65MW6zgXPLXB9Oum+nkomK\r\n'\
+'  sG9vD5myIH0f+z0Y2hDBvCg==\n' > t201
+cmp 201 t200 t201
 
 # 6376, 3.4.5
 {
 	printf '\0\0\0\013LFrom\0 X@Y\0'
-	printf '\0\0\0\026LSubject\0 Y\t \r\n \t Z  \0'
+	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
 	printf '\0\0\0\021B C \r\nD \t E\r\n\r\n\r\n'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
 } | ${PD} -R x.rc --key=$ka,this.is.a.very.long.selector,$kf \
 	--sign .,dOEDel.de,this.is.a.very.long.selector \
 	--sign '.y   ,auA.DE,I' \
-	--debug > t200 2>&1 || exit 1
-[ -n "$REDIR" ] || echo ok 201
-
+	> t202 2>ERR
+x $? 202
+#FIXME e0 202
+printf 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
+' t=844221007; h=from:subject:from; bh=znUs9MtDElAZOFfJOcfNaDGLIUjGiZT2bsWl2\r\n'\
+'  vN/Hd4=; b=F+WrG/cn3KYJYaqBA5smNEOGpShufAnWy0GTBIem+6LDxsiLTh1/jniVAWp14Oj\r\n'\
+'  aXlkK7u5yDdoqipP65z3wAA==\n' > t203
+cmp 203 t202 t203
 
 #seq 13421 > a.txt
 #DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=sdaoden.eu;
@@ -769,8 +831,7 @@ _EOT
 #} | ${PD} -R x.rc --key=$ka,this.is.a.very.long.selector,$kf --sign .,doedel.de,I --debug > t200 2>&1 || exit 1
 
 
-#cmp -s 2_1.out 2_2.out || exit
-#[ -n "$REDIR" ] || echo ok 2.3
+#cmp 2.3 2_1.out 2_2.out
 
 #eval $PG -R ./9.rc --status $REDIR
 #[ $? -eq 0 ] || exit 101

@@ -303,14 +303,18 @@ list, then exit.
 Like
 .Fl Fl header-sign ,
 but
-.Dq oversign
-aka seal the given headers, meaning that the DKIM signature includes
-an (additional) empty instance of each given header, as such preventing
-attempts to inject headers not covered by, and therefore not verified
-through the signature (without causing errors).
-A default list is built-in, but sealing needs to be activated explicitly;
+.Dq oversign ,
+meaning DKIM signatures include an (additional) empty instance of given
+headers, as such preventing attempts to inject headers not covered by,
+and therefore not verified through the signature (without causing errors).
+Default lists are built-in, but sealing needs to be activated explicitly;
 .Dq signing non-present fields
-(sealing, oversigning) is described in RFC 6376 from 2011, however.
+is described in RFC 6376 from 2011, however.
+Sealing headers not included in
+.Fl Fl header-sign
+(can) result(s) in broken signatures:
+.Fl Fl test-mode
+will catch this.
 .
 .Mx Fl header-seal-show
 .It Fl Fl header-seal-show
@@ -355,6 +359,8 @@ hyphen-minus; no length test is applied.
 The third field is the
 .Ar path
 to the private key file in PEM format.
+In case of multiple-key usage with mixed RSA/Ed25519 placing the RSA
+key(s) first may improve interoperability.
 .
 .Mx Fl long-help
 .It Fl Fl long-help , H
