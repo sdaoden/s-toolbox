@@ -8,6 +8,7 @@
  *@ - TODO i= DKIM value (optional addition field to --sign).
  *@ - TODO internationalized selectors are missing (a_key.k_sel).
  *@ - TODO server mode missing -- must be started by spawn(8).
+ *@ - TODO Would like to have "sender localhost && rcpt localhost && pass".
  *@ - xxx With multiple keys, cannot include elder generated D-S in newer ones.
  *@ - Assumes header "name" values do not end with whitespace (search @HVALWS).
  *@   (Header body values are trimmed.)
@@ -40,7 +41,7 @@
 /**/
 #define a_OPENLOG_FLAGS (LOG_NDELAY)
 
-/* */
+/* xxx but NYD almost unused here */
 #define a_DBGIF 0
 # define a_DBG(X)
 # define a_DBG2(X)
@@ -1163,38 +1164,36 @@ static s32
 a_milter__loop(struct a_milter *mip){ /* {{{ */
 	enum{
 		a_NONE,
-		a_BASE_REPRO = 1u<<0,
-		a_BASE_DBG = 1u<<1,
-		a_BASE_V = 1u<<2,
-		a_BASE_VV = 1u<<3,
-		a_BASE_DBG_V = a_BASE_DBG | a_BASE_V,
-		a_BASE_DBG_VV = a_BASE_DBG | a_BASE_VV,
-		a_BASE_DBG_V_VV = a_BASE_DBG | a_BASE_V | a_BASE_VV,
+		a_REPRO = 1u<<0, /* reproducible */
+		a_DBG = 1u<<1,
+		a_V = 1u<<2,
+		a_VV = 1u<<3,
+		a_DBG_V = a_DBG | a_V,
+		a_DBG_VV = a_DBG | a_VV,
+		a_DBG_V_VV = a_DBG | a_V | a_VV,
 
-		a_BASE_RESP_CONN = 1u<<4, /* Want to respond to connection requests */
-		a_BASE_RESP_HDR = 1u<<5, /* Want (need) to respond to headers */
+		a_RESP_CONN = 1u<<4, /* Need to respond to connection requests */
+		a_RESP_HDR = 1u<<5, /* Need to respond to headers */
 
-		a_BASE_MIMASI = 1u<<8, /* --milter-macro-sign */
-		a_BASE_CLI = 1u<<9, /* --client's */
-		a_BASE_SIGN = 1u<<10, /* --sign's */
+		a_SMFIC_OPTNEG_MASK = a_REPRO | a_DBG | a_V | a_VV | a_RESP_CONN | a_RESP_HDR,
 
-		/* After step xy, a_SKIP must have been cleared to continue processing */
-		a_BASE_SKIP_CONN = a_BASE_MIMASI | a_BASE_CLI,
-		a_BASE_SKIP_HEADER = a_BASE_SIGN,
+		a_MIMASI = 1u<<10, /* --milter-macro-sign */
+		a_CLI = 1u<<11, /* --client's */
+		a_SMFIC_CONNECT_MASK = a_MIMASI | a_CLI,
 
-		a_BASE_MASK = a_BASE_REPRO | a_BASE_DBG | a_BASE_V | a_BASE_VV |
-				a_BASE_RESP_CONN | a_BASE_RESP_HDR |
-				a_BASE_MIMASI | a_BASE_CLI | a_BASE_SIGN,
+		a_SIGN = 1u<<16, /* --sign's */
+		a_SMFIC_HEADER_MASK = a_SIGN,
 
-		a_SKIP = 1u<<16, /* (Accept and) Skip this message */
-		a_SKIP_FIXED = 1u<<17, /* Non-revertable SKIP */
-		a_SKIP_MASK = a_SKIP | a_SKIP_FIXED,
+		/* Only fx */
 
-		a_SEEN_MIMASI = 1u<<18,
-		a_SEEN_CLI = 1u<<19,
+		/*a_SEEN_SMFIC_CONNECT,*/
+		a_SEEN_SMFIC_HEADER = 1u<<26, /* ever seen.. */
+		a_SEEN_SMFIC_BODY = 1u<<27,
+		/*a_SEEN_SMFIC_BODY_EOB,*/
 
-		a_SETUP = 1u<<24, /* ..in a message cycle, DKIM setup performed pre-EOH, */
-		a_SETUP_EOH = 1u<<25 /* ..post EOH */
+		a_SETUP = 1u<<28, /* ..in a message cycle, DKIM setup performed pre-EOH, */
+		a_SETUP_EOH = 1u<<29, /* ..post EOH */
+		a_SKIP = 1u<<30 /* skip this */
 	};
 
 	struct{
@@ -1202,46 +1201,43 @@ a_milter__loop(struct a_milter *mip){ /* {{{ */
 		u32 actions;
 		u32 protocol;
 	} optneg;
-	u32 f;
+	u32 fb, fx;
 	s32 rv;
 	NYD_IN;
 
 	/* Because we may call milter__cleanup() that calls dkim_cleanup() without ever being a_SETUP, this */
 	a_dkim_setup(mip->mi_dkim, FAL0, mip->mi_pdp, &mip->mi_bag);
 
-	f = a_SKIP;
-	if(su_state_has(su_STATE_REPRODUCIBLE))
-		f |= a_BASE_REPRO;
-
+	fb = su_state_has(su_STATE_REPRODUCIBLE) ? a_REPRO : a_NONE;
 	/* C99 */{
 		struct a_pd *pdp;
 
 		pdp = mip->mi_pdp;
 
 		if(pdp->pd_flags & a_F_DBG)
-			f |= a_BASE_DBG;
+			fb |= a_DBG;
 		if(pdp->pd_flags & a_F_V)
-			f |= a_BASE_V;
+			fb |= a_V;
 		if(pdp->pd_flags & a_F_VV)
-			f |= a_BASE_VV;
+			fb |= a_VV;
 
 		/* --milter-macro-* and --client apply restrictions upon connection time */
 		if(pdp->pd_mima_sign != NIL)
-			f |= a_BASE_RESP_CONN | a_BASE_MIMASI;
+			fb |= a_RESP_CONN | a_MIMASI;
 
 		if(pdp->pd_cli_ip != NIL || (pdp->pd_flags & (a_F_CLI_DOMAINS | a_F_CLI_IPS)))
-			f |= a_BASE_RESP_CONN | a_BASE_CLI;
+			fb |= a_RESP_CONN | a_CLI;
 
 		/* --sign table may apply restrictions once we see the From: header; and we need a match to act! */
 		if(su_cs_dict_count(&pdp->pd_sign) > 0)
-			f |= a_BASE_RESP_HDR | a_BASE_SIGN;
+			fb |= a_RESP_HDR | a_SIGN;
 	}
 
-	for(;;){
+	for(fx = a_NONE/* xxx UNINIT(fx, a_NONE)?*/;;){
 		rv = a_milter__read(mip);
 		if(rv != su_EX_OK){
 			if(rv == -su_ERR_NOTCONN){
-				if(f & a_BASE_DBG_VV)
+				if(fb & a_DBG_VV)
 					su_log_write(su_LOG_DEBUG, "connection shutdown, good bye",
 						mip->mi_buf[0], mip->mi_buf[0], mip->mi_len);
 				rv = su_EX_OK;
@@ -1249,7 +1245,7 @@ a_milter__loop(struct a_milter *mip){ /* {{{ */
 			goto jleave;
 		}
 
-		if(UNLIKELY(f & a_BASE_VV))
+		if(UNLIKELY(fb & a_VV))
 			su_log_write(su_LOG_DEBUG, "CMD %c/%d, %zu data bytes",
 				mip->mi_buf[0], mip->mi_buf[0], mip->mi_len);
 
@@ -1258,10 +1254,12 @@ a_milter__loop(struct a_milter *mip){ /* {{{ */
 			ASSERT(rv == su_ERR_NONE);
 			goto jleave;
 		case a_SMFIC_QUIT_NC:
+			a_milter__cleanup(mip);
+			fx &= a_SMFIC_OPTNEG_MASK;/* = a_NONE; */
+			break;
 		case a_SMFIC_ABORT:
 			a_milter__cleanup(mip);
-			f &= a_BASE_MASK;
-			f |= a_SKIP;
+			fx &= a_SMFIC_OPTNEG_MASK | a_SMFIC_CONNECT_MASK; /* only latter */
 			break;
 
 		case a_SMFIC_OPTNEG: /* {{{ */
@@ -1273,7 +1271,7 @@ a_milter__loop(struct a_milter *mip){ /* {{{ */
 			optneg.version = su_boswap_net_32(optneg.version);
 			optneg.actions = su_boswap_net_32(optneg.actions);
 			optneg.protocol = su_boswap_net_32(optneg.protocol);
-			if(UNLIKELY(f & a_BASE_VV))
+			if(UNLIKELY(fb & a_VV))
 				su_log_write(su_LOG_DEBUG, "optneg server: version=0x%X actions=0x%X protocol=%u",
 					optneg.version, optneg.actions, optneg.protocol);
 
@@ -1294,7 +1292,7 @@ a_milter__loop(struct a_milter *mip){ /* {{{ */
 			optneg.actions = a_SMFIF_ADDHDRS;
 /* FIXME a_SMFIF_CHGHDRS with -A */
 
-			if(UNLIKELY(f & a_BASE_VV) && ((optneg.protocol & a_SMFIP_MASK_NOSEND) != a_SMFIP_MASK_NOSEND ||
+			if(UNLIKELY(fb & a_VV) && ((optneg.protocol & a_SMFIP_MASK_NOSEND) != a_SMFIP_MASK_NOSEND ||
 					 (optneg.protocol & a_SMFIP_MASK_NOREPLY) != a_SMFIP_MASK_NOREPLY))
 /*
 FIXME we yet do not deal with that (noreplies not working as we wanna)
@@ -1302,20 +1300,15 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 				su_log_write(su_LOG_INFO,
 					_("Mail server cannot restrict milter protocol usage, lots of I/O noise"));
 
-			/* C99 */{
-				u32 i;
+			fx = (a_SMFIP_MASK_NOSEND & ~(a_SMFIP_NOBODY | a_SMFIP_NOHDRS)) |
+				(a_SMFIP_MASK_NOREPLY /*& ~(a_SMFIP_NR_BODY)*/);
+			if(fb & a_RESP_CONN)
+				fx &= ~(a_SMFIP_NOCONNECT | a_SMFIP_NR_CONN);
+			if(fb & a_RESP_HDR)
+				fx &= ~(a_SMFIP_NR_HDR);
+			optneg.protocol &= fx;
 
-				i = (a_SMFIP_MASK_NOSEND & ~(a_SMFIP_NOBODY | a_SMFIP_NOHDRS)) |
-					(a_SMFIP_MASK_NOREPLY /*& ~(a_SMFIP_NR_BODY)*/);
-
-				if(f & a_BASE_RESP_CONN)
-					i &= ~(a_SMFIP_NOCONNECT | a_SMFIP_NR_CONN);
-				if(f & a_BASE_RESP_HDR)
-					i &= ~(a_SMFIP_NR_HDR);
-				optneg.protocol &= i;
-			}
-
-			if(UNLIKELY(f & a_BASE_VV))
+			if(UNLIKELY(fb & a_VV))
 				su_log_write(su_LOG_DEBUG, "optneg response: version=0x%X actions=0x%X protocol=%u",
 					optneg.version, optneg.actions, optneg.protocol);
 			optneg.version = su_boswap_net_32(optneg.version);
@@ -1324,11 +1317,13 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 			mip->mi_buf[0] = a_SMFIC_OPTNEG;
 			su_mem_copy(&mip->mi_buf[1], &optneg, sizeof(optneg));
 
-			if(LIKELY(!(f & (a_BASE_REPRO | a_BASE_DBG)))){
+			if(LIKELY(!(fb & (a_REPRO | a_DBG)))){
 				rv = a_milter__write(mip, 1 + sizeof(optneg));
 				if(rv != su_EX_OK)
 					goto jleave;
 			}
+
+			fx = fb & a_SMFIC_OPTNEG_MASK;
 			break; /* }}} */
 
 		case a_SMFIC_MACRO:{ /* {{{ */
@@ -1348,7 +1343,7 @@ FIXME - THREE-LEVEL VERBOSITY
 */
 
 			/* We are only interested in macros for a_SMFIC_CONNECT */
-			if(UNLIKELY(f & a_BASE_VV))
+			if(UNLIKELY(fb & a_VV))
 				su_log_write(su_LOG_DEBUG, "macros for cmd %c/%d: %u bytes", cmd, cmd, mip->mi_len);
 			else if(cmd != a_SMFIC_CONNECT)
 				break;
@@ -1363,78 +1358,67 @@ FIXME - THREE-LEVEL VERBOSITY
 					goto jeproto;
 				l -= dl;
 
-				if(UNLIKELY(f & a_BASE_VV))
+				if(UNLIKELY(fb & a_VV))
 					su_log_write(su_LOG_DEBUG, "macro %lu<%s> %lu<%s>",
 						S(ul,nl) -1, bp, S(ul,dl), &bp[nl]);
 
-				if(cmd != a_SMFIC_CONNECT)
+				if((fx & a_SKIP) || cmd != a_SMFIC_CONNECT)
 					continue;
 
-				if((f & a_BASE_MIMASI) && !su_cs_cmp(bp, mip->mi_pdp->pd_mima_sign)){
+				if((fb & a_MIMASI) && !su_cs_cmp(bp, mip->mi_pdp->pd_mima_sign)){
 					char *cp;
 
-					f |= a_SEEN_MIMASI;
-					if(f & a_SKIP_FIXED)
-						continue;
-
-					if((cp = mip->mi_pdp->pd_mima_sign_values) == NIL)
-						f &= ~a_SKIP;
-					else for(;;){
+					if((cp = mip->mi_pdp->pd_mima_sign_values) == NIL){
+						fx |= a_MIMASI;
+						if(UNLIKELY(fb & a_DBG_V_VV))
+							su_log_write(su_LOG_DEBUG,
+								"--milter-macro-sign match ok: %s", bp);
+					}else for(;;){
 						uz i;
 
 						i = su_cs_len(cp) +1;
 						if(i == dl && !su_mem_cmp(cp, &bp[nl], i -1)){
-							f &= ~a_SKIP;
+							fx |= a_MIMASI;
+							if(UNLIKELY(fb & a_DBG_V_VV))
+								su_log_write(su_LOG_DEBUG,
+									"--milter-macro-sign match ok: %s: %s", bp, cp);
 							break;
 						}
 						cp += i;
 						if(*cp == '\0'){
-							f |= a_SKIP_MASK;
-							if(UNLIKELY((f & a_BASE_DBG_V_VV)))
+							fx |= a_SKIP;
+							if(UNLIKELY((fb & a_DBG_V_VV)))
 								su_log_write(su_LOG_DEBUG,
 									"--milter-macro-sign mismatch: %s: %s",
 									mip->mi_pdp->pd_mima_sign, &bp[nl]);
 							break;
 						}
 					}
-
-					if(UNLIKELY(f & a_BASE_DBG_V_VV) && !(f & a_SKIP))
-						su_log_write(su_LOG_DEBUG, "--milter-macro-sign match ok: %s", &bp[nl]);
 				}
 
 				if(nl == 1 +1 && bp[0] == '_'){
-					f |= a_SEEN_CLI;
-					if(f & a_SKIP_FIXED)
-						continue;
-
-					/* Does the logging.. */
-					switch(a_milter__parse_(mip, &bp[nl], dl, ((f & a_BASE_CLI) == 0))){
+					switch(a_milter__parse_(mip, &bp[nl], dl, ((fb & a_CLI) == 0))){ /* (does log) */
 					case a_CLI_ACT_NONE: FALLTHRU
 					case a_CLI_ACT_ERR: goto jeproto;
-					case a_CLI_ACT_PASS: f |= a_SKIP_MASK; break;
-					case a_CLI_ACT_SIGN: f &= ~a_SKIP; break;
+					case a_CLI_ACT_PASS: fx |= a_SKIP; break;
+					case a_CLI_ACT_SIGN: fx |= a_CLI; break;
 					/*case a_CLI_ACT_VERIFY:
 					 *case a_CLI_ACT_BOTH:*/
 					}
 				}
 			}
-
-			if(UNLIKELY(!(f & a_SEEN_CLI))){
-				su_log_write(su_LOG_CRIT,
-					_("Mail server did not notify --client via \"_\" milter macro, bailing out"));
-				rv = su_EX_UNAVAILABLE;
-				goto jleave;
-			}
-			if((f & a_BASE_DBG_V_VV) && UNLIKELY((f & (a_BASE_MIMASI | a_SEEN_MIMASI)) == a_BASE_MIMASI))
-				su_log_write(su_LOG_DEBUG, "--milter-macro-sign unseen: %s", mip->mi_pdp->pd_mima_sign);
 			}break; /* }}} */
 
 		case a_SMFIC_CONNECT:
-			if(f & a_SKIP)
+			if(fx & a_SKIP)
 				goto jaccept;
-			if(!(f & a_BASE_RESP_CONN)) /* XXX ??? */
+			if((fx & a_SMFIC_CONNECT_MASK) != (fb & a_SMFIC_CONNECT_MASK)){
+				fx |= a_SKIP;
+				goto jaccept;
+			}
+			if(!(fx & a_RESP_CONN)) /* XXX ??? */
 				break;
-			if(LIKELY(!(f & (a_BASE_REPRO | a_BASE_DBG)))){
+			if(LIKELY(!(fb & (a_REPRO | a_DBG)))){
 				mip->mi_buf[0] = a_SMFIR_CONTINUE;
 				rv = a_milter__write(mip, 1);
 				if(rv != su_EX_OK)
@@ -1443,19 +1427,23 @@ FIXME - THREE-LEVEL VERBOSITY
 			break;
 
 		case a_SMFIC_HEADER:{ /* {{{ */
-			enum a_cli_action clia;
 			uz i;
 			char const *hname;
 
-			if(UNLIKELY(f & a_BASE_VV))
+			if(UNLIKELY(fb & a_VV))
 				su_log_write(su_LOG_DEBUG, "header <%s>", &mip->mi_buf[1]);
 
-			if(UNLIKELY(f & a_SKIP_MASK)){
-				if(f & a_SKIP_FIXED)
-					goto jheader_done;
-				if(f & a_BASE_SKIP_CONN)
-					goto jheader_done;
+			if(fx & a_SKIP)
+				goto jaccept;
+			if(!(fx & a_SEEN_SMFIC_HEADER)){
+				/* XXX should never trigger here, then -> SMFIC_CONNECT! */
+				if((fx & a_SMFIC_CONNECT_MASK) != (fb & a_SMFIC_CONNECT_MASK)){
+su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
+					fx |= a_SKIP;
+					goto jaccept;
+				}
 			}
+			fx |= a_SEEN_SMFIC_HEADER;
 
 			hname = mip->mi_pdp->pd_header_sign;
 			if(hname == NIL)
@@ -1465,35 +1453,41 @@ FIXME - THREE-LEVEL VERBOSITY
 					break;
 				hname += su_cs_len(hname) +1;
 				if(*hname == '\0'){
-					if(UNLIKELY(f & a_BASE_VV))
+					if(UNLIKELY(fb & a_VV))
 						su_log_write(su_LOG_DEBUG, "--header-sign mismatch: %s",
 							&mip->mi_buf[1]);
 					goto jheader_done;
 				}
 			}
 
-			if(!(f & a_SETUP) && !a_dkim_setup(mip->mi_dkim, FAL0, mip->mi_pdp, &mip->mi_bag)){
+			if(!(fx & a_SETUP) && !a_dkim_setup(mip->mi_dkim, FAL0, mip->mi_pdp, &mip->mi_bag)){
 				/* xxx does not happen */
 				rv = su_ERR_NODATA;
 				goto jleave;
 			}
-			f |= a_SETUP;
+			fx |= a_SETUP;
 
 			i = 1 + su_cs_len(hname) +1;
-			if(UNLIKELY(f & a_BASE_VV))
+			if(UNLIKELY(fb & a_VV))
 				su_log_write(su_LOG_DEBUG, "using header: %s: %s", &mip->mi_buf[1], &mip->mi_buf[i]);
 
-			clia = a_dkim_push_header(mip->mi_dkim, hname, &mip->mi_buf[i], &mip->mi_bag);
-			if(clia == a_CLI_ACT_SIGN)
-				f &= ~a_SKIP;
-			else if(clia == a_CLI_ACT_PASS || clia == a_CLI_ACT_ERR)
-				f |= a_SKIP_MASK;
+			switch(a_dkim_push_header(mip->mi_dkim, hname, &mip->mi_buf[i], &mip->mi_bag)){
+			default: break;
+			case a_CLI_ACT_SIGN:
+				if(fb & a_SIGN)
+					fx |= a_SIGN;
+				break;
+			case a_CLI_ACT_PASS: FALLTHRU
+			case a_CLI_ACT_ERR:
+				fx |= a_SKIP;
+				goto jaccept;
+			}
 
 jheader_done:
-			if(f & a_BASE_RESP_HDR){
-				if(f & a_SKIP_MASK)
+			if(fb & a_RESP_HDR){
+				if(fx & a_SKIP)
 					goto jaccept;
-				if(LIKELY(!(f & (a_BASE_REPRO | a_BASE_DBG)))){
+				if(LIKELY(!(fb & (a_REPRO | a_DBG)))){
 					mip->mi_buf[0] = a_SMFIR_CONTINUE;
 					rv = a_milter__write(mip, 1);
 					if(rv != su_EX_OK)
@@ -1503,59 +1497,77 @@ jheader_done:
 			}break; /* }}} */
 
 		case a_SMFIC_BODY:
-			if(f & a_BASE_VV)
+			if(fb & a_VV)
 				su_log_write(su_LOG_DEBUG, "body chunk %lu bytes", S(ul,mip->mi_len - 1));
 
-			if(UNLIKELY(f & a_SKIP_MASK)){
-				if(f & a_SKIP_FIXED)
+			if(fx & a_SKIP)
+				goto jaccept;
+			if(!(fx & a_SEEN_SMFIC_BODY)){
+				if(!(fx & a_SETUP) || (fx & a_SMFIC_HEADER_MASK) != (fb & a_SMFIC_HEADER_MASK)){
+					su_log_write(su_LOG_CRIT, _("Message without From: header, skipping DKIM!"));
+					fx |= a_SKIP;
 					goto jaccept;
-				if((f & a_BASE_SKIP_HEADER) && !(f & a_SETUP))
+				}
+				/* XXX should never trigger here, then -> SMFIC_CONNECT! */
+				if((fx & a_SMFIC_CONNECT_MASK) != (fb & a_SMFIC_CONNECT_MASK)){
+su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
+					fx |= a_SKIP;
 					goto jaccept;
+				}
 			}
+			fx |= a_SEEN_SMFIC_BODY;
 
 			if(mip->mi_len == 1)
 				break;
 
-			if(!(f & a_SETUP_EOH)){
-				if(mip->mi_dkim->d_from_domain == NIL){
-					su_log_write(su_LOG_CRIT, _("Message without From: header, skipping DKIM!"));
-					goto jaccept;
-				}
-
-				if(!a_dkim_setup(mip->mi_dkim, (TRU1 + !(f & a_SETUP)), mip->mi_pdp, &mip->mi_bag)){
+			if(!(fx & a_SETUP_EOH)){
+				if(!a_dkim_setup(mip->mi_dkim, (TRU1 + !(fx & a_SETUP)), mip->mi_pdp, &mip->mi_bag)){
 					rv = su_ERR_NODATA;
 					goto jleave;
 				}
-				f |= a_SETUP | a_SETUP_EOH;
+				fx |= a_SETUP | a_SETUP_EOH;
 			}
 
 			a_dkim_push_body(mip->mi_dkim, &mip->mi_buf[1], mip->mi_len - 1, &mip->mi_bag);
 			break;
 
 		case a_SMFIC_BODYEOB: /* {{{ */
-			if(!(f & a_SETUP)){
-				if(UNLIKELY(f & a_BASE_DBG_V_VV))
+			if(fb & a_VV)
+				su_log_write(su_LOG_DEBUG, "message complete");
+
+			if(fx & a_SKIP)
+				goto jaccept;
+			if(!(fx & a_SETUP)){
+				if(UNLIKELY(fb & a_DBG_V_VV))
 					su_log_write(su_LOG_DEBUG, "message did not trigger, skipping DKIM!");
+				fx |= a_SKIP;
 				goto jaccept;
 			}
 
-/*
-FIXME what is with skip, rethink
-*/
-			else if(!(f & a_SETUP_EOH)){
-				if(mip->mi_dkim->d_from_domain == NIL){
+			if(!(fx & a_SEEN_SMFIC_BODY)){
+				if((fx & a_SMFIC_HEADER_MASK) != (fb & a_SMFIC_HEADER_MASK)){
 					su_log_write(su_LOG_CRIT, _("Message without From: header, skipping DKIM!"));
+					fx |= a_SKIP;
 					goto jaccept;
 				}
+				/* XXX should never trigger here, then -> SMFIC_CONNECT! */
+				if((fx & a_SMFIC_CONNECT_MASK) != (fb & a_SMFIC_CONNECT_MASK)){
+su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
+					fx |= a_SKIP;
+					goto jaccept;
+				}
+			}DVL(else ASSERT(mip->mi_dkim->d_from_domain != NIL);)
+			fx |= a_SEEN_SMFIC_BODY;
 
+			if(!(fx & a_SETUP_EOH)){
 				if(!a_dkim_setup(mip->mi_dkim, TRU1, mip->mi_pdp, &mip->mi_bag)){
 					rv = su_ERR_NODATA;
 					goto jleave;
 				}
-				f |= a_SETUP_EOH;
+				fx |= a_SETUP_EOH;
 			}
 
-			if(UNLIKELY(f & a_BASE_DBG_V))
+			if(UNLIKELY(fb & a_DBG_V))
 				su_log_write(su_LOG_DEBUG, "creating DKIM signature");
 
 			if(a_dkim_process(mip->mi_dkim, &mip->mi_buf[0], &mip->mi_bag)){
@@ -1566,18 +1578,18 @@ FIXME what is with skip, rethink
 					mip->mi_buf[1] = mip->mi_buf[2] = mip->mi_buf[3] = mip->mi_buf[4] = '\0';
 					su_mem_copy(&mip->mi_buf[5], dkrp->dr_dat, dkrp->dr_len);
 
-					if(LIKELY(!(f & (a_BASE_REPRO | a_BASE_DBG)))){
+					if(LIKELY(!(fb & (a_REPRO | a_DBG)))){
 						rv = a_milter__write(mip, 1 + 4 + dkrp->dr_len);
 						if(rv != su_EX_OK)
 							goto jleave;
-						if(LIKELY(!(f & a_BASE_VV)))
+						if(LIKELY(!(fb & a_VV)))
 							continue;
 					}
 
 					/* room for \015\012\0! */
 					dkrp->dr_dat[dkrp->dr_name_len] = ':';
 					dkrp->dr_dat[dkrp->dr_len - 1] = '\n';
-					if(!(f & a_BASE_REPRO)){
+					if(!(fb & a_REPRO)){
 						dkrp->dr_dat[dkrp->dr_len] = '\0';
 						su_log_write(su_LOG_DEBUG, "%s", dkrp->dr_dat);
 					}else
@@ -1587,9 +1599,9 @@ FIXME what is with skip, rethink
 				su_log_write(su_LOG_CRIT, _("Failure creating DKIM signature, message is unchanged"));
 
 jaccept:
-			if(UNLIKELY(f & a_BASE_VV))
+			if(UNLIKELY(fb & a_VV))
 				su_log_write(su_LOG_DEBUG, "done with message");
-			if(LIKELY(!(f & (a_BASE_REPRO | a_BASE_DBG)))){
+			if(LIKELY(!(fb & (a_REPRO | a_DBG)))){
 				mip->mi_buf[0] = a_SMFIR_ACCEPT;
 				rv = a_milter__write(mip, 1);
 				if(rv != su_EX_OK)
@@ -1745,7 +1757,11 @@ a_milter__parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {{{ */
 	else{
 		char *x, c;
 
-		*addr++ = '\0';
+		x = addr;
+		while(x > dp && su_cs_is_space(*x))
+			--x;
+		*x = *addr++ = '\0';
+
 		dl -= P2UZ(addr - dp);
 		x = su_mem_find(addr, ']', dl);
 		if(x == NIL || x == addr)
@@ -1774,10 +1790,9 @@ a_milter__parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {{{ */
 	if(mip->mi_pdp->pd_flags & a_F_CLI_DOMAINS){
 		boole any, first;
 
-		dp = su_cs_trim(dp);
-
 		for(any = FAL0, first = TRU1;; first = FAL0){
 			sip.vp = su_cs_dict_lookup(&mip->mi_pdp->pd_cli, dp);
+
 			if(sip.vp != NIL && (first || !(sip.f & a_SRCH_TYPE_EXACT))){
 				rv = (sip.f & a_SRCH_TYPE_PASS) ? a_CLI_ACT_PASS : a_CLI_ACT_SIGN;
 				if(mip->mi_pdp->pd_flags & a_F_DBG_V)
@@ -1835,7 +1850,7 @@ a_milter__parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {{{ */
 		if((af == AF_INET) != ((sp->s_type & a_SRCH_TYPE_IPV4) != 0))
 			continue;
 
-		/* a_conf__C() verifies this works! */
+		/* a_conf__C() LCTA()s this works! */
 		su_mem_copy(&sip_x, &sip, sizeof(sip));
 		if(rv == AF_INET){
 			ip = R(u32*,&sip_x.v4.s_addr);
@@ -2246,7 +2261,7 @@ a_dkim_process(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{
 
 			for(sp = dkp->d_sign, i = 0;;){
 				if(sp->s_sel[i].key == NIL)
-					goto jnext_key; /* = continue outer */
+					goto jnext_key; /* "continue outer" */
 				if(sp->s_sel[i].key == kp)
 					break;
 				if(++i == a_SIGN_MAX_SELECTORS)

@@ -70,10 +70,9 @@ timeouts and stale server garbage collection etc.;
 efficient operation requires postfix versions which support the
 milter operation
 .Ql SMFIC_QUIT_NC
-(version 3.9 and above), elder versions will start a new
-.Xr spawn 8 Ns \~+
+(not yet as of version 3.9), elder versions will start a new
 .Xr s-dkim-sign 8
-program couple for every SMTP or local connection.
+instance for every SMTP or local connection.
 .
 .Pp
 The general operation of milters is that they see all messages that pass
@@ -423,6 +422,8 @@ colon-separated list;
 all keys are used if there are none.
 If any sign relation is established only those messages which match
 a relation will be signed.
+.Ar selector
+order does not matter.
 .
 .Pp
 Receivers will try to locate the public key(s) identified by the chosen

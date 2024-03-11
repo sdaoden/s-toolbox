@@ -650,8 +650,6 @@ cmp 101 t100 t100-x
 
 echo '=2: Going =' # {{{
 
-
-
 echo $kR > x.rc
 echo 'header-seal from' >> x.rc
 
