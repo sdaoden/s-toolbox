@@ -3049,6 +3049,9 @@ jhredo:
 			goto jhredo;
 	} /* }}} */
 
+	if(pdp->pd_dkim_sig_ttl != 0)
+		fprintf(stdout, "ttl %lu\n", S(ul,pdp->pd_dkim_sig_ttl));
+
 	if(arr != NIL)
 		su_FREE(arr);
 

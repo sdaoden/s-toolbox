@@ -66,6 +66,11 @@ e0() {
 	[ -s ERR ] && { echo >&2 'ERR bad '$1; exit 1; }
 }
 
+e0sumem() {
+	sed -E -i'' '/.+\[debug\]: su_mem_.+(LINGER|LOFI|lofi).+/d' ERR
+	e0 "$@"
+}
+
 eX() {
 	[ -s ERR ] || { echo >&2 'ERR bad '$1; exit 1; }
 	[ -n "$SANITIZER" ] && cp -f ERR err-$1
@@ -590,7 +595,7 @@ x $? 10.5
 e0 10.5
 cmp 10.6 t10.4 t10.5
 [ -s t10.4 ]
-y $? 10.7
+x $? 10.7
 
 ${PD} -# --ttl 29 > t10.8 2>&1
 y $? 10.8
@@ -650,6 +655,12 @@ cmp 101 t100 t100-x
 
 echo '=2: Going =' # {{{
 
+##
+if [ -z "$algo_ed25519_sha256" ]; then
+	echo >&2 'Skipping further tests due to lack of Ed25519 algorithm'
+	exit 0
+fi
+
 echo $kR > x.rc
 echo 'header-seal from' >> x.rc
 
@@ -664,14 +675,14 @@ echo 'header-seal from' >> x.rc
 	--sign '.y   ,auA.DE,I' \
 	> t200 2>ERR
 x $? 200
-#FIXME e0 200
+e0sumem 200
 printf 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
 ' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\r\n'\
 '  3hSuFU=; b=XZsTsoDGBj1ThBUusPXOlKZnJPfTWAcOXp1lLFITL65MW6zgXPLXB9Oum+nkomK\r\n'\
 '  sG9vD5myIH0f+z0Y2hDBvCg==\n' > t201
 cmp 201 t200 t201
 
-# 6376, 3.4.5
+# 6376, 3.4.5; also (contrary to RFC 6376): header continuation line: lonely \n / \r is WSP!!
 {
 	printf '\0\0\0\013LFrom\0 X@Y\0'
 	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
@@ -680,159 +691,215 @@ cmp 201 t200 t201
 	printf '\0\0\0\01Q'
 } | ${PD} -R x.rc --key=$ka,this.is.a.very.long.selector,$kf \
 	--sign .,dOEDel.de,this.is.a.very.long.selector \
-	--sign '.y   ,auA.DE,I' \
+	--sign 'y   ,auA.DE,I' \
 	> t202 2>ERR
 x $? 202
-#FIXME e0 202
+e0sumem 202
 printf 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
 ' t=844221007; h=from:subject:from; bh=znUs9MtDElAZOFfJOcfNaDGLIUjGiZT2bsWl2\r\n'\
 '  vN/Hd4=; b=F+WrG/cn3KYJYaqBA5smNEOGpShufAnWy0GTBIem+6LDxsiLTh1/jniVAWp14Oj\r\n'\
 '  aXlkK7u5yDdoqipP65z3wAA==\n' > t203
 cmp 203 t202 t203
 
-#seq 13421 > a.txt
-#DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=sdaoden.eu;
-# s=citron; t=1709768093; h=date:author:from:to:subject:message-id:author:
-#  from:subject:date:to:cc:in-reply-to:references:message-id;
-# bh=KZugNeJGuvNuPdVmP6GYqXtd3nXjKJkmJDF/Bo1MHco=;
-# b=HB/dkaeg6VtSrBsnfIIKkhNJcLjLKybpIDuql6b9ime/gNUyeWwzKr7l7628DKveDy04lKk5
-#  WlzLk/jQhApmGmeyOwDr6EkFVSVwlj8abjBuNxbtMYT+qZohsuR3FpqmFWtnBsvPhqGsl1jJQD
-#  eTnNOxDM+lt98yZL3y86kEAD1Zd7mTFAG9oyeKf7U7zWJmGu//un8BIiyga1P7jIfLYWMkUSHQ
-#  xByRQbetZk3FWUm7oOwaAobsUV1v5yh0iYWKrrWTrNo6hpCN83ORKThzXZZKDShwZr4mPzieiA
-#  gSisSGL9aav777xAWOIWCUbZDzeEgBAV1vniocsXB3UQsQMg==
-#DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=sdaoden.eu;
-# s=orange; t=1709768093; h=date:author:from:to:subject:message-id:author:
-#  from:subject:date:to:cc:in-reply-to:references:message-id;
-# bh=KZugNeJGuvNuPdVmP6GYqXtd3nXjKJkmJDF/Bo1MHco=;
-# b=6BtKiQTdFM6tXGDtzmL8W9saJCVIeJN4yy8zI2x0CwNg6CwrkkFoFo0rczAilE+bXooSQWkt
-#  BhX/LyCwR2HDCA==
+## seq 13421 > a.txt
 
+if command -v seq >/dev/null 2>&1; then :; else
+	echo >&2 'No seq(1) available, skipping further tests'
+	exit 0
+fi
 
-############
-#DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=sdaoden.eu;
-# s=citron; t=1709768257; h=date:author:from:to:subject:message-id:author:
-#  from:subject:date:to:cc:in-reply-to:references:message-id;
-# bh=1PQ35TgmN7Tb2dAok5uHCLKjLLkw6S2FvewVUQf7Du8=;
-# b=YLEaXAXuBNW3sQCA/dO+a+yxX+hpt5aQqKzf72EQOSuR9Q0yB/emH4TdJU0355j7kLQAZMl9
-#  cuKJMnKgiVTpkdqEgbnZGGG9ggUQS3EEzzMdnF/VcVbZlpDaufTO6uvHbW/gnpkPTjdldQ27F0
-#  qv/dz2YVnf/n/z5r7Z17GXi6hMQ6Uxq9kgN8M4q+ElxoPE0DSpQK7UbNn+mojkiYtHrnk2MG/s
-#  C7pnxFKIE91UqUbxMtgHsaQImbu0mLWuf5f/oWiB+dHgQYhemGPIxtl4g65nuhoy9AqZgYWZdG
-#  SP34BUbi6JIaUGE2M8NaZwxzQgboTREyM5XEyP3pfegrd1LA==
-#DKIM-Signature: v=1; a=ed25519-sha256; c=relaxed/relaxed; d=sdaoden.eu;
-# s=orange; t=1709768257; h=date:author:from:to:subject:message-id:author:
-#  from:subject:date:to:cc:in-reply-to:references:message-id;
-# bh=1PQ35TgmN7Tb2dAok5uHCLKjLLkw6S2FvewVUQf7Du8=;
-# b=H0dPhE8BR+fHxWgfhGwuiFuqHyI4DhZjOYl7+Z473qlOQU6M3JTtO4ZJ5vT2Fhi+IVBVO9ZL
-#  gRCwZ5U4pB7kBw==
+{
+	printf '\0\0\0\013LFrom\0 X@Y\0'
+	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
+	printf '\0\0\313\376B'
+	seq 8888 | sed 's/$/\r/'
+	printf '\0\0\167\235B'
+	seq 8889 13421 | sed 's/$/\r/'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} -R x.rc  \
+	--sign 'y   ,auA.DE,I' \
+	> t204 2>ERR
+x $? 204
+e0sumem 204
+printf 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
+' t=844221007; h=from:subject:from; bh=PzUIcKYLlFjDJtEAT+6JZpXkPgH2VFMvaxAEz\r\n'\
+'  NP3cWk=; b=fGXDjaUMwMmfCW7ADJ1Qc/om2WB7fviw1TLyVj99nPCVXkPqO13ARXrbLzTutel\r\n'\
+'  4+H2fECaR3nHU2uPAe2JNBA==\n' > t205
+cmp 205 t204 t205
 
-#openssl base64 < YYY.xz > az
-openssl base64 -d << '_EOT' > dat.xz
-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
-6+hMYLHEZ/sCAAAAAARZWg==
+# ..other order
+{
+	printf '\0\0\0\013LFrom\0 X@Y\0'
+	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
+	printf '\0\0\145\346B'
+	seq 4532 | sed 's/$/\r/'
+	printf '\0\0\335\265B'
+	seq 4533 13421 | sed 's/$/\r/'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} -R x.rc  \
+	--sign 'y   ,auA.DE,I' \
+	> t206 2>ERR
+x $? 206
+e0sumem 206
+cmp 207 t204 t206
+
+## canon test with holes
+
+if command -v dd >/dev/null 2>&1; then :; else
+	echo >&2 'No dd(1) available, skipping further tests'
+	exit 0
+fi
+if command -v openssl >/dev/null 2>&1; then :; else
+	echo >&2 'No openssl(1) available, skipping further tests'
+	exit 0
+fi
+if command -v xz >/dev/null 2>&1; then :; else
+	echo >&2 'No xz(1) available, skipping further tests'
+	exit 0
+fi
+
+openssl base64 -d << '_EOT' | xz -d > t208.in
+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
 _EOT
 
+{
+	printf '\0\0\0\013LFrom\0 X@Y\0'
+	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
+	printf '\0\0\002\110B'
+	dd bs=1 count=583 < t208.in 2>/dev/null
+	printf '\0\0\366\241B'
+	dd bs=1 skip=583 count=63136 < t208.in 2>/dev/null
+	printf '\0\0\113\111B'
+	dd bs=1 skip=63719 < t208.in 2>/dev/null
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} -R x.rc  \
+	--sign 'y   ,auA.DE,I' \
+	> t208 2>ERR
+x $? 208
+e0sumem 208
+printf 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
+' t=844221007; h=from:subject:from; bh=1PQ35TgmN7Tb2dAok5uHCLKjLLkw6S2FvewVU\r\n'\
+'  Qf7Du8=; b=kVqi56HEtdB738rjUi/xmqb6aPGFnttFJFz7GlrguSUTKNbmtnD2wpdVDkJlkOK\r\n'\
+'  c6c+utnGZ/7TEMYR5dcJVCw==\n' > t209
+# }}}
 
-#} | ${PD} -R x.rc --key=$ka,this.is.a.very.long.selector,$kf --sign .,doedel.de,I --debug > t200 2>&1 || exit 1
+echo '=2: Triggers =' # {{{
 
+## Triggers TODO  more tests!
 
-#cmp 2.3 2_1.out 2_2.out
-
-#eval $PG -R ./9.rc --status $REDIR
-#[ $? -eq 0 ] || exit 101
+#{
+#	printf '\0\0\0
+#	printf '\0\0\0\013LFrom\0 X@Y\0'
+#	printf '\0\0\0\023LSubject\0 Y\t\r\n\tZ  \0'
+#	printf '\0\0\0\01E'
+#	printf '\0\0\0\01Q'
+#} | ${PD} -R x.rc \
+#	> t300 2>ERR
+#x $? 200
+#e0sumem 200
 
 # }}}
 
