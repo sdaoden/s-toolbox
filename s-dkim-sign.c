@@ -1399,9 +1399,15 @@ FIXME - THREE-LEVEL VERBOSITY
 				if(nl == 1 +1 && bp[0] == '_'){
 					switch(a_milter__parse_(mip, &bp[nl], dl, ((fb & a_CLI) == 0))){ /* (does log) */
 					case a_CLI_ACT_NONE: FALLTHRU
-					case a_CLI_ACT_ERR: goto jeproto;
-					case a_CLI_ACT_PASS: fx |= a_SKIP; break;
-					case a_CLI_ACT_SIGN: fx |= a_CLI; break;
+					case a_CLI_ACT_ERR:
+						goto jeproto;
+					case a_CLI_ACT_PASS:
+						fx |= a_SKIP;
+						break;
+					case a_CLI_ACT_SIGN:
+						if(fb & a_CLI)
+							fx |= a_CLI;
+						break;
 					/*case a_CLI_ACT_VERIFY:
 					 *case a_CLI_ACT_BOTH:*/
 					}
