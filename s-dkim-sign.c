@@ -6,6 +6,7 @@
  *@	header_checks = pcre:{ {/^Authentication-Results:\s+\Q$myhostname\E[\s;]/ IGNORE} }
  *@   so I'm doing exactly what given RFC orders me to do.
  *@ - TODO i= DKIM value (optional addition field to --sign).
+ *@ - TODO I would like to have "an additional --client" match for {mail_addr} macro of M.
  *@ - TODO internationalized selectors are missing (a_key.k_sel).
  *@ - TODO server mode missing -- must be started by spawn(8).
  *@ - TODO Would like to have "sender localhost && rcpt localhost && pass".
@@ -1999,7 +2000,7 @@ a_dkim_push_header(struct a_dkim *dkp, char const *name, char const *dat, struct
 
 	dl = su_cs_len(dat);
 	nl = su_cs_len(name);
-	isfrom = (nl == sizeof("from") -1 && !su_cs_cmp_case("from", name));
+	isfrom = (nl == sizeof("from") -1 && !su_cs_cmp("from", name));
 
 	/* With isfrom we are responsible for dkp->d_from_domain storage */
 	i = dl;
@@ -2019,7 +2020,7 @@ a_dkim_push_header(struct a_dkim *dkp, char const *name, char const *dat, struct
 		dkp->d_head = hp;
 		dkp->d_htail = &hp->h_next;
 	}else{
-		do if(!su_cs_cmp_case(name, xhp->h_name)){
+		do if(!su_cs_cmp(name, xhp->h_name)){
 			/* Slot exists, link as oldest entry */
 			isfrom = FAL0; /* TODO HACK multiple From: fields -> bogus mail! */
 			while(xhp->h_same_older != NIL)
@@ -2775,7 +2776,7 @@ a_conf_finish(struct a_pd *pdp){ /* {{{ */
 				sig = a_header_sigsea[a_HEADER_SIGN];
 
 			for(;;){
-				if(!su_cs_cmp_case(sig, sea))
+				if(!su_cs_cmp(sig, sea))
 					break;
 				sig += su_cs_len(sig) +1;
 				if(*sig == '\0'){
@@ -3489,7 +3490,15 @@ jon_error_arg_nul:
 	}else
 		xarg = NIL;
 
-	i = su_cs_len(arg) +1;
+	/* C99 */{
+		char c;
+
+		for(vp = cp = arg; (c = *cp) != '\0'; ++cp)
+			*cp = su_cs_to_lower(c);
+
+		i = P2UZ(cp - vp) + 1;
+	}
+
 	*store = vp = su_TALLOC(char, i + (xarg != NIL ? i + a_HEADER_SIGSEA_MAX : 0) +1 +1); /* \0\0 */
 	from = FAL0;
 
@@ -3526,7 +3535,7 @@ jon_error_arg_nul:
 
 				/* May take that */
 				if(!from)
-					from = (su_cs_cmp_case(xt, "from") == 0);
+					from = (su_cs_cmp(xt, "from") == 0);
 				vp = su_cs_pcopy(vp, xt) +1;
 jxt_next:
 				xt += su_cs_len(xt) +1;
@@ -3541,7 +3550,7 @@ jxt_next:
 		if(xarg != NIL && *cp == '!')
 			continue;
 		if(!from)
-			from = (su_cs_cmp_case(cp, "from") == 0);
+			from = (su_cs_cmp(cp, "from") == 0);
 		vp = su_cs_pcopy(vp, cp) +1;
 	}
 	*vp = '\0';
