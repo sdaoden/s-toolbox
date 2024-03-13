@@ -56,10 +56,15 @@ A
 sign-only milter.
 DKIM permits a person, role, or organization to claim responsibility for
 a message by associating a domain name (RFC 1034; rather: RFC 5321) with
-the message (RFC 5322) through a cryptographically verifiable signature,
-which is inserted into the message as a mail header.
-The signature can be validated by fetching the appropriate public key
-from the signer's domain DNS (RFC 8499) record.
+the message (RFC 5322) through a cryptographically verifiable signature
+stored in a
+.Ql DKIM-Signature
+mail header.
+The signature can be validated by fetching the appropriate public key(s)
+from the domain's DNS (RFC 8499) record.
+DKIM defines two preparation algorithms, simple and relaxed:
+.Nm
+only uses the latter.
 .
 .Pp
 The program is intended to be started via the
@@ -103,9 +108,7 @@ headers of messages seen by the milter.
 Receivers will search for the public key DNS record of either the domain
 defined by the matching
 .Fl Fl sign
-relation, the
-.Ql From
-header address otherwise.
+relation, or otherwise that of the extracted address.
 .
 .Pp
 In the following example all messages from
@@ -125,14 +128,12 @@ all messages from
 including all subdomains with the keys
 .Ql edape
 and
-.Ql rsape
-(receivers will search the public key according to milter macro
-.Ql j ) ,
+.Ql rsape ,
 however, if messages come from the domain
 .Ql bla.my.domain
-only the
+only the key
 .Ql edape
-key will be used.
+will be used.
 Other messages will not be signed.
 .
 .Bd -literal -offset indent
@@ -233,8 +234,8 @@ in RFC 1519 CIDR notation with network mask.
 Domain names are matched exactly unless starting with a period
 .Ql \&.
 to enforce wildcard matches for it and its subdomains.
-These are matched by dictionary except for CIDR ranges, which are
-matched last, and in the given order.
+Dictionary matching is used except for CIDR ranges: these are matched
+last and in the given order.
 The implied default action is always
 .Ql pass, \&. ,
 defining any rule replaces the built-in
@@ -273,15 +274,15 @@ All messages remain umodified.
 Define (comma-separated)
 .Ar list
 of case-insensitive header fields (names) to sign.
-Alternatively the built-in defaults may be modified by starting
+Alternatively built-in defaults may be used and modified by starting
 .Ar list
 with a commercial at
 .Ql @ ,
 or an extended variant with asterisk
 .Ql * ;
-remaining entries may then be prefixed with exclamation mark
+further entries may then be prefixed with exclamation mark
 .Ql \&!
-to denote desired exclusion from the default list.
+to denote desired list exclusion.
 Attempts to exclude
 .Ql From
 is an error, no other rules apply (untested: name validity, duplicates).
@@ -293,9 +294,9 @@ An effectively empty list is not used.
 .
 .Mx Fl header-sign-show
 .It Fl Fl header-sign-show
-Show the default
+Show the built-in
 .Fl Fl header-sign
-list, then exit.
+lists, then exit.
 .
 .Mx Fl header-seal
 .It Fl Fl header-seal Ar list , Fl ! Ns ..
@@ -332,9 +333,9 @@ as well as
 .
 .Mx Fl header-seal-show
 .It Fl Fl header-seal-show
-Show the default
+Show the built-in
 .Fl Fl header-seal
-list, then exit.
+lists, then exit.
 .
 .Mx Fl key
 .It Fl Fl key Ar algo-digest,selector,path , Fl k Ns ..
@@ -351,13 +352,13 @@ separated by
 hyphen-minus,
 for example
 .Cm rsa-sha1 .
-Supported are
+Dependent on the used crypto library
 .Cm ed25519-sha256 ,
 .Cm rsa-sha256 ,
 and
 .Cm rsa-sha1
-(this was obsoleted by RFC 8301 and will cause a warning), dependent on
-the used crypto library; the output of
+(this was obsoleted by RFC 8301 and will cause a warning)
+can be supported; the output of
 .Fl Fl long-help
 shows what is built-in.
 The second field specifies the (DNS)
@@ -373,8 +374,8 @@ hyphen-minus; no length test is applied.
 The third field is the
 .Ar path
 to the private key file in PEM format.
-In case of multiple-key usage with mixed RSA/Ed25519 placing the RSA
-key(s) first may improve interoperability.
+With multiple and mixed RSA/Ed25519 keys placing the RSA one(s) first
+may improve interoperability.
 .
 .Mx Fl long-help
 .It Fl Fl long-help , H
@@ -398,7 +399,7 @@ macro with
 .Ql VAL1 ,
 therefore
 .Fl Fl \&\&milter-macro-sign Ns Ar ={daemon_name},VAL1,VAL2
-could be needed.
+would be needed.
 The macro is expected to be received when clients connect.
 .
 .Mx Fl resource-file
@@ -510,7 +511,7 @@ It is highly recommended to use this for configuration checks.
 .Mx Fl ttl
 .It Fl Fl ttl Ar seconds , Fl t Ns ..
 Impose a time-to-live expiration upon generated DKIM signatures after
-which newly receiving parties shall treat them invalid.
+which newly receiving parties shall see them as invalidated.
 .Ar seconds
 must not be smaller than 30 and greater than 86400000 (1000 days).
 .
