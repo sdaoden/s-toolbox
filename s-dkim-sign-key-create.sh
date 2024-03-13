@@ -87,8 +87,10 @@ openssl pkey -pubout < "$prefix"-dkim-pri-$algo.pem | awk '
 if [ -t 0 ]; then
 	echo Private key: $prefix-dkim-pri-$algo.pem
 	echo DNS entry: "$prefix"-dkim-dns-$algo.txt
-	echo '(To be stored in a SELECTOR._domainkey.DOMAIN record.'
-	echo 'For example foo.bar._domainkey.example.com.)'
+	echo '(To be stored in a SELECTOR._domainkey.DOMAIN record,'
+	echo 'for example foo.bar._domainkey.example.com.)'
+	echo 'For testing add "; t=y" to the record.'
+	echo 'For only exact domain matches (no subdomains), add "; t=[y:]s".'
 fi
 
 exit 0
