@@ -1047,8 +1047,8 @@ static enum a_cli_action a_dkim_push_header(struct a_dkim *dkp, char const *name
 static enum a_cli_action a_dkim__parse_from(struct a_dkim *dkp, char *store, char const *dat, struct su_mem_bag *membp);
 static void a_dkim_push_body(struct a_dkim *dkp, char *dp, uz dl, struct su_mem_bag *membp);
 
-/* After collecting all the data, create results; mibuf is of MILTER_CHUNK_SIZE bytes! */
-static boole a_dkim_process(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp);
+/* After collecting all the data, create signature(s); mibuf is of MILTER_CHUNK_SIZE bytes! */
+static boole a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp);
 
 static boole a_dkim__body_relaxed(struct a_dkim *dkp, char *mibuf);
 /* advances *mibuf over */
@@ -1321,7 +1321,7 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 			mip->mi_buf[0] = a_SMFIC_OPTNEG;
 			su_mem_copy(&mip->mi_buf[1], &optneg, sizeof(optneg));
 
-			if(LIKELY(!(fb & (a_REPRO | a_DBG)))){
+			if(LIKELY(!(fb & a_REPRO))){
 				rv = a_milter__write(mip, 1 + sizeof(optneg));
 				if(rv != su_EX_OK)
 					goto jleave;
@@ -1342,8 +1342,6 @@ FIXME
 FIXME - COLLECT QUEUE ID AND USE IT IN OUR LOG MESSAG€S So user can grep for it
 		that is milter macro i
 FIXME - THREE-LEVEL VERBOSITY 
-
-
 */
 
 			/* We are only interested in macros for a_SMFIC_CONNECT */
@@ -1375,8 +1373,8 @@ FIXME - THREE-LEVEL VERBOSITY
 					if((cp = mip->mi_pdp->pd_mima_sign_values) == NIL){
 						fx |= a_MIMASI;
 						if(UNLIKELY(fb & a_DBG_V_VV))
-							su_log_write(su_LOG_DEBUG,
-								"--milter-macro-sign match ok: %s", bp);
+							su_log_write(su_LOG_DEBUG, "--milter-macro-sign match ok: %s",
+								bp);
 					}else for(;;){
 						uz i;
 
@@ -1428,7 +1426,7 @@ FIXME - THREE-LEVEL VERBOSITY
 			}
 			if(!(fx & a_RESP_CONN)) /* XXX ??? */
 				break;
-			if(LIKELY(!(fb & (a_REPRO | a_DBG)))){
+			if(LIKELY(!(fb & a_REPRO))){
 				mip->mi_buf[0] = a_SMFIR_CONTINUE;
 				rv = a_milter__write(mip, 1);
 				if(rv != su_EX_OK)
@@ -1497,7 +1495,7 @@ jheader_done:
 			if(fb & a_RESP_HDR){
 				if(fx & a_SKIP)
 					goto jaccept;
-				if(LIKELY(!(fb & (a_REPRO | a_DBG)))){
+				if(LIKELY(!(fb & a_REPRO))){
 					mip->mi_buf[0] = a_SMFIR_CONTINUE;
 					rv = a_milter__write(mip, 1);
 					if(rv != su_EX_OK)
@@ -1580,7 +1578,7 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 			if(UNLIKELY(fb & a_DBG_V))
 				su_log_write(su_LOG_DEBUG, "creating DKIM signature");
 
-			if(a_dkim_process(mip->mi_dkim, &mip->mi_buf[0], &mip->mi_bag)){
+			if(a_dkim_sign(mip->mi_dkim, &mip->mi_buf[0], &mip->mi_bag)){
 				struct a_dkim_res *dkrp;
 
 				for(dkrp = mip->mi_dkim->d_res; dkrp != NIL; dkrp = dkrp->dr_next){
@@ -1611,7 +1609,7 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 jaccept:
 			if(UNLIKELY(fb & a_VV))
 				su_log_write(su_LOG_DEBUG, "done with message");
-			if(LIKELY(!(fb & (a_REPRO | a_DBG)))){
+			if(LIKELY(!(fb & a_REPRO))){
 				mip->mi_buf[0] = a_SMFIR_ACCEPT;
 				rv = a_milter__write(mip, 1);
 				if(rv != su_EX_OK)
@@ -2164,7 +2162,7 @@ a_dkim_push_body(struct a_dkim *dkp, char *dp, uz dl, struct su_mem_bag *membp){
 #endif /* a_SIMPLE */
 
 static boole
-a_dkim_process(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ */
+a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ */
 	struct su_timespec ts, ts_exp;
 	union {u32 sl32; uz slz; char const *cp;} a;
 	uc *sigp, *b64sigp;
