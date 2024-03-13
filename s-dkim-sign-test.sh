@@ -207,11 +207,11 @@ t1() {
 	x=
 	if [ "$3" = seal ]; then
 		x='-~'"${2}boah"
-		${PD} -# --header-$3 "$2"'!date,   !cc        ,   !subject , boah ' > t1.$1.7-fail 2>ERR
+		${PD} -# --header-$3 "$2"'!dATe,   !cC        ,   !suBJect , bOah ' > t1.$1.7-fail 2>ERR
 		y $? 1.$1.7-fail
 	fi
 
-	${PD} -# $x --header-$3 "$2"'!date,   !cc        ,   !subject , boah ' > t1.$1.7 2>ERR
+	${PD} -# $x --header-$3 "$2"'!DatE,   !Cc        ,   !sUbjECt , boAh ' > t1.$1.7 2>ERR
 	x $? 1.$1.7
 	e0 1.$1.7
 
@@ -228,17 +228,31 @@ t1() {
 	[ "$hl" = from ]
 	x $? 1.$1.10
 
-	${PD} -# --header-$3="${2}!from" > t1.$1.11 2>&1
+	${PD} -# --header-$3="${2}!frOM" > t1.$1.11 2>&1
 	y $? 1.$1.11
 	${PD} -# --header-$3="  ,  ${2}" > t1.$1.12 2>&1
 	y $? 1.$1.12
-	${PD} -# --header-$3="from,!to" > t1.$1.13 2>&1
+	${PD} -# --header-$3="FRom,!tO" > t1.$1.13 2>&1
 	y $? 1.$1.13
 }
 t1 1 '@' sign 1
 t1 2 '*' sign 2
 t1 3 '@' seal 1
 t1 4 '*' seal 2
+
+# seal-must-be-included-in-sign
+${PD} -# --header-sign=@ --header-seal=* > t1.5 2>&1
+y $? 1.5
+${PD} -# --header-sign=@ --header-seal=@ > t1.6 2>&1
+x $? 1.6
+${PD} -# --header-sign=* --header-seal=@ > t1.7 2>&1
+x $? 1.7
+${PD} -# --header-sign=* --header-seal=* > t1.8 2>&1
+x $? 1.8
+${PD} -# --header-sign=* --header-seal=*,au > t1.9 2>&1
+y $? 1.9
+${PD} -# --header-sign=*,au --header-seal=*,au > t1.10 2>&1
+x $? 1.10
 # }}}
 
 # 3.* --key {{{
@@ -389,7 +403,7 @@ cmp 8.3 t8.1 t8.2
 cmp 8.4 t8.2 t8.4
 
 if [ -z "$k2a" ]; then
-	echo >&2 only one key-algo type, skip 8.5-8.13
+	echo >&2 'only one key-algo type, skip 8.5-8.13'
 else
 	${PD} -# $k $k2 --sign 'a@b,b,I:II' > t8.5 2>ERR
 	x $? 8.5
@@ -717,9 +731,7 @@ fi
 	seq 8889 13421 | sed 's/$/\r/'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
-} | ${PD} -R x.rc  \
-	--sign 'y   ,auA.DE,I' \
-	> t204 2>ERR
+} | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t204 2>ERR
 x $? 204
 e0sumem 204
 printf 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
@@ -738,12 +750,34 @@ cmp 205 t204 t205
 	seq 4533 13421 | sed 's/$/\r/'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
-} | ${PD} -R x.rc  \
-	--sign 'y   ,auA.DE,I' \
-	> t206 2>ERR
+} | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t206 2>ERR
 x $? 206
 e0sumem 206
 cmp 207 t204 t206
+
+# ..and bytewise
+{
+	printf '\0\0\0\013LFrom\0 X@Y\0'
+	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
+	printf '\0\0\0\002B1\0\0\0\002B\r\0\0\0\002B\n'
+	printf '\0\0\0\002B2\0\0\0\002B\r\0\0\0\002B\n'
+	printf '\0\0\0\002B3\0\0\0\002B\r\0\0\0\002B\n'
+	printf '\0\0\0\002B4\0\0\0\002B\r\0\0\0\002B\n'
+	printf '\0\0\0\002B5\0\0\0\003B\r\n'
+	printf '\0\0\0\002B6\0\0\0\003B\r\n'
+	printf '\0\0\0\002B7\0\0\0\003B\r\n'
+	printf '\0\0\0\002B8\0\0\0\002B\r\0\0\0\002B\n'
+	printf '\0\0\0\002B9\0\0\0\002B\r\0\0\0\002B\n'
+	printf '\0\0\145\313B'
+	seq 10 4532 | sed 's/$/\r/'
+	printf '\0\0\335\265B'
+	seq 4533 13421 | sed 's/$/\r/'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t208 2>ERR
+x $? 208
+e0sumem 208
+cmp 209 t204 t208
 
 ## canon test with holes
 
@@ -760,7 +794,7 @@ if command -v xz >/dev/null 2>&1; then :; else
 	exit 0
 fi
 
-openssl base64 -d << '_EOT' | xz -d > t208.in
+openssl base64 -d << '_EOT' | xz -d > t300.in
 /Td6WFoAAATm1rRGBMCtJa+IBSEBFgAAAAAAAO6YDZfhRC4SpV0AGIM9TVK/2ywL
 Hql9ypNk0YrOgkw7GWSi4CsuRok5757YA7GNC1xvBN/iUOuGRchIkDPcYS9cA0uE
 +lJZKKDm15cTKe2TZCp+0pDAxNO/g/SLWKCwrC5McM7lQvY586BTcjso64Gm09qS
@@ -868,27 +902,36 @@ _EOT
 	printf '\0\0\0\013LFrom\0 X@Y\0'
 	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
 	printf '\0\0\002\110B'
-	dd bs=1 count=583 < t208.in 2>/dev/null
+	dd bs=1 count=583 < t300.in 2>/dev/null
 	printf '\0\0\366\241B'
-	dd bs=1 skip=583 count=63136 < t208.in 2>/dev/null
+	dd bs=1 skip=583 count=63136 < t300.in 2>/dev/null
 	printf '\0\0\113\111B'
-	dd bs=1 skip=63719 < t208.in 2>/dev/null
+	dd bs=1 skip=63719 < t300.in 2>/dev/null
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
-} | ${PD} -R x.rc  \
-	--sign 'y   ,auA.DE,I' \
-	> t208 2>ERR
-x $? 208
-e0sumem 208
+} | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t300 2>ERR
+x $? 300
+e0sumem 300
 printf 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
 ' t=844221007; h=from:subject:from; bh=1PQ35TgmN7Tb2dAok5uHCLKjLLkw6S2FvewVU\r\n'\
 '  Qf7Du8=; b=kVqi56HEtdB738rjUi/xmqb6aPGFnttFJFz7GlrguSUTKNbmtnD2wpdVDkJlkOK\r\n'\
-'  c6c+utnGZ/7TEMYR5dcJVCw==\n' > t209
+'  c6c+utnGZ/7TEMYR5dcJVCw==\n' > t301
+cmp 301 t300 t301
 # }}}
 
 echo '=2: Triggers =' # {{{
 
-## Triggers TODO  more tests!
+## Triggers
+
+# We have Ed2559 due to '=2: Going ='
+
+#if [ -z "$k2a" ]; then
+#	echo >&2 'only one key-algo type, skip 400'
+#else
+#	echo $kR > x.rc
+#	echo $k2R >> x.rc
+#	echo 'header-seal from,subject,to' >> x.rc
+#fi
 
 #{
 #	printf '\0\0\0
@@ -897,12 +940,11 @@ echo '=2: Triggers =' # {{{
 #	printf '\0\0\0\01E'
 #	printf '\0\0\0\01Q'
 #} | ${PD} -R x.rc \
-#	> t300 2>ERR
-#x $? 200
-#e0sumem 200
+#	> t400 2>ERR
+#x $? 400
+#e0sumem 400
 
 # }}}
-
 )
 exit $?
 
