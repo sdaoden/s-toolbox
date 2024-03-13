@@ -98,13 +98,13 @@ relations that link specific
 .Fl Fl key Ns
 s to mail addresses, plain domain names, or domain name wildcards,
 as are extracted from (the first address of)
-.Ql From:
+.Ql From
 headers of messages seen by the milter.
 Receivers will search for the public key DNS record of either the domain
 defined by the matching
 .Fl Fl sign
 relation, the
-.Ql From:
+.Ql From
 header address otherwise.
 .
 .Pp
@@ -314,6 +314,21 @@ Sealing headers not included in
 (can) result(s) in broken signatures:
 .Fl Fl test-mode
 will catch this.
+.Pp
+.Sy Remarks:
+In order not to break mailing-list posts (handled by software which does
+not recognize message signatures) the built-in defaults exclude
+.Ql Reply-To
+and all the mailing-list related fields of RFC 2369, namely
+.Ql List-Help ,
+.Ql List-Subscribe ,
+.Ql List-Unsubscribe ,
+.Ql List-Post ,
+.Ql List-Owner
+and
+.Ql List-Archive ,
+as well as
+.Ql List-ID .
 .
 .Mx Fl header-seal-show
 .It Fl Fl header-seal-show
@@ -433,8 +448,8 @@ s selectors as DNS TXT records for the given
 (in the form
 .Ql Ar selector Ns ._domainkey. Ns Ar domain ) .
 Without domain or sign relations the domain of the (first)
-.Ql From:
-header address is used.
+.Ql From
+header field address is used.
 The DKIM standard requires a real
 .Ar domain
 name, literal( addresse)s are not allowed.
@@ -442,7 +457,7 @@ name, literal( addresse)s are not allowed.
 .Pp
 .Ar spec
 is matched against the (first address of the)
-.Ql From:
+.Ql From
 header of processed messages;
 It can be a mail address like
 .Ql local-part@dom.ain ,

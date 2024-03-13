@@ -924,14 +924,16 @@ CTAV(FIELD_SIZEOF(struct a_md,md_algo) >= sizeof("sha256"));
 	"author\0" "from\0" "reply-to\0" "subject\0" "date\0" "to\0" "cc\0" \
 	"resent-date\0" "resent-from\0" "resent-to\0" "resent-cc\0" \
 	"in-reply-to\0" "references\0" \
-	"list-id\0" "list-help\0" "list-unsubscribe\0" "list-subscribe\0" \
+	"list-id\0" \
+	"list-help\0" "list-subscribe\0" "list-unsubscribe\0" \
 		"list-post\0" "list-owner\0" "list-archive\0" \
 	""
 #define a_HEADER_SIGSEA_SIGN_EXT \
 	"author\0" "from\0" "reply-to\0" "subject\0" "date\0" "to\0" "cc\0" \
 	"resent-date\0" "resent-from\0" "resent-to\0" "resent-cc\0" \
 	"in-reply-to\0" "references\0" \
-	"list-id\0" "list-help\0" "list-unsubscribe\0" "list-subscribe\0" \
+	"list-id\0" \
+	"list-help\0" "list-subscribe\0" "list-unsubscribe\0" \
 		"list-post\0" "list-owner\0" "list-archive\0" \
 	"message-id\0" \
 	"mime-version\0" "content-type\0" "content-transfer-encoding\0" \
@@ -939,14 +941,15 @@ CTAV(FIELD_SIZEOF(struct a_md,md_algo) >= sizeof("sha256"));
 	"openpgp\0" \
 	""
 #define a_HEADER_SIGSEA_SEAL \
-	"author\0" "from\0" "reply-to\0" "subject\0" "date\0" "to\0" "cc\0" \
+	"author\0" "from\0" /*"reply-to\0"*/ "subject\0" "date\0" "to\0" "cc\0" \
 	"in-reply-to\0" "references\0" \
 	""
 #define a_HEADER_SIGSEA_SEAL_EXT \
-	"author\0" "from\0" "reply-to\0" "subject\0" "date\0" "to\0" "cc\0" \
+	"author\0" "from\0" /*"reply-to\0"*/ "subject\0" "date\0" "to\0" "cc\0" \
 	"in-reply-to\0" "references\0" \
-	"list-id\0" "list-help\0" "list-unsubscribe\0" "list-subscribe\0" \
-		"list-post\0" "list-owner\0" "list-archive\0" \
+	/*"list-id\0"*/ \
+	/*"list-help\0" "list-subscribe\0" "list-unsubscribe\0"*/ \
+		/*"list-post\0" "list-owner\0" "list-archive\0"*/ \
 	"message-id\0" \
 	"mime-version\0" "content-type\0" "content-transfer-encoding\0" \
 	"mail-followup-to\0" \
