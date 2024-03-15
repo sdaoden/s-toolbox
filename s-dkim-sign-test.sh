@@ -362,26 +362,26 @@ e0 6.16
 )
 # }}}
 
-# 4.* --milter-macro-sign {{{
-${PD} -# --milter-macro-sign oha > t7.1 2>ERR
+# 4.* --milter-macro {{{
+${PD} -# --milter-macro sign,oha > t7.1 2>ERR
 x $? 7.1
 e0 7.1
-${PD} -# -Moha > t7.2 2>ERR
+${PD} -# -M'   sign  ,     oha ,,,' > t7.2 2>ERR
 x $? 7.2
 e0 7.2
 cmp 7.3 t7.1 t7.2
 
-${PD} -# --milter-macro-sign oha,,v1,,,v2,,, > t7.4 2>ERR
+${PD} -# --milter-macro sign,oha,,v1,,,v2,,, > t7.4 2>ERR
 x $? 7.4
 e0 7.4
-${PD} -# -Moha,',,,,       v1   ,   v2     '  > t7.5 2>ERR
+${PD} -# -Msign,oha,',,,,       v1   ,   v2     '  > t7.5 2>ERR
 x $? 7.5
 e0 7.5
 cmp 7.6 t7.4 t7.5
-echo 'milter-macro-sign oha, v1, v2' > t7.7
+echo 'milter-macro sign, oha, v1, v2' > t7.7
 cmp 7.7 t7.5 t7.7
 
-${PD} -# -Moha,'v1 very long value that sucks very much are what do you say?  ,'\
+${PD} -# -Msign,oha,'v1 very long value that sucks very much are what do you say?  ,'\
 'v2 and another very long value that drives you up the walls ,   '\
 'v3 oh noooooooooo, one more!,,' > t7.8 2>ERR
 x $? 7.8
@@ -389,6 +389,14 @@ e0 7.8
 i=0; while read -r l; do i=$((i + 1)); done < t7.8
 [ $i -eq 4 ]
 x $? 7.9
+
+${PD} -# --milter-macro no,oha > t7.10 2>ERR
+y $? 7.10
+eX 7.10
+
+${PD} -# --milter-macro sign,,oha > t7.11 2>ERR
+y $? 7.11
+eX 7.11
 # }}}
 
 # 8.* --sign {{{
@@ -621,13 +629,13 @@ y $? 10.9
 cat > t100.rc << '_EOT'
 header-sign from , to
 header-seal from , date
-milter-macro-sign mms1
+milter-macro sign, mms1
 resource-file t101.rc
 _EOT
 cat > t101.rc << '_EOT'
 header-sign from , date
 header-seal from , subject
-milter-macro-sign mms2 , v1 ,v2,,v3,,v4,,
+milter-macro sign , mms2 , v1 ,v2,,v3,,v4,,
 resource-file t102.rc
 _EOT
 cat > t102.rc << '_EOT'
@@ -645,9 +653,9 @@ from\
 
 
 milter\
--macro\
--sign	\
-mms3
+-macro \
+sign	\
+,mms3
 
 	 	# comment \
  	 	line \
@@ -655,7 +663,7 @@ mms3
 
 _EOT
 cat > t100-x << '_EOT'
-milter-macro-sign mms3
+milter-macro sign, mms3
 header-sign from, subject, date
 header-seal from, subject, date
 _EOT
@@ -690,10 +698,14 @@ echo 'header-seal from' >> x.rc
 	> t200 2>ERR
 x $? 200
 e0sumem 200
-printf 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
+printf \
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
 ' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\r\n'\
 '  3hSuFU=; b=XZsTsoDGBj1ThBUusPXOlKZnJPfTWAcOXp1lLFITL65MW6zgXPLXB9Oum+nkomK\r\n'\
-'  sG9vD5myIH0f+z0Y2hDBvCg==\n' > t201
+'  sG9vD5myIH0f+z0Y2hDBvCg==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t201
 cmp 201 t200 t201
 
 # 6376, 3.4.5; also (contrary to RFC 6376): header continuation line: lonely \n / \r is WSP!!
@@ -709,10 +721,14 @@ cmp 201 t200 t201
 	> t202 2>ERR
 x $? 202
 e0sumem 202
-printf 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
+printf \
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
 ' t=844221007; h=from:subject:from; bh=znUs9MtDElAZOFfJOcfNaDGLIUjGiZT2bsWl2\r\n'\
 '  vN/Hd4=; b=F+WrG/cn3KYJYaqBA5smNEOGpShufAnWy0GTBIem+6LDxsiLTh1/jniVAWp14Oj\r\n'\
-'  aXlkK7u5yDdoqipP65z3wAA==\n' > t203
+'  aXlkK7u5yDdoqipP65z3wAA==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t203
 cmp 203 t202 t203
 
 ## seq 13421 > a.txt
@@ -734,10 +750,14 @@ fi
 } | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t204 2>ERR
 x $? 204
 e0sumem 204
-printf 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
+printf \
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
 ' t=844221007; h=from:subject:from; bh=PzUIcKYLlFjDJtEAT+6JZpXkPgH2VFMvaxAEz\r\n'\
 '  NP3cWk=; b=fGXDjaUMwMmfCW7ADJ1Qc/om2WB7fviw1TLyVj99nPCVXkPqO13ARXrbLzTutel\r\n'\
-'  4+H2fECaR3nHU2uPAe2JNBA==\n' > t205
+'  4+H2fECaR3nHU2uPAe2JNBA==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t205
 cmp 205 t204 t205
 
 # ..other order
@@ -912,26 +932,64 @@ _EOT
 } | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t300 2>ERR
 x $? 300
 e0sumem 300
-printf 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
+printf \
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
 ' t=844221007; h=from:subject:from; bh=1PQ35TgmN7Tb2dAok5uHCLKjLLkw6S2FvewVU\r\n'\
 '  Qf7Du8=; b=kVqi56HEtdB738rjUi/xmqb6aPGFnttFJFz7GlrguSUTKNbmtnD2wpdVDkJlkOK\r\n'\
-'  c6c+utnGZ/7TEMYR5dcJVCw==\n' > t301
+'  c6c+utnGZ/7TEMYR5dcJVCw==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t301
 cmp 301 t300 t301
 # }}}
 
 echo '=2: Triggers =' # {{{
 
 ## Triggers
-
 # We have Ed2559 due to '=2: Going ='
 
-#if [ -z "$k2a" ]; then
-#	echo >&2 'only one key-algo type, skip 400'
-#else
-#	echo $kR > x.rc
-#	echo $k2R >> x.rc
-#	echo 'header-seal from,subject,to' >> x.rc
-#fi
+{
+	printf '\0\0\0\014LFrom\0X@Y.Z\0'
+	printf '\0\0\0\013LSubject\0s\0'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} $k > t400 2>ERR
+x $? 400
+e0sumem 400
+printf \
+'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=y.z; s=I;\r\n'\
+' t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuF\r\n'\
+'  U=; b=jzrEoivEWbECTM0xAnUjEFKtGZQmw6Ixn5YQ1RZJM7tgzgr/NNhgT/0BOmgFdG+Vd6+a\r\n'\
+'  TO2AmTng22hbc1iPCg==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t401
+cmp 401 t400 t401
+
+{
+	printf '\0\0\0\014LFrom\0X@Y.Z\0'
+	printf '\0\0\0\013LSubject\0s\0'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} $k -!from > t402 2>ERR
+x $? 402
+e0sumem 402
+printf \
+'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=y.z; s=I;\r\n'\
+' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\r\n'\
+'  3hSuFU=; b=VvdE1nxRMZ/ek/mwzcGMbfzAqE5Q598um9X2WQwTyG2GJ3LBBblUbg1JLO2iIZG\r\n'\
+'  jwIMoRJjEDytj177XAEFpAg==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t403
+cmp 403 t402 t403
+
+#.........
+
+if [ -z "$k2a" ]; then
+	echo >&2 'Only one key type available, skipping further tests'
+	exit 0
+fi
+
+#echo $kR > x.rc
+#echo $k2R >> x.rc
+#echo 'header-seal from,subject,to' >> x.rc
 
 #{
 #	printf '\0\0\0
@@ -943,6 +1001,18 @@ echo '=2: Triggers =' # {{{
 #	> t400 2>ERR
 #x $? 400
 #e0sumem 400
+
+
+
+#.........
+
+
+if [ -z "$algo_rsa_sha1" ] || [ -z "$algo_rsa_sha256" ] || [ -z "$algo_ed25519_sha256" ]; then
+	echo >&2 'Only two key types available, skipping further tests'
+	exit 0
+fi
+
+
 
 # }}}
 )

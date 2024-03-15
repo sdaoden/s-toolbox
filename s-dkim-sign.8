@@ -92,9 +92,8 @@ or configured
 s with all registered
 .Fl Fl key Ns
 s; with
-.Fl Fl milter-macro-sign
-only server connections announcing the macro (with an appropriate value)
-are considered.
+.Fl Fl milter-macro Ns
+s only server connections that announce the correct macro are considered.
 .
 .Pp
 Fine-grained control of signing activity is available via
@@ -159,7 +158,7 @@ dkim-sign unix - n n - - spawn
 key rsa-sha256, rsape, /etc/dkim-pri-rsa.pem
 key ed25519-sha256, edape, /etc/dkim-pri-ed25519.pem
 
-milter-macro-sign {daemon_name}, signit
+milter-macro sign, {daemon_name}, signit
 #client localhost
 
 sign .my.domain
@@ -381,9 +380,12 @@ may improve interoperability.
 .It Fl Fl long-help , H
 A long help listing that also shows available signature algorithms.
 .
-.Mx Fl milter-macro-sign
-.It Fl Fl milter-macro-sign Ar name Ns Oo Ar ,value.. Oc , Fl M Ns ..
-Only sign messages from servers announcing
+.Mx Fl milter-macro
+.It Fl Fl milter-macro Ar action,name Ns Oo Ar ,value.. Oc , Fl M Ns ..
+Only apply
+.Ar action
+.Pf ( Ql sign )
+if servers announce
 .Ar macro
 (with any of the given
 .Ar value Ns
@@ -398,7 +400,7 @@ seen by the milter as the
 macro with
 .Ql VAL1 ,
 therefore
-.Fl Fl \&\&milter-macro-sign Ns Ar ={daemon_name},VAL1,VAL2
+.Fl Fl \&\&milter-macro Ns Ar =sign,{daemon_name},VAL1,VAL2
 would be needed.
 The macro is expected to be received when clients connect.
 .
@@ -419,8 +421,8 @@ before the newline: all leading whitespace of the next line is ignored.
 # Comment \e
   line
 milter-\e
-  macro-\e
-    sign {daemon_name}
+  macro \e
+    sign , {daemon_name}
 .Ed
 .
 .

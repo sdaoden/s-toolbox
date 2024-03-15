@@ -7,6 +7,7 @@
  *@   so I'm doing exactly what given RFC orders me to do.
  *@ - TODO i= DKIM value (optional addition field to --sign).
  *@ - TODO I would like to have "an additional --client" match for {mail_addr} macro of M.
+ *@        But *especially* signing localhost->localhost mails seems so stupid.
  *@ - TODO internationalized selectors are missing (a_key.k_sel).
  *@ - TODO server mode missing -- must be started by spawn(8).
  *@ - TODO Would like to have "sender localhost && rcpt localhost && pass".
@@ -977,8 +978,7 @@ static char const * const a_lopts[] = {
 
 	"key:;k;" N_("adds a key via algo-digest,selector,private-key-pem-file"),
 
-	"milter-macro-sign:;M;" N_("act only if server announces \"macro\"[=\"value\"]"),
-	/* milter-macro-verify:m */
+	"milter-macro:;M;" N_("\"action\" (sign) only if server announces \"macro\"[=\"value\"]"),
 
 	"resource-file:;R;" N_("path to configuration file with long options"),
 
@@ -1060,9 +1060,11 @@ static s32 a_conf_finish(struct a_pd *pdp);
 #if DVLOR(DBGXOR(1, 0), 0)
 static void a_conf_cleanup(struct a_pd *pdp);
 #endif
-static s32 a_conf_list_values(struct a_pd *pdp);
-static s32 a_conf_arg(struct a_pd *pdp, s32 o, char *arg);
 
+static s32 a_conf_list_values(struct a_pd *pdp);
+static void a_conf__list_mima(char const *name, char const *mac, char const *val);
+
+static s32 a_conf_arg(struct a_pd *pdp, s32 o, char *arg);
 static s32 a_conf__A(struct a_pd *pdp, char *arg);
 static s32 a_conf__C(struct a_pd *pdp, char *arg, char const *act_or_nil);
 static s32 a_conf__c(struct a_pd *pdp, char *arg);
@@ -1181,9 +1183,9 @@ a_milter__loop(struct a_milter *mip){ /* {{{ */
 
 		a_SMFIC_OPTNEG_MASK = a_REPRO | a_DBG | a_V | a_VV | a_RESP_CONN | a_RESP_HDR,
 
-		a_MIMASI = 1u<<10, /* --milter-macro-sign */
+		a_MIMA = 1u<<10, /* --milter-macro */
 		a_CLI = 1u<<11, /* --client's */
-		a_SMFIC_CONNECT_MASK = a_MIMASI | a_CLI,
+		a_SMFIC_CONNECT_MASK = a_MIMA | a_CLI,
 
 		a_SIGN = 1u<<16, /* --sign's */
 		a_SMFIC_HEADER_MASK = a_SIGN,
@@ -1225,9 +1227,9 @@ a_milter__loop(struct a_milter *mip){ /* {{{ */
 		if(pdp->pd_flags & a_F_VV)
 			fb |= a_VV;
 
-		/* --milter-macro-* and --client apply restrictions upon connection time */
+		/* --milter-macro and --client apply restrictions upon connection time */
 		if(pdp->pd_mima_sign != NIL)
-			fb |= a_RESP_CONN | a_MIMASI;
+			fb |= a_RESP_CONN | a_MIMA;
 
 		if(pdp->pd_cli_ip != NIL || (pdp->pd_flags & (a_F_CLI_DOMAINS | a_F_CLI_IPS)))
 			fb |= a_RESP_CONN | a_CLI;
@@ -1325,7 +1327,9 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 				rv = a_milter__write(mip, 1 + sizeof(optneg));
 				if(rv != su_EX_OK)
 					goto jleave;
-			}
+			}else
+				fprintf(stdout, "OPTNEG NR_CONN=%d NR_HDR=%d\n",
+					!!(fb & a_RESP_CONN), !!(fb & a_RESP_HDR));
 
 			fx = fb & a_SMFIC_OPTNEG_MASK;
 			break; /* }}} */
@@ -1367,23 +1371,23 @@ FIXME - THREE-LEVEL VERBOSITY
 				if((fx & a_SKIP) || cmd != a_SMFIC_CONNECT)
 					continue;
 
-				if((fb & a_MIMASI) && !su_cs_cmp(bp, mip->mi_pdp->pd_mima_sign)){
+				if((fb & a_MIMA) && !su_cs_cmp(bp, mip->mi_pdp->pd_mima_sign)){
 					char *cp;
 
 					if((cp = mip->mi_pdp->pd_mima_sign_values) == NIL){
-						fx |= a_MIMASI;
+						fx |= a_MIMA;
 						if(UNLIKELY(fb & a_DBG_V_VV))
-							su_log_write(su_LOG_DEBUG, "--milter-macro-sign match ok: %s",
+							su_log_write(su_LOG_DEBUG, "--milter-macro match ok: %s",
 								bp);
 					}else for(;;){
 						uz i;
 
 						i = su_cs_len(cp) +1;
 						if(i == dl && !su_mem_cmp(cp, &bp[nl], i -1)){
-							fx |= a_MIMASI;
+							fx |= a_MIMA;
 							if(UNLIKELY(fb & a_DBG_V_VV))
 								su_log_write(su_LOG_DEBUG,
-									"--milter-macro-sign match ok: %s: %s", bp, cp);
+									"--milter-macro match ok: %s: %s", bp, cp);
 							break;
 						}
 						cp += i;
@@ -1391,7 +1395,7 @@ FIXME - THREE-LEVEL VERBOSITY
 							fx |= a_SKIP;
 							if(UNLIKELY((fb & a_DBG_V_VV)))
 								su_log_write(su_LOG_DEBUG,
-									"--milter-macro-sign mismatch: %s: %s",
+									"--milter-macro mismatch: %s: %s",
 									mip->mi_pdp->pd_mima_sign, &bp[nl]);
 							break;
 						}
@@ -1399,13 +1403,13 @@ FIXME - THREE-LEVEL VERBOSITY
 				}
 
 				if(nl == 1 +1 && bp[0] == '_'){
-					switch(a_milter__parse_(mip, &bp[nl], dl, ((fb & a_CLI) == 0))){ /* (does log) */
+					switch(a_milter__parse_(mip, &bp[nl], dl, ((fb & a_CLI) == 0))){ /* (logs) */
 					case a_CLI_ACT_NONE: FALLTHRU
 					case a_CLI_ACT_ERR:
 						goto jeproto;
 					case a_CLI_ACT_PASS:
 						fx |= a_SKIP;
-						break;
+						FALLTHRU
 					case a_CLI_ACT_SIGN:
 						if(fb & a_CLI)
 							fx |= a_CLI;
@@ -1415,9 +1419,19 @@ FIXME - THREE-LEVEL VERBOSITY
 					}
 				}
 			}
+
+			if(UNLIKELY(fb & a_REPRO) && cmd == a_SMFIC_CONNECT){
+				if(fb & a_MIMA)
+					puts((fx & a_MIMA) ? "--milter-macro OK" : "--milter-macro BAD");
+				if(fb & a_CLI)
+					puts((fx & a_CLI) ? "--client OK" : "--client BAD");
+			}
 			}break; /* }}} */
 
 		case a_SMFIC_CONNECT:
+			if(UNLIKELY(fb & a_VV))
+				su_log_write(su_LOG_DEBUG, "connection established");
+
 			if(fx & a_SKIP)
 				goto jaccept;
 			if((fx & a_SMFIC_CONNECT_MASK) != (fb & a_SMFIC_CONNECT_MASK)){
@@ -1431,7 +1445,8 @@ FIXME - THREE-LEVEL VERBOSITY
 				rv = a_milter__write(mip, 1);
 				if(rv != su_EX_OK)
 					goto jleave;
-			}
+			}else
+				puts("SMFIC_CONNECT SMFIR_CONTINUE");
 			break;
 
 		case a_SMFIC_HEADER:{ /* {{{ */
@@ -1479,6 +1494,7 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 			if(UNLIKELY(fb & a_VV))
 				su_log_write(su_LOG_DEBUG, "using header: %s: %s", &mip->mi_buf[1], &mip->mi_buf[i]);
 
+			/* (logs) */
 			switch(a_dkim_push_header(mip->mi_dkim, hname, &mip->mi_buf[i], &mip->mi_bag)){
 			default: break;
 			case a_CLI_ACT_SIGN:
@@ -1500,7 +1516,8 @@ jheader_done:
 					rv = a_milter__write(mip, 1);
 					if(rv != su_EX_OK)
 						goto jleave;
-				}
+				}else
+					puts("SMFIC_HEADER SMFIR_CONTINUE");
 			}
 			}break; /* }}} */
 
@@ -1541,7 +1558,7 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 
 		case a_SMFIC_BODYEOB: /* {{{ */
 			if(fb & a_VV)
-				su_log_write(su_LOG_DEBUG, "message complete");
+				su_log_write(su_LOG_DEBUG, "message data complete");
 
 			if(fx & a_SKIP)
 				goto jaccept;
@@ -1582,14 +1599,15 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 				struct a_dkim_res *dkrp;
 
 				for(dkrp = mip->mi_dkim->d_res; dkrp != NIL; dkrp = dkrp->dr_next){
-					mip->mi_buf[0] = a_SMFIR_INSHEADER;
-					mip->mi_buf[1] = mip->mi_buf[2] = mip->mi_buf[3] = mip->mi_buf[4] = '\0';
-					su_mem_copy(&mip->mi_buf[5], dkrp->dr_dat, dkrp->dr_len);
-
 					if(LIKELY(!(fb & (a_REPRO | a_DBG)))){
+						mip->mi_buf[0] = a_SMFIR_INSHEADER;
+						mip->mi_buf[1] = mip->mi_buf[2] = mip->mi_buf[3] = mip->mi_buf[4] = '\0';
+						su_mem_copy(&mip->mi_buf[5], dkrp->dr_dat, dkrp->dr_len);
+
 						rv = a_milter__write(mip, 1 + 4 + dkrp->dr_len);
 						if(rv != su_EX_OK)
 							goto jleave;
+
 						if(LIKELY(!(fb & a_VV)))
 							continue;
 					}
@@ -1597,24 +1615,25 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 					/* room for \015\012\0! */
 					dkrp->dr_dat[dkrp->dr_name_len] = ':';
 					dkrp->dr_dat[dkrp->dr_len - 1] = '\n';
-					if(!(fb & a_REPRO)){
+					if(LIKELY(!(fb & a_REPRO))){
 						dkrp->dr_dat[dkrp->dr_len] = '\0';
 						su_log_write(su_LOG_DEBUG, "%s", dkrp->dr_dat);
 					}else
-						write(STDOUT_FILENO, dkrp->dr_dat, dkrp->dr_len);
+						fwrite(dkrp->dr_dat, sizeof(*dkrp->dr_dat), dkrp->dr_len, stdout);
 				}
 			}else
-				su_log_write(su_LOG_CRIT, _("Failure creating DKIM signature, message is unchanged"));
+				su_log_write(su_LOG_CRIT, _("Error creating DKIM signature, message is unchanged"));
 
 jaccept:
 			if(UNLIKELY(fb & a_VV))
-				su_log_write(su_LOG_DEBUG, "done with message");
+				su_log_write(su_LOG_DEBUG, "message finished");
 			if(LIKELY(!(fb & a_REPRO))){
 				mip->mi_buf[0] = a_SMFIR_ACCEPT;
 				rv = a_milter__write(mip, 1);
 				if(rv != su_EX_OK)
 					goto jleave;
-			}
+			}else
+				puts("SMFIC_BODYEOB SMFIR_ACCEPT");
 			break; /* }}} */
 
 		default:
@@ -2873,29 +2892,8 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 				kp->k_file);
 	}
 
-	if(pdp->pd_mima_sign != NIL){
-		j = S(uz,fprintf(stdout, "milter-macro-sign %s", pdp->pd_mima_sign));
-
-		if((cp = pdp->pd_mima_sign_values) != NIL){
-			for(;;){
-				i = su_cs_len(cp) +1;
-				if(j + i > 72){
-					putc(',', stdout); putc('\\', stdout); putc('\n', stdout); putc('\t', stdout);
-					j = 8;
-				}else{
-					putc(',', stdout); putc(' ', stdout);
-					j += 2;
-				}
-				fputs(cp, stdout);
-				j += i;
-				cp += i;
-				if(*cp == '\0')
-					break;
-			}
-		}
-
-		putc('\n', stdout);
-	}
+	if((cp = pdp->pd_mima_sign) != NIL)
+		a_conf__list_mima("sign", cp, pdp->pd_mima_sign_values);
 
 	/* --client {{{ */
 	if(pdp->pd_flags & (a_F_CLI_DOMAINS | a_F_CLI_IPS)){
@@ -3064,6 +3062,36 @@ jhredo:
 	return rv;
 } /* }}} */
 
+static void
+a_conf__list_mima(char const *name, char const *mac, char const *val){ /* {{{ */
+	uz j, i;
+	NYD_IN;
+
+	j = S(uz,fprintf(stdout, "milter-macro %s, %s", name, mac));
+
+	if(val != NIL){
+		for(;;){
+			i = su_cs_len(val) +1;
+			if(j + i > 72){
+				putc(',', stdout); putc('\\', stdout); putc('\n', stdout); putc('\t', stdout);
+				j = 8;
+			}else{
+				putc(',', stdout); putc(' ', stdout);
+				j += 2;
+			}
+			fputs(val, stdout);
+			j += i;
+			val += i;
+			if(*val == '\0')
+				break;
+		}
+	}
+
+	putc('\n', stdout);
+
+	NYD_OU;
+} /* }}} */
+
 static s32
 a_conf_arg(struct a_pd *pdp, s32 o, char *arg){ /* {{{ */
 	union {char const *cp; char const **cpp; uz i;} x;
@@ -3080,20 +3108,42 @@ a_conf_arg(struct a_pd *pdp, s32 o, char *arg){ /* {{{ */
 	case '!': o = a_conf__header_sigsea(pdp, arg, FAL0); break;
 
 	case 'k': o = a_conf__k(pdp, arg); break;
-	case 'M':/* C99 */{
-		char *vp;
-
-		if(pdp->pd_mima_sign != NIL)
-			su_FREE(pdp->pd_mima_sign);
+	case 'M':/* xxx own-func? C99 */{
+		char *vp, **mac, **val;
 
 		x.i = su_cs_len(arg) +1 +1; /* Last value needs \0\0 */
-		pdp->pd_mima_sign = vp = su_TALLOC(char, x.i);
-		pdp->pd_mima_sign_values = NIL;
+		vp = su_TALLOC(char, x.i);
+		mac = NIL;
+		UNINIT(val, NIL);
 
-		while((x.cp = su_cs_sep_c(&arg, ',', TRU1)) != NIL){
-			vp = su_cs_pcopy(vp, x.cp) +1;
-			if(arg != NIL && pdp->pd_mima_sign_values == NIL)
-				pdp->pd_mima_sign_values = vp;
+		while((x.cp = su_cs_sep_c(&arg, ',', (mac != NIL && *mac != NIL))) != NIL){
+			if(mac == NIL){
+				if(!su_cs_cmp_case(x.cp, "sign")){
+					mac = &pdp->pd_mima_sign;
+					val = &pdp->pd_mima_sign_values;
+				}else{
+					a_conf__err(pdp, _("--milter-macro: unknown action: %s\n"), x.cp);
+					o = -su_EX_DATAERR;
+					goto jleave;
+				}
+				if(*mac != NIL)
+					su_FREE(*mac);
+				*val = *mac = NIL;
+			}else if(*x.cp == '\0'){
+				a_conf__err(pdp, _("--milter-macro %s: empty macro name\n"),
+					(mac == &pdp->pd_mima_sign ? "sign" : "verify"));
+				o = -su_EX_DATAERR;
+				goto jleave;
+			}else{
+				char *cp2;
+
+				cp2 = vp;
+				vp = su_cs_pcopy(vp, x.cp) +1;
+				if(*mac == NIL)
+					*mac = cp2;
+				else if(*val == NIL)
+					*val = cp2;
+			}
 		}
 		*vp = '\0';
 		}break;
@@ -3126,6 +3176,7 @@ a_conf_arg(struct a_pd *pdp, s32 o, char *arg){ /* {{{ */
 		break;
 	}
 
+jleave:
 	if(o < 0 && (pdp->pd_flags & a_F_MODE_TEST)){
 		pdp->pd_flags |= a_F_TEST_ERRORS;
 		o = su_EX_OK;
@@ -3149,7 +3200,7 @@ FIXME
 #endif
 	NYD_IN;
 
-su_log_write(su_LOG_CRIT, "-A not implemented yet");
+su_log_write(su_LOG_CRIT, "-A not implemented yet");/* FIXME*/
 
 #if 0
 
@@ -3493,7 +3544,6 @@ jon_error_arg_nul:
 
 		for(vp = cp = arg; (c = *cp) != '\0'; ++cp)
 			*cp = su_cs_to_lower(c);
-
 		i = P2UZ(cp - vp) + 1;
 	}
 
