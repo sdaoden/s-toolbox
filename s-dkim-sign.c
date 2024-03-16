@@ -630,6 +630,7 @@ enum a_flags{
 	a_F_DBG_VV = a_F_DBG | a_F_VV,
 
 	/* */
+	a_F_REMOVE = 1u<<23, /* --remove: any configured */
 	a_F_CLI_DOMAINS = 1u<<24, /* --client: any domain names, */
 	a_F_CLI_DOMAIN_WILDCARDS = 1u<<25, /* with wildcards, */
 	a_F_CLI_IPS = 1u<<26, /* ^ any IP addresses (shared dictionary) */
@@ -742,9 +743,9 @@ enum a_cli_action{
 	a_CLI_ACT_NONE,
 	a_CLI_ACT_ERR, /* protocol error */
 	a_CLI_ACT_PASS,
-	a_CLI_ACT_SIGN
-	/*a_CLI_ACT_VERIFY,
-	 *a_CLI_ACT_BOTH*/
+	a_CLI_ACT_SIGN,
+	a_CLI_ACT_VERIFY
+	/*a_CLI_ACT_BOTH*/
 };
 
 /**/
@@ -865,8 +866,9 @@ struct a_srch{
 		a_SRCH_TYPE_SET = 1u<<0, /* (so dict_lookup() return NIL has meaning) */
 		a_SRCH_TYPE_IPV4 = 1u<<1,
 		a_SRCH_TYPE_IPV6 = 1u<<2,
-		a_SRCH_TYPE_PASS = 1u<<3, /* no action, just pass */
-		a_SRCH_TYPE_EXACT = 1u<<4 /* Not wildcard or CIDR */
+		a_SRCH_TYPE_EXACT = 1u<<3, /* Not wildcard or CIDR */
+		a_SRCH_TYPE_VERIFY = 1u<<4, /* Verify action */
+		a_SRCH_TYPE_PASS = 1u<<5 /* No action, pass */
 	} s_type;
 	u32 s_mask; /* CIDR mask */
 	union a_srch_ip{
@@ -889,8 +891,9 @@ struct a_pd{
 	/* Configuration */
 	char *pd_header_sign; /* --header-sign: NIL: a_HEADER_SIGN */
 	char *pd_header_seal; /* --header-seal: NIL: none */
-	char *pd_mima_sign;
-	char *pd_mima_sign_values; /* a\0b\0\0 (storage backed by .pd_mima_sign) */
+	char *pd_mima_sign; /* name\0[:val\0:]\0 */
+	char *pd_mima_verify;
+	char *pd_remove_ar; /* --remove a-r (\0|:val\0:)\0 */
 	struct a_key *pd_keys; /* --key */
 	struct a_md *pd_mds; /* MDs needed (may be able to share MDs in between keys) */
 	u32 pd_dkim_sig_ttl; /* --ttl */
@@ -963,11 +966,9 @@ static char const * const a_header_sigsea[4] = {
 };
 enum{a_HEADER_SIGN = 0, a_HEADER_SEAL = 2}; /* (base + EXT) */
 
-static char const a_sopts[] = "A:C:c:" "~:!:" "k:" "M:" "R:" "S:s:" "t:" "#" "Hh";
+static char const a_sopts[] = "A:C:c:" "~:!:" "k:" "M:" "R:" "r:" "S:s:" "t:" "#" "Hh";
 static char const * const a_lopts[] = {
 	/* long option order */
-	"a-r-remove:;A;" N_("remove Authentication-Result: headers of domains"),
-
 	"client:;C;" N_("assign an action [(sign|pass),] to domain or address"),
 	"client-file:;c;" N_("[action,]file: like --client for all lines of file"),
 
@@ -978,7 +979,9 @@ static char const * const a_lopts[] = {
 
 	"key:;k;" N_("adds a key via algo-digest,selector,private-key-pem-file"),
 
-	"milter-macro:;M;" N_("\"action\" (sign) only if server announces \"macro\"[=\"value\"]"),
+	"milter-macro:;M;" N_("if server announces action,macro[:,value:] then action"),
+
+	"remove:;r;" N_("remove header of type[:,spec:]"),
 
 	"resource-file:;R;" N_("path to configuration file with long options"),
 
@@ -1010,8 +1013,8 @@ static char const * const a_lopts[] = {
 	case '!':\
 	case 'k':\
 	case 'M':\
-	/*case 'm':*/\
 	case 'R':\
+	case 'r':\
 	case 'S': case 's':\
 	case 't':\
 	/*case 'V': case 'v':*/\
@@ -1062,15 +1065,16 @@ static void a_conf_cleanup(struct a_pd *pdp);
 #endif
 
 static s32 a_conf_list_values(struct a_pd *pdp);
-static void a_conf__list_mima(char const *name, char const *mac, char const *val);
+static void a_conf__list_cpxarr(char const *name, char const *cp, boole comma_sep);
 
 static s32 a_conf_arg(struct a_pd *pdp, s32 o, char *arg);
-static s32 a_conf__A(struct a_pd *pdp, char *arg);
 static s32 a_conf__C(struct a_pd *pdp, char *arg, char const *act_or_nil);
 static s32 a_conf__c(struct a_pd *pdp, char *arg);
 static s32 a_conf__header_sigsea(struct a_pd *pdp, char *arg, boole sign);
 static s32 a_conf__k(struct a_pd *pdp, char *arg);
+static s32 a_conf__M(struct a_pd *pdp, char *arg);
 static s32 a_conf__R(struct a_pd *pdp, char *path);
+static s32 a_conf__r(struct a_pd *pdp, char *arg);
 static s32 a_conf__S(struct a_pd *pdp, char *arg);
 static s32 a_conf__s(struct a_pd *pdp, char *arg);
 static void a_conf__err(struct a_pd *pdp, char const *msg, ...);
@@ -1228,11 +1232,16 @@ a_milter__loop(struct a_milter *mip){ /* {{{ */
 			fb |= a_VV;
 
 		/* --milter-macro and --client apply restrictions upon connection time */
-		if(pdp->pd_mima_sign != NIL)
+		if(pdp->pd_mima_sign != NIL || pdp->pd_mima_verify)
 			fb |= a_RESP_CONN | a_MIMA;
 
 		if(pdp->pd_cli_ip != NIL || (pdp->pd_flags & (a_F_CLI_DOMAINS | a_F_CLI_IPS)))
 			fb |= a_RESP_CONN | a_CLI;
+
+/*
+FIXME if we have --remove's, need to  
+
+*/
 
 		/* --sign table may apply restrictions once we see the From: header; and we need a match to act! */
 		if(su_cs_dict_count(&pdp->pd_sign) > 0)
@@ -1374,10 +1383,13 @@ FIXME - THREE-LEVEL VERBOSITY
 				if((fb & a_MIMA) && !su_cs_cmp(bp, mip->mi_pdp->pd_mima_sign)){
 					char *cp;
 
-					if((cp = mip->mi_pdp->pd_mima_sign_values) == NIL){
+					cp = mip->mi_pdp->pd_mima_sign;
+					cp += su_cs_len(cp);
+
+					if(*++cp == '\0'){
 						fx |= a_MIMA;
 						if(UNLIKELY(fb & a_DBG_V_VV))
-							su_log_write(su_LOG_DEBUG, "--milter-macro match ok: %s",
+							su_log_write(su_LOG_DEBUG, "--milter-macro match ok: sign, %s",
 								bp);
 					}else for(;;){
 						uz i;
@@ -1387,7 +1399,8 @@ FIXME - THREE-LEVEL VERBOSITY
 							fx |= a_MIMA;
 							if(UNLIKELY(fb & a_DBG_V_VV))
 								su_log_write(su_LOG_DEBUG,
-									"--milter-macro match ok: %s: %s", bp, cp);
+									"--milter-macro match ok: sign, %s, %s",
+									bp, cp);
 							break;
 						}
 						cp += i;
@@ -1395,7 +1408,7 @@ FIXME - THREE-LEVEL VERBOSITY
 							fx |= a_SKIP;
 							if(UNLIKELY((fb & a_DBG_V_VV)))
 								su_log_write(su_LOG_DEBUG,
-									"--milter-macro mismatch: %s: %s",
+									"--milter-macro mismatch: sign, %s: %s",
 									mip->mi_pdp->pd_mima_sign, &bp[nl]);
 							break;
 						}
@@ -1410,12 +1423,12 @@ FIXME - THREE-LEVEL VERBOSITY
 					case a_CLI_ACT_PASS:
 						fx |= a_SKIP;
 						FALLTHRU
+					case a_CLI_ACT_VERIFY: FALLTHRU
 					case a_CLI_ACT_SIGN:
 						if(fb & a_CLI)
 							fx |= a_CLI;
 						break;
-					/*case a_CLI_ACT_VERIFY:
-					 *case a_CLI_ACT_BOTH:*/
+					/*case a_CLI_ACT_BOTH:*/
 					}
 				}
 			}
@@ -1803,14 +1816,19 @@ a_milter__parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {{{ */
 
 	/* Without --client use defaults */
 	if(bltin){
+		char const *msg;
+
 		ASSERT(su_cs_dict_count(&mip->mi_pdp->pd_cli) == 0 && mip->mi_pdp->pd_cli_ip == NIL);
 		if(!su_cs_cmp(dp, "localhost")){
-			if(mip->mi_pdp->pd_flags & a_F_DBG_V)
-				su_log_write(su_LOG_DEBUG, "no --client's, signing localhost");
+			msg = "signing ";
 			rv = a_CLI_ACT_SIGN;
-			goto jleave;
+		}else{
+			msg = "verifying non-";
+			rv = a_CLI_ACT_VERIFY;
 		}
-		goto jdefault;
+		if(mip->mi_pdp->pd_flags & a_F_DBG_V)
+			su_log_write(su_LOG_DEBUG, "no --client's, %slocalhost", msg);
+		goto jleave;
 	}
 
 	/* Domain name */
@@ -1821,12 +1839,22 @@ a_milter__parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {{{ */
 			sip.vp = su_cs_dict_lookup(&mip->mi_pdp->pd_cli, dp);
 
 			if(sip.vp != NIL && (first || !(sip.f & a_SRCH_TYPE_EXACT))){
-				rv = (sip.f & a_SRCH_TYPE_PASS) ? a_CLI_ACT_PASS : a_CLI_ACT_SIGN;
+				char const *act;
+
+				if(sip.f & a_SRCH_TYPE_VERIFY){
+					act = "verify";
+					rv = a_CLI_ACT_VERIFY;
+				}else if(sip.f & a_SRCH_TYPE_PASS){
+					act = "pass";
+					rv = a_CLI_ACT_PASS;
+				}else{
+					act = "sign";
+					rv = a_CLI_ACT_SIGN;
+				}
 				if(mip->mi_pdp->pd_flags & a_F_DBG_V)
 					/* (original name was logged by callee, then) */
 					su_log_write(su_LOG_DEBUG, "--client %s match domain name, action=%s: %s",
-						(first ? "exact" : "wildcard"),
-						(rv == a_CLI_ACT_PASS ? "pass" : "sign"), (any ? "." : dp));
+						(first ? "exact" : "wildcard"), act, (any ? "." : dp));
 				goto jleave;
 			}
 
@@ -1861,11 +1889,21 @@ a_milter__parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {{{ */
 		buf[i] = '\0';
 
 		if(sip_x.vp != NIL){
-			rv = (sip_x.f & a_SRCH_TYPE_PASS) ? a_CLI_ACT_PASS : a_CLI_ACT_SIGN;
+			char const *act;
+
+			if(sip.f & a_SRCH_TYPE_VERIFY){
+				act = "verify";
+				rv = a_CLI_ACT_VERIFY;
+			}else if(sip.f & a_SRCH_TYPE_PASS){
+				act = "pass";
+				rv = a_CLI_ACT_PASS;
+			}else{
+				act = "sign";
+				rv = a_CLI_ACT_SIGN;
+			}
 			if(mip->mi_pdp->pd_flags & a_F_DBG_V)
 				/* (original name was logged by callee, then) */
-				su_log_write(su_LOG_DEBUG, "--client exact match IP, action=%s: %s",
-					(rv == a_CLI_ACT_PASS ? "pass" : "sign"), buf);
+				su_log_write(su_LOG_DEBUG, "--client exact match IP, action=%s: %s", act, buf);
 			goto jleave;
 		}
 	}
@@ -1906,16 +1944,27 @@ a_milter__parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {{{ */
 
 		if(((rv == AF_INET) ? su_mem_cmp(&sp->s_ip.v4.s_addr, &sip_x.v4.s_addr, sizeof(sip_x.v4.s_addr))
 				: su_mem_cmp(sp->s_ip.v6.s6_addr, sip_x.v6.s6_addr, sizeof(sip_x.v6.s6_addr)))){
-			rv = (sp->s_type & a_SRCH_TYPE_PASS) ? a_CLI_ACT_PASS : a_CLI_ACT_SIGN;
+			char const *act;
+
+			if(sip.f & a_SRCH_TYPE_VERIFY){
+				act = "verify";
+				rv = a_CLI_ACT_VERIFY;
+			}else if(sip.f & a_SRCH_TYPE_PASS){
+				act = "pass";
+				rv = a_CLI_ACT_PASS;
+			}else{
+				act = "sign";
+				rv = a_CLI_ACT_SIGN;
+			}
 			if(mip->mi_pdp->pd_flags & a_F_DBG_V)
 				/* (original name was logged by callee, then) */
 				su_log_write(su_LOG_DEBUG, "--client wildcard match IP CIDR/%u, action=%s: %s",
-					sp->s_mask, (rv == a_CLI_ACT_PASS ? "pass" : "sign"), buf);
+					sp->s_mask, act, buf);
 			goto jleave;
 		}
 	}
 
-	/* Default fallback is "pass, ." */
+	/* Default fallback with clients is "pass, ." */
 jdefault:
 	if(mip->mi_pdp->pd_flags & a_F_DBG_V)
 		su_log_write(su_LOG_DEBUG, "no --client's match, using default \"pass, .\"");
@@ -2831,6 +2880,11 @@ a_conf_cleanup(struct a_pd *pdp){ /* {{{ */
 
 	if(pdp->pd_mima_sign != NIL)
 		su_FREE(pdp->pd_mima_sign);
+	if(pdp->pd_mima_verify != NIL)
+		su_FREE(pdp->pd_mima_verify);
+
+	if(pdp->pd_remove_ar != NIL)
+		su_FREE(pdp->pd_remove_ar);
 
 	while((kp = pdp->pd_keys) != NIL){
 		pdp->pd_keys = kp->k_next;
@@ -2893,7 +2947,12 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 	}
 
 	if((cp = pdp->pd_mima_sign) != NIL)
-		a_conf__list_mima("sign", cp, pdp->pd_mima_sign_values);
+		a_conf__list_cpxarr("milter-macro sign,", cp, FAL0);
+	if((cp = pdp->pd_mima_verify) != NIL)
+		a_conf__list_cpxarr("milter-macro verify,", cp, FAL0);
+
+	if((cp = pdp->pd_remove_ar) != NIL)
+		a_conf__list_cpxarr("remove a-r", cp, TRU1);
 
 	/* --client {{{ */
 	if(pdp->pd_flags & (a_F_CLI_DOMAINS | a_F_CLI_IPS)){
@@ -2920,7 +2979,7 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 			}
 
 			fprintf(stdout, "client %s, %s%.*s\n",
-				(u.f & a_SRCH_TYPE_PASS ? "pass" : "sign"),
+				(u.f & a_SRCH_TYPE_VERIFY ? "verify" : (u.f & a_SRCH_TYPE_PASS ? "pass" : "sign")),
 				(u.f & a_SRCH_TYPE_EXACT ? su_empty : "."),
 				S(int,i), spec);
 		}
@@ -2944,7 +3003,8 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 				continue;
 			}
 			fprintf(stdout, "client %s, %s/%u\n",
-				(sp->s_type & a_SRCH_TYPE_PASS ? "pass" : "sign"), cp, sp->s_mask);
+				(sp->s_type & a_SRCH_TYPE_VERIFY ? "verify" :
+					(sp->s_type & a_SRCH_TYPE_PASS ? "pass" : "sign")), cp, sp->s_mask);
 		}
 	} /* }}} */
 
@@ -3063,30 +3123,28 @@ jhredo:
 } /* }}} */
 
 static void
-a_conf__list_mima(char const *name, char const *mac, char const *val){ /* {{{ */
+a_conf__list_cpxarr(char const *name, char const *cp, boole comma_sep){ /* {{{ */
 	uz j, i;
 	NYD_IN;
 
-	j = S(uz,fprintf(stdout, "milter-macro %s, %s", name, mac));
+	fputs(name, stdout);
+	j = su_cs_len(name);
 
-	if(val != NIL){
-		for(;;){
-			i = su_cs_len(val) +1;
-			if(j + i > 72){
-				putc(',', stdout); putc('\\', stdout); putc('\n', stdout); putc('\t', stdout);
-				j = 8;
-			}else{
-				putc(',', stdout); putc(' ', stdout);
-				j += 2;
-			}
-			fputs(val, stdout);
-			j += i;
-			val += i;
-			if(*val == '\0')
-				break;
+	for(;; comma_sep = TRU1, j += i, cp += i){
+		if(*cp == '\0')
+			break;
+
+		i = su_cs_len(cp) +1;
+		putc((comma_sep ? ',' : ' '), stdout);
+		if(j + i > 72){
+			putc('\\', stdout); putc('\n', stdout); putc('\t', stdout);
+			j = 8;
+		}else if(comma_sep){
+			putc(' ', stdout);
+			++j;
 		}
+		fputs(cp, stdout);
 	}
-
 	putc('\n', stdout);
 
 	NYD_OU;
@@ -3094,13 +3152,11 @@ a_conf__list_mima(char const *name, char const *mac, char const *val){ /* {{{ */
 
 static s32
 a_conf_arg(struct a_pd *pdp, s32 o, char *arg){ /* {{{ */
-	union {char const *cp; char const **cpp; uz i;} x;
+	union {uz i;} x;
 	NYD_IN;
 
 	/* In long-option order */
 	switch(o){
-	case 'A': o = a_conf__A(pdp, arg); break;
-
 	case 'C': o = a_conf__C(pdp, arg, NIL); break;
 	case 'c': o = a_conf__c(pdp, arg); break;
 
@@ -3108,47 +3164,12 @@ a_conf_arg(struct a_pd *pdp, s32 o, char *arg){ /* {{{ */
 	case '!': o = a_conf__header_sigsea(pdp, arg, FAL0); break;
 
 	case 'k': o = a_conf__k(pdp, arg); break;
-	case 'M':/* xxx own-func? C99 */{
-		char *vp, **mac, **val;
 
-		x.i = su_cs_len(arg) +1 +1; /* Last value needs \0\0 */
-		vp = su_TALLOC(char, x.i);
-		mac = NIL;
-		UNINIT(val, NIL);
-
-		while((x.cp = su_cs_sep_c(&arg, ',', (mac != NIL && *mac != NIL))) != NIL){
-			if(mac == NIL){
-				if(!su_cs_cmp_case(x.cp, "sign")){
-					mac = &pdp->pd_mima_sign;
-					val = &pdp->pd_mima_sign_values;
-				}else{
-					a_conf__err(pdp, _("--milter-macro: unknown action: %s\n"), x.cp);
-					o = -su_EX_DATAERR;
-					goto jleave;
-				}
-				if(*mac != NIL)
-					su_FREE(*mac);
-				*val = *mac = NIL;
-			}else if(*x.cp == '\0'){
-				a_conf__err(pdp, _("--milter-macro %s: empty macro name\n"),
-					(mac == &pdp->pd_mima_sign ? "sign" : "verify"));
-				o = -su_EX_DATAERR;
-				goto jleave;
-			}else{
-				char *cp2;
-
-				cp2 = vp;
-				vp = su_cs_pcopy(vp, x.cp) +1;
-				if(*mac == NIL)
-					*mac = cp2;
-				else if(*val == NIL)
-					*val = cp2;
-			}
-		}
-		*vp = '\0';
-		}break;
+	case 'M': o = a_conf__M(pdp, arg); break;
 
 	case 'R': o = a_conf__R(pdp, arg); break;
+
+	case 'r': o = a_conf__r(pdp, arg); break;
 
 	case 'S': o = a_conf__S(pdp, arg); break;
 	case 's': o = a_conf__s(pdp, arg); break;
@@ -3176,7 +3197,6 @@ a_conf_arg(struct a_pd *pdp, s32 o, char *arg){ /* {{{ */
 		break;
 	}
 
-jleave:
 	if(o < 0 && (pdp->pd_flags & a_F_MODE_TEST)){
 		pdp->pd_flags |= a_F_TEST_ERRORS;
 		o = su_EX_OK;
@@ -3187,58 +3207,11 @@ jleave:
 } /* }}} */
 
 static s32
-a_conf__A(struct a_pd *pdp, char *arg){ /* {{{ */
-#if 0
-FIXME
-
-FIXME
-	u32 m;
-	char c, *cp;
-	s32 rv;
-	boole act;
-	char const *action;
-#endif
-	NYD_IN;
-
-su_log_write(su_LOG_CRIT, "-A not implemented yet");/* FIXME*/
-
-#if 0
-
-
-
-
-FIXME
-		action = su_cs_sep_c(&arg, ',', FAL0);
-
-	/* Domain plus subdomain match */
-	if(*arg == '.'){
-		++arg;
-		m = 1;
-		goto jcname;
-	}
-
-	ASSERT(m == 0 || m == 1); /* "wildcard" */
-
-	for(cp = arg; (c = *cp) != '\0'; ++cp)
-		*cp = S(char,su_cs_to_lower(c));
-
-	if(*arg != '\0' && !a_misc_is_rfc5321_domain(arg)){
-		sip.cp = N_("--a-r-remove: invalid domain name: %s, %s\n");
-		goto jedata;
-	}
-#endif
-
-	NYD_OU;
-	return 0;
-} /* }}} */
-
-static s32
 a_conf__C(struct a_pd *pdp, char *arg, char const *act_or_nil){ /* {{{ */
 	union a_srch_ip sip;
-	u32 m;
 	char c, *cp;
 	s32 rv;
-	boole act;
+	u32 act, m;
 	char const *action;
 	NYD_IN;
 
@@ -3251,22 +3224,24 @@ a_conf__C(struct a_pd *pdp, char *arg, char const *act_or_nil){ /* {{{ */
 		else{
 			arg = UNCONST(char*,action);
 			action = "sign";
-			act = TRU1;
+			act = a_SRCH_TYPE_NONE;
 			goto jactok;
 		}
 	}
 
 	if(action[1] == '\0'){
-		if(action[0] == 's')
-			act = TRU1;
-		else if(action[0] == 'p')
-			act = FAL0;
-		else
-			goto jeact;
+		switch(action[0]){
+		case 's': act = a_SRCH_TYPE_NONE; break;
+		case 'v': act = a_SRCH_TYPE_VERIFY; break;
+		case 'p': act = a_SRCH_TYPE_PASS; break;
+		default: goto jeact;
+		}
 	}else if(!su_cs_cmp(action, "sign"))
-		act = TRU1;
+		act = a_SRCH_TYPE_NONE;
+	else if(!su_cs_cmp(action, "verify"))
+		act = a_SRCH_TYPE_VERIFY;
 	else if(!su_cs_cmp(action, "pass"))
-		act = FAL0;
+		act = a_SRCH_TYPE_PASS;
 	else{
 jeact:
 		sip.cp = N_("--client: invalid action: %s, %s\n");
@@ -3343,7 +3318,7 @@ jcname:
 
 	pdp->pd_flags |= (a_F_CLI_DOMAINS | (m ? a_F_CLI_DOMAIN_WILDCARDS : a_F_NONE));
 
-	sip.f = a_SRCH_TYPE_SET | (act ? 0 : a_SRCH_TYPE_PASS) | (m ? 0 : a_SRCH_TYPE_EXACT);
+	sip.f = a_SRCH_TYPE_SET | act | (m ? 0 : a_SRCH_TYPE_EXACT);
 	rv = su_cs_dict_replace(&pdp->pd_cli, arg, sip.vp);
 	if(rv > 0){
 		a_conf__err(pdp, _("--client: software error: %s\n"), su_err_doc(rv));
@@ -3429,8 +3404,7 @@ jca:/* C99 */{
 		sip.f = su_cs_len(buf);
 		buf[sip.f] = '\06';
 		buf[++sip.f] = '\0';
-		sip.f = a_SRCH_TYPE_SET | (rv == AF_INET ? a_SRCH_TYPE_IPV4 : a_SRCH_TYPE_IPV6) |
-				(act ? a_SRCH_TYPE_NONE : a_SRCH_TYPE_PASS) | a_SRCH_TYPE_EXACT;
+		sip.f = a_SRCH_TYPE_SET | (rv == AF_INET ? a_SRCH_TYPE_IPV4 : a_SRCH_TYPE_IPV6) | a_SRCH_TYPE_EXACT | act;
 		rv = su_cs_dict_replace(&pdp->pd_cli, buf, sip.vp);
 		if(rv > 0){
 			a_conf__err(pdp, _("--client: software error: %s\n"), su_err_doc(rv));
@@ -3451,8 +3425,7 @@ jca:/* C99 */{
 			*pdp->pd_cli_ip_tail = sp;
 		pdp->pd_cli_ip_tail = &sp->s_next;
 		sp->s_next = NIL;
-		sp->s_type = (rv == AF_INET ? a_SRCH_TYPE_IPV4 : a_SRCH_TYPE_IPV6) |
-				(act ? a_SRCH_TYPE_NONE : a_SRCH_TYPE_PASS);
+		sp->s_type = (rv == AF_INET ? a_SRCH_TYPE_IPV4 : a_SRCH_TYPE_IPV6) | act;
 		sp->s_mask = m;
 		su_mem_copy(&sp->s_ip, &sip, sizeof(sip));
 	}
@@ -3480,6 +3453,7 @@ a_conf__c(struct a_pd *pdp, char *arg){ /* {{{ */
 	else{
 		action = path;
 		path = su_cs_trim(arg);
+		/* xxx many err logs if action is bogus */
 	}
 
 	if((fd = a_misc_open(pdp, path)) == -1){
@@ -3786,6 +3760,56 @@ jleave:
 } /* }}} */
 
 static s32
+a_conf__M(struct a_pd *pdp, char *arg){ /* {{{ */
+	char *vp_base, *vp, **mac;
+	union {char const *cp; uz i;} x;
+	s32 rv;
+	NYD_IN;
+
+	rv = su_EX_OK;
+	x.i = su_cs_len(arg) +1 +1; /* Last value needs \0\0 */
+	vp = vp_base = su_TALLOC(char, x.i);
+	mac = NIL;
+
+	while((x.cp = su_cs_sep_c(&arg, ',', (mac != NIL && *mac != NIL))) != NIL){
+		if(mac == NIL){
+			if(!su_cs_cmp_case(x.cp, "sign"))
+				mac = &pdp->pd_mima_sign;
+			else if(!su_cs_cmp_case(x.cp, "verify"))
+				mac = &pdp->pd_mima_verify;
+			else{
+				a_conf__err(pdp, _("--milter-macro: unknown action: %s\n"), x.cp);
+				rv = -su_EX_DATAERR;
+				goto jleave;
+			}
+			if(*mac != NIL)
+				su_FREE(*mac);
+			*mac = NIL;
+			if(arg == NIL)
+				goto jenodat;
+		}else if(*x.cp == '\0'){
+jenodat:
+			a_conf__err(pdp, _("--milter-macro %s: empty macro name\n"),
+				(mac == &pdp->pd_mima_sign ? "sign" : "verify"));
+			rv = -su_EX_DATAERR;
+			goto jleave;
+		}else{
+			if(*mac == NIL)
+				*mac = vp;
+			vp = su_cs_pcopy(vp, x.cp) +1;
+		}
+	}
+	*vp = '\0';
+
+jleave:
+	if(rv != su_EX_OK)
+		su_FREE(vp_base);
+
+	NYD_OU;
+	return rv;
+} /* }}} */
+
+static s32
 a_conf__R(struct a_pd *pdp, char *path){ /* {{{ */
 	struct a_line line;
 	struct su_avopt avo;
@@ -3836,6 +3860,45 @@ jleave:
 
 	NYD_OU;
 	return mpv;
+} /* }}} */
+
+static s32
+a_conf__r(struct a_pd *pdp, char *arg){ /* {{{ */
+	char *vp_base, *vp, **mac;
+	union {char const *cp; uz i;} x;
+	s32 rv;
+	NYD_IN;
+
+	rv = su_EX_OK;
+	x.i = su_cs_len(arg) +1 +1; /* Last value needs \0\0 */
+	vp = vp_base = su_TALLOC(char, x.i);
+	mac = NIL;
+
+	while((x.cp = su_cs_sep_c(&arg, ',', (mac != NIL))) != NIL){
+		if(mac == NIL){
+			if(!su_cs_cmp_case(x.cp, "a-r"))
+				mac = &pdp->pd_remove_ar;
+			else{
+				a_conf__err(pdp, _("--remove: unknown type: %s\n"), x.cp);
+				rv = -su_EX_DATAERR;
+				goto jleave;
+			}
+			if(*mac != NIL)
+				su_FREE(*mac);
+			*mac = vp;
+			if(arg == NIL)
+				*vp++ = '\0'; /* empty value allowed! */
+		}else
+			vp = su_cs_pcopy(vp, x.cp) +1;
+	}
+	*vp = '\0';
+
+jleave:
+	if(rv != su_EX_OK)
+		su_FREE(vp_base);
+
+	NYD_OU;
+	return rv;
 } /* }}} */
 
 static s32

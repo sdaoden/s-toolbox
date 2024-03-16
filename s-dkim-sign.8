@@ -85,15 +85,33 @@ the mail server, without knowing whether a message is
 .Dq incoming
 or
 .Dq outgoing .
-This DKIM sign-only milter will sign all messages from
+This milter will sign all messages from
 .Ql localhost
 or configured
 .Fl Fl client Ns
 s with all registered
 .Fl Fl key Ns
 s; with
-.Fl Fl milter-macro Ns
-s only server connections that announce the correct macro are considered.
+.Fl Fl milter-macro
+.Ql sign
+only server connections announcing a match are considered.
+It will perform configured
+.Fl Fl remove Ns
+s for messages not from
+.Ql localhost
+or configured
+.Fl Fl client Ns
+s; again, with
+.Fl Fl milter-macro
+.Ql verify
+only dedicated connections are considered.
+Decisions are only narrowed down: once
+.Ql sign
+or
+.Ql verify
+paths are taken only
+.Ql pass
+remains as an option.
 .
 .Pp
 Fine-grained control of signing activity is available via
@@ -141,14 +159,14 @@ Other messages will not be signed.
 milter_default_action = accept
 non_smtpd_milters = unix:private/dkim-sign
 smtpd_milters = unix:private/dkim-sign
-milter_macro_daemon_name = signit
+milter_macro_daemon_name = egressplus
 
 #@ /etc/postfix/master.cf:
 localhost:smtp inet n - n - - smtpd
   -o syslog_name=localsmtp
 smtp inet n - n - - smtpd
   -o smtpd_tls_security_level=may
-  -o milter_macro_daemon_name=verify
+  -o milter_macro_daemon_name=ingress
 ..
 dkim-sign unix - n n - - spawn
   user=ANON-USR
@@ -158,7 +176,8 @@ dkim-sign unix - n n - - spawn
 key rsa-sha256, rsape, /etc/dkim-pri-rsa.pem
 key ed25519-sha256, edape, /etc/dkim-pri-ed25519.pem
 
-milter-macro sign, {daemon_name}, signit
+milter-macro sign, {daemon_name}, egressplus
+milter-macro verify, {daemon_name}, ingress
 #client localhost
 
 sign .my.domain
@@ -167,6 +186,8 @@ sign joe@.his.domain,my.domain,edape
 
 header-sign *
 header-seal *
+
+remove a-r
 .Ed
 .
 .Pp
@@ -191,40 +212,21 @@ resource file.
 .
 .
 .Bl -tag -width ".It Fl BaNg"
-.Mx Fl a-r-remove
-.It Fl Fl a-r-remove Ar list , Fl A Ns ..
-Define (comma-separated)
-.Ar list
-of domain names for which RFC 8601
-.Ql Authentication-Results:
-headers shall be removed from messages.
-An empty
-.Ar list
-(no argument in a
-.Fl Fl resource-file )
-causes usage of the mail server milter macro
-.Ql j
-(which
-.Xr postfix 1
-always expands to
-.Ql $myhostname ) .
-Domain names are matched exactly unless starting with a period
-.Ql \&.
-to enforce wildcard matches for it and its subdomains.
-(Literal( addresse)s are not supported.)
-.Sy Remarks:
-this is an isolated operation mode, unrelated to DKIM signing.
-.
 .Mx Fl client
 .It Fl Fl client Oo Ar action, Oc Ns Ar spec , Fl C Ns ..
 Define rules for connecting clients as announced by the milter macro
-.Ql _ .
+.Ql _
+.Pf ( Xr postfix 1
+passes only
+.Dq validated client name and address Ns
+).
 The optional
 .Ar action
 is either
 .Ql s[ign]
-(default) or
-.\"b[oth],[v]erify
+(default),
+.Ql v[erify]
+or
 .Ql p[ass]
 (no action),
 .Ar spec
@@ -232,17 +234,18 @@ is either a domain name or an IPv4 or IPv6 internet address, optionally
 in RFC 1519 CIDR notation with network mask.
 Domain names are matched exactly unless starting with a period
 .Ql \&.
-to enforce wildcard matches for it and its subdomains.
-Dictionary matching is used except for CIDR ranges: these are matched
-last and in the given order.
-The implied default action is always
-.Ql pass, \&. ,
-defining any rule replaces the built-in
-.Ql sign, localhost
-.Pf ( Xr postfix 1
-passes only
-.Dq validated client name and address Ns
-).
+to enforce wildcard matches for it and its subdomains; only period is a
+.Dq super-\:wildcard
+matching all domains.
+Dictionaries are used except for CIDR ranges, which are matched last and
+in the given order.
+Defining any rule replaces the built-in
+.Ql sign,localhost
+/
+.Ql verify,\&.
+pair, and establishes
+a default action
+.Ql pass,\&. .
 .Bd -literal -offset indent
 --client 127.0.0.1
 --client=exact.match
@@ -321,8 +324,8 @@ not recognize message signatures) the built-in defaults exclude
 .Ql Reply-To
 and all the mailing-list related fields of RFC 2369, namely
 .Ql List-Help ,
-.Ql List-Subscribe ,
-.Ql List-Unsubscribe ,
+.Ql List-\:Subscribe ,
+.Ql List-\:Unsubscribe ,
 .Ql List-Post ,
 .Ql List-Owner
 and
@@ -353,7 +356,7 @@ for example
 .Cm rsa-sha1 .
 Dependent on the used crypto library
 .Cm ed25519-sha256 ,
-.Cm rsa-sha256 ,
+.Cm rsa-\:sha256 ,
 and
 .Cm rsa-sha1
 (this was obsoleted by RFC 8301 and will cause a warning)
@@ -384,7 +387,9 @@ A long help listing that also shows available signature algorithms.
 .It Fl Fl milter-macro Ar action,name Ns Oo Ar ,value.. Oc , Fl M Ns ..
 Only apply
 .Ar action
-.Pf ( Ql sign )
+.Pf ( Ql sign
+or
+.Ql verify )
 if servers announce
 .Ar macro
 (with any of the given
@@ -403,6 +408,27 @@ therefore
 .Fl Fl \&\&milter-macro Ns Ar =sign,{daemon_name},VAL1,VAL2
 would be needed.
 The macro is expected to be received when clients connect.
+.
+.Mx Fl remove
+.It Fl Fl remove Ar type Ns Oo Ar ,spec.. Oc , Fl r Ns ..
+Remove headers of
+.Ar type
+.Pf ( Ql a-r
+meaning RFC 8601
+.Ql Authentication-\:Results ) .
+Without
+.Ar spec Ns
+s headers matching the milter macro
+.Ql j
+.Pf ( Xr postfix 1 Ns
+-expanded to
+.Ql $myhostname )
+are removed, otherwise the given domains in order (without dictionary).
+Domain names match exactly unless starting with a period
+.Ql \&.
+to enforce wildcard matches for it and its subdomains; only period is a
+.Dq super-wildcard
+that matches all domains.
 .
 .Mx Fl resource-file
 .It Fl Fl resource-file Ar path , Fl R Ns ..
@@ -427,7 +453,8 @@ milter-\e
 .
 .
 .Mx Fl sign
-.It Fl Fl sign Ar spec Ns Oo , Ns Ar domain Ns Oo , Ns Ar selector.. Oc Oc , Fl S Ns ..
+.It Fl Fl sign Ar spec Ns Oo , Ns Ar domain Ns Oo , Ns Ar selector.. Oc Oc , \
+  Fl S Ns ..
 Establish a relation in between
 .Ar spec
 and none to maximally five
@@ -466,20 +493,19 @@ It can be a mail address like
 .Ql local-part@dom.ain ,
 or only a domain without
 .Ql local-part@ ;
-a leading
+domains with a leading
 .Ql \&.
 period, as in
 .Ql .dom.ain ,
-will match all subdomains, for example
+match all subdomains, for example
 .Ql a.b.c.dom.ain ,
 or
-.Ql joe@.ain
-and
 .Ql joe@c.dom.ain .
 Only a period is a
 .Dq super-wildcard
 that matches all domains, for example
-.Ql joe@. .
+.Ql jack@.
+will match all jack's.
 .
 .Pp
 .Sy Remarks:

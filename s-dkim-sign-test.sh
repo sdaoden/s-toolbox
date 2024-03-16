@@ -397,6 +397,14 @@ eX 7.10
 ${PD} -# --milter-macro sign,,oha > t7.11 2>ERR
 y $? 7.11
 eX 7.11
+
+${PD} -# --milter-macro sign > t7.12 2>ERR
+y $? 7.12
+eX 7.12
+
+${PD} -# --milter-macro sign,,,, > t7.13 2>ERR
+y $? 7.13
+eX 7.13
 # }}}
 
 # 8.* --sign {{{
@@ -623,6 +631,32 @@ ${PD} -# --ttl 29 > t10.8 2>&1
 y $? 10.8
 ${PD} -# --ttl $((60*60*24*1000 + 1)) > t10.9 2>&1
 y $? 10.9
+# }}}
+
+# 11.* --remove {{{
+${PD} -# --remove a-r > t11.1 2>ERR
+x $? 11.1
+e0 11.1
+${PD} -# -r'   a-r , ,,, ,, , ,     ' > t11.2 2>ERR
+x $? 11.2
+e0 11.2
+cmp 11.3 t11.1 t11.2
+
+${PD} -# --remove a-r,.de > t11.4 2>ERR
+x $? 11.4
+e0 11.4
+echo 'remove a-r, .de' > t11.5
+cmp 11.5 t11.4 t11.5
+
+${PD} -# --remove a-r,,,.com,,,.de,,. > t11.6 2>ERR
+x $? 11.6
+e0 11.6
+echo 'remove a-r, .com, .de, .' > t11.7
+cmp 11.7 t11.7 t11.7
+
+${PD} -# --remove '' > t11.8 2>ERR
+y $? 11.8
+eX 11.8
 # }}}
 
 # 100* --resource-file (yet; except recursion, and overwriting) {{{
