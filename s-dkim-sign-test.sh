@@ -963,7 +963,7 @@ _EOT
 	dd bs=1 skip=63719 < t300.in 2>/dev/null
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
-} | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t300 2>ERR
+} | ${PD} -R x.rc --sign 'y   ,auA.DE' > t300 2>ERR
 x $? 300
 e0sumem 300
 printf \

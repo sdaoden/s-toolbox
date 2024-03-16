@@ -856,6 +856,7 @@ struct a_sign{ /* Stored in dictionary */
 	union{char *name; struct a_key *key;} s_sel[a_SIGN_MAX_SELECTORS]; /* key only after conf_finish() */
 	u32 s_spec_dom_off; /* */
 	boole s_wildcard;
+	boole s_anykey; /* Has any keys */
 	char s_dom[VFIELD_SIZE(3)]; /* d= value if given (else From:'s address domain) */
 };
 
@@ -2002,8 +2003,9 @@ a_dkim_setup(struct a_dkim *dkp, boole post_eoh, struct a_pd *pdp, struct su_mem
 				for(sp = dkp->d_sign, i = 0;;){
 					if(sp->s_sel[i].key == NIL){
 						if(i == 0){
-							DBG(su_log_write(su_LOG_DEBUG,
-								"--sign without selectors, using all keys"));
+							if(UNLIKELY(dkp->d_pdp->pd_flags & a_F_DBG_VV))
+								su_log_write(su_LOG_DEBUG,
+									"--sign without selectors, using all keys");
 							break;
 						}
 						goto jnext_md;
@@ -2026,9 +2028,9 @@ a_dkim_setup(struct a_dkim *dkp, boole post_eoh, struct a_pd *pdp, struct su_mem
 				goto jbail;
 
 			if(!EVP_DigestInit_ex(mdcp->mdc_md_ctx, mdp->md_md, NIL)){
+jbail:
 				su_log_write(su_LOG_CRIT, _("Cannot EVP_DigestInit_ex(3) message-digest %s: %s\n"),
 					mdp->md_algo, ERR_error_string(ERR_get_error(), NIL));
-jbail:
 				a_dkim_cleanup(dkp);
 				rv = FAL0;
 				break;
@@ -2331,7 +2333,7 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 		struct a_dkim_res *dkrp;
 
 		/* Key might be --sign constrained though */
-		if(dkp->d_sign != NIL){
+		if(dkp->d_sign != NIL && dkp->d_sign->s_anykey){
 			uz i;
 			struct a_sign *sp;
 
@@ -2545,6 +2547,9 @@ jesifi:
 		su_mem_copy(&su_cs_pcopy(dkrp->dr_dat, "DKIM-Signature")[1], dkim_res_start, i);
 		dkrp->dr_dat[dkrp->dr_len] = '\0';
 
+		if(dkp->d_pdp->pd_flags & a_F_DBG_VV)
+			su_log_write(su_LOG_DEBUG, "created signature for %s-%s(=%s=%s)\n",
+				kp->k_algo, kp->k_md->md_algo, kp->k_sel, kp->k_file);
 jnext_key:;
 	}
 
@@ -2809,6 +2814,9 @@ a_conf_finish(struct a_pd *pdp){ /* {{{ */
 
 		sp = su_cs_dict_view_data(&dv);
 
+		if(!sp->s_anykey)
+			continue;
+
 		for(i = 0; i < a_SIGN_MAX_SELECTORS; ++i){
 			struct a_key *kp;
 			char const *sel;
@@ -3045,6 +3053,7 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 				j += fprintf(stdout, "%.*s@%s%s", S(int,sp->s_spec_dom_off - 1), spec,
 						(sp->s_wildcard ? "." : su_empty), &spec[sp->s_spec_dom_off]);
 
+/* TODO do not print anything without domain */
 			putc(',', stdout);
 			++j;
 			if(*sp->s_dom != '\0'){
@@ -3053,6 +3062,7 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 				j += su_cs_len(sp->s_dom);
 			}
 
+/* TODO do not print anything without s_anykey */
 			putc(',', stdout);
 			++j;
 			for(i = 0; i < a_SIGN_MAX_SELECTORS; ++i){
@@ -4039,9 +4049,9 @@ jerr:
 				sp->s_sel[i - 1].name = snp;
 				snp = xxarg;
 			}
+			sp->s_anykey = (i > 1);
 			while(i <= a_SIGN_MAX_SELECTORS)
 				sp->s_sel[i++ - 1].name = NIL;
-
 			sp->s_spec_dom_off = dom_off;
 			sp->s_wildcard = wildcard;
 			su_cs_dict_insert(&pdp->pd_sign, spec, sp);
