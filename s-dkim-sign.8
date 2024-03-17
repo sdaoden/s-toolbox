@@ -1,4 +1,4 @@
-.\"@ s-dkim-sign - [postfix-only] RFC 6376//8463 DKIM-sign-only milter.
+.\"@ s-dkim-sign - [postfix-only] RFC 6376/8463 DKIM-sign-only milter.
 .\"
 .\" Copyright (c) 2024 Steffen Nurpmeso <steffen@sdaoden.eu>.
 .\" SPDX-License-Identifier: ISC
@@ -75,8 +75,7 @@ timeouts and stale server garbage collection etc.;
 efficient operation requires postfix versions which support the
 milter operation
 .Ql SMFIC_QUIT_NC
-(not yet as of version 3.9), elder versions will start a new
-.Xr s-dkim-sign 8
+(not yet as of version 3.9), elder versions will start a new program
 instance for every SMTP or local connection.
 .
 .Pp
@@ -125,7 +124,9 @@ headers of messages seen by the milter.
 Receivers will search for the public key DNS record of either the domain
 defined by the matching
 .Fl Fl sign
-relation, or otherwise that of the extracted address.
+relation, the specified
+.Fl Fl domain-name ,
+or otherwise that of the extracted address.
 .
 .Pp
 In the following example all messages from
@@ -271,6 +272,30 @@ applies to all entries.
 Dry-run sandbox: no real action is performed, but only logged.
 All messages remain umodified.
 .
+.Mx Fl domain-name
+.It Fl Fl domain-name Ar domain , Fl d Ns ..
+Define the
+.Ql d=
+domain name to be used in signatures unless overwritten by a
+.Fl Fl sign
+relation.
+If unused, and without relation, the domain name of (the first address of)
+.Ql From
+will be announced in signatures.
+.Ar domain
+can start with RFC 20 ASCII letters and digits, followed by also
+.Ql \&.
+period and
+.Ql -
+hyphen-minus; lengths are not tested.
+The DKIM standard requires a real
+.Ar domain
+name, literal( addresse)s are not allowed.
+Receivers will try to locate the public key(s) identified by the chosen
+.Fl Fl key Ns
+s selectors as DNS TXT records  in the form
+.Ql Ar selector Ns ._domainkey. Ns Ar domain .
+.
 .Mx Fl header-sign
 .It Fl Fl header-sign Ar list , Fl ~ Ns ..
 Define (comma-separated)
@@ -322,16 +347,10 @@ will catch this.
 In order not to break mailing-list posts (handled by software which does
 not recognize message signatures) the built-in defaults exclude
 .Ql Reply-To
-and all the mailing-list related fields of RFC 2369, namely
-.Ql List-Help ,
-.Ql List-\:Subscribe ,
-.Ql List-\:Unsubscribe ,
-.Ql List-Post ,
-.Ql List-Owner
-and
-.Ql List-Archive ,
-as well as
-.Ql List-ID .
+and all the mailing-list related fields of RFC 2369.
+In order to ease DKIM signing for mailing-lists as such sealing provides
+another built-in default, addressable via plus sign
+.Ql + .
 .
 .Mx Fl header-seal-show
 .It Fl Fl header-seal-show
@@ -359,25 +378,21 @@ Dependent on the used crypto library
 .Cm rsa-\:sha256 ,
 and
 .Cm rsa-sha1
-(this was obsoleted by RFC 8301 and will cause a warning)
-can be supported; the output of
+(obsoleted by RFC 8301, causes a warning) can be supported; the output of
 .Fl Fl long-help
 shows what is built-in.
 The second field specifies the (DNS)
 .Ar selector
 of the public key (please see
 .Fl Fl sign ) ;
-it must obey domain name syntax, and can thus start with
-RFC 20 ASCII letters and digits, followed by also
-.Ql \&.
-period and
-.Ql -
-hyphen-minus; no length test is applied.
+it must obey
+.Fl Fl domain-name
+syntax.
 The third field is the
 .Ar path
 to the private key file in PEM format.
-With multiple and mixed RSA/Ed25519 keys placing the RSA one(s) first
-may improve interoperability.
+(In 2024, with multiple and mixed RSA/Ed25519 keys, placing the RSA
+one(s) first may improve interoperability,)
 .
 .Mx Fl long-help
 .It Fl Fl long-help , H
@@ -423,7 +438,7 @@ s headers matching the milter macro
 .Pf ( Xr postfix 1 Ns
 -expanded to
 .Ql $myhostname )
-are removed, otherwise the given domains in order (without dictionary).
+are removed, otherwise the given domains in order.
 Domain names match exactly unless starting with a period
 .Ql \&.
 to enforce wildcard matches for it and its subdomains; only period is a
@@ -469,20 +484,10 @@ If any sign relation is established only those messages which match
 a relation will be signed.
 .Ar selector
 order does not matter.
-.
-.Pp
-Receivers will try to locate the public key(s) identified by the chosen
-.Fl Fl key Ns
-s selectors as DNS TXT records for the given
+A given
 .Ar domain
-(in the form
-.Ql Ar selector Ns ._domainkey. Ns Ar domain ) .
-Without domain or sign relations the domain of the (first)
-.Ql From
-header field address is used.
-The DKIM standard requires a real
-.Ar domain
-name, literal( addresse)s are not allowed.
+overrides
+.Fl Fl domain-name .
 .
 .Pp
 .Ar spec

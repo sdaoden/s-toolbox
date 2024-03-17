@@ -161,7 +161,7 @@ $(VAL_NAME): $(SULIB_BLD) $(MYNAME).c
 		-DVAL_SERVER_TIMEOUT=$(VAL_SERVER_TIMEOUT) \
 		\
 		\
-		-DVAL_NAME_IS_MYNAME=$$([ "$(VAL_NAME)" != "$(MYNAME)" ] && echo 1 || echo 0) \
+		-DVAL_NAME_IS_MYNAME=$$([ "$(VAL_NAME)" = "$(MYNAME)" ] && echo 1 || echo 0) \
 		-DMYNAME="\\\"$(MYNAME)\\\"" \
 		\
 		\

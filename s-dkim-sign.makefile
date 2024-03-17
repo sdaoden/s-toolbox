@@ -90,7 +90,7 @@ $(VAL_NAME): $(SULIB_BLD) $(MYNAME).c
 		-DVAL_NAME="\\\"$(VAL_NAME)\\\"" \
 		\
 		\
-		-DVAL_NAME_IS_MYNAME=$$([ "$(VAL_NAME)" != "$(MYNAME)" ] && echo 1 || echo 0) \
+		-DVAL_NAME_IS_MYNAME=$$([ "$(VAL_NAME)" = "$(MYNAME)" ] && echo 1 || echo 0) \
 		-DMYNAME="\\\"$(MYNAME)\\\"" \
 		\
 		\

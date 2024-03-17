@@ -182,7 +182,11 @@ t1() {
 	e0 ERR
 
 	allinc=
-	[ "$3" = seal ] && [ "$2" = '*' ] && allinc='-~'"$2"
+	if [ "$3" = seal ]; then
+		if [ "$2" = '*' ] || [ "$2" = '+' ]; then
+			allinc='-~*'
+		fi
+	fi
 
 	${PD} --test-mode $allinc --header-${3}="$2" > t1.$1.2 2>ERR
 	x $? 1.$1.2
@@ -204,14 +208,14 @@ t1() {
 	echo $hl boah > t1.$1.6
 	x $? 1.$1.6
 
-	x=
 	if [ "$3" = seal ]; then
-		x='-~'"${2}boah"
+		[ -z "$allinc" ] && allinc='-~*'
+		allinc=${allinc}boah
 		${PD} -# --header-$3 "$2"'!dATe,   !cC        ,   !suBJect , bOah ' > t1.$1.7-fail 2>ERR
 		y $? 1.$1.7-fail
 	fi
 
-	${PD} -# $x --header-$3 "$2"'!DatE,   !Cc        ,   !sUbjECt , boAh ' > t1.$1.7 2>ERR
+	${PD} -# $allinc --header-$3 "$2"'!DatE,   !Cc        ,   !sUbjECt , boAh ' > t1.$1.7 2>ERR
 	x $? 1.$1.7
 	e0 1.$1.7
 
@@ -239,6 +243,7 @@ t1 1 '@' sign 1
 t1 2 '*' sign 2
 t1 3 '@' seal 1
 t1 4 '*' seal 2
+t1 5 '+' seal 3
 
 # seal-must-be-included-in-sign
 ${PD} -# --header-sign=@ --header-seal=* > t1.5 2>&1
@@ -253,6 +258,10 @@ ${PD} -# --header-sign=* --header-seal=*,au > t1.9 2>&1
 y $? 1.9
 ${PD} -# --header-sign=*,au --header-seal=*,au > t1.10 2>&1
 x $? 1.10
+${PD} -# --header-sign=@ --header-seal=+ > t1.11 2>&1
+y $? 1.11
+${PD} -# --header-sign=* --header-seal=+ > t1.12 2>&1
+x $? 1.12
 # }}}
 
 # 3.* --key {{{
@@ -405,6 +414,23 @@ eX 7.12
 ${PD} -# --milter-macro sign,,,, > t7.13 2>ERR
 y $? 7.13
 eX 7.13
+# }}}
+
+# 5.* --domain-name {{{
+${PD} -# --domain-name my.dom.ain > t5.1 2>&1
+x $? 5.1
+${PD} -# -d my.dom.ain > t5.2 2>&1
+x $? 5.2
+cmp 5.3 t5.1 t5.2
+echo 'domain-name my.dom.ain' > t5.4
+cmp 5.4 t5.2 t5.4
+
+${PD} -# --domain-name .mydom > t5.5 2>&1
+y $? 5.5
+${PD} -# --domain-name -mydom > t5.6 2>&1
+y $? 5.6
+${PD} -# --domain-name 1.dom > t5.7 2>&1
+x $? 5.7
 # }}}
 
 # 8.* --sign {{{
@@ -1013,6 +1039,37 @@ printf \
 '  jwIMoRJjEDytj177XAEFpAg==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t403
 cmp 403 t402 t403
+
+{
+	printf '\0\0\0\014LFrom\0X@Y.Z\0'
+	printf '\0\0\0\013LSubject\0s\0'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} $k -!from -d z.y > t404 2>ERR
+x $? 404
+e0sumem 404
+printf \
+'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=z.y; s=I;\r\n'\
+' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\r\n'\
+'  3hSuFU=; b=rjeI6gV+4JnSbi1JlaAsUkwbuCUo5E5w0QcdYPsLfrSRQnQDV+dBk4xrMopE1WP\r\n'\
+'  G+uw7IEl8XEobd0Va3UAiAg==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t405
+cmp 405 t404 t405
+
+{
+	printf '\0\0\0\014LFrom\0X@Y.Z\0'
+	printf '\0\0\0\013LSubject\0s\0'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} $k -!from -d not.me -S.,z.y > t406 2>ERR
+x $? 406
+e0sumem 406
+{
+	echo SMFIC_HEADER SMFIR_CONTINUE
+	echo SMFIC_HEADER SMFIR_CONTINUE
+	cat t404
+} > t407
+cmp 407 t406 t407
 
 #.........
 

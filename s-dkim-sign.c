@@ -115,115 +115,115 @@
 /* $Id: milter-protocol.txt,v 1.6 2004/08/04 16:27:50 tvierling Exp $
  * _______________________________________
  * THE SENDMAIL MILTER PROTOCOL, VERSION 2
- * 
+ *
  * **
- * 
+ *
  * The Sendmail and "libmilter" implementations of the protocol described
  * herein are:
- * 
+ *
  *     Copyright (c) 1999-2002 Sendmail, Inc. and its suppliers.
  *     All rights reserved.
- * 
+ *
  * This document is:
- * 
+ *
  *     Copyright (c) 2002-2003, Todd Vierling <tv@pobox.com> <tv@duh.org>
  *     All rights reserved.
- * 
+ *
  * Permission is granted to copy or reproduce this document in its entirety
  * in any medium without charge, provided that the copy or reproduction is
  * without modification and includes the above copyright notice(s).
- * 
+ *
  * ________
  * OVERVIEW
- * 
+ *
  * The date of this document is contained within the "Id" symbolic CVS/RCS
  * tag present at the top of this document.
- * 
+ *
  * This document describes the Sendmail "milter" mail filtering and
  * MTA-level mail manipulation protocol, version 2, based on the publicly
  * available C-language source code to Sendmail, version 8.11.6.
- * 
+ *
  * As of this writing, this protocol document is based on the
  * implementation of milter in Sendmail 8.11, but has been verified
  * compatible with Sendmail 8.12.  Some Sendmail 8.12 extensions,
  * determined by flags sent with the SMFIC_OPTNEG command, are not yet
  * described here.
- * 
+ *
  * Technical terms describing mail transport are used throughout.  A reader
  * should have ample understanding of RFCs 821, 822, 2821, and their
  * successors, and (for Sendmail MTAs) a cursory understanding of Sendmail
  * configuration procedures.
- * 
+ *
  * ______
  * LEGEND
- * 
- * All integers are assumed to be in network (big-endian) byte order.  
+ *
+ * All integers are assumed to be in network (big-endian) byte order.
  * Data items are aligned to a byte boundary, and are not forced to any
  * larger alignment.
- * 
+ *
  * This document makes use of a mnemonic representation of data structures
  * as transmitted over a communications endpoint to and from a milter
  * program.  A structure may be represented like the following:
- * 
+ *
  * 'W'	SMFIC_HWORLD	Hello world packet
  * uint16	len		Length of string
  * char	str[len]	Text value
- * 
+ *
  * This structure contains a single byte with the ASCII representation 'W',
  * a 16-bit network byte order integer, and a character array with the
  * length given by the "len" integer.  Character arrays described in this
  * fashion are an exact number of bytes, and are not assumed to be NUL
  * terminated.
- * 
+ *
  * A special data type representation is used here to indicate strings and
  * arrays of strings using C-language semantics of NUL termination.
- * 
+ *
  * char	str[]		String, NUL terminated
  * char	array[][]	Array of strings, NUL terminated
- * 
+ *
  * Here, "str" is a NUL-terminated string, and subsequent data items are
  * assumed to be located immediately following the NUL byte.  "array" is a
  * stream of NUL-terminated strings, located immediately following each
  * other in the stream, leading up to the end of the data structure
  * (determined by the data packet's size).
- * 
+ *
  * ____________________
  * LINK/PACKET PROTOCOL
- * 
+ *
  * The MTA makes a connection to a milter by connecting to an IPC endpoint
  * (socket), via a stream-based protocol.  TCPv4, TCPv6, and "Unix
- * filesystem" sockets can be used for connection to a milter.  
+ * filesystem" sockets can be used for connection to a milter.
  * (Configuration of Sendmail to make use of these different endpoint
  * addressing methods is not described here.)
- * 
+ *
  * Data is transmitted in both directions using a structured packet
  * protocol.  Each packets is comprised of:
- * 
+ *
  * uint32	len		Size of data to follow
  * char	cmd		Command/response code
  * char	data[len-1]	Code-specific data (may be empty)
- * 
+ *
  * The connection can be closed at any time by either side.  If closed by
  * the MTA, the milter program should release all state information for the
  * previously established connection.  If closed by the milter program
  * without first sending an accept or reject action message, the MTA will
  * take the default action for any message in progress (configurable to
  * ignore the milter program, or reject with a 4xx or 5xx error).
- * 
+ *
  * _____________________________
  * A TYPICAL MILTER CONVERSATION
- * 
+ *
  * The MTA drives the milter conversation.  The milter program sends
  * responses when (and only when) specified by the particular command code
  * sent by the MTA.  It is an error for a milter either to send a response
  * packet when not requested, or fail to send a response packet when
  * requested.  The MTA may have limits on the time allowed for a response
  * packet to be sent.
- * 
+ *
  * The typical lifetime of a milter connection can be viewed as follows:
- * 
+ *
  * MTA			Milter
- * 
+ *
  * SMFIC_OPTNEG
  * 			SMFIC_OPTNEG
  * SMFIC_MACRO:'C'
@@ -248,37 +248,37 @@
  * SMFIC_BODYEOB
  * 			Modification action (multiple, may be none)
  * 			Accept/reject action
- * 
+ *
  * 			(Reset state to before SMFIC_MAIL and continue,
  * 			 unless connection is dropped by MTA)
- * 
+ *
  * Several of these MTA/milter steps can be skipped if requested by the
  * SMFIC_OPTNEG response packet; see below.
- * 
+ *
  * ____________________
  * PROTOCOL NEGOTIATION
- * 
+ *
  * Milters can perform several actions on a SMTP transaction.  The following is
  * a bitmask of possible actions, which may be set by the milter in the
  * "actions" field of the SMFIC_OPTNEG response packet.  (Any action which MAY
  * be performed by the milter MUST be included in this field.)
- * 
+ *
  * 0x01	SMFIF_ADDHDRS		Add headers (SMFIR_ADDHEADER)
  * 0x02	SMFIF_CHGBODY		Change body chunks (SMFIR_REPLBODY)
  * 0x04	SMFIF_ADDRCPT		Add recipients (SMFIR_ADDRCPT)
  * 0x08	SMFIF_DELRCPT		Remove recipients (SMFIR_DELRCPT)
  * 0x10	SMFIF_CHGHDRS		Change or delete headers (SMFIR_CHGHEADER)
  * 0x20	SMFIF_QUARANTINE	Quarantine message (SMFIR_QUARANTINE)
- * 
+ *
  * (XXX: SMFIF_DELRCPT has an impact on how address rewriting affects
  * addresses sent in the SMFIC_RCPT phase.  This will be described in a
  * future revision of this document.)
- * 
+ *
  * Protocol content can contain only selected parts of the SMTP
  * transaction.  To mask out unwanted parts (saving on "over-the-wire" data
  * churn), the following can be set in the "protocol" field of the
  * SMFIC_OPTNEG response packet.
- * 
+ *
  * 0x01	SMFIP_NOCONNECT		Skip SMFIC_CONNECT
  * 0x02	SMFIP_NOHELO		Skip SMFIC_HELO
  * 0x04	SMFIP_NOMAIL		Skip SMFIC_MAIL
@@ -286,302 +286,302 @@
  * 0x10	SMFIP_NOBODY		Skip SMFIC_BODY
  * 0x20	SMFIP_NOHDRS		Skip SMFIC_HEADER
  * 0x40	SMFIP_NOEOH		Skip SMFIC_EOH
- * 
+ *
  * For backwards-compatible milters, the milter should pay attention to the
  * "actions" and "protocol" fields of the SMFIC_OPTNEG packet, and mask out
  * any bits that are not part of the offered protocol content.  The MTA may
  * reject the milter program if any action or protocol bit appears outside
  * the MTA's offered bitmask.
- * 
+ *
  * _____________
  * COMMAND CODES
- * 
+ *
  * The following are commands transmitted from the MTA to the milter
  * program.  The data structures represented occupy the "cmd" and "data"
  * fields of the packets described above in LINK/PACKET PROTOCOL.  (In
  * other words, the data structures below take up exactly "len" bytes,
  * including the "cmd" byte.)
- * 
+ *
  * **
- * 
+ *
  * 'A'	SMFIC_ABORT	Abort current filter checks
  * 			Expected response:  NONE
- * 
+ *
  * (Resets internal state of milter program to before SMFIC_HELO, but keeps
  * the connection open.)
- * 
+ *
  * **
- * 
+ *
  * 'B'	SMFIC_BODY	Body chunk
  * 			Expected response:  Accept/reject action
- * 
+ *
  * char	buf[]		Up to MILTER_CHUNK_SIZE (65535) bytes
- * 
+ *
  * The buffer is not NUL-terminated.
- * 
+ *
  * The body SHOULD be encoded with CRLF line endings, as if it was being
  * transmitted over SMTP. In practice existing MTAs and milter clients
  * will probably accept bare LFs, although at least some will convert CRLF
  * sequences to LFs.
- * 
+ *
  * (These body chunks can be buffered by the milter for later replacement
  * via SMFIR_REPLBODY during the SMFIC_BODYEOB phase.)
- * 
+ *
  * **
- * 
+ *
  * 'C'	SMFIC_CONNECT	SMTP connection information
  * 			Expected response:  Accept/reject action
- * 
+ *
  * char	hostname[]	Hostname, NUL terminated
  * char	family		Protocol family (see below)
  * uint16	port		Port number (SMFIA_INET or SMFIA_INET6 only)
  * char	address[]	IP address (ASCII) or unix socket path, NUL terminated
- * 
+ *
  * (Sendmail invoked via the command line or via "-bs" will report the
  * connection as the "Unknown" protocol family.)
- * 
+ *
  * Protocol families used with SMFIC_CONNECT in the "family" field:
- * 
+ *
  * 'U'	SMFIA_UNKNOWN	Unknown (NOTE: Omits "port" and "host" fields entirely)
  * 'L'	SMFIA_UNIX	Unix (AF_UNIX/AF_LOCAL) socket ("port" is 0)
  * '4'	SMFIA_INET	TCPv4 connection
  * '6'	SMFIA_INET6	TCPv6 connection
- * 
+ *
  * **
- * 
+ *
  * 'D'	SMFIC_MACRO	Define macros
  * 			Expected response:  NONE
- * 
+ *
  * char	cmdcode		Command for which these macros apply
  * char	nameval[][]	Array of NUL-terminated strings, alternating
  * 			between name of macro and value of macro.
- * 
+ *
  * SMFIC_MACRO appears as a packet just before the corresponding "cmdcode"
  * (here), which is the same identifier as the following command.  The
  * names correspond to Sendmail macros, omitting the "$" identifier
  * character.
- * 
+ *
  * Types of macros, and some commonly supplied macro names, used with
- * SMFIC_MACRO are as follows, organized by "cmdcode" value.  
+ * SMFIC_MACRO are as follows, organized by "cmdcode" value.
  * Implementations SHOULD NOT assume that any of these macros will be
  * present on a given connection.  In particular, communications protocol
  * information may not be present on the "Unknown" protocol type.
- * 
+ *
  * 'C'	SMFIC_CONNECT	$_ $j ${daemon_name} ${if_name} ${if_addr}
- * 
+ *
  * 'H'	SMFIC_HELO	${tls_version} ${cipher} ${cipher_bits}
  * 			${cert_subject} ${cert_issuer}
- * 
+ *
  * 'M'	SMFIC_MAIL	$i ${auth_type} ${auth_authen} ${auth_ssf}
  * 			${auth_author} ${mail_mailer} ${mail_host}
  * 			${mail_addr}
- * 
+ *
  * 'R'	SMFIC_RCPT	${rcpt_mailer} ${rcpt_host} ${rcpt_addr}
- * 
+ *
  * For future compatibility, implementations MUST allow SMFIC_MACRO at any
  * time, but the handling of unspecified command codes, or SMFIC_MACRO not
  * appearing before its specified command, is currently undefined.
- * 
+ *
  * **
- * 
+ *
  * 'E'	SMFIC_BODYEOB	End of body marker
  * 			Expected response:  Zero or more modification
  * 			actions, then accept/reject action
- * 
+ *
  * **
- * 
+ *
  * 'H'	SMFIC_HELO	HELO/EHLO name
  * 			Expected response:  Accept/reject action
- * 
+ *
  * char	helo[]		HELO string, NUL terminated
- * 
+ *
  * **
- * 
+ *
  * 'L'	SMFIC_HEADER	Mail header
  * 			Expected response:  Accept/reject action
- * 
+ *
  * char	name[]		Name of header, NUL terminated
  * char	value[]		Value of header, NUL terminated
- * 
+ *
  * **
- * 
+ *
  * 'M'	SMFIC_MAIL	MAIL FROM: information
  * 			Expected response:  Accept/reject action
- * 
+ *
  * char	args[][]	Array of strings, NUL terminated (address at index 0).
  * 			args[0] is sender, with <> qualification.
  * 			args[1] and beyond are ESMTP arguments, if any.
- * 
+ *
  * **
- * 
+ *
  * 'N'	SMFIC_EOH	End of headers marker
  * 			Expected response:  Accept/reject action
- * 
+ *
  * **
- * 
+ *
  * 'O'	SMFIC_OPTNEG	Option negotiation
  * 			Expected response:  SMFIC_OPTNEG packet
- * 
+ *
  * uint32	version		SMFI_VERSION (2)
  * uint32	actions		Bitmask of allowed actions from SMFIF_*
  * uint32	protocol	Bitmask of possible protocol content from SMFIP_*
- * 
+ *
  * **
- * 
+ *
  * 'R'	SMFIC_RCPT	RCPT TO: information
  * 			Expected response:  Accept/reject action
- * 
+ *
  * char	args[][]	Array of strings, NUL terminated (address at index 0).
  * 			args[0] is recipient, with <> qualification.
  * 			args[1] and beyond are ESMTP arguments, if any.
- * 
+ *
  * **
- * 
+ *
  * 'Q'	SMFIC_QUIT	Quit milter communication
  * 			Expected response:  Close milter connection
- * 
+ *
  * ______________
  * RESPONSE CODES
- * 
+ *
  * The following are commands transmitted from the milter program to the
  * MTA, in response to the appropriate type of command packet.  The data
  * structures represented occupy the "cmd" and "data" fields of the packets
  * described above in LINK/PACKET PROTOCOL.  (In other words, the data
  * structures below take up exactly "len" bytes, including the "cmd" byte.)
- * 
+ *
  * **
- * 
+ *
  * Response codes:
- * 
+ *
  * '+'	SMFIR_ADDRCPT	Add recipient (modification action)
- * 
+ *
  * char	rcpt[]		New recipient, NUL terminated
- * 
+ *
  * **
- * 
+ *
  * '-'	SMFIR_DELRCPT	Remove recipient (modification action)
- * 
+ *
  * char	rcpt[]		Recipient to remove, NUL terminated
  * 			(string must match the one in SMFIC_RCPT exactly)
- * 
+ *
  * **
- * 
+ *
  * 'a'	SMFIR_ACCEPT	Accept message completely (accept/reject action)
- * 
+ *
  * (This will skip to the end of the milter sequence, and recycle back to
  * the state before SMFIC_MAIL.  The MTA may, instead, close the connection
  * at that point.)
- * 
+ *
  * **
- * 
+ *
  * 'b'	SMFIR_REPLBODY	Replace body (modification action)
- * 
+ *
  * char	buf[]		A portion of the body to be replaced
- * 
+ *
  * The buffer is not NUL-terminated.
- * 
+ *
  * As with SMFIC_BODY, the body SHOULD be encoded with CRLF line endings.
  * Sendmail will convert CRLFs to bare LFs as it receives SMFIR_REPLBODY
  * responses (even if the CR and LF are split across two responses); the
  * behavior of other MTAs has not been investigated.
- * 
+ *
  * A milter that uses SMFIR_REPLBODY must replace the entire body, but
  * it may split the new replacement body across multiple SMFIR_REPLBODY
  * responses and it may make each response as small as it wants (and
  * they do not need to correspond one to one with SMFIC_BODY messages).
  * There is no explicit end of body marker; this role is filled by
  * whatever accept/reject response the milter finishes with.
- * 
+ *
  * **
- * 
+ *
  * 'c'	SMFIR_CONTINUE	Accept and keep processing (accept/reject action)
- * 
+ *
  * (If issued at the end of the milter conversation, functions the same as
  * SMFIR_ACCEPT.)
- * 
+ *
  * **
- * 
+ *
  * 'd'	SMFIR_DISCARD	Set discard flag for entire message (accept/reject action)
- * 
+ *
  * (Note that message processing MAY continue afterwards, but the mail will
  * not be delivered even if accepted with SMFIR_ACCEPT.)
- * 
+ *
  * **
- * 
+ *
  * 'h'	SMFIR_ADDHEADER	Add header (modification action)
- * 
+ *
  * char	name[]		Name of header, NUL terminated
  * char	value[]		Value of header, NUL terminated
- * 
+ *
  * **
- * 
+ *
  * 'm'	SMFIR_CHGHEADER	Change header (modification action)
- * 
+ *
  * uint32	index		Index of the occurrence of this header
  * char	name[]		Name of header, NUL terminated
  * char	value[]		Value of header, NUL terminated
- * 
+ *
  * (Note that the "index" above is per-name--i.e. a 3 in this field
  * indicates that the modification is to be applied to the third such
  * header matching the supplied "name" field.  A zero length string for
  * "value", leaving only a single NUL byte, indicates that the header
  * should be deleted entirely.)
- * 
+ *
  * **
- * 
+ *
  * 'p'	SMFIR_PROGRESS	Progress (asynchronous action)
- * 
+ *
  * This is an asynchronous response which is sent to the MTA to reset the
  * communications timer during long operations.  The MTA should consume
  * as many of these responses as are sent, waiting for the real response
  * for the issued command.
- * 
+ *
  * **
- * 
+ *
  * 'q'	SMFIR_QUARANTINE Quarantine message (modification action)
  * char	reason[]	Reason for quarantine, NUL terminated
- * 
- * This quarantines the message into a holding pool defined by the MTA. 
- * (First implemented in Sendmail in version 8.13; offered to the milter by 
+ *
+ * This quarantines the message into a holding pool defined by the MTA.
+ * (First implemented in Sendmail in version 8.13; offered to the milter by
  * the SMFIF_QUARANTINE flag in "actions" of SMFIC_OPTNEG.)
- * 
+ *
  * **
- * 
+ *
  * 'r'	SMFIR_REJECT	Reject command/recipient with a 5xx (accept/reject action)
- * 
+ *
  * **
- * 
+ *
  * 't'	SMFIR_TEMPFAIL	Reject command/recipient with a 4xx (accept/reject action)
- * 
+ *
  * **
- * 
+ *
  * 'y'	SMFIR_REPLYCODE	Send specific Nxx reply message (accept/reject action)
- * 
+ *
  * char	smtpcode[3]	Nxx code (ASCII), not NUL terminated
  * char	space		' '
  * char	text[]		Text of reply message, NUL terminated
- * 
+ *
  * ('%' characters present in "text" must be doubled to prevent problems
  * with printf-style formatting that may be used by the MTA.)
- * 
+ *
  * **
- * 
+ *
  * 'O'	SMFIC_OPTNEG	Option negotiation (in response to SMFIC_OPTNEG)
- * 
+ *
  * uint32	version		SMFI_VERSION (2)
  * uint32	actions		Bitmask of requested actions from SMFIF_*
  * uint32	protocol	Bitmask of undesired protocol content from SMFIP_*
- * 
+ *
  * _______
  * CREDITS
- * 
+ *
  * Sendmail, Inc. - for the Sendmail program itself
- * 
+ *
  * The anti-spam community - for making e-mail a usable medium again
- * 
+ *
  * The spam community - for convincing me that it's time to really do
  * somthing to quell the inflow of their crap
- * 
+ *
  * ___
  * EOF */
 /* }}} */
@@ -890,6 +890,7 @@ struct a_pd{
 	char **pd_argv;
 	s64 pd_source_date_epoch;
 	/* Configuration */
+	char *pd_domain_name; /* --domain-name */
 	char *pd_header_sign; /* --header-sign: NIL: a_HEADER_SIGN */
 	char *pd_header_seal; /* --header-seal: NIL: none */
 	char *pd_mima_sign; /* name\0[:val\0:]\0 */
@@ -898,7 +899,7 @@ struct a_pd{
 	struct a_key *pd_keys; /* --key */
 	struct a_md *pd_mds; /* MDs needed (may be able to share MDs in between keys) */
 	u32 pd_dkim_sig_ttl; /* --ttl */
-	u32 pd_sign_longest_domain; /* (With --sign: longest domain seen, for buffer alloc purposes) */
+	u32 pd_sign_longest_domain; /* Longest (--sign) --domain-name, for buffer alloc purposes */
 	struct a_srch *pd_cli_ip; /* --client CIDR list */
 	struct a_srch **pd_cli_ip_tail;
 	struct su_cs_dict pd_cli; /* --client; IPs end with ACK U+0006 +NUL so names and IPs have diff namespace */
@@ -926,67 +927,57 @@ CTAV(FIELD_SIZEOF(struct a_md,md_algo) >= sizeof("sha256"));
 
 /* RFC 6376, 5.4.1; extension: author (RFC 9057); remains are senseless.
  * (We need to go a bit 'round the corner to be able to detect alloc size via sizeof()) */
+#define a_HEADER_SIGSEA__BASE \
+	"author\0" "from\0" /*"reply-to\0"*/ "subject\0" "date\0" "to\0" "cc\0" \
+	"resent-date\0" "resent-from\0" "resent-to\0" "resent-cc\0" \
+	"in-reply-to\0" "references\0"
+#define a_HEADER_SIGSEA__MIME "mime-version\0" "content-type\0" "content-transfer-encoding\0"
+#define a_HEADER_SIGSEA__EXT "message-id\0" "mail-followup-to\0" "openpgp\0"
+#define a_HEADER_SIGSEA__ML \
+	"list-id\0" \
+	"list-help\0" "list-subscribe\0" "list-unsubscribe\0" \
+	"list-post\0" "list-owner\0" "list-archive\0"
+
 #define a_HEADER_SIGSEA_SIGN \
-	"author\0" "from\0" "reply-to\0" "subject\0" "date\0" "to\0" "cc\0" \
-	"resent-date\0" "resent-from\0" "resent-to\0" "resent-cc\0" \
-	"in-reply-to\0" "references\0" \
-	"list-id\0" \
-	"list-help\0" "list-subscribe\0" "list-unsubscribe\0" \
-		"list-post\0" "list-owner\0" "list-archive\0" \
-	""
+	"reply-to\0" a_HEADER_SIGSEA__BASE a_HEADER_SIGSEA__ML ""
 #define a_HEADER_SIGSEA_SIGN_EXT \
-	"author\0" "from\0" "reply-to\0" "subject\0" "date\0" "to\0" "cc\0" \
-	"resent-date\0" "resent-from\0" "resent-to\0" "resent-cc\0" \
-	"in-reply-to\0" "references\0" \
-	"list-id\0" \
-	"list-help\0" "list-subscribe\0" "list-unsubscribe\0" \
-		"list-post\0" "list-owner\0" "list-archive\0" \
-	"message-id\0" \
-	"mime-version\0" "content-type\0" "content-transfer-encoding\0" \
-	"mail-followup-to\0" \
-	"openpgp\0" \
-	""
+	"reply-to\0" a_HEADER_SIGSEA__BASE a_HEADER_SIGSEA__ML a_HEADER_SIGSEA__MIME a_HEADER_SIGSEA__EXT ""
 #define a_HEADER_SIGSEA_SEAL \
-	"author\0" "from\0" /*"reply-to\0"*/ "subject\0" "date\0" "to\0" "cc\0" \
-	"in-reply-to\0" "references\0" \
-	""
+	/*"reply-to\0"*/ a_HEADER_SIGSEA__BASE ""
 #define a_HEADER_SIGSEA_SEAL_EXT \
-	"author\0" "from\0" /*"reply-to\0"*/ "subject\0" "date\0" "to\0" "cc\0" \
-	"in-reply-to\0" "references\0" \
-	/*"list-id\0"*/ \
-	/*"list-help\0" "list-subscribe\0" "list-unsubscribe\0"*/ \
-		/*"list-post\0" "list-owner\0" "list-archive\0"*/ \
-	"message-id\0" \
-	"mime-version\0" "content-type\0" "content-transfer-encoding\0" \
-	"mail-followup-to\0" \
-	"openpgp\0" \
-	""
-#define a_HEADER_SIGSEA_MAX MAX(sizeof(a_HEADER_SIGSEA_SIGN_EXT), sizeof(a_HEADER_SIGSEA_SEAL_EXT))
-static char const * const a_header_sigsea[4] = {
-	a_HEADER_SIGSEA_SIGN, a_HEADER_SIGSEA_SIGN_EXT, a_HEADER_SIGSEA_SEAL, a_HEADER_SIGSEA_SEAL_EXT
+	/*"reply-to\0"*/ a_HEADER_SIGSEA__BASE a_HEADER_SIGSEA__MIME a_HEADER_SIGSEA__EXT ""
+#define a_HEADER_SIGSEA_SEAL_EXT_ML \
+	a_HEADER_SIGSEA__BASE a_HEADER_SIGSEA__MIME a_HEADER_SIGSEA__EXT "reply-to\0" a_HEADER_SIGSEA__ML ""
+
+#define a_HEADER_SIGSEA_MAX MAX(sizeof(a_HEADER_SIGSEA_SIGN_EXT), sizeof(a_HEADER_SIGSEA_SEAL_EXT_ML))
+static char const * const a_header_sigsea[5] = {
+	a_HEADER_SIGSEA_SIGN, a_HEADER_SIGSEA_SIGN_EXT,
+	a_HEADER_SIGSEA_SEAL, a_HEADER_SIGSEA_SEAL_EXT, a_HEADER_SIGSEA_SEAL_EXT_ML
 };
 enum{a_HEADER_SIGN = 0, a_HEADER_SEAL = 2}; /* (base + EXT) */
 
-static char const a_sopts[] = "A:C:c:" "~:!:" "k:" "M:" "R:" "r:" "S:s:" "t:" "#" "Hh";
+static char const a_sopts[] = "A:C:c:" "d:" "~:!:" "k:" "M:" "R:" "r:" "S:s:" "t:" "#" "Hh";
 static char const * const a_lopts[] = {
 	/* long option order */
 	"client:;C;" N_("assign an action [(sign|pass),] to domain or address"),
 	"client-file:;c;" N_("[action,]file: like --client for all lines of file"),
 
+	"domain-name:;d;" N_("set domain name announced in signatures"),
+
 	"header-sign:;~;" N_("comma-separated header list to sign"),
-	"header-sign-show;-1;" N_("[*] show default --header-sign, exit"),
+	"header-sign-show;-1;" N_("[*] show default --header-sign lists, exit"),
 	"header-seal:;!;" N_("comma-separated header list to (over)sign/seal"),
-	"header-seal-show;-2;" N_("[*] show default --header-seal, exit"),
+	"header-seal-show;-2;" N_("[*] show default --header-seal lists, exit"),
 
 	"key:;k;" N_("adds a key via algo-digest,selector,private-key-pem-file"),
 
-	"milter-macro:;M;" N_("if server announces action,macro[:,value:] then action"),
+	"milter-macro:;M;" N_("action if server announces action,macro[:,value:]"),
 
 	"remove:;r;" N_("remove header of type[:,spec:]"),
 
 	"resource-file:;R;" N_("path to configuration file with long options"),
 
-	"sign:;S;" N_("add a sign relation via spec,domain,selector"),
+	"sign:;S;" N_("add a sign relation via spec[,domain[:,selector:]]"),
 	"sign-file:;s;" N_("like --client for all lines of file"),
 
 	"ttl:;t;" N_("impose time-to-live on signatures, in seconds"),
@@ -1010,6 +1001,7 @@ static char const * const a_lopts[] = {
 #define a_AVOPT_CASES \
 	case 'A':\
 	case 'C': case 'c':\
+	case 'd':\
 	case '~':\
 	case '!':\
 	case 'k':\
@@ -1240,7 +1232,7 @@ a_milter__loop(struct a_milter *mip){ /* {{{ */
 			fb |= a_RESP_CONN | a_CLI;
 
 /*
-FIXME if we have --remove's, need to  
+FIXME if we have --remove's, need to
 
 */
 
@@ -1355,7 +1347,7 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 FIXME
 FIXME - COLLECT QUEUE ID AND USE IT IN OUR LOG MESSAG€S So user can grep for it
 		that is milter macro i
-FIXME - THREE-LEVEL VERBOSITY 
+FIXME - THREE-LEVEL VERBOSITY
 */
 
 			/* We are only interested in macros for a_SMFIC_CONNECT */
@@ -2140,10 +2132,12 @@ a_dkim__parse_from(struct a_dkim *dkp, char *store, char const *dat, struct su_m
 	clia = a_CLI_ACT_SIGN;
 	dkp->d_from_domain = store;
 
-	/* Normalize to lowercase */
-	for(dom = ap->imfa_domain; (c = *dom) != '\0'; ++dom)
-		*dom = su_cs_to_lower(c);
-	dom = ap->imfa_domain;
+	/* Normalize to lowercase, except for --domain-name */
+	if((dom = dkp->d_pdp->pd_domain_name) == NIL){
+		for(dom = ap->imfa_domain; (c = *dom) != '\0'; ++dom)
+			*dom = su_cs_to_lower(c);
+		dom = ap->imfa_domain;
+	}
 
 	/* Any --sign relations? */
 	if(su_cs_dict_count(&dkp->d_pdp->pd_sign) > 0){
@@ -2945,6 +2939,8 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 		(pdp->pd_flags & a_F_DBG ? "debug\n" : su_empty),
 		(pdp->pd_flags & a_F_V ? "verbose\n" : su_empty), (pdp->pd_flags & a_F_VV ? "verbose\n" : su_empty));
 
+
+
 	/* C99 */{
 		struct a_key *kp;
 
@@ -2958,9 +2954,6 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 		a_conf__list_cpxarr("milter-macro sign,", cp, FAL0);
 	if((cp = pdp->pd_mima_verify) != NIL)
 		a_conf__list_cpxarr("milter-macro verify,", cp, FAL0);
-
-	if((cp = pdp->pd_remove_ar) != NIL)
-		a_conf__list_cpxarr("remove a-r", cp, TRU1);
 
 	/* --client {{{ */
 	if(pdp->pd_flags & (a_F_CLI_DOMAINS | a_F_CLI_IPS)){
@@ -3015,6 +3008,9 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 					(sp->s_type & a_SRCH_TYPE_PASS ? "pass" : "sign")), cp, sp->s_mask);
 		}
 	} /* }}} */
+
+	if(pdp->pd_domain_name != NIL)
+		fprintf(stdout, "domain-name %s\n", pdp->pd_domain_name);
 
 	/* --sign {{{ */
 	if(su_cs_dict_count(&pdp->pd_sign) > 0){
@@ -3122,6 +3118,9 @@ jhredo:
 	if(pdp->pd_dkim_sig_ttl != 0)
 		fprintf(stdout, "ttl %lu\n", S(ul,pdp->pd_dkim_sig_ttl));
 
+	if((cp = pdp->pd_remove_ar) != NIL)
+		a_conf__list_cpxarr("remove a-r", cp, TRU1);
+
 	if(arr != NIL)
 		su_FREE(arr);
 
@@ -3162,13 +3161,29 @@ a_conf__list_cpxarr(char const *name, char const *cp, boole comma_sep){ /* {{{ *
 
 static s32
 a_conf_arg(struct a_pd *pdp, s32 o, char *arg){ /* {{{ */
-	union {uz i;} x;
+	union {char *cp; uz i;} x;
 	NYD_IN;
 
 	/* In long-option order */
 	switch(o){
 	case 'C': o = a_conf__C(pdp, arg, NIL); break;
 	case 'c': o = a_conf__c(pdp, arg); break;
+
+	case 'd':
+		if(!a_misc_is_rfc5321_domain(arg)){
+			a_conf__err(pdp, _("--domain-name: invalid RFC 5321 domain name: %s\n"), arg);
+			o = -su_EX_DATAERR;
+			break;
+		}
+		if((x.cp = pdp->pd_domain_name) != NIL)
+			su_FREE(x.cp);
+		/* Normalize to lowercase */
+		for(x.cp = arg; *x.cp != '\0'; ++x.cp)
+			*x.cp = su_cs_to_lower(*x.cp);
+		x.i = P2UZ(x.cp - arg);
+		pdp->pd_sign_longest_domain = MAX(pdp->pd_sign_longest_domain, S(u32,x.i));
+		pdp->pd_domain_name = su_cs_dup(arg, 0);
+		break;
 
 	case '~': o = a_conf__header_sigsea(pdp, arg, TRU1); break;
 	case '!': o = a_conf__header_sigsea(pdp, arg, FAL0); break;
@@ -3513,11 +3528,11 @@ jon_error_arg_nul:
 	/* (not reached for jon_error..) */
 
 	tx = FAL0;
-	if(*arg == '@' || (tx = (*arg == '*'))){
+	if(*arg == '@' || (tx = (*arg == '*')) || (!sign && (tx = (*arg == '+' ? TRU2 : FAL0)))){
 		++arg;
 		xarg = (su_cs_find_c(arg, '!') == NIL) ? R(char*,-1) : arg;
-	}else if(su_cs_first_of(arg, "@*!") != UZ_MAX){
-		a_conf__err(pdp, _("--header-(sign|seal): @ or * must be first, ! only usable then: %s\n"), arg);
+	}else if(su_cs_first_of(arg, "@*+!") != UZ_MAX){
+		a_conf__err(pdp, _("--header-(sign|seal): @ / * / + must be first, ! only usable then: %s\n"), arg);
 		rv = -su_EX_DATAERR;
 		goto jleave;
 	}else
@@ -3544,7 +3559,8 @@ jon_error_arg_nul:
 			templ = tx ? sizeof(a_HEADER_SIGSEA_SIGN_EXT) : sizeof(a_HEADER_SIGSEA_SIGN);
 		}else{
 			tempd = a_header_sigsea[a_HEADER_SEAL + tx];
-			templ = tx ? sizeof(a_HEADER_SIGSEA_SEAL_EXT) : sizeof(a_HEADER_SIGSEA_SEAL);
+			templ = (tx == TRU2) ? sizeof(a_HEADER_SIGSEA_SEAL_EXT_ML)
+					: tx ? sizeof(a_HEADER_SIGSEA_SEAL_EXT) : sizeof(a_HEADER_SIGSEA_SEAL);
 		}
 
 		if(xarg == R(char*,-1)){
@@ -3559,6 +3575,7 @@ jon_error_arg_nul:
 				su_mem_copy(xarg, arg, i);
 				while((cp = su_cs_sep_c(&xarg, ',', TRU1)) != NIL){
 					if(*cp == '!'){
+						/* xxx "!\0" "simply" does not match */
 						if(su_cs_cmp(xt, ++cp))
 							continue;
 						goto jxt_next;
@@ -3726,7 +3743,7 @@ jekeyo:
 				/* It may not be available in this installation */
 				EVP_MD const *mdmdp;
 
-				mdmdp = 
+				mdmdp =
 #ifdef a_MD_FETCH
 					EVP_MD_fetch(NIL, katp->kat_md_name, NIL)
 #else
@@ -4378,7 +4395,7 @@ jleave:;
 static void
 a_misc_usage(FILE *fp){
 	static char const a_1[] = N_(
-"%s (%s%s%s): postfix(1)-only RFC 6376/8463 DKIM sign-only milter\n"
+"%s (%s%s%s): postfix(1)-only DKIM sign-only milter\n"
 "\n"
 ". Algorithms: "),
 		a_2[] = N_(
@@ -4496,7 +4513,6 @@ main(int argc, char *argv[]){ /* {{{ */
 				: (su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID | su_STATE_REPRODUCIBLE))),
 		su_STATE_ERR_NOPASS);
 	DVL(su_mem_set_conf(su_MEM_CONF_LINGER_FREE, TRU1);)
-	(void)a_misc_log_open();
 
 #ifdef su_NYD_ENABLE
 	signal(SIGABRT, &a_misc_oncrash);
@@ -4551,6 +4567,11 @@ jhss_redo:
 				++base;
 				putc('*', stdout);
 				goto jhss_redo;
+			}else if(mpv == -2){
+				--mpv;
+				++base;
+				putc('+', stdout);
+				goto jhss_redo;
 			}
 			mpv = su_EX_OK;
 			}goto jleave;
@@ -4594,8 +4615,10 @@ jerropt:
 	mpv = a_conf_finish(&pd);
 
 	if(!(pd.pd_flags & a_F_MODE_TEST)){
-		if(mpv == su_EX_OK)
+		if(mpv == su_EX_OK){
+			(void)a_misc_log_open();
 			mpv = !su_state_has(su_STATE_REPRODUCIBLE) ? a_server(&pd) : a_milter(&pd, STDIN_FILENO);
+		}
 	}else{
 		mpv = a_conf_list_values(&pd);
 		if(mpv == su_EX_OK)
