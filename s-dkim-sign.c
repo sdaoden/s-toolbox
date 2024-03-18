@@ -2875,6 +2875,9 @@ a_conf_cleanup(struct a_pd *pdp){ /* {{{ */
 	struct a_key *kp;
 	NYD_IN;
 
+	if(pdp->pd_domain_name != NIL)
+		su_FREE(pdp->pd_domain_name);
+
 	if(pdp->pd_header_sign != NIL)
 		su_FREE(pdp->pd_header_sign);
 	if(pdp->pd_header_seal != NIL)
