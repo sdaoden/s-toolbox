@@ -2600,7 +2600,8 @@ a_dkim__body_relaxed(struct a_dkim *dkp, char *mibuf){ /* {{{ */
 						++ib;
 						goto jcrlf;
 					}
-				}else if((bp = bp->b_next) != NIL){
+				}else if(bp->b_next != NIL){
+					bp = bp->b_next;
 					ASSERT(bp->b_len > 0);
 					if(bp->b_dat[0] == '\012'){
 						il = bp->b_len - 1;
@@ -2657,6 +2658,7 @@ jcrlf:
 			*ob++ = c;
 			continue;
 		}else{
+			ASSERT(bp != NIL);
 			if((bp = bp->b_next) == NIL){
 				/* - If the body is non-empty but does not end with a CRLF, a CRLF is added */
 				if(f & a_LNANY){

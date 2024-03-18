@@ -859,6 +859,103 @@ x $? 208
 e0sumem 208
 cmp 209 t204 t208
 
+# Special \r\n cases
+{
+	printf '\0\0\0\013LFrom\0 X@Y\0'
+	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
+	printf '\0\0\0\002B1\0\0\0\002B\r\0\0\0\002B\n'
+	printf '\0\0\0\002B2\0\0\0\002B\r'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t210 2>ERR
+x $? 210
+e0sumem 210
+printf \
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
+' t=844221007; h=from:subject:from; bh=vq8fFHPPqqkcinB83aEumTVgnU+qPqNqWSUgU\r\n'\
+'  EkP2L0=; b=fN/etAORxhK2pRauvaW4wCvStge7pxtnzuF8qBwFdi3/e/Jsd+gtOLcAaVjCOYz\r\n'\
+'  5HZ9haXpkFxcFZSK6V9RMBQ==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t211
+cmp 211 t210 t211
+
+{
+	printf '\0\0\0\013LFrom\0 X@Y\0'
+	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
+	printf '\0\0\0\002B1\0\0\0\002B\r\0\0\0\002B\n'
+	printf '\0\0\0\002B2\0\0\0\002B\r\0\0\0\003B\r\n'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t212 2>ERR
+x $? 212
+e0sumem 212
+cmp 213 t211 t212
+
+{
+	printf '\0\0\0\013LFrom\0 X@Y\0'
+	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
+	printf '\0\0\0\002B1\0\0\0\002B\r\0\0\0\002B\n'
+	printf '\0\0\0\002B2\0\0\0\002B\n'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t214 2>ERR
+x $? 214
+e0sumem 214
+printf \
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
+' t=844221007; h=from:subject:from; bh=2lM8tKY3+20Uu1AZLSBrCf59CqYv31qtqmmPj\r\n'\
+'  4rBX7c=; b=YoBrDj6EgTKF6qEeNunu2NDYTJkUsro1jBCnLo5Pe8mEnh3GCGxsVu/XDg/nTvY\r\n'\
+'  yNRzrLkoCBVJNyLeKfpWyDQ==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t215
+cmp 215 t214 t215
+
+{
+	printf '\0\0\0\013LFrom\0 X@Y\0'
+	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
+	printf '\0\0\0\002B1\0\0\0\002B\r\0\0\0\002B\n'
+	printf '\0\0\0\002B2\0\0\0\002B\n\0\0\0\003B\r\n'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t216 2>ERR
+x $? 216
+e0sumem 216
+cmp 217 t215 t216
+
+{
+	printf '\0\0\0\013LFrom\0 X@Y\0'
+	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
+	printf '\0\0\0\002B1\0\0\0\002B\r\0\0\0\002B\n'
+	printf '\0\0\0\002B2'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t218 2>ERR
+x $? 218
+e0sumem 218
+printf \
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
+' t=844221007; h=from:subject:from; bh=tHOTehVL0EWpeJdZjJlAZZd7rm5SEpYBE1axW\r\n'\
+'  pHw9Ns=; b=4+ZdjuiWuqk9wb3bIyCcphmKF64N1D08sh167SUL/2CQTk10oZdgIf7SJFNEWpx\r\n'\
+'  Ko3cRzU+C/b0pgefVEKTAAQ==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t219
+cmp 219 t218 t219
+
+{
+	printf '\0\0\0\013LFrom\0 X@Y\0'
+	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
+	printf '\0\0\0\002B1\0\0\0\002B\r\0\0\0\002B\n'
+	printf '\0\0\0\002B2\0\0\0\002B\r\0\0\0\002B\n'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t220 2>ERR
+x $? 220
+e0sumem 220
+cmp 221 t218 t220
+
 ## canon test with holes
 
 if command -v dd >/dev/null 2>&1; then :; else
