@@ -217,6 +217,9 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 
 	if((f & a_NOTROOT) && pwp->pw_uid == 0){
 		f |= a_SKIP_XDG;
+		/* We may switch within a login (eg "su"); however, clearing XDG environment variables is impossible:
+		 *   pam_putenv: delete non-existent entry; XDG_RUNTIME_DIR
+		 *   pam_xdg: user root: pam_putenv(): Bad item passed to pam_*_item() */
 		goto jok;
 	}
 
@@ -299,7 +302,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 				sizeof(a_RUNTIME_DIR_BASE) -1 + 1;
 		memcpy(cp, &uidbuf[4], uidbuflen);
 
-		if(pam_putenv(pamh, xbuf) != PAM_SUCCESS)
+		if((res = pam_putenv(pamh, xbuf)) != PAM_SUCCESS)
 			a_LOG(pamh, a_LOG_ERR, a_XDG ": user %s: pam_putenv(): %s\n", user, pam_strerror(pamh, res));
 
 		/* And the rest unless disallowed */
@@ -337,7 +340,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 				}
 				memcpy(cp, src, strlen(src) +1);
 
-				if(pam_putenv(pamh, xbuf) != PAM_SUCCESS)
+				if((res = pam_putenv(pamh, xbuf)) != PAM_SUCCESS)
 					a_LOG(pamh, a_LOG_ERR, a_XDG ": user %s: pam_putenv(): %s\n",
 						user, pam_strerror(pamh, res));
 			}
