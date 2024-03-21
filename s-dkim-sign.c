@@ -2733,13 +2733,18 @@ a_dkim__head_prep(struct a_dkim *dkp, char const *np, char const *dp, char **mib
 
 		if(c == '\0')
 			break;
-		if(c == '\015' && *cp == '\012'){
-			++cp;
+
+		/* The milter protocol may pass continuation only via LF; "unfold" */
+		if(c == '\012')
+			continue;
+		if(c == '\015'){
+			if(*cp == '\012')
+				++cp;
+			/* (But do this for plain CR, too) */
 			continue;
 		}
-		/* XXX Even though technically invalid, we MUST treat CR and LF as WSP in order to get DKIM signatures
-		 * XXX which are verified by Google, Microsoft, rspamd, and (likely) amavisd!!  Do it! */
-		if(c == '\015' || c == '\012' || su_cs_is_blank(c)){
+
+		if(su_cs_is_blank(c)){
 			ws = TRU1;
 			continue;
 		}

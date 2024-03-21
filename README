@@ -32,7 +32,7 @@ s-cdda-to-db.pl (plus support) v0.8.0 (2021-06-18):
      The latter roots in old habits originating in perl(1) evolution
      problems Y2K2-3 (5.8.0 and 5.8.1).
 
-s-dkim-sign.c (plus support) v0.5.0 (2024-03-20):
+s-dkim-sign.c (plus support) v0.5.0 (2024-03-29):
    postfix(1)-only RFC 6376/8463 DKIM sign-only milter.
 
 s-postgray.c (plus support) v0.8.2 (2024-02-29):

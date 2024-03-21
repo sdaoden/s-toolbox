@@ -31,7 +31,7 @@ s-dkim-sign-key-create helper will always be installed there).
 RELEASES
 --------
 
-v0.5.0, 2024-03-20: (first release)
+v0.5.0, 2024-03-29: (first release)
 
 THANKS
 ------
@@ -41,6 +41,7 @@ improvements, whether directly or indirectly, or submitting actual code.
 Here is a list of those people.  I hope the list is complete and free of
 errors.
 
+John Levine             johnl at taugh dot com
 Joachim Lindenberg      postfix-users at lindenberg dot one
 Matus UHLAR - fantomas  uhlar at fantomas dot sk
 
