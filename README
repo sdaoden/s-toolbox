@@ -1,14 +1,15 @@
 A repo of some small tools
 ==========================
 
-pam_xdg.c (plus support) v0.8.2 (2024-02-27):
+pam_xdg.c (plus support) v0.8.3 (2024-03-22):
    XDG Base Directories support via PAM: creation of $XDG_RUNTIME_DIRs,
    injection of environment variables into sessions.  libpam and OpenPAM.
    [- port to OpenPAM (BSD).  (Jan Beich)]
    [- Allow non-XDG-standard paths via make options. (Jan Beich)]
    [- Support XDG standard 0.8]
-   - Add comments; simplify one string build (possible due to "allow
-     non-xdg-standard paths.."); make ball release v0.8.2.
+   [- Add comments; simplify one string build (possible due to "allow
+     non-xdg-standard paths.."); make ball release v0.8.2.]
+   - With "notroot", unsetenv(3) all XDG variables for root.  v0.8.3.
 
 s-cdda.c (plus support) v0.8.5 (2021-01-28):
    Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).

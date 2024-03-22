@@ -216,10 +216,31 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 	}
 
 	if((f & a_NOTROOT) && pwp->pw_uid == 0){
-		f |= a_SKIP_XDG;
 		/* We may switch within a login (eg "su"); however, clearing XDG environment variables is impossible:
 		 *   pam_putenv: delete non-existent entry; XDG_RUNTIME_DIR
-		 *   pam_xdg: user root: pam_putenv(): Bad item passed to pam_*_item() */
+		 *   pam_xdg: user root: pam_putenv(): Bad item passed to pam_*_item()
+		 * This is true even if we set them first (in effect).
+		 * So we *would* set these but do not because of "notroot", therefore we *should* clear them it seems.
+		 * (https://forums.freebsd.org/threads/using-sysutils-pam_xdg-but-xdg_xxx-vars-are-not-updating-
+		 *	upon-su-and-maybe-in-other-situations-too.87741)
+		 * We therefore mess directly with unsetenv(3) */
+		if(isopen){
+			static char const a_dirs[] = {
+				"XDG_RUNTIME_DIR\0"
+				"XDG_CACHE_HOME\0" "XDG_CONFIG_DIRS\0" "XDG_CONFIG_HOME\0"
+				"XDG_DATA_DIRS\0" "XDG_DATA_HOME\0" "XDG_STATE_HOME\0"
+				""
+			};
+
+			for(emsg = a_dirs; *emsg != '\0';){
+				if((res = unsetenv(emsg)) != 0)
+					a_LOG(pamh, a_LOG_ERR, a_XDG ": notroot: cannot unsetenv(): %s: %s\n",
+						emsg, strerror(errno));
+				emsg += strlen(emsg) +1;
+			}
+		}
+
+		f |= a_SKIP_XDG;
 		goto jok;
 	}
 
