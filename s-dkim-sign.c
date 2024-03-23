@@ -2734,13 +2734,11 @@ a_dkim__head_prep(struct a_dkim *dkp, char const *np, char const *dp, char **mib
 		if(c == '\0')
 			break;
 
-		/* The milter protocol may pass continuation only via LF; "unfold" */
+		/* The milter protocol may pass continuation only via LF; "unfold" that */
 		if(c == '\012')
 			continue;
-		if(c == '\015'){
-			if(*cp == '\012')
-				++cp;
-			/* (But do this for plain CR, too) */
+		if(c == '\015' && *cp == '\012'){
+			++cp;
 			continue;
 		}
 
