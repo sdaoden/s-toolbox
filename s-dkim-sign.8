@@ -1,4 +1,4 @@
-.\"@ s-dkim-sign - [postfix-only] RFC 6376/8463 DKIM-sign-only milter.
+.\"@ s-dkim-sign - [postfix-only] DKIM-sign-only milter.
 .\"
 .\" Copyright (c) 2024 Steffen Nurpmeso <steffen@sdaoden.eu>.
 .\" SPDX-License-Identifier: ISC
@@ -15,8 +15,8 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd March 20, 2024
-.ds VV \\%v0.5.0
+.Dd April 2, 2024
+.ds VV \\%v0.6.0
 .ds XX \\%S-DKIM-SIGN
 .ds Xx \\%S-dkim-sign
 .ds xx \\%s-dkim-sign
@@ -28,7 +28,7 @@
 .
 .Sh NAME
 .Nm \*(Xx \%[\*(VV]
-.Nd RFC 6376/8463 DKIM sign-only milter
+.Nd DKIM sign-only milter
 .
 .
 .Sh SYNOPSIS
@@ -390,9 +390,12 @@ it must obey
 syntax.
 The third field is the
 .Ar path
-to the private key file in PEM format.
+to the private key file in PEM format;
+file accessibility is not tested, but recommendable is tight-most
+(readable by only root and the user identity running
+.Nm ) .
 (In 2024, with multiple and mixed RSA/Ed25519 keys, placing the RSA
-one(s) first may improve interoperability,)
+one(s) first may improve interoperability.)
 .
 .Mx Fl long-help
 .It Fl Fl long-help , H

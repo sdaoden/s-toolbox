@@ -686,19 +686,19 @@ eX 11.8
 # }}}
 
 # 100* --resource-file (yet; except recursion, and overwriting) {{{
-cat > t100.rc << '_EOT'
+cat > t90.rc << '_EOT'
 header-sign from , to
 header-seal from , date
 milter-macro sign, mms1
-resource-file t101.rc
+resource-file t90-1.rc
 _EOT
-cat > t101.rc << '_EOT'
+cat > t90-1.rc << '_EOT'
 header-sign from , date
 header-seal from , subject
 milter-macro sign , mms2 , v1 ,v2,,v3,,v4,,
-resource-file t102.rc
+resource-file t90-2.rc
 _EOT
-cat > t102.rc << '_EOT'
+cat > t90-2.rc << '_EOT'
 
 
 header-sign from , subject, date
@@ -722,16 +722,23 @@ sign	\
   continue
 
 _EOT
-cat > t100-x << '_EOT'
+cat > t90-x << '_EOT'
 milter-macro sign, mms3
 header-sign from, subject, date
 header-seal from, subject, date
 _EOT
 
-${PD} -R t100.rc -# > t100 2>ERR
-x $? 100
-e0 100
-cmp 101 t100 t100-x
+${PD} -R t90.rc -# > t90 2>ERR
+x $? 90
+e0 90
+cmp 91 t90 t90-x
+
+printf '\n\\\n\\\n' > t92.rc
+${PD} -R t92.rc -# > t92 2>ERR
+x $? 92
+e0 92
+[ -s t92 ] && { echo >&2 'bad 93'; exit 1; }
+echo ok 93
 # }}}
 # }}}
 

@@ -3,25 +3,24 @@ S - d k i m - s i g n
 
 A postfix(1)-only RFC 6376/[8301]/8463 D(omain)K(eys) I(dentified)
 M(ail) sign-only milter.  DKIM permits a person, role, or organization
-to claim responsibility for a message by associating a domain name (RFC
-1034; rather: RFC 5321) with the message (RFC 5322) through
-a cryptographically verifiable signature, which is inserted into the
-message as a mail header.  The signature can be validated by fetching
-the appropriate public key from the signer's domain DNS (RFC 8499)
-record.
+to claim responsibility for a message by associating a domain name
+(RFC 1034; rather: RFC 5321) with the message (RFC 5322) through a
+cryptographically verifiable signature stored in a DKIM-Signature mail
+header.  The signature can be validated by fetching the appropriate
+public key(s) from the domain's DNS (RFC 8499) record.
 
 The program is intended to be started via the postfix(1) spawn(8)
 daemon, which takes care of the correct user and group credentials,
 timeouts and stale server garbage collection etc.; efficient operation
 requires postfix versions which support the milter operation
-'SMFIC_QUIT_NC' (likely version 3.9 and above), elder versions will
-start a new spawn(8) + s-dkim-sign(8) program couple for every SMTP or
-local connection.
+'SMFIC_QUIT_NC' (somewhen after version 3.9), elder versions will start
+a new spawn(8) + s-dkim-sign(8) program couple for every SMTP or local
+connection.
 
 Dependencies are OpenSSL 1.1.0+ (-compatible) and a POSIX environment
-(make, sh, awk etc).  libmilter is not needed.  To build this software
-run "make install".  At the top of the makefile there are some
-variables, which may be overwritten from the command line:
+(make, sh, awk etc).  libmilter is not needed.  To build this
+software run "make install".  At the top of the makefile there are
+some variables, which may be overwritten from the command line:
 
   $ make DESTDIR=.xxx PREFIX=/usr LIBEXEC=sbin install
 
@@ -31,7 +30,7 @@ s-dkim-sign-key-create helper will always be installed there).
 RELEASES
 --------
 
-v0.5.0, 2024-03-29: (first release)
+v0.6.0, 2024-04-02: (first release)
 
 THANKS
 ------
@@ -52,8 +51,8 @@ Thank you!
 P.S.
 ----
 
-For now the build system is rudimentary.  Either it works, then
-the software should, too, or it will not.  This will surely change in
+For now the build system is rudimentary.  Either it works, then the
+software should, too, or it will not.  This will surely change in
 the future.
 
 # s-ts-mode

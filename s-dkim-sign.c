@@ -1,11 +1,6 @@
-/*@ s-dkim-sign(8) - [postfix-only] RFC 6376/8463 DKIM sign-only milter.
+/*@ s-dkim-sign(8) - [postfix-only] RFC 6376/[8301]/8463 DKIM sign-only milter.
  *@ - OpenSSL must be 1.1.0 or above.
- *@ - FIXME - -A not yet implemented; needs a complete "verify" infrastructure!
- *@   Matus UHLAR:
- *@   I am only removing Authentication-Results: headers that contain $myhostname:
- *@	header_checks = pcre:{ {/^Authentication-Results:\s+\Q$myhostname\E[\s;]/ IGNORE} }
- *@   so I'm doing exactly what given RFC orders me to do.
- *@ - TODO i= DKIM value (optional addition field to --sign).
+ *@ - TODO DKIM-I i= DKIM value (optional additional --sign arg).
  *@ - TODO I would like to have "an additional --client" match for {mail_addr} macro of M.
  *@        But *especially* signing localhost->localhost mails seems so stupid.
  *@ - TODO internationalized selectors are missing (a_key.k_sel).
@@ -34,7 +29,7 @@
 #define su_FILE s_dkim_sign
 
 /* */
-#define a_VERSION "0.5.0"
+#define a_VERSION "0.6.0"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* --sign max selectors (<> manual) */
@@ -4063,6 +4058,7 @@ jerr:
 
 			snp = su_cs_pcopy(sp->s_dom, dom) +1;
 
+			/* TODO DKIM-I --sign separates with : for possible later extension to define DKIM i= */
 			for(i = 1; (xxarg = su_cs_sep_c(&xarg, ':', TRU1)) != NIL; ++i){
 				if(i > a_SIGN_MAX_SELECTORS){
 					a_conf__err(pdp, _("--sign: more than %d selectors\n"), a_SIGN_MAX_SELECTORS);
