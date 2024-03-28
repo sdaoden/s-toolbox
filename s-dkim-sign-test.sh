@@ -772,7 +772,7 @@ cmp 201 t200 t201
 {
 	printf '\0\0\0\013LFrom\0 X@Y\0'
 	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
-	printf '\0\0\0\021B C \r\nD \t E\r\n\r\n\r\n'
+	printf '\0\0\0\022B \tC \r\nD \t E\r\n\r\n\r\n'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
 } | ${PD} -R x.rc --key=$ka,this.is.a.very.long.selector,$kf \
@@ -785,9 +785,9 @@ printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\r\n'\
-' t=844221007; h=from:subject:from; bh=znUs9MtDElAZOFfJOcfNaDGLIUjGiZT2bsWl2\r\n'\
-'  vN/Hd4=; b=F+WrG/cn3KYJYaqBA5smNEOGpShufAnWy0GTBIem+6LDxsiLTh1/jniVAWp14Oj\r\n'\
-'  aXlkK7u5yDdoqipP65z3wAA==\n'\
+' t=844221007; h=from:subject:from; bh=unak6JHq0wL+Q1HP7dW1tjBx9FLA6DffoZ0qr\r\n'\
+'  Lwbbpo=; b=dNyvWBMO6P6k/nYbpWlm8eK5L4jNb+pper49iOQ/yboY2P5ty2aKFBaRi3cTxx0\r\n'\
+'  r5z965vlchM5kwa9gN3QtDA==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t203
 cmp 203 t202 t203
 
@@ -1084,6 +1084,7 @@ _EOT
 	dd bs=1 skip=583 count=63136 < t300.in 2>/dev/null
 	printf '\0\0\113\111B'
 	dd bs=1 skip=63719 < t300.in 2>/dev/null
+	printf '\0\0\0\012B\t \t\r\n\r\n\r\n'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
 } | ${PD} -R x.rc --sign 'y   ,auA.DE' > t300 2>ERR

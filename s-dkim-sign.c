@@ -11,6 +11,7 @@
  *@ - TODO internationalized selectors are missing (a_key.k_sel).
  *@ - TODO server mode missing -- must be started by spawn(8).
  *@ - TODO Would like to have "sender localhost && rcpt localhost && pass".
+ *@ - We have some excessively spaced base64 buffers.
  *@ - xxx With multiple keys, cannot include elder generated D-S in newer ones.
  *@ - Assumes header "name" values do not end with whitespace (search @HVALWS).
  *@   (Header body values are trimmed.)
@@ -30,7 +31,6 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#undef a_SIMPLE /* FIXME */
 #define su_FILE s_dkim_sign
 
 /* */
@@ -769,14 +769,6 @@ struct a_milter{
 };
 
 /**/
-#ifndef a_SIMPLE
-struct a_body{ /* ..single milter chunk.. */
-	struct a_body *b_next;
-	u32 b_len;
-	char b_dat[VFIELD_SIZE(sizeof(u32))];
-};
-#endif
-
 struct a_dkim_res{
 	struct a_dkim_res *dr_next;
 	u32 dr_name_len;
@@ -798,8 +790,8 @@ struct a_md_ctx{
 	struct a_md_ctx *mdc_next;
 	struct a_md *mdc_md;
 	EVP_MD_CTX *mdc_md_ctx; /* First used body digest once, afterwards for header digests */
-	u32 mdc_b_diglen; /* Prepared base64 body digest len (or 0 if not yet created) */
-	char mdc_b_digdat[(EVP_MAX_MD_SIZE * 4) / 3  +1];
+	u32 mdc_b_diglen; /* Prepared base64 body digest len */
+	char mdc_b_digdat[(EVP_MAX_MD_SIZE * 4) / 3  +1]; /* XXX excessive -> pdp->pd_key_md_maxsize_b64 */
 };
 
 struct a_dkim{
@@ -810,10 +802,8 @@ struct a_dkim{
 	uz d_head_totlen; /* Total length of all headers upon non-normalized creation */
 	struct a_head *d_head;
 	struct a_head **d_htail;
-#ifndef a_SIMPLE
-	struct a_body *d_body;
-	struct a_body **d_btail;
-#endif
+	u32 d_body_f; /* digesting: flags */
+	u32 d_body_eln; /* ": on-the-fly empty line count */
 	struct a_dkim_res *d_res;
 };
 
@@ -847,8 +837,7 @@ struct a_key{
 	char *k_sel; /* points into .k_file */
 	uz k_sel_len;
 	ZIPENUM(s32,a_PKEY) k_id;
-	u32 k_maxsize; /* EVP_PKEY_get_size() */
-	char k_algo[8];
+	char k_algo[12];
 	char k_file[VFIELD_SIZE(0)];
 };
 
@@ -897,6 +886,9 @@ struct a_pd{
 	char *pd_mima_verify;
 	char *pd_remove_ar; /* --remove a-r (\0|:val\0:)\0 */
 	struct a_key *pd_keys; /* --key */
+	u32 pd_key_md_maxsize; /* MAX() across all EVP_PKEY_get_size() and MDs, */
+	u32 pd_key_md_maxsize_b64; /* ..ditto, as base64 (including pad, NUL, etc), */
+	uz pd_key_sel_len_max; /* ..ditto, longest selector */
 	struct a_md *pd_mds; /* MDs needed (may be able to share MDs in between keys) */
 	u32 pd_dkim_sig_ttl; /* --ttl */
 	u32 pd_sign_longest_domain; /* Longest (--sign) --domain-name, for buffer alloc purposes */
@@ -1037,16 +1029,17 @@ static enum a_cli_action a_milter__parse_(struct a_milter *mip, char *dp, uz dl,
 static boole a_dkim_setup(struct a_dkim *dkp, boole post_eoh, struct a_pd *pdp, struct su_mem_bag *membp);
 static void a_dkim_cleanup(struct a_dkim *dkp);
 
-/* push_header() return ignored but for From: + --sign; push_body() data not constant */
+/**/
 static enum a_cli_action a_dkim_push_header(struct a_dkim *dkp, char const *name, char const *dat,
 		struct su_mem_bag *membp);
 static enum a_cli_action a_dkim__parse_from(struct a_dkim *dkp, char *store, char const *dat, struct su_mem_bag *membp);
-static void a_dkim_push_body(struct a_dkim *dkp, char *dp, uz dl, struct su_mem_bag *membp);
+
+/* Body chunk processing.  dl==0/dp==NIL denotes "no more body data to be expected" */
+static boole a_dkim_push_body(struct a_dkim *dkp, char *dp, uz dl, struct su_mem_bag *membp);
 
 /* After collecting all the data, create signature(s); mibuf is of MILTER_CHUNK_SIZE bytes! */
 static boole a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp);
 
-static boole a_dkim__body_relaxed(struct a_dkim *dkp, char *mibuf);
 /* advances *mibuf over */
 static void a_dkim__head_prep(struct a_dkim *dkp, char const *np, char const *dp, char **mibuf, boole trail_crlf);
 
@@ -1135,7 +1128,7 @@ a_milter(struct a_pd *pdp, s32 sock){
 	mip->mi_sock = sock;
 	mip->mi_pdp = pdp;
 	mip->mi_dkim = &dkim;
-	su_mem_bag_create(&mip->mi_bag, su_PAGE_SIZE * 4);/* FIXME if !a_SIMPLE ALIGN_PAGE(a_MILTER_CHUNK_SIZE * 2)); */
+	su_mem_bag_create(&mip->mi_bag, su_PAGE_SIZE * 4); /* xxx pretty arbitrary, and too much */
 
 	rv = a_milter__loop(mip);
 	if(rv < 0)
@@ -1259,7 +1252,7 @@ FIXME if we have --remove's, need to
 
 		switch(mip->mi_buf[0]){
 		case a_SMFIC_QUIT:
-			ASSERT(rv == su_ERR_NONE);
+			ASSERT(rv == su_EX_OK);
 			goto jleave;
 		case a_SMFIC_QUIT_NC:
 			a_milter__cleanup(mip);
@@ -1272,7 +1265,7 @@ FIXME if we have --remove's, need to
 
 		case a_SMFIC_OPTNEG: /* {{{ */
 			if(mip->mi_len != 13){
-				rv = su_ERR_INVAL;
+				rv = su_EX_SOFTWARE;
 				goto jleave;
 			}
 			su_mem_copy(&optneg, &mip->mi_buf[1], sizeof(optneg));
@@ -1417,6 +1410,8 @@ FIXME - THREE-LEVEL VERBOSITY
 						fx |= a_SKIP;
 						FALLTHRU
 					case a_CLI_ACT_VERIFY: FALLTHRU
+/* FIXME VERIFY IS DIFFERENT PATH THAN SIGN!!!
+FIXME CURRENTLY IS ACTS LIKE SIGN THOUGH */
 					case a_CLI_ACT_SIGN:
 						if(fb & a_CLI)
 							fx |= a_CLI;
@@ -1491,7 +1486,7 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 
 			if(!(fx & a_SETUP) && !a_dkim_setup(mip->mi_dkim, FAL0, mip->mi_pdp, &mip->mi_bag)){
 				/* xxx does not happen */
-				rv = su_ERR_NODATA;
+				rv = su_EX_UNAVAILABLE;
 				goto jleave;
 			}
 			fx |= a_SETUP;
@@ -1553,13 +1548,17 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 
 			if(!(fx & a_SETUP_EOH)){
 				if(!a_dkim_setup(mip->mi_dkim, (TRU1 + !(fx & a_SETUP)), mip->mi_pdp, &mip->mi_bag)){
-					rv = su_ERR_NODATA;
+					rv = su_EX_UNAVAILABLE;
 					goto jleave;
 				}
 				fx |= a_SETUP | a_SETUP_EOH;
 			}
 
-			a_dkim_push_body(mip->mi_dkim, &mip->mi_buf[1], mip->mi_len - 1, &mip->mi_bag);
+			ASSERT(mip->mi_len > 1);
+			if(!a_dkim_push_body(mip->mi_dkim, &mip->mi_buf[1], mip->mi_len - 1, &mip->mi_bag)){
+				rv = su_EX_TEMPFAIL;
+				goto jleave;
+			}
 			break;
 
 		case a_SMFIC_BODYEOB: /* {{{ */
@@ -1592,10 +1591,15 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 
 			if(!(fx & a_SETUP_EOH)){
 				if(!a_dkim_setup(mip->mi_dkim, TRU1, mip->mi_pdp, &mip->mi_bag)){
-					rv = su_ERR_NODATA;
+					rv = su_EX_UNAVAILABLE;
 					goto jleave;
 				}
 				fx |= a_SETUP_EOH;
+			}
+
+			if(!a_dkim_push_body(mip->mi_dkim, NIL, 0, &mip->mi_bag)){
+				rv = su_EX_TEMPFAIL;
+				goto jleave;
 			}
 
 			if(UNLIKELY(fb & a_DBG_V))
@@ -1627,8 +1631,11 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 					}else
 						fwrite(dkrp->dr_dat, sizeof(*dkrp->dr_dat), dkrp->dr_len, stdout);
 				}
-			}else
+			}else{
 				su_log_write(su_LOG_CRIT, _("Error creating DKIM signature, message is unchanged"));
+				rv = su_EX_TEMPFAIL;
+				goto jleave;
+			}
 
 jaccept:
 			if(UNLIKELY(fb & a_VV))
@@ -1644,7 +1651,8 @@ jaccept:
 
 		default:
 			su_log_write(su_LOG_CRIT, _("Received undesired/-handled milter command: %d"), mip->mi_buf[0]);
-			goto jaccept;
+			rv = su_EX_SOFTWARE;
+			goto jleave;
 		}
 	}
 
@@ -2013,7 +2021,7 @@ a_dkim_setup(struct a_dkim *dkp, boole post_eoh, struct a_pd *pdp, struct su_mem
 			mdcp->mdc_next = dkp->d_mdctxs;
 			dkp->d_mdctxs = mdcp;
 			mdcp->mdc_md = mdp;
-			mdcp->mdc_b_diglen = 0;
+			/*mdcp->mdc_b_diglen = 0;*/
 
 			mdcp->mdc_md_ctx = EVP_MD_CTX_new();
 			if(mdcp->mdc_md_ctx == NIL)
@@ -2122,7 +2130,7 @@ a_dkim__parse_from(struct a_dkim *dkp, char *store, char const *dat, struct su_m
 	mse = su_imf_parse_addr_header(&ap, dat, (su_IMF_MODE_RELAX | su_IMF_MODE_OK_DISPLAY_NAME_DOT |
 			su_IMF_MODE_STOP_EARLY), membp, NIL);
 
-	if((mse & su_IMF_ERR_ADDR_SPEC) || ap == NIL){
+	if((mse & su_IMF_ERR_CONTENT) || ap == NIL){
 		su_log_write(su_LOG_CRIT, "From: address cannot be parsed, skipping DKIM!: %s", dat);
 		clia = a_CLI_ACT_PASS;
 		goto jleave;
@@ -2203,27 +2211,194 @@ jleave:
 	return clia;
 } /* }}} */
 
-#ifndef a_SIMPLE
-static void
+static boole
 a_dkim_push_body(struct a_dkim *dkp, char *dp, uz dl, struct su_mem_bag *membp){ /* {{{ */
-	struct a_body *bp;
+	/* a.	Reduce whitespace:
+	 *	* Ignore all whitespace at the end of lines.
+	 *	  Implementations MUST NOT remove the CRLF at the end of the line.
+	 *	* Reduce all sequences of WSP within a line to a single SP character.
+	 * b.	Ignore all empty lines at the end of the message body.
+	 *	"Empty line" is defined in Section 3.4.3.  If the body is non-empty but does not end with a CRLF,
+	 *	a CRLF is added.  (For email, this is only possible when using extensions to SMTP or non-SMTP transport
+	 *	mechanisms.) */
+	enum{
+		a_NONE,
+		a_CR_TAKEOVER = 1u<<0,
+		a_LN_ANY = 1u<<1,
+		a_LN_WS = 1<<2,
+		a_LN_MASK = a_LN_ANY | a_LN_WS,
+
+		a_KEEP_MASK = 0xFu,
+		a_ERR = 1u<<5,
+		a_BUF_ALLOC = 1u<<6,
+		a_FINAL = 1u<<7
+	};
+
+	uz alloc_size;
+	char *ob_base_alloc, *ob, *ob_base, eln_buf[128];
+	u32 f, eln;
 	NYD_IN;
+	ASSERT((dl != 0 || dp == NIL) && (dp == NIL || dl != 0)); /* "finalization"? */
 
-	/* Leave room for CRLF (plus debug NUL); no overflow check due to milter limits */
-	bp = su_LOFI_ALLOC(VSTRUCT_SIZEOF(struct a_body,b_dat) + dl + 2 +1);
-	bp->b_next = NIL;
-	if(dkp->d_body == NIL)
-		dkp->d_body = bp;
-	else
-		*dkp->d_btail = bp;
-	dkp->d_btail = &bp->b_next;
+	f = dkp->d_body_f;
+	eln = dkp->d_body_eln;
+	UNINIT(ob_base_alloc, NIL);
+	UNINIT(alloc_size, 0);
 
-	bp->b_len = S(u32,dl);
-	su_mem_copy(bp->b_dat, dp, dl);
+	ASSERT((!(f & a_CR_TAKEOVER) || eln == 0) && (eln == 0 || !(f & a_CR_TAKEOVER)));
+	ASSERT(!(f & ~a_KEEP_MASK));
+
+	/* "finalize"? */
+	if(dl == 0){
+		f |= a_FINAL;
+		dl = 1;
+		ob = ob_base = eln_buf;
+		if(f & a_CR_TAKEOVER){
+			*ob++ = '\015';
+			f |= a_LN_ANY;
+		}
+		if(f & a_LN_ANY){
+			ob[0] = '\015';
+			ob[1] = '\012';
+			ob += 2;
+			goto jdigup;
+		}
+		goto jfinal;
+	}
+
+	for(ob = ob_base = dp; dl > 0; ++dp, --dl){
+		char c;
+
+		if((c = *dp) == '\015'){
+			if(!(f & a_CR_TAKEOVER)){
+				f |= a_CR_TAKEOVER;
+				continue;
+			}
+		}
+
+		if(LIKELY(!(f & a_CR_TAKEOVER))){
+			if(su_cs_is_blank(c)){
+				f |= a_LN_WS;
+				continue;
+			}
+		}else{
+			f ^= a_CR_TAKEOVER;
+			if(LIKELY(c == '\012')){
+				if(!(f & a_LN_ANY)){
+					f &= ~a_LN_MASK;
+					++eln;
+					continue;
+				}
+				ASSERT(eln == 0);
+				ob[0] = '\015';
+				ob[1] = '\012';
+				ob += 2;
+				f &= ~a_LN_MASK;
+				continue;
+			}else{
+				--dp;
+				++dl;
+				c = '\015';
+			}
+		}
+
+		/* We store some data; there could be pending empty lines or what */
+		if(LIKELY(eln == 0)){
+			if(f & a_LN_WS){
+				f ^= a_LN_WS;
+				*ob++ = ' ';
+			}
+			f |= a_LN_ANY;
+			*ob++ = c;
+			continue;
+		}else{
+			--dp;
+			++dl;
+			if(ob != ob_base){
+				if(c == '\015')
+					f |= a_CR_TAKEOVER;
+				goto jdigup;
+			}
+			ob = ob_base = eln_buf;
+
+			if(eln >= sizeof(eln_buf) / 2){
+				if(!(f & a_BUF_ALLOC) || eln >= alloc_size >> 1){
+					if(f & a_BUF_ALLOC)
+						su_LOFI_FREE(ob_base_alloc);
+					alloc_size = dkp->d_pdp->pd_key_md_maxsize_b64; /* xxx only if final, else 0?? */
+					eln <<= 1;
+					alloc_size = MAX(alloc_size, eln);
+					eln >>= 1;
+					ob_base_alloc = su_LOFI_TALLOC(char, alloc_size +1);
+				}
+				ob = ob_base = ob_base_alloc;
+				f |= a_BUF_ALLOC;
+			}
+
+			for(; eln > 0; ob += 2, --eln){
+				ob[0] = '\015';
+				ob[1] = '\012';
+			}
+		}
+
+jdigup:		/* C99 */{
+			struct a_md_ctx *mdcp;
+
+			for(mdcp = dkp->d_mdctxs; mdcp != NIL; mdcp = mdcp->mdc_next){
+				if(!EVP_DigestUpdate(mdcp->mdc_md_ctx, ob_base, P2UZ(ob - ob_base))){
+					su_log_write(su_LOG_CRIT, _("Cannot EVP_DigestUpdate(3) for %s: %s\n"),
+						mdcp->mdc_md->md_algo, ERR_error_string(ERR_get_error(), NIL));
+					f |= a_ERR;
+					goto jleave;
+				}
+			}
+		}
+		ob = ob_base = dp;
+	}
+
+	if(ob != ob_base){
+		dl = 1;
+		goto jdigup;
+	}
+
+	if(f & a_FINAL){
+		dl = 1;
+		goto jfinal;
+	}
+
+jleave:
+	dkp->d_body_f = (f &= a_KEEP_MASK);
+	dkp->d_body_eln = eln;
 
 	NYD_OU;
+	return ((f &= a_ERR) == a_NONE);
+
+jfinal:	/* C99 */{
+	struct a_md_ctx *mdcp;
+
+	if(f & a_BUF_ALLOC)
+		ob = ob_base_alloc;
+	else{
+		ob = eln_buf;
+		alloc_size = sizeof(eln_buf);
+	}
+	if(alloc_size <= dkp->d_pdp->pd_key_md_maxsize)
+		ob = su_LOFI_TALLOC(char, dkp->d_pdp->pd_key_md_maxsize +1);
+
+	for(mdcp = dkp->d_mdctxs; mdcp != NIL; mdcp = mdcp->mdc_next){
+		u32 obl;
+
+		obl = 0; /* xxx out only */
+		if(!EVP_DigestFinal(mdcp->mdc_md_ctx, S(uc*,ob), &obl)){
+			su_log_write(su_LOG_CRIT, _("Cannot EVP_DigestFinal(3) %s: %s\n"),
+				mdcp->mdc_md->md_algo, ERR_error_string(ERR_get_error(), NIL));
+			f |= a_ERR;
+			goto jleave;
+		}
+		mdcp->mdc_b_diglen = EVP_EncodeBlock(S(uc*,mdcp->mdc_b_digdat), S(uc*,ob), obl);
+	}
+	}goto jleave;
 } /* }}} */
-#endif /* a_SIMPLE */
 
 static boole
 a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ */
@@ -2231,7 +2406,7 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 	union {u32 sl32; uz slz; char const *cp;} a;
 	uc *sigp, *b64sigp;
 	struct a_head *hp, *xhp;
-	uz dmax, i, dmaxb64, dfromdlen;
+	uz i, dfromdlen;
 	struct a_key *kp;
 	struct a_md_ctx *mdcp;
 	char *dkim_start, *dkim_var_start, *dkim_res_start, itoa_buf[su_IENC_BUFFER_SIZE];
@@ -2239,13 +2414,6 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 	NYD_IN;
 
 	rv = FAL0;
-
-	/* Work the potentially large body spread over many chunks */
-	if(!a_dkim__body_relaxed(dkp, mibuf))
-		goto jleave;
-
-	/* Mark body digests as not finalized, so we do it once only later on */
-	DVLDBG(for(mdcp = dkp->d_mdctxs; mdcp != NIL; mdcp = mdcp->mdc_next) ASSERT(mdcp->mdc_b_diglen == 0);)
 
 	/* (Cannot overflow on earth) */
 	if(su_state_has(su_STATE_REPRODUCIBLE)){
@@ -2260,18 +2428,6 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 	 * multiple iterations on it we need a readily prepared single chunk version of all headers.
 	 * Since we have to do this, include digest/signature ouput and base64 variants in that heap, too.
 	 * And if really the milter buffer is not large enough, do a single allocation */
-
-	/* Maximum size of the digest/signature's base64 variant xxx too much work if --sign relation */
-	i = dmax = 0;
-	for(kp = dkp->d_pdp->pd_keys; kp != NIL; kp = kp->k_next){
-		uz j;
-
-		dmax = MAX(dmax, kp->k_maxsize);
-		j = kp->k_sel_len +1;
-		i = MAX(i, j);
-	}
-	dmax = MAX(dmax, EVP_MAX_MD_SIZE);
-	dmaxb64 = ((dmax +3) * 4) / 3 +1 +1;
 
 	/* Add names for h= field (entries separated with ": ", end with CRLF) */
 /* FIXME not what this does */
@@ -2295,7 +2451,8 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 
 	/* Do fully populated DKIM-Signature: (twice: normal and normalized) and tmp heap fit? */
 	dfromdlen = su_cs_len(dkp->d_from_domain);
-	i = dkp->d_head_totlen + dmax + dmaxb64 + i/* selector */ + 3*80/* xxx fuzzy*/ + dfromdlen;
+	i = dkp->d_head_totlen + dkp->d_pdp->pd_key_md_maxsize + dkp->d_pdp->pd_key_md_maxsize_b64 +
+			dkp->d_pdp->pd_key_sel_len_max + 3*80/* xxx fuzzy*/ + dfromdlen;
 	i <<= 1;
 	if(i >= a_MILTER_CHUNK_SIZE){
 		i = ALIGN_PAGE(i);
@@ -2303,9 +2460,9 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 	}DVL(else i = a_MILTER_CHUNK_SIZE - 1;)
 
 	sigp = S(uc*,mibuf);
-	b64sigp = &sigp[dmax];
+	b64sigp = &sigp[dkp->d_pdp->pd_key_md_maxsize];
 
-	dkim_start = S(char*,&b64sigp[dmaxb64]);
+	dkim_start = S(char*,&b64sigp[dkp->d_pdp->pd_key_md_maxsize_b64]);
 	dkim_var_start = dkim_start;
 	dkim_res_start = &dkim_start[i >> 1]; /* should be sufficient anyway! */
 
@@ -2344,19 +2501,6 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 		/* Find MD for it */
 		for(mdcp = dkp->d_mdctxs; mdcp->mdc_md != kp->k_md; mdcp = mdcp->mdc_next){
 			ASSERT(mdcp->mdc_next != NIL);
-		}
-
-		/* If the body digest for that MD is not done yet, do it now */
-		if(mdcp->mdc_b_diglen == 0){
-			a.sl32 = 0; /* xxx is only out param here */
-			if(!EVP_DigestFinal(mdcp->mdc_md_ctx, sigp, &a.sl32)){
-				su_log_write(su_LOG_CRIT,
-					_("Cannot EVP_DigestFinal(3) %s-%s(=%s=%s): %s\n"),
-					kp->k_algo, kp->k_md->md_algo, kp->k_sel, kp->k_file,
-					ERR_error_string(ERR_get_error(), NIL));
-				goto jleave;
-			}
-			mdcp->mdc_b_diglen = EVP_EncodeBlock(S(uc*,mdcp->mdc_b_digdat), sigp, a.sl32);
 		}
 
 		cp = dkim_res_start;
@@ -2507,7 +2651,7 @@ jesifi:
 			goto jleave;
 		}
 
-		a.slz = dmax;
+		a.slz = dkp->d_pdp->pd_key_md_maxsize;
 		if(!EVP_DigestSign(mdcp->mdc_md_ctx, sigp, &a.slz, S(uc*,dkim_start), P2UZ(dkim_end - dkim_start)))
 			goto jesifi;
 		i = EVP_EncodeBlock(b64sigp, sigp, a.slz) +1;
@@ -2551,158 +2695,6 @@ jnext_key:;
 jleave:
 	NYD_OU;
 	return rv;
-} /* }}} */
-
-static boole
-a_dkim__body_relaxed(struct a_dkim *dkp, char *mibuf){ /* {{{ */
-	enum{
-		a_NONE,
-		a_ERR = 1u<<0,
-		a_LNWS = 1u<<1,
-		a_LNANY = 1u<<2,
-		a_LNFLUSH = 1u<<3,
-		a_LNMASK = a_LNWS | a_LNANY | a_LNFLUSH,
-		a_ANYTHING = 1u<<7
-	};
-
-	char *ib, *ob, *ob_base;
-	uz il, eln;
-	u8 f;
-/* FIXME #ifndef a_SIMPLE*/
-	struct a_body *bp;
-	NYD_IN;
-
-	/* - "relaxed" null body is null input */
-	bp = dkp->d_body;
-	if(bp == NIL)
-		goto jok;
-
-	f = a_ERR;
-	il = bp->b_len;
-	eln = 0;
-	ob_base = ob = ib = bp->b_dat;
-	for(;;){
-		if(LIKELY(il > 0)){
-			char c;
-
-			c = *ib++;
-			--il;
-
-			if(su_cs_is_blank(c)){
-				f |= a_LNWS;
-				continue;
-			}
-
-			if(UNLIKELY(c == '\015')){
-				if(il > 0){
-					if(*ib == '\012'){
-						--il;
-						++ib;
-						goto jcrlf;
-					}
-				}else if(bp->b_next != NIL){
-					bp = bp->b_next;
-					ASSERT(bp->b_len > 0);
-					if(bp->b_dat[0] == '\012'){
-						il = bp->b_len - 1;
-						ib = &bp->b_dat[1];
-						f |= a_LNFLUSH;
-jcrlf:
-						if(f & a_ANYTHING){
-							ob[0] = '\015';
-							ob[1] = '\012';
-							ob += 2;
-							if(f & a_LNFLUSH){
-								f &= ~a_LNMASK;
-								goto jdig;
-							}
-						}else
-							++eln;
-						f &= ~a_LNMASK;
-						continue;
-					}
-				}
-			}
-
-
-/*
- * FIXME WE NEED TO TREAT LONELY CR AND LF AS WHITESPACE, SURELY
- */
-
-			/* We store data; if we have seen some successive empty lines before, flush them now! */
-			if(UNLIKELY(/*!(fln & a_LNANY) &&*/ eln > 0)){
-				ASSERT(!(f & a_LNANY));
-				/* Unfortunately we will have to do this char once again later on */
-				++il;
-				--ib;
-				f |= a_ANYTHING;
-
-				ob_base = ob = mibuf;
-				ob_base += a_MILTER_CHUNK_SIZE - 2;
-				for(;;){
-					ob[0] = '\015';
-					ob[1] = '\012';
-					ob += 2;
-					if(--eln == 0 || ob >= ob_base){
-						ob_base -= a_MILTER_CHUNK_SIZE - 2;
-						goto jdig;
-					}
-				}
-			}
-
-			if(f & a_LNWS){
-				f ^= a_LNWS;
-				*ob++ = ' ';
-			}
-			f |= a_LNANY | a_ANYTHING;
-			*ob++ = c;
-			continue;
-		}else{
-			ASSERT(bp != NIL);
-			if((bp = bp->b_next) == NIL){
-				/* - If the body is non-empty but does not end with a CRLF, a CRLF is added */
-				if(f & a_LNANY){
-					ob[0] = '\015';
-					ob[1] = '\012';
-					ob += 2;
-					goto jdig;
-				}
-				if(f & a_ANYTHING)
-					goto jdig;
-				goto jok;
-			}
-
-			ib = bp->b_dat;
-			il = bp->b_len;
-			if(f & (a_LNANY | a_ANYTHING))
-				goto jdig;
-			f &= ~a_LNMASK;
-			ob_base = ob = ib;
-			continue;
-		}
-
-		ASSERT(0);
-jdig:
-		/* C99 */{
-			struct a_md_ctx *mdcp;
-
-			for(mdcp = dkp->d_mdctxs; mdcp != NIL; mdcp = mdcp->mdc_next)
-				if(!EVP_DigestUpdate(mdcp->mdc_md_ctx, ob_base, P2UZ(ob - ob_base))){
-					su_log_write(su_LOG_CRIT, _("Cannot EVP_DigestUpdate(3) for %s: %s\n"),
-						mdcp->mdc_md->md_algo, ERR_error_string(ERR_get_error(), NIL));
-					goto jleave;
-				}
-		}
-		if(bp == NIL)
-			break;
-		ob_base = ob = ib;
-	}
-
-jok:
-	f = a_NONE;
-jleave:
-	NYD_OU;
-	return (f == a_NONE);
 } /* }}} */
 
 static void
@@ -2801,6 +2793,8 @@ a_conf_finish(struct a_pd *pdp){ /* {{{ */
 		if(!(pdp->pd_flags & a_F_MODE_TEST))
 			goto jleave;
 	}
+	pdp->pd_key_md_maxsize = MAX(pdp->pd_key_md_maxsize, EVP_MAX_MD_SIZE); /* XXX we can do latter better! */
+	pdp->pd_key_md_maxsize_b64 = ((pdp->pd_key_md_maxsize +3) * 4) / 3 +1 +1;
 
 	/* */
 	su_cs_dict_balance(&pdp->pd_cli);
@@ -3687,7 +3681,6 @@ jekey:
 			struct a_md *mdp;
 			FILE *fp;
 			struct a_key **lkpp, *kp;
-			u32 kmaxsize;
 
 			if(*xarg == '\0'){
 				a_conf__err(pdp, _("--key: no key file specified\n"));
@@ -3735,12 +3728,16 @@ jekeyo:
 				a_conf__err(pdp, _("--key: private key is not of the specified algorithm: %s: %s\n"),
 					katp->kat_pkey_name, xarg);
 				goto jekey;
-			}
-			kmaxsize = EVP_PKEY_get_size(pkeyp);
-			if(kmaxsize == 0 || kmaxsize > S32_MAX){
-				a_conf__err(pdp, _("--key: cannot determine algorithm EVP_PKEY_get_size(): %s: %s\n"),
-					katp->kat_pkey_name, xarg);
-				goto jekey;
+			}else{
+				u32 kmaxsize;
+
+				kmaxsize = EVP_PKEY_get_size(pkeyp);
+				if(kmaxsize == 0 || kmaxsize > S32_MAX){
+					a_conf__err(pdp, _("--key: cannot determine EVP_PKEY_get_size(): %s: %s\n"),
+						katp->kat_pkey_name, xarg);
+					goto jekey;
+				}
+				pdp->pd_key_md_maxsize = MAX(pdp->pd_key_md_maxsize, kmaxsize);
 			}
 
 			/* So then, find message digest, or create it anew */
@@ -3778,11 +3775,12 @@ jekeyo:
 			kp->k_md = mdp;
 			kp->k_key = pkeyp;
 			kp->k_id = katp->kat_pkey;
-			kp->k_maxsize = kmaxsize;
 			su_cs_pcopy(kp->k_algo, katp->kat_pkey_name);
 			kp->k_sel = su_cs_pcopy(kp->k_file, xarg) +1;
 			sel = su_cs_pcopy(kp->k_sel, sel);
 			kp->k_sel_len = P2UZ(sel - kp->k_sel);
+
+			pdp->pd_key_sel_len_max = MAX(pdp->pd_key_sel_len_max, kp->k_sel_len);
 			}break;
 		}
 	}
