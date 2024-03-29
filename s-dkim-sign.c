@@ -2936,8 +2936,6 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 		(pdp->pd_flags & a_F_DBG ? "debug\n" : su_empty),
 		(pdp->pd_flags & a_F_V ? "verbose\n" : su_empty), (pdp->pd_flags & a_F_VV ? "verbose\n" : su_empty));
 
-
-
 	/* C99 */{
 		struct a_key *kp;
 
@@ -3046,37 +3044,40 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 				j += fprintf(stdout, "%.*s@%s%s", S(int,sp->s_spec_dom_off - 1), spec,
 						(sp->s_wildcard ? "." : su_empty), &spec[sp->s_spec_dom_off]);
 
-/* TODO do not print anything without domain */
-			putc(',', stdout);
-			++j;
-			if(*sp->s_dom != '\0'){
-				putc(' ', stdout);
-				fputs(sp->s_dom, stdout);
-				j += su_cs_len(sp->s_dom);
-			}
-
-/* TODO do not print anything without s_anykey */
-			putc(',', stdout);
-			++j;
-			for(i = 0; i < a_SIGN_MAX_SELECTORS; ++i){
-				uz k;
-
-				if(sp->s_sel[i].key == NIL)
-					break;
-
-				k = sp->s_sel[i].key->k_sel_len;
-				if(j + k >= 72){
-					if(i != 0)
-						putc(':', stdout);
-					putc('\\', stdout); putc('\n', stdout); putc('\t', stdout);
-					j = 8;
-				}else{
-					putc((i != 0 ? ':' : ' '), stdout);
-					++j;
+			if(*sp->s_dom != '\0' || sp->s_anykey){
+				putc(',', stdout);
+				++j;
+				if(*sp->s_dom != '\0'){
+					putc(' ', stdout);
+					fputs(sp->s_dom, stdout);
+					j += su_cs_len(sp->s_dom);
 				}
-				j += k;
-				fputs(sp->s_sel[i].key->k_sel, stdout);
+
+				if(sp->s_anykey){
+					putc(',', stdout);
+					++j;
+					for(i = 0; i < a_SIGN_MAX_SELECTORS; ++i){
+						uz k;
+
+						if(sp->s_sel[i].key == NIL)
+							break;
+
+						k = sp->s_sel[i].key->k_sel_len;
+						if(j + k >= 72){
+							if(i != 0)
+								putc(':', stdout);
+							putc('\\', stdout); putc('\n', stdout); putc('\t', stdout);
+							j = 8;
+						}else{
+							putc((i != 0 ? ':' : ' '), stdout);
+							++j;
+						}
+						j += k;
+						fputs(sp->s_sel[i].key->k_sel, stdout);
+					}
+				}
 			}
+
 			putc('\n', stdout);
 		}
 	} /* }}} */

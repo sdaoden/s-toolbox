@@ -478,25 +478,25 @@ cmp 8.15 t8.14 t8.15
 ${PD} -# $k --sign 'a@.b ,    ,   :::::: : ' > t8.16 2>ERR
 x $? 8.16
 e0 8.16
-{ echo $kR; echo 'sign a@.b,,'; } > t8.17
+{ echo $kR; echo 'sign a@.b'; } > t8.17
 cmp 8.17 t8.16 t8.17
 
-${PD} -# $k --sign 'a@.b,,' > t8.18 2>ERR
+${PD} -# $k --sign 'a@.b' > t8.18 2>ERR
 x $? 8.18
 e0 8.18
-{ echo $kR; echo 'sign a@.b,,'; } > t8.19
+{ echo $kR; echo 'sign a@.b'; } > t8.19
 cmp 8.19 t8.18 t8.19
 
 ${PD} -# $k --sign '.b,' > t8.20 2>ERR
 x $? 8.20
 e0 8.20
-{ echo $kR; echo 'sign .b,,'; } > t8.21
+{ echo $kR; echo 'sign .b'; } > t8.21
 cmp 8.21 t8.20 t8.21
 
 ${PD} -# $k --sign '.' > t8.22 2>ERR
 x $? 8.22
 e0 8.22
-{ echo $kR; echo 'sign .,,'; } > t8.23
+{ echo $kR; echo 'sign .'; } > t8.23
 cmp 8.23 t8.22 t8.23
 
 #
@@ -528,21 +528,23 @@ fi
 ${PD} -# --sign ',' > t8.31 2>&1
 y $? 8.31
 
-${PD} -# $k -S y@.,, --sign a@.b,,I -S x@.b,, > t8.32 2>ERR
+${PD} -# $k -S y@.,, --sign a@.b,,I -S x@.b,, -S .n.o,y.e.s > t8.32 2>ERR
 x $? 8.32
 e0 8.32
 cat > t8.33 << _EOT
 $kR
 sign a@.b,, I
-sign x@.b,,
-sign y@.,,
+sign .n.o, y.e.s
+sign x@.b
+sign y@.
 _EOT
 cmp 8.34 t8.32 t8.33
 
 cat > t8.35.rc << '_EOT'
 a@.b,, I
-x@.b,,
+x@.b,
 y@.,,
+.n.o, y.e.s
 _EOT
 ${PD} -# $k -s t8.35.rc > t8.35 2>ERR # --sign-file
 x $? 8.35
