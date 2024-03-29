@@ -38,7 +38,7 @@
 /**/
 #define a_OPENLOG_FLAGS (LOG_NDELAY)
 
-/* xxx but NYD almost unused here */
+/* xxx but NYD almost unused here; DBGIF: su_STATE_GUT_MEM_TRACE (needs SANITIZER=y for test) */
 #define a_DBGIF 0
 # define a_DBG(X)
 # define a_DBG2(X)
@@ -1132,6 +1132,7 @@ a_milter(struct a_pd *pdp, s32 sock){
 	DVL(
 		a_milter__cleanup(mip);
 		su_mem_bag_gut(&mip->mi_bag);
+		DVL(DBG(su_FREE(mip)));
 	)
 
 	NYD_OU;
@@ -4633,7 +4634,10 @@ jleave:
 	a_conf_cleanup(&pd);
 #endif
 	su_state_gut(mpv == su_EX_OK
-		? su_STATE_GUT_ACT_NORM /*FIXME DVL( | su_STATE_GUT_MEM_TRACE )*/
+		? su_STATE_GUT_ACT_NORM
+#if a_DBGIF
+			| su_STATE_GUT_MEM_TRACE
+#endif
 		: su_STATE_GUT_ACT_QUICK);
 
 	return mpv;
