@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd April 2, 2024
+.Dd April 6, 2024
 .ds VV \\%v0.6.0
 .ds XX \\%S-DKIM-SIGN
 .ds Xx \\%S-dkim-sign
@@ -233,7 +233,9 @@ or
 .Ar spec
 is either a domain name or an IPv4 or IPv6 internet address, optionally
 in RFC 1519 CIDR notation with network mask.
-Domain names are matched exactly unless starting with a period
+Domain names (see
+.Fl Fl domain-name )
+are matched exactly unless starting with a period
 .Ql \&.
 to enforce wildcard matches for it and its subdomains; only period is a
 .Dq super-\:wildcard
@@ -441,12 +443,12 @@ s headers matching the milter macro
 .Pf ( Xr postfix 1 Ns
 -expanded to
 .Ql $myhostname )
-are removed, otherwise the given domains in order.
-Domain names match exactly unless starting with a period
-.Ql \&.
-to enforce wildcard matches for it and its subdomains; only period is a
-.Dq super-wildcard
-that matches all domains.
+are removed, otherwise the given strings in order;
+.Sy Note:
+they are matched as domain names are for
+.Fl Fl client ,
+syntax validity is however not verified due to their RFC 8601 definition;
+As a special case the empty string matches invalid header instances.
 .
 .Mx Fl resource-file
 .It Fl Fl resource-file Ar path , Fl R Ns ..
