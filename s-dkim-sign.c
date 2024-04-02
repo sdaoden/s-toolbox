@@ -3,9 +3,9 @@
  *@ - TODO DKIM-I i= DKIM value (optional additional --sign arg).
  *@ - TODO I would like to have "an additional --client" match for {mail_addr} macro of M.
  *@        But *especially* signing localhost->localhost mails seems so stupid.
+ *@ - TODO Would like to have "sender localhost && rcpt localhost && pass".
  *@ - TODO internationalized selectors are missing (a_key.k_sel).
  *@ - TODO server mode missing -- must be started by spawn(8).
- *@ - TODO Would like to have "sender localhost && rcpt localhost && pass".
  *@ - We have some excessively spaced base64 buffers.
  *@ - xxx With multiple keys, cannot include elder generated D-S in newer ones.
  *@ - Assumes header "name" values do not end with whitespace (search @HVALWS).
@@ -205,6 +205,9 @@
  * take the default action for any message in progress (configurable to
  * ignore the milter program, or reject with a 4xx or 5xx error).
  *
+ * [Header continuation lines are separated with LF, and milters SHOULD NOT
+ * use CRLF but only LF for these, too: it is up to the MTA to adjust that.]
+ *
  * _____________________________
  * A TYPICAL MILTER CONVERSATION
  *
@@ -235,7 +238,6 @@
  * 			Accept/reject action
  * SMFIC_HEADER (multiple)
  * 			Accept/reject action (per SMFIC_HEADER)
- * 			[Continuation lines may contain plain LF]
  * SMFIC_EOH
  * 			Accept/reject action
  * SMFIC_BODY (multiple)
@@ -591,8 +593,6 @@
 #else
 # define a_BASE_FD STDIN_FILENO
 #endif
-#undef a_BASE_FD
-# define a_BASE_FD STDERR_FILENO /* xxX STDOUT open for no reason; dup2(STDERR, STDOUT)? */
 
 #if su_OS_DRAGONFLY || su_OS_NETBSD || su_OS_OPENBSD
 # define a_CLOSE_ALL_FDS() (closefrom(a_BASE_FD + 1) == 0)
@@ -729,7 +729,6 @@ enum a_flags{
 	a_F_RM_A_R = 1u<<23, /* --remove: a-r configured */
 	a_F_RM_MASK = a_F_RM_A_R,
 
-
 	a_F_CLI_DOMAINS = 1u<<24, /* --client: any domain names, */
 	a_F_CLI_DOMAIN_WILDCARDS = 1u<<25, /* with wildcards, */
 	a_F_CLI_IPS = 1u<<26, /* ^ any IP addresses (shared dictionary) */
@@ -784,7 +783,7 @@ struct a_head{
 	struct a_head *h_same_older; /* In the entry's slot (newest first), list of same-headers */
 	struct a_head *h_same_newer;
 	u32 h_nlen; /* (Note: these are only for ease of calculation) */
-	u32 h_dlen; /* (In case of --remove 0 if removal desired) */
+	u32 h_dlen;
 	char *h_dat;
 	char h_name[VFIELD_SIZE(0)]; /* name\0dat\0 */
 };
@@ -889,7 +888,7 @@ struct a_pd{
 	char *pd_header_seal; /* --header-seal: NIL: none */
 	char *pd_mima_sign; /* name\0[:val\0:]\0 */
 	char *pd_mima_verify;
-	char *pd_remove_ar; /* --remove a-r (\0|:val\0:)\0 */
+	char *pd_rm_ar; /* --remove a-r (\0|:val\0:)\0 */
 	struct a_key *pd_keys; /* --key */
 	u32 pd_key_md_maxsize; /* MAX() across all EVP_PKEY_get_size() and MDs, */
 	u32 pd_key_md_maxsize_b64; /* ..ditto, as base64 (including pad, NUL, etc), */
@@ -956,26 +955,26 @@ enum{a_HEADER_SIGN = 0, a_HEADER_SEAL = 2}; /* (base + EXT) */
 static char const a_sopts[] = "A:C:c:" "d:" "~:!:" "k:" "M:" "R:" "r:" "S:s:" "t:" "#" "Hh";
 static char const * const a_lopts[] = {
 	/* long option order */
-	"client:;C;" N_("assign an action [(sign|pass),] to domain or address"),
+	"client:;C;" N_("assign action [(sign|pass),] to domain or address"),
 	"client-file:;c;" N_("[action,]file: like --client for all lines of file"),
 
-	"domain-name:;d;" N_("set domain name announced in signatures"),
+	"domain-name:;d;" N_("set signature-announced domain name (default)"),
 
 	"header-sign:;~;" N_("comma-separated header list to sign"),
 	"header-sign-show;-1;" N_("[*] show default --header-sign lists, exit"),
 	"header-seal:;!;" N_("comma-separated header list to (over)sign/seal"),
 	"header-seal-show;-2;" N_("[*] show default --header-seal lists, exit"),
 
-	"key:;k;" N_("adds a key via algo-digest,selector,private-key-pem-file"),
+	"key:;k;" N_("add key via algo-digest,selector,private-key-pem-file"),
 
-	"milter-macro:;M;" N_("action if server announces action,macro[:,value:]"),
+	"milter-macro:;M;" N_("pass unless server announces action,macro[:,value:]"),
 
 	"remove:;r;" N_("remove header of type[:,spec:]"),
 
 	"resource-file:;R;" N_("path to configuration file with long options"),
 
-	"sign:;S;" N_("add a sign relation via spec[,domain[:,selector:]]"),
-	"sign-file:;s;" N_("like --client for all lines of file"),
+	"sign:;S;" N_("add sign relation via spec[,domain[:,selector:]]"),
+	"sign-file:;s;" N_("like --sign for all lines of file"),
 
 	"ttl:;t;" N_("impose time-to-live on signatures, in seconds"),
 
@@ -984,7 +983,7 @@ static char const * const a_lopts[] = {
 
 	/**/
 	"debug;-3;" N_("debug mode: sandbox mode, no real actions, only log"),
-	"verbose;-4;" N_("increase syslog verbosity (multiply for more verbosity)"),
+	"verbose;-4;" N_("increase syslog verbosity (2x for more verbosity)"),
 
 	/**/
 	"test-mode;#;" N_("[*] check and list configuration, exit according status"),
@@ -1163,7 +1162,7 @@ a_milter__cleanup(struct a_milter *mip){
 }
 
 static s32
-a_milter__loop(struct a_milter *mip){ /* {{{ */
+a_milter__loop(struct a_milter *mip){ /* xxx too big: split up {{{ */
 	enum{
 		a_NONE,
 		a_REPRO = 1u<<0, /* reproducible */
@@ -1810,7 +1809,7 @@ a_milter__parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {{{ */
 
 	rv = a_CLI_ACT_ERR;
 
-	/* "localhost [127.0.0.1]": isolate the fields */
+	/* "localhost [127.0.0.1]": isolate fields */
 	addr = su_mem_find(dp, '[', dl);
 	if(addr == NIL)
 		goto jleave;
@@ -1828,7 +1827,7 @@ a_milter__parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {{{ */
 			goto jleave;
 		*x = '\0';
 
-		/* Normalize domain names */
+		/* Normalize domains */
 		for(x = dp; (c = *x) != '\0' && !su_cs_is_space(c); ++x)
 			*x = S(char,su_cs_to_lower(c));
 		*x = '\0';
@@ -2280,6 +2279,7 @@ a_dkim_push_body(struct a_dkim *dkp, char *dp, uz dl, struct su_mem_bag *membp){
 			ob[0] = '\015';
 			ob[1] = '\012';
 			ob += 2;
+			f &= ~a_LN_MASK;
 			goto jdigup;
 		}
 		goto jfinal;
@@ -2323,6 +2323,7 @@ a_dkim_push_body(struct a_dkim *dkp, char *dp, uz dl, struct su_mem_bag *membp){
 
 		/* We store some data; there could be pending empty lines or what */
 		if(LIKELY(eln == 0)){
+jafter_eln:
 			if(f & a_LN_WS){
 				f ^= a_LN_WS;
 				*ob++ = ' ';
@@ -2331,16 +2332,27 @@ a_dkim_push_body(struct a_dkim *dkp, char *dp, uz dl, struct su_mem_bag *membp){
 			*ob++ = c;
 			continue;
 		}else{
+			/* Optimize usual case of non-trailing empty lines we skipped over */
+			if(LIKELY(P2UZ(dp - ob) >= eln << 1)){
+				for(; eln > 0; ob += 2, --eln){
+					ob[0] = '\015';
+					ob[1] = '\012';
+				}
+				goto jafter_eln;
+			}
+
 			--dp;
 			++dl;
-			if(ob != ob_base){
+
+			/* xxx This likely (logically) does not happen */
+			if(UNLIKELY(ob != ob_base)){
 				if(c == '\015')
 					f |= a_CR_TAKEOVER;
 				goto jdigup;
 			}
 			ob = ob_base = eln_buf;
 
-			if(eln >= sizeof(eln_buf) / 2){
+			if(UNLIKELY(eln >= sizeof(eln_buf) / 2)){
 				if(!(f & a_BUF_ALLOC) || eln >= alloc_size >> 1){
 					if(f & a_BUF_ALLOC)
 						su_LOFI_FREE(ob_base_alloc);
@@ -2906,8 +2918,8 @@ a_conf_cleanup(struct a_pd *pdp){ /* {{{ */
 	if(pdp->pd_mima_verify != NIL)
 		su_FREE(pdp->pd_mima_verify);
 
-	if(pdp->pd_remove_ar != NIL)
-		su_FREE(pdp->pd_remove_ar);
+	if(pdp->pd_rm_ar != NIL)
+		su_FREE(pdp->pd_rm_ar);
 
 	while((kp = pdp->pd_keys) != NIL){
 		pdp->pd_keys = kp->k_next;
@@ -3140,7 +3152,7 @@ jhredo:
 	if(pdp->pd_dkim_sig_ttl != 0)
 		fprintf(stdout, "ttl %lu\n", S(ul,pdp->pd_dkim_sig_ttl));
 
-	if((cp = pdp->pd_remove_ar) != NIL)
+	if((cp = pdp->pd_rm_ar) != NIL)
 		a_conf__list_cpxarr("remove a-r", cp, TRU1);
 
 	if(arr != NIL)
@@ -3932,7 +3944,7 @@ a_conf__r(struct a_pd *pdp, char *arg){ /* {{{ */
 	while((x.cp = su_cs_sep_c(&arg, ',', (mac != NIL))) != NIL){
 		if(mac == NIL){
 			if(!su_cs_cmp_case(x.cp, "a-r")){
-				mac = &pdp->pd_remove_ar;
+				mac = &pdp->pd_rm_ar;
 				fbit = a_F_RM_A_R;
 			}else{
 				a_conf__err(pdp, _("--remove: unknown type: %s\n"), x.cp);

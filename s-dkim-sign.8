@@ -414,7 +414,7 @@ if servers announce
 .Ar macro
 (with any of the given
 .Ar value Ns
-(s)).
+(s)), or let the connection pass.
 With
 .Xr postfix 1
 one should
@@ -448,7 +448,9 @@ are removed, otherwise the given strings in order;
 they are matched as domain names are for
 .Fl Fl client ,
 syntax validity is however not verified due to their RFC 8601 definition;
-As a special case the empty string matches invalid header instances.
+As a special case a sole exclamation mark
+.Ql \&!
+empty string matches invalid header instances.
 .
 .Mx Fl resource-file
 .It Fl Fl resource-file Ar path , Fl R Ns ..
