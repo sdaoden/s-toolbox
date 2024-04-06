@@ -160,24 +160,30 @@ Other messages will not be signed.
 milter_default_action = accept
 non_smtpd_milters = unix:private/dkim-sign
 smtpd_milters = unix:private/dkim-sign
-milter_macro_daemon_name = egressplus
+milter_macro_daemon_name = outwall
 
 #@ /etc/postfix/master.cf:
-localhost:smtp inet n - n - - smtpd
-  -o syslog_name=localsmtp
 smtp inet n - n - - smtpd
   -o smtpd_tls_security_level=may
   -o milter_macro_daemon_name=ingress
+localhost:smtp inet n - n - - smtpd
+  -o syslog_name=localsmtp
+#localhost:421 inet n - n - - smtpd
+# -o syslog_name=lhlist
+# -o smtpd_milters=unix:private/dkim-sign-list
 ..
 dkim-sign unix - n n - - spawn
   user=ANON-USR
   argv=/usr/libexec/s-dkim-sign -R /etc/dkim-sign.rc
+#dkim-sign-list unix - n n - - spawn
+#  user=ANON-USR
+#  argv=/usr/libexec/s-dkim-sign -R /etc/dkim-sign.rc --header-seal=+
 
 #@ /etc/s-dkim-sign.rc
 key rsa-sha256, rsape, /etc/dkim-pri-rsa.pem
 key ed25519-sha256, edape, /etc/dkim-pri-ed25519.pem
 
-milter-macro sign, {daemon_name}, egressplus
+milter-macro sign, {daemon_name}, outwall
 milter-macro verify, {daemon_name}, ingress
 #client localhost
 

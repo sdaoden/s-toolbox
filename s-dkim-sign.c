@@ -1452,7 +1452,7 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 					su_cs_pcopy(cp, &bp[2]);
 				}
 
-				if(fb & a_MIMA){ /* {{{ */
+				if((fb & a_MIMA) && !(fx & a_MIMA)){ /* {{{ */
 					char const *mt;
 					char *cp;
 					boole once;
@@ -1467,27 +1467,40 @@ jmima_redo:
 						mt = "verify";
 					}
 
-					if(cp != NIL){
+					if(cp != NIL && !su_cs_cmp(bp, cp)){
+						u32 f;
+						uz i;
+
 						cp += su_cs_len(cp);
 
 						if(*++cp == '\0'){
-							fx |= a_MIMA;
 							if(UNLIKELY(fb & a_DBG_V))
 								su_log_write(su_LOG_INFO,
 									"%s--milter-macro match ok: %s, %s",
 									mip->mi_log_id, mt, bp);
+							goto jmima_ok;
 						}else for(;;){
-							uz i;
-
 							i = su_cs_len(cp) +1;
+
 							if(i == dl && !su_mem_cmp(cp, &bp[nl], i -1)){
-								fx |= a_MIMA;
 								if(UNLIKELY(fb & a_DBG_V))
 									su_log_write(su_LOG_INFO,
 										"%s--milter-macro match ok: %s, %s, %s",
 										mip->mi_log_id, mt, bp, cp);
+jmima_ok:
+								f = once ? a_ACT_VERIFY : a_ACT_SIGN;
+								if((fx & (a_ACT_SIGN | a_ACT_VERIFY)) && !(fx & f)){
+									if(UNLIKELY((fb & a_DBG_V)))
+										su_log_write(su_LOG_INFO,
+										"%saction opposed, changing x->pass",
+											mip->mi_log_id);
+									f = a_ACT_PASS;
+								}
+								fx &= ~a_ACT_MASK;
+								fx |= a_MIMA | f;
 								break;
 							}
+
 							cp += i;
 							if(*cp == '\0'){
 								if(UNLIKELY((fb & a_DBG_V)))
@@ -1502,36 +1515,34 @@ jmima_redo:
 						}
 					}
 
-					if(fx & a_MIMA){
-						u32 f;
-
-						f = once ? a_ACT_VERIFY : a_ACT_SIGN;
-						if((fx & (a_ACT_SIGN | a_ACT_VERIFY)) && !(fx & f)){
-							if(UNLIKELY((fb & a_DBG_V)))
-								su_log_write(su_LOG_INFO,
-									"%saction opposed, changing x->pass",
-									mip->mi_log_id);
-							fx &= ~(a_ACT_SIGN | a_ACT_VERIFY);
-							fx |= a_ACT_PASS;
-						}
-					}else{
-						if(!once)
-							goto jmima_redo;
-						fx |= a_ACT_PASS;
-					}
-					fx &= ~a_ACT_DUNNO;
+					if(!(fx & a_MIMA) && !once)
+						goto jmima_redo;
 				} /* }}} */
 			}
 
-			if(UNLIKELY(fb & a_REPRO) && cmd == a_SMFIC_CONNECT){
-				if(fb & a_MIMA)
-					puts((fx & a_MIMA) ? "--milter-macro OK" : "--milter-macro BAD");
-				if(fb & a_CLI)
-					puts((fx & a_CLI) ? "--client OK" : "--client BAD");
-				ASSERT(((fx & a_SMFIC_CONNECT_MASK) == (fb & a_SMFIC_CONNECT_MASK)) ||
-					(fx & a_ACT_PASS));
-				ASSERT(((fx & a_SMFIC_CONNECT_MASK) != (fb & a_SMFIC_CONNECT_MASK)) ||
-					!(fx & a_ACT_PASS));
+
+
+
+			if(LIKELY(cmd == a_SMFIC_CONNECT)){
+				if(LIKELY(!(fb & a_REPRO))){
+					if((fb & a_MIMA) && !(fb & a_MIMA)){
+						if(UNLIKELY((fb & a_DBG_V)))
+							su_log_write(su_LOG_INFO,
+								"%s--milter-macro did not match, pass",
+								mip->mi_log_id);
+						fx &= ~a_ACT_MASK;
+						fx |= a_ACT_PASS;
+					}
+				}else{
+					if(fb & a_MIMA)
+						puts((fx & a_MIMA) ? "--milter-macro OK" : "--milter-macro BAD");
+					if(fb & a_CLI)
+						puts((fx & a_CLI) ? "--client OK" : "--client BAD");
+					ASSERT(((fx & a_SMFIC_CONNECT_MASK) == (fb & a_SMFIC_CONNECT_MASK)) ||
+						(fx & a_ACT_PASS));
+					ASSERT(((fx & a_SMFIC_CONNECT_MASK) != (fb & a_SMFIC_CONNECT_MASK)) ||
+						!(fx & a_ACT_PASS));
+				}
 			}
 			}break; /* }}} */
 
@@ -1768,7 +1779,7 @@ goto jaccept;
 				goto jleave;
 			}
 
-			if(UNLIKELY(fb & a_DBG_VV))
+			if(UNLIKELY(fb & a_DBG_V))
 				su_log_write(su_LOG_INFO, "creating DKIM signature");
 
 			if(a_dkim_sign(mip->mi_dkim, &mip->mi_buf[0], &mip->mi_bag)){
