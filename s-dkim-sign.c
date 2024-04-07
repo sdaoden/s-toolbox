@@ -1258,16 +1258,16 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 		if(rv != su_EX_OK){
 			if(rv == -su_ERR_NOTCONN){
 				if(fb & a_DBG_VV)
-					su_log_write(su_LOG_INFO, "connection shutdown, good bye",
-						mip->mi_buf[0], mip->mi_buf[0], mip->mi_len);
+					su_log_write(su_LOG_INFO, "%sconnection shutdown, good bye",
+						mip->mi_log_id);
 				rv = su_EX_OK;
 			}
 			goto jleave;
 		}
 
 		if(UNLIKELY(fb & a_VV))
-			su_log_write(su_LOG_INFO, "CMD %c/%d, %zu data bytes",
-				mip->mi_buf[0], mip->mi_buf[0], mip->mi_len);
+			su_log_write(su_LOG_INFO, "%sCMD %c/%d, %zu data bytes",
+				mip->mi_log_id, mip->mi_buf[0], mip->mi_buf[0], mip->mi_len);
 
 		switch(mip->mi_buf[0]){
 		case a_SMFIC_QUIT:
@@ -1520,15 +1520,11 @@ jmima_ok:
 				} /* }}} */
 			}
 
-
-
-
 			if(LIKELY(cmd == a_SMFIC_CONNECT)){
 				if(LIKELY(!(fb & a_REPRO))){
-					if((fb & a_MIMA) && !(fb & a_MIMA)){
+					if((fb & a_MIMA) && !(fx & a_MIMA)){
 						if(UNLIKELY((fb & a_DBG_V)))
-							su_log_write(su_LOG_INFO,
-								"%s--milter-macro did not match, pass",
+							su_log_write(su_LOG_INFO, "%s--milter-macro mismatch, pass",
 								mip->mi_log_id);
 						fx &= ~a_ACT_MASK;
 						fx |= a_ACT_PASS;
@@ -1614,9 +1610,7 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 			}
 
 			if(fx & (a_ACT_DUNNO | a_ACT_VERIFY)){
-				if((fb & a_RM_A_R) &&
-						!su_cs_cmp_case(a_rm_head_names[a_RM_HEAD_A_R], &mip->mi_buf[1])){
-					/* FIXME SHORTHAND FOR EASIER LATER PUSING */
+				if((fb & a_RM_A_R) && !su_cs_cmp_case(a_rm_head_names[a_RM_HEAD_A_R], &mip->mi_buf[1])){
 					act |= TRU2;
 					break;
 				}
@@ -1683,7 +1677,7 @@ jheader_done:
 			}
 			}break; /* }}} */
 
-		case a_SMFIC_BODY:
+		case a_SMFIC_BODY:/* {{{ */
 			if(fb & a_VV)
 				su_log_write(su_LOG_INFO, "%sbody chunk %lu bytes",
 					mip->mi_log_id, S(ul,mip->mi_len - 1));
@@ -1726,7 +1720,7 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 					goto jleave;
 				}
 			}
-			break;
+			break; /* }}} */
 
 		case a_SMFIC_BODYEOB: /* {{{ */
 			if(fb & a_VV)
@@ -1970,7 +1964,7 @@ a_milter__parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {{{ */
 
 	rv = a_CLI_ACT_ERR;
 
-	/* "localhost [127.0.0.1]": isolate fields */
+	/* "localhost [127.0.0.1]" (plus optional additional data): isolate fields */
 	addr = su_mem_find(dp, '[', dl);
 	if(addr == NIL)
 		goto jleave;
