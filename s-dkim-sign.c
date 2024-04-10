@@ -1,6 +1,8 @@
 /*@ s-dkim-sign(8) - [postfix-only] RFC 6376/[8301]/8463 DKIM sign-only milter.
  *@ - OpenSSL must be 1.1.0 or above.
  *@ - TODO DKIM-I i= DKIM value (optional additional --sign arg).
+ *@ - TODO Make somehow addressable postfix's "(may be forged)":
+ *@	s-dkim-sign: [15506][info]: start.gursama.com [185.28.39.97] (may be forged): no --client's match: "pass, ."
  *@ - TODO I would like to have "an additional --client" match for {mail_addr} macro of M.
  *@        But *especially* signing localhost->localhost mails seems so stupid.
  *@ - xxx Three level verbosity?
@@ -727,8 +729,9 @@ enum a_flags{
 	a_F_DBG_VV = a_F_DBG | a_F_VV,
 
 	/* */
-	a_F_RM_A_R = 1u<<23, /* --remove: a-r configured */
-	a_F_RM_MASK = a_F_RM_A_R,
+	a_F_RM_A_R = 1u<<22, /* --remove: a-r configured */
+	a_F_RM_A_R_INVAL = 1u<<23, /* (and: drop invalid headers) */
+	a_F_RM_MASK = a_F_RM_A_R | a_F_RM_A_R_INVAL,
 
 	a_F_CLI_DOMAINS = 1u<<24, /* --client: any domain names, */
 	a_F_CLI_DOMAIN_WILDCARDS = 1u<<25, /* with wildcards, */
@@ -1031,6 +1034,7 @@ static s32 a_server(struct a_pd *pdp);
 /* milter */
 static s32 a_milter(struct a_pd *pdp, s32 sock);
 
+/* __read() returns -EX_IOERR on connection break */
 static void a_milter__cleanup(struct a_milter *mip);
 static s32 a_milter__loop(struct a_milter *mip);
 static s32 a_milter__read(struct a_milter *mip);
@@ -1038,7 +1042,11 @@ static s32 a_milter__read(struct a_milter *mip);
 static s32 a_milter__write(struct a_milter *mip, uz len);
 
 /* _ macro */
-static enum a_cli_action a_milter__parse_(struct a_milter *mip, char *dp, uz dl, boole bltin);
+static enum a_cli_action a_milter__macro_parse_(struct a_milter *mip, char *dp, uz dl, boole bltin);
+
+/**/
+static s32 a_milter__rm_parse(struct a_milter *mip, ZIPENUM(u8,enum a_rm_head_type) rmt, char *dp);
+static s32 a_milter__rm(struct a_milter *mip);
 
 /* post_eoh must be >TRU1 if there was no !pre_eoh; !post_eoh only ensures _cleanup() can be called */
 static boole a_dkim_setup(struct a_dkim *dkp, boole post_eoh, struct a_pd *pdp, struct su_mem_bag *membp,
@@ -1256,7 +1264,7 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 	for(fx = a_ACT_DUNNO /* UNINIT(fx,a_ACT_DUNNO)? */;;){
 		rv = a_milter__read(mip);
 		if(rv != su_EX_OK){
-			if(rv == -su_ERR_NOTCONN){
+			if(rv == -su_EX_IOERR){
 				if(fb & a_DBG_VV)
 					su_log_write(su_LOG_INFO, "%sconnection shutdown, good bye",
 						mip->mi_log_id);
@@ -1404,13 +1412,13 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 					if(bp[0] == 'i') /* SMFIC_MAIL/i jump */
 						continue;
 
-					switch(a_milter__parse_(mip, &bp[2], dl, ((fb & a_CLI) == 0))){ /* (logs) */
+					switch(a_milter__macro_parse_(mip, &bp[2], dl, ((fb & a_CLI) == 0))){/*(logs)*/
 					case a_CLI_ACT_NONE: FALLTHRU
 					case a_CLI_ACT_ERR:
 						goto jeproto;
 					case a_CLI_ACT_PASS:
+						fx &= ~a_ACT_MASK;
 						fx |= a_ACT_PASS;
-						fx &= ~a_ACT_DUNNO;
 						break;
 					case a_CLI_ACT_VERIFY:
 						if(LIKELY(!(fx & a_ACT_SIGN)))
@@ -1420,7 +1428,8 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 								su_log_write(su_LOG_INFO,
 									"%saction opposed, changing sign->pass",
 									mip->mi_log_id);
-							fx ^= a_ACT_SIGN | a_ACT_PASS;
+							fx &= ~a_ACT_MASK;
+							fx |= a_ACT_PASS;
 						}
 						fx &= ~a_ACT_DUNNO;
 						break;
@@ -1432,7 +1441,8 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 								su_log_write(su_LOG_INFO,
 									"%saction opposed, changing verify->pass",
 									mip->mi_log_id);
-							fx ^= a_ACT_VERIFY | a_ACT_PASS;
+							fx &= ~a_ACT_MASK;
+							fx |= a_ACT_PASS;
 						}
 						fx &= ~a_ACT_DUNNO;
 						break;
@@ -1568,8 +1578,10 @@ jmima_ok:
 			break; /* }}} */
 
 		case a_SMFIC_HEADER:{ /* {{{ */
+			enum {a_FH_NONE, a_FH_SIGN = 1u<<0, a_FH_RM = 1u<<1};
+
 			uz i;
-			boole act;
+			u8 fh, rmt;
 			char const *hname;
 
 			if(UNLIKELY(fb & a_VV))
@@ -1587,8 +1599,8 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 			}
 			fx |= a_SEEN_SMFIC_HEADER;
 
-			/* TRU1: sign TRU2: verify */
-			act = FAL0;
+			UNINIT(hname, NIL);
+			fh = a_FH_NONE;
 
 			if(fx & (a_ACT_DUNNO | a_ACT_SIGN)){
 				hname = pdp->pd_header_sign;
@@ -1596,7 +1608,7 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 					hname = a_header_sigsea[a_HEADER_SIGSEA_OFF_SIGN];
 				for(;;){
 					if(!su_cs_cmp_case(hname, &mip->mi_buf[1])){ /* @HVALWS */
-						act |= TRU1;
+						fh |= a_FH_SIGN;
 						break;
 					}
 					hname += su_cs_len(hname) +1;
@@ -1610,13 +1622,14 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 			}
 
 			if(fx & (a_ACT_DUNNO | a_ACT_VERIFY)){
-				if((fb & a_RM_A_R) && !su_cs_cmp_case(a_rm_head_names[a_RM_HEAD_A_R], &mip->mi_buf[1])){
-					act |= TRU2;
+				if((fb & a_RM_A_R) &&
+						!su_cs_cmp_case(a_rm_head_names[rmt = a_RM_HEAD_A_R], &mip->mi_buf[1])){
+					fh |= a_FH_RM;
 					break;
 				}
 			}
 
-			if(!act)
+			if(fh == a_FH_NONE)
 				goto jheader_done;
 
 			if(!(fx & a_SETUP) && !a_dkim_setup(mip->mi_dkim, FAL0, pdp, &mip->mi_bag, mip->mi_log_id)){
@@ -1626,22 +1639,22 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 			}
 			fx |= a_SETUP;
 
-			i = 1 + su_cs_len(hname) +1;
+			i = 1 + su_cs_len(&mip->mi_buf[1]) +1;
 			if(UNLIKELY(fb & a_VV))
 				su_log_write(su_LOG_INFO, "%susing header: %s: %s",
 					mip->mi_log_id, &mip->mi_buf[1], &mip->mi_buf[i]);
 
-			if(act & TRU1){
+			if(fh & a_FH_SIGN){
 				ASSERT(fx & (a_ACT_DUNNO | a_ACT_SIGN));
-				/* (logs) */
+				ASSERT(hname != NIL);
+				/* May give action hint for From: (and logs) */
 				switch(a_dkim_push_header(mip->mi_dkim, hname, &mip->mi_buf[i], &mip->mi_bag)){
 				default:
+					/* Not From: */
 					break;
 				case a_CLI_ACT_SIGN:
-					if(fb & a_SIGN)
-						fx |= a_SIGN;
-					fx |= a_ACT_SIGN;
-					fx &= ~a_ACT_DUNNO;
+					fx &= ~a_ACT_MASK;
+					fx |= a_ACT_SIGN | (fb & a_SIGN);
 					break;
 				case a_CLI_ACT_VERIFY:
 					FALLTHRU
@@ -1652,15 +1665,20 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 							mip->mi_log_id);
 					FALLTHRU
 				case a_CLI_ACT_ERR:
-					fx |= a_ACT_PASS;
-					fx &= ~(a_ACT_DUNNO | a_ACT_SIGN);
+					fx &= ~a_ACT_MASK;
+					fx |= a_ACT_PASS | (fb & a_SIGN);
 					goto jaccept;
 				}
 			}
 
-			if(act & TRU2){
-/* FIXME push remove HEADER */
-
+			if(fh & a_FH_RM){
+				ASSERT(fx & (a_ACT_DUNNO | a_ACT_VERIFY));
+				rv = a_milter__rm_parse(mip, rmt, &mip->mi_buf[i]);
+				if(rv != su_EX_OK){
+					fx &= ~a_ACT_MASK;
+					fx |= a_ACT_PASS;
+					goto jaccept;
+				}
 			}
 
 jheader_done:
@@ -1686,15 +1704,28 @@ jheader_done:
 				goto jaccept;
 
 			if(!(fx & a_SEEN_SMFIC_BODY)){
-				if(!(fx & a_SETUP) || (fx & a_SMFIC_HEADER_MASK) != (fb & a_SMFIC_HEADER_MASK)){
-					su_log_write(su_LOG_CRIT, _("%smessage without From: header, pass!"),
-						mip->mi_log_id);
-					fx |= a_ACT_PASS;
-					goto jaccept;
-				}
+/* FIXME do not fail if VERIFY mode is yet on? */
+
+/*
+FIXME
+
+
+THIS TEST IS NONSENSE BECAUSE IT EFFECTIVELY TESTS  whether we have a sign relation AND it somehow matched
+WE ONLY NEED FX& which tests whether *WE HAVE SEEN A FROM: HEADER*, because that is precondition, and that alone!
+This is also true for not yet implemented verification path, of course!
+A message without From: is INVALID!
+What to do about that?
+Offer code path for rejection?  When sending?  WHen verifying?
+Make that addressable to usER!?!?!?!?!  How?
+
+ (fx & a_SMFIC_HEADER_MASK) != (fb & a_SMFIC_HEADER_MASK)
+
+*/
+
+				if(!(fx & a_SETUP) || (fx & a_SMFIC_HEADER_MASK) != (fb & a_SMFIC_HEADER_MASK))
+					goto jenofrom;
 				/* XXX should never trigger here, then -> SMFIC_CONNECT! */
 				if((fx & a_SMFIC_CONNECT_MASK) != (fb & a_SMFIC_CONNECT_MASK)){
-su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 					fx |= a_ACT_PASS;
 					goto jaccept;
 				}
@@ -1722,7 +1753,7 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 			}
 			break; /* }}} */
 
-		case a_SMFIC_BODYEOB: /* {{{ */
+		case a_SMFIC_BODYEOB:/* {{{ */
 			if(fb & a_VV)
 				su_log_write(su_LOG_INFO, "%smessage data complete", mip->mi_log_id);
 
@@ -1736,7 +1767,9 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 			}
 
 			if(!(fx & a_SEEN_SMFIC_BODY)){
+/* FIXME do not fail if VERIFY mode is on? */
 				if((fx & a_SMFIC_HEADER_MASK) != (fb & a_SMFIC_HEADER_MASK)){
+jenofrom:
 					su_log_write(su_LOG_CRIT, _("%smessage without From: header, pass!"),
 						mip->mi_log_id);
 					fx |= a_ACT_PASS;
@@ -1744,7 +1777,6 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 				}
 				/* XXX should never trigger here, then -> SMFIC_CONNECT! */
 				if((fx & a_SMFIC_CONNECT_MASK) != (fb & a_SMFIC_CONNECT_MASK)){
-su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 					fx |= a_ACT_PASS;
 					goto jaccept;
 				}
@@ -1760,11 +1792,10 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_BODY 1");/* FIXME */
 			}
 
 			if(fx & a_ACT_VERIFY){
-
-
-/* FIXME REMOVE HEADERS */
-goto jaccept;
-
+				rv = a_milter__rm(mip);
+				if(rv != su_EX_OK)
+					goto jleave;
+				goto jaccept;
 			}
 			ASSERT(fx & a_ACT_SIGN);
 
@@ -1874,7 +1905,7 @@ jread:
 	}
 	if(br == 0){
 		if(yet == 0){
-			rv = -su_ERR_NOTCONN;
+			rv = -su_EX_IOERR;
 			goto jleave;
 		}
 		/* Is this really happening? */
@@ -1954,7 +1985,7 @@ jleave:
 } /* }}} */
 
 static enum a_cli_action
-a_milter__parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {{{ */
+a_milter__macro_parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {{{ */
 	union a_srch_ip sip, sip_x;
 	struct a_srch *sp;
 	int af;
@@ -2146,6 +2177,108 @@ jdefault:
 	rv = a_CLI_ACT_PASS;
 
 jleave:
+	NYD_OU;
+	return rv;
+} /* }}} */
+
+static s32
+a_milter__rm_parse(struct a_milter *mip, ZIPENUM(u8,enum a_rm_head_type) rmt, char *dp){ /* {{{ */
+	struct su_imf_shtok *shtp;
+	s32 mse;
+	void *ls;
+	struct su_mem_bag *membp;
+	NYD_IN;
+	UNUSED(mip);
+	UNUSED(rmt);
+	UNUSED(dp);
+
+	membp = &mip->mi_bag;
+	ls = su_imf_snap_create(membp);
+
+	/* 'Thing is, we need to dig it */
+	mse = su_imf_parse_struct_header(&shtp, dp, (su_IMF_MODE_RELAX | su_IMF_MODE_OK_DOT_ATEXT |
+			su_IMF_MODE_TOK_SEMICOLON | su_IMF_MODE_TOK_EMPTY | su_IMF_MODE_STOP_EARLY), membp, NIL);
+
+	if((mse & su_IMF_ERR_CONTENT) || shtp == NIL){
+		su_log_write(su_LOG_CRIT, "%s%s cannot be parsed for --remove \"pass\"ing message: %s",
+			mip->mi_log_id, a_rm_head_names[rmt], dp);
+		goto jleave;
+	}
+
+	/* Microsoft produces invalid Authentication-Results */
+#if 0
+
+     value := token / quoted-string
+
+     token := 1*<any (US-ASCII) CHAR except SPACE, CTLs,
+                 or tspecials>
+
+     tspecials :=  "(" / ")" / "<" / ">" / "@" /
+                   "," / ";" / ":" / "\" / <">
+                   "/" / "[" / "]" / "?" / "="
+                   ; Must be in quoted-string,
+                   ; to use within parameter values
+
+ACTUALLY UTF-8 with that e-email thing.
+Anyhing thus but whitespace, in practice.
+
+
+
+	if(shtp->imfsht_len == 0 ||
+
+
+		su_mem_
+
+
+	if(UNLIKELY(fb & a_DBG_V))
+		su_log_write(su_LOG_INFO,
+			"%s--milter-macro match ok: %s, %s, %s",
+			mip->mi_log_id, mt, bp, cp);
+
+#endif
+
+#if 0
+FIXME
+
+      Authentication-Results: spf=pass (sender IP is 217.144.132.164)
+       smtp.mailfrom=sdaoden.eu; dkim=fail (body hash did not verify)
+       header.d=sdaoden.eu;dmarc=bestguesspass action=none
+       header.from=sdaoden.eu;compauth=pass reason=109
+
+
+
+      Authentication-Results: mx.google.com;
+       dkim=pass (test mode) header.i=@sdaoden.eu header.s=lemon header.b=meYlPkTE;
+       dkim=pass (test mode) header.i=@sdaoden.eu header.s=citron header.b=Cehr1W9z;
+       spf=pass (google.com: domain of steffen@sdaoden.eu designates 217.144.132.164 as permitted sender) smtp.mailfrom=steffen@sdaoden.eu
+
+
+
+Authentication-Results: smtp.subspace.kernel.org; dkim=pass (2048-bit key) header.d=sdaoden.eu header.i=@sdaoden.eu header.b="OkLfG+j+"; dkim=permerror (0-bit key) header.d=sdaoden.eu header.i=@sdaoden.eu header.b="ieWcDFnV"
+Authentication-Results: smtp.subspace.kernel.org; arc=none smtp.client-ip=217.144.132.164
+Authentication-Results: smtp.subspace.kernel.org; dmarc=none (p=none dis=none) header.from=sdaoden.eu
+Authentication-Results: smtp.subspace.kernel.org; spf=none smtp.mailfrom=sdaoden.eu
+
+#endif
+
+
+jleave:
+	su_imf_snap_gut(membp, ls);
+
+	mse = su_EX_OK;
+
+	NYD_OU;
+	return mse;
+} /* }}} */
+
+static s32
+a_milter__rm(struct a_milter *mip){ /* {{{ */
+	s32 rv;
+	NYD_IN;
+	UNUSED(mip);
+
+	rv = su_EX_OK;
+
 	NYD_OU;
 	return rv;
 } /* }}} */
@@ -4106,7 +4239,7 @@ a_conf__r(struct a_pd *pdp, char *arg){ /* {{{ */
 	x.i = su_cs_len(arg) +1 +1; /* Last value needs \0\0 */
 	vp = vp_base = su_TALLOC(char, x.i);
 	mac = NIL;
-	fbit = 0;
+	UNINIT(fbit, 0);
 
 	while((x.cp = su_cs_sep_c(&arg, ',', (mac != NIL))) != NIL){
 		if(mac == NIL){
@@ -4121,13 +4254,12 @@ a_conf__r(struct a_pd *pdp, char *arg){ /* {{{ */
 			if(*mac != NIL)
 				su_FREE(*mac);
 			*mac = vp;
-			if(arg != NIL)
-				pdp->pd_flags |= fbit;
-			else{
-				pdp->pd_flags &= ~fbit;
+			pdp->pd_flags |= fbit;
+			if(arg == NIL)
 				*vp++ = '\0'; /* empty value allowed! */
-			}
-		}else
+		}else if(x.cp[1] == '\0' && x.cp[0] == '!')
+			pdp->pd_flags |= fbit << 1;
+		else
 			vp = su_cs_pcopy(vp, x.cp) +1;
 	}
 	*vp = '\0';
