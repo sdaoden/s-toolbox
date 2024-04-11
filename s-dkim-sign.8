@@ -453,10 +453,12 @@ are removed, otherwise the given strings in order;
 .Sy Note:
 they are matched as domain names are for
 .Fl Fl client ,
-syntax validity is however not verified due to their RFC 8601 definition;
+syntax validity is however not verified due to their RFC 8601 definition.
 As a special case a sole exclamation mark
 .Ql \&!
-matches invalid header instances.
+matches invalid header instances; without further strings the macro
+.Ql j
+is still used.
 .
 .Mx Fl resource-file
 .It Fl Fl resource-file Ar path , Fl R Ns ..
