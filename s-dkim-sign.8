@@ -565,7 +565,7 @@ must not be smaller than 30 and greater than 86400000 (1000 days).
 .
 .Mx Fl verbose
 .It Fl Fl verbose
-Increase log verbosity (two levels).
+Increase log verbosity (three levels).
 .El
 .
 .
@@ -579,5 +579,26 @@ Increase log verbosity (two levels).
 .Sh AUTHORS
 .
 .An "Steffen Nurpmeso" Aq steffen@sdaoden.eu .
+.
+.
+.Sh BUGS
+.
+.Bl -bullet
+.It
+The simple canonicalization mode is not supported.
+.It
+Internationalized UTF-8 email, that is RFC 6530
+.Dq Overview and Framework for Internationalized Email ,
+RFC 6531
+.Dq SMTP Extension for Internationalized Email ,
+and RFC 6532
+.Dq Internationalized Email Headers ,
+is not supported; the old style using content transfer encoding etc is.
+This may affect address matching.
+.It
+Does not support stand-alone mode (usable by any MTA).
+.It
+Does not support verification.
+.El
 .
 .\" s-ts-mode

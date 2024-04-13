@@ -670,16 +670,16 @@ x $? 11.2
 e0 11.2
 cmp 11.3 t11.1 t11.2
 
-${PD} -# --remove a-r,.de > t11.4 2>ERR
+${PD} -# --remove a-r,!,.de > t11.4 2>ERR
 x $? 11.4
 e0 11.4
-echo 'remove a-r, .de' > t11.5
+echo 'remove a-r, !, .de' > t11.5
 cmp 11.5 t11.4 t11.5
 
-${PD} -# --remove a-r,,,.com,,,.de,,. > t11.6 2>ERR
+${PD} -# --remove a-r,!,,.com,,,.de,,. > t11.6 2>ERR
 x $? 11.6
 e0 11.6
-echo 'remove a-r, .com, .de, .' > t11.7
+echo 'remove a-r, !, .com, .de, .' > t11.7
 cmp 11.7 t11.7 t11.7
 
 ${PD} -# --remove '' > t11.8 2>ERR
