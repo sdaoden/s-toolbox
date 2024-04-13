@@ -36,8 +36,9 @@ else
 	prefix=$2
 fi
 
+off=0
 case $algo in
-ed25519) opt=;;
+ed25519) opt= off=16;; # skip ASN.1 structure (Hanno Böck - thanks!)
 rsa|rsa:*)
 	bits=${algo##*:}
 	algo=${algo%%:*}
@@ -70,15 +71,29 @@ openssl genpkey -quiet \
 	-out "$prefix"-dkim-pri-$algo.pem -outform PEM \
 	-algorithm $algo $opt || exit $EX_DATAERR
 
-openssl pkey -pubout < "$prefix"-dkim-pri-$algo.pem | awk '
+openssl pkey -pubout < "$prefix"-dkim-pri-$algo.pem |
+awk -v off=$off '
 	BEGIN{on=0}
 	/^-+BEGIN PUBLIC KEY-+$/{on=1;next}
-	/^-+END PUBLIC KEY-+$/{on=0;exit}
-	{if(on) printf $1}
+	/^-+END PUBLIC KEY-+$/{exit}
+	{
+		if(on){
+			if(off == 0)
+				printf $1
+			else{
+				l = length($1)
+				if(off - l < 0){
+					printf substr($1, off + 1)
+					off = l
+				}
+				off -= l
+			}
+		}
+	}
 	{next}
 	END{printf "\n"}
 ' | {
-	read pem;
+	read pem
 	a=$algo
 	[ $a = rsa ] && a='rsa; h=sha256'
 	echo 'v=DKIM1; k='$a'; p='$pem
