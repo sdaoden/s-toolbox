@@ -777,6 +777,7 @@ struct a_milter{
 	struct a_rm_head *mi_rm_head[a__RM_HEAD_MAX]; /* (a_rm_head_names[]) */
 #define a_MILTER_CLEANUP_ZERO(MIP) STRUCT_ZERO_FROM_UNTIL(struct a_milter, MIP, mi_rm_j_macro, mi_bag)
 	struct su_mem_bag mi_bag;
+	char mi_log_buf[64]; /* Per-connection storage (pre-queue id) */
 	char mi_buf[ALIGN_Z(a_MILTER_STD_CHUNK_SIZE + 2 +1)]; /* +CRLF +NUL; aligned for u32 */
 };
 
@@ -962,6 +963,8 @@ static char const * const a_header_sigsea[5] = {
 enum{a_HEADER_SIGSEA_OFF_SIGN = 0, a_HEADER_SIGSEA_OFF_SEAL = 2}; /* (base + EXT) */
 
 /**/
+static char const a_milter_log_defid[] = "<unknown>";
+
 static char const a_rm_head_names[a__RM_HEAD_MAX][24] = {"authentication-results"};
 
 static char const a_sopts[] = "A:C:c:" "d:" "~:!:" "k:" "M:" "R:" "r:" "S:s:" "t:" "#" "Hh";
@@ -1150,8 +1153,9 @@ a_milter(struct a_pd *pdp, s32 sock){
 	mip->mi_sock = sock;
 	mip->mi_pdp = pdp;
 	mip->mi_dkim = &dkim;
-	mip->mi_log_id = su_empty;
+	mip->mi_log_id = a_milter_log_defid;
 	su_mem_bag_create(&mip->mi_bag, su_PAGE_SIZE * 4); /* xxx pretty arbitrary, and too much */
+	mip->mi_log_buf[0] = '\0';
 
 	rv = a_milter__loop(mip);
 	if(rv < 0)
@@ -1171,7 +1175,7 @@ static void
 a_milter__cleanup(struct a_milter *mip){
 	NYD_IN;
 
-	mip->mi_log_id = su_empty;
+	mip->mi_log_id = a_milter_log_defid;
 	a_MILTER_CLEANUP_ZERO(mip);
 
 	a_dkim_cleanup(mip->mi_dkim);
@@ -1285,11 +1289,14 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 			goto jleave;
 		case a_SMFIC_QUIT_NC:
 			a_milter__cleanup(mip);
+			mip->mi_log_buf[0] = '\0';
 			fx &= a_SMFIC_OPTNEG_MASK;/* = a_NONE; */
 			fx |= a_ACT_DUNNO;
 			break;
 		case a_SMFIC_ABORT:
 			a_milter__cleanup(mip);
+			if(mip->mi_log_buf[0] != '\0')
+				mip->mi_log_id = mip->mi_log_buf; /* same connection */
 			fx &= a_SMFIC_OPTNEG_MASK | a_SMFIC_CONNECT_MASK; /* only latter */
 			fx |= a_ACT_DUNNO;
 			break;
@@ -1390,8 +1397,17 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 						mip->mi_log_id, S(ul,nl) -1, bp, S(ul,dl), &bp[nl]);
 
 				/* Set log ID regardless of state: queue ID it shall be asap as for postfix itself */
-				if(!(fx & a_LOG_ID) && nl == 1 +1 && bp[0] == 'i')
-					goto Jset_log_id;
+				if(!(fx & a_LOG_ID) && nl == 1 +1 && bp[0] == 'i'){
+					char *cp;
+					struct su_mem_bag *membp;
+
+					fx |= a_LOG_ID;
+					membp = &mip->mi_bag;
+					mip->mi_log_id = cp = su_LOFI_TALLOC(char, dl + 2);
+					cp = su_cs_pcopy(cp, &bp[2]);
+					cp[0] = ':'; cp[1] = ' '; cp[2] = '\0';
+					continue;
+				}
 
 				if(fx & a_ACT_PASS){
 					if(!LIKELY(!(fb & a_VVV)))
@@ -1402,19 +1418,13 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 				if(cmd != a_SMFIC_CONNECT)
 					continue;
 
-				if(nl == 1 +1 && bp[0] == '_') Jset_log_id:{
-					char *cp;
-					struct su_mem_bag *membp;
-
-					membp = &mip->mi_bag;
-					mip->mi_log_id = cp = su_LOFI_TALLOC(char, dl + 2);
-					cp = su_cs_pcopy(cp, &bp[2]);
-					cp[0] = ':'; cp[1] = ' '; cp[2] = '\0';
-
-					if(bp[0] != '_'){ /* !a_LOG_ID jump */
-						fx |= a_LOG_ID;
-						continue;
+				if(nl == 1 +1 && bp[0] == '_'){
+					/* xxx copying _ macro data assumes it is 7-bit clean */
+					if(su_cs_pcopy_n(mip->mi_log_buf, &bp[2], sizeof(mip->mi_log_buf)) == NIL){
+						mip->mi_log_buf[sizeof(mip->mi_log_buf) - 1 -1] = '.';
+						mip->mi_log_buf[sizeof(mip->mi_log_buf) - 2 -1] = '.';
 					}
+					mip->mi_log_id = mip->mi_log_buf;
 
 					/* Only if it still matters */
 					if(fx & a_ACT_PASS)
@@ -1628,7 +1638,6 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 				if((fb & a_RM_A_R) &&
 						!su_cs_cmp_case(a_rm_head_names[rmt = a_RM_HEAD_A_R], &mip->mi_buf[1])){
 					fh |= a_FH_RM;
-					break;
 				}
 			}
 
