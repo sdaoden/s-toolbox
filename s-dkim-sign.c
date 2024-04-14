@@ -592,11 +592,7 @@
 /* xxx Low quality effort to close open file descriptors: as we are normally started in a controlled manner not
  * xxx "from within the wild" this seems superfluous even */
 #undef a_BASE_FD
-#ifdef su_NYD_ENABLE
-# define a_BASE_FD STDERR_FILENO /* xxX STDOUT open for no reason; dup2(STDERR, STDOUT)? */
-#else
-# define a_BASE_FD STDIN_FILENO
-#endif
+#define a_BASE_FD STDERR_FILENO /* xxX STDOUT open for no reason; dup2(STDERR, STDOUT)? */
 
 #if su_OS_DRAGONFLY || su_OS_NETBSD || su_OS_OPENBSD
 # define a_CLOSE_ALL_FDS() (closefrom(a_BASE_FD + 1) == 0)
@@ -779,7 +775,7 @@ struct a_milter{
 	char const *mi_log_id; /* queue id (macro i) or whatever ID we yet have */
 	char const *mi_rm_j_macro; /* Milter macro j */
 	struct a_rm_head *mi_rm_head[a__RM_HEAD_MAX]; /* (a_rm_head_names[]) */
-#define a_MILTER_CLEANUP_ZERO(MIP) STRUCT_ZERO_FROM_UNTIL(struct a_milter, MIP, mi_rm_j_macro, mi_rm_head)
+#define a_MILTER_CLEANUP_ZERO(MIP) STRUCT_ZERO_FROM_UNTIL(struct a_milter, MIP, mi_rm_j_macro, mi_bag)
 	struct su_mem_bag mi_bag;
 	char mi_buf[ALIGN_Z(a_MILTER_STD_CHUNK_SIZE + 2 +1)]; /* +CRLF +NUL; aligned for u32 */
 };
@@ -1099,7 +1095,7 @@ static boole a_misc_is_rfc5321_domain(char const *dom);
 static boole a_misc_resource_delay(s32 err);
 static s32 a_misc_open(struct a_pd *pdp, char const *path);
 
-static s32 a_misc_log_open(void);
+static s32 a_misc_log_open(boole isrepro);
 static void a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len);
 
 /* getline(3) replacement (-1, or size of space-normalized and trimmed line) */
@@ -2205,9 +2201,8 @@ a_milter__rm_parse(struct a_milter *mip, ZIPENUM(u8,enum a_rm_head_type) rmt, ch
 	mse = su_imf_parse_struct_header(&shtp, dp, (su_IMF_MODE_RELAX | su_IMF_MODE_OK_DOT_ATEXT |
 			su_IMF_MODE_TOK_SEMICOLON | su_IMF_MODE_TOK_EMPTY | su_IMF_MODE_STOP_EARLY), membp, NIL);
 
-	if((mse & su_IMF_ERR_CONTENT) || shtp == NIL ||
-			/* Microsoft produces invalid Authentication-Results where authserv-id is missing */
-			shtp->imfsht_len == 0 || !(shtp->imfsht_mse & su_IMF_STATE_SEMICOLON)){
+	/* Microsoft produces invalid Authentication-Results where authserv-id is missing */
+	if((mse & su_IMF_ERR_CONTENT) || shtp == NIL || shtp->imfsht_len == 0){
 		u32 dodel;
 
 		dodel = mip->mi_pdp->pd_flags & (1u << (a_F_RM_SHIFT + rmt));
@@ -2231,33 +2226,9 @@ a_milter__rm_parse(struct a_milter *mip, ZIPENUM(u8,enum a_rm_head_type) rmt, ch
 	}
 
 /* FIXME */
-if(mip->mi_pdp->pd_flags & a_F_VV)
-	su_log_write(su_LOG_INFO, "%s%s PARSE: %u: %s",
-		mip->mi_log_id, a_rm_head_names[rmt], shtp->imfsht_len, dat);
-
-
-#if 0
-FIXME
-
-      Authentication-Results: spf=pass (sender IP is 217.144.132.164)
-       smtp.mailfrom=sdaoden.eu; dkim=fail (body hash did not verify)
-       header.d=sdaoden.eu;dmarc=bestguesspass action=none
-       header.from=sdaoden.eu;compauth=pass reason=109
-
-
-
-      Authentication-Results: mx.google.com;
-       dkim=pass (test mode) header.i=@sdaoden.eu header.s=lemon header.b=meYlPkTE;
-       dkim=pass (test mode) header.i=@sdaoden.eu header.s=citron header.b=Cehr1W9z;
-       spf=pass (google.com: domain of steffen@sdaoden.eu designates 217.144.132.164 as permitted sender) smtp.mailfrom=steffen@sdaoden.eu
-
-
-
-Authentication-Results: smtp.subspace.kernel.org; dkim=pass (2048-bit key) header.d=sdaoden.eu header.i=@sdaoden.eu header.b="OkLfG+j+"; dkim=permerror (0-bit key) header.d=sdaoden.eu header.i=@sdaoden.eu header.b="ieWcDFnV"
-Authentication-Results: smtp.subspace.kernel.org; arc=none smtp.client-ip=217.144.132.164
-Authentication-Results: smtp.subspace.kernel.org; dmarc=none (p=none dis=none) header.from=sdaoden.eu
-Authentication-Results: smtp.subspace.kernel.org; spf=none smtp.mailfrom=sdaoden.eu
-#endif
+if(mip->mi_pdp->pd_flags & a_F_VV){
+	su_log_write(su_LOG_INFO, "%s%s PARSE: %u: %s", mip->mi_log_id, a_rm_head_names[rmt], shtp->imfsht_len, dat);
+}
 
 	if(rmt == a_RM_HEAD_A_R){
 		uz l;
@@ -2278,8 +2249,10 @@ Authentication-Results: smtp.subspace.kernel.org; spf=none smtp.mailfrom=sdaoden
 			if(wildc)
 				++cp;
 			/* Invalid matcher handled via flag above */
-			else if(cp[0] == '!' && cp[1] == '\0')
+			else if(cp[0] == '!' && cp[1] == '\0'){
+				l = 1;
 				continue;
+			}
 
 			l = su_cs_len(cp);
 
@@ -4730,16 +4703,16 @@ a_misc_line__uflow(s32 fd, struct a_line *lp){
 
 /* _misc_log_* {{{ */
 static s32
-a_misc_log_open(void){
-	boole repro;
+a_misc_log_open(boole isrepro){
 	s32 rv;
 	NYD_IN;
 
 	rv = su_EX_OK;
-	repro = su_state_has(su_STATE_REPRODUCIBLE);
 
-	if(LIKELY(!repro))
+	if(LIKELY(!isrepro)){
+		close(a_BASE_FD);
 		openlog(VAL_NAME, a_OPENLOG_FLAGS, LOG_MAIL);
+	}
 
 	su_log_set_write_fun(&a_misc_log_write);
 
@@ -4914,12 +4887,13 @@ main(int argc, char *argv[]){ /* {{{ */
 	struct su_avopt avo;
 	struct a_pd pd;
 	s32 mpv;
+	boole isrepro_x;
 
 	avo.avo_current_arg = getenv("SOURCE_DATE_EPOCH"); /* xxx su_env_get? */
-	mpv = (avo.avo_current_arg == NIL);
-	su_state_create(su_STATE_CREATE_RANDOM, (mpv ? NIL : VAL_NAME),
+	isrepro_x = (avo.avo_current_arg != NIL);
+	su_state_create(su_STATE_CREATE_RANDOM, (!isrepro_x ? NIL : VAL_NAME),
 		(DVLDBGOR(su_LOG_DEBUG, (mpv ? su_LOG_ERR : su_LOG_DEBUG)) | DVL(su_STATE_DEBUG |)
-			(mpv ? (su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID)
+			(!isrepro_x ? (su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID)
 				: (su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID | su_STATE_REPRODUCIBLE))),
 		su_STATE_ERR_NOPASS);
 	DVL(su_mem_set_conf(su_MEM_CONF_LINGER_FREE, TRU1);)
@@ -4947,7 +4921,16 @@ main(int argc, char *argv[]){ /* {{{ */
 
 		/* In long-option order (mostly) */
 		switch(mpv){
-		case '#': pd.pd_flags |= a_F_MODE_TEST; break;
+		/* Problem: -R may be able to succeed with -# if run by root, but fail for an anonymous user when run
+		 * as a milter, causing protocol error and killing.  Therefore -# must be first, log_open then */
+		case '#':
+			if(isrepro_x < FAL0){
+				a_conf__err(&pd, _("--test-mode must be first argument\n"));
+				mpv = su_EX_USAGE;
+				goto jleave;
+			}
+			pd.pd_flags |= a_F_MODE_TEST;
+			break;
 
 		a_AVOPT_CASES
 			if((mpv = a_conf_arg(&pd, mpv, UNCONST(char*,avo.avo_current_arg))) < 0){
@@ -5011,7 +4994,12 @@ jerropt:
 			mpv = su_EX_USAGE;
 			goto jleave;
 		}
+
+		if(!(pd.pd_flags & a_F_MODE_TEST) && isrepro_x >= FAL0)
+			(void)a_misc_log_open(isrepro_x);
+		isrepro_x = TRUM1;
 	}
+
 	if(pd.pd_flags & a_F_MODE_TEST){
 		if(avo.avo_argc != 0){
 			fprintf(stderr, _("%d excess arguments given: "), avo.avo_argc);
@@ -5026,7 +5014,8 @@ jerropt:
 
 	if(!(pd.pd_flags & a_F_MODE_TEST)){
 		if(mpv == su_EX_OK){
-			(void)a_misc_log_open();
+			if(isrepro_x >= FAL0)
+				(void)a_misc_log_open(isrepro_x);
 			mpv = !su_state_has(su_STATE_REPRODUCIBLE) ? a_server(&pd) : a_milter(&pd, STDIN_FILENO);
 		}
 	}else{

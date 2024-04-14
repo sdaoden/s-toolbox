@@ -687,7 +687,7 @@ y $? 11.8
 eX 11.8
 # }}}
 
-# 100* --resource-file (yet; except recursion, and overwriting) {{{
+# 90* --resource-file (yet; except recursion, and overwriting) {{{
 cat > t90.rc << '_EOT'
 header-sign from , to
 header-seal from , date
@@ -730,13 +730,13 @@ header-sign from, subject, date
 header-seal from, subject, date
 _EOT
 
-${PD} -R t90.rc -# > t90 2>ERR
+${PD} -# -R t90.rc > t90 2>ERR
 x $? 90
 e0 90
 cmp 91 t90 t90-x
 
 printf '\n\\\n\\\n' > t92.rc
-${PD} -R t92.rc -# > t92 2>ERR
+${PD} -# -R t92.rc > t92 2>ERR
 x $? 92
 e0 92
 [ -s t92 ] && { echo >&2 'bad 93'; exit 1; }
