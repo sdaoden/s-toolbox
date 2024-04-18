@@ -19,7 +19,7 @@ if [ 0 -eq 1 ]; then ${PDKC} ed25519 t; ${PDKC} rsa:2048 t; exit; fi
 
 # For heaven's sake auto-redirect on SunOS/Solaris
 if [ -z "${__DKIM_KEY_CREATE_UP}" ] && [ -d /usr/xpg4 ]; then
-	if [ "x${SHELL}" = x ] || [ "${SHELL}" = /bin/sh ]; then
+	if [ "x${SHELL}" = x ] || [ "x${SHELL}" = x/bin/sh ]; then
 		echo >&2 'SunOS/Solaris, redirecting through $SHELL=/usr/xpg4/bin/sh'
 		__DKIM_KEY_CREATE_UP=y PATH=/usr/xpg4/bin:${PATH} SHELL=/usr/xpg4/bin/sh
 		export __DKIM_KEY_CREATE_UP PATH SHELL

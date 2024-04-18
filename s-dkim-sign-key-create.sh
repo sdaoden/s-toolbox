@@ -13,7 +13,7 @@ ALGO_PARAM_DEF=ed25519
 
 # For heaven's sake auto-redirect on SunOS/Solaris
 if [ -z "${__DKIM_KEY_CREATE_UP}" ] && [ -d /usr/xpg4 ]; then
-	if [ "x${SHELL}" = x ] || [ "${SHELL}" = /bin/sh ]; then
+	if [ "x${SHELL}" = x ] || [ "x${SHELL}" = x/bin/sh ]; then
 		echo >&2 'SunOS/Solaris, redirecting through $SHELL=/usr/xpg4/bin/sh'
 		__DKIM_KEY_CREATE_UP=y PATH=/usr/xpg4/bin:${PATH} SHELL=/usr/xpg4/bin/sh
 		export __DKIM_KEY_CREATE_UP PATH SHELL
