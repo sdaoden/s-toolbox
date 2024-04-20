@@ -768,8 +768,8 @@ struct a_line{
 
 struct a_rm_head{
 	struct a_rm_head *rmh_next;
-	uz rmh_cnt; /* ..of used bits in rmh_bits */
-	uz rmh_bits; /* Bit set if header shall be removed */
+	u32 rmh_cnt; /* ..of used bits in rmh_bits */
+	u32 rmh_bits; /* Bit set if header shall be removed */
 };
 
 struct a_milter{
@@ -778,9 +778,9 @@ struct a_milter{
 	struct a_pd *mi_pdp;
 	struct a_dkim *mi_dkim;
 	char const *mi_log_id; /* queue id (macro i) or whatever ID we yet have */
-	char const *mi_rm_j_macro; /* Milter macro j */
+	char const *mi_macro_j;
 	struct a_rm_head *mi_rm_head[a_RM_HEAD_MAX]; /* (a_rm_head_names[]) */
-#define a_MILTER_CLEANUP_ZERO(MIP) STRUCT_ZERO_FROM_UNTIL(struct a_milter, MIP, mi_rm_j_macro, mi_bag)
+#define a_MILTER_CLEANUP_ZERO(MIP) STRUCT_ZERO_FROM_UNTIL(struct a_milter, MIP, mi_rm_head, mi_bag)
 	struct su_mem_bag mi_bag;
 	char mi_log_buf[64]; /* Per-connection storage (pre-queue id) */
 	char mi_buf[ALIGN_Z(a_MILTER_STD_CHUNK_SIZE + 2 +1)]; /* +CRLF +NUL; aligned for u32 */
@@ -814,6 +814,7 @@ struct a_md_ctx{
 
 struct a_dkim{
 	struct a_pd *d_pdp;
+	char const *d_myhostname;
 	char const *d_log_id; /* assigned log ID */
 	struct a_md_ctx *d_sign_mdctxs;
 	char const *d_sign_from_domain; /* What is effectively used for DKIM's d= */
@@ -969,6 +970,7 @@ enum{a_HEADER_SIGSEA_OFF_SIGN = 0, a_HEADER_SIGSEA_OFF_SEAL = 2}; /* (base + EXT
 
 /**/
 static char const a_milter_log_defid[] = "<unknown>: ";
+static char const a_localhost[] = "localhost";
 
 static char const a_rm_head_names[a_RM_HEAD_MAX][sizeof("ARC-Authentication-Results")] = {
 	FII(a_RM_HEAD_A_R) "authentication-results",
@@ -1069,7 +1071,7 @@ static s32 a_milter__sign(struct a_milter *mip);
 
 /* post_eoh must be >TRU1 if there was no !pre_eoh; !post_eoh only ensures _cleanup() can be called */
 static boole a_dkim_setup(struct a_dkim *dkp, boole post_eoh, struct a_pd *pdp, struct su_mem_bag *membp,
-		char const *log_id);
+		char const *myhostname, char const *log_id);
 static void a_dkim_cleanup(struct a_dkim *dkp);
 
 /**/
@@ -1172,6 +1174,7 @@ a_milter(struct a_pd *pdp, s32 sock){
 	mip->mi_pdp = pdp;
 	mip->mi_dkim = &dkim;
 	mip->mi_log_id = a_milter_log_defid;
+	mip->mi_macro_j = a_localhost;
 	su_mem_bag_create(&mip->mi_bag, su_PAGE_SIZE * 4); /* xxx pretty arbitrary, and too much */
 	mip->mi_log_buf[0] = '\0';
 
@@ -1194,6 +1197,7 @@ a_milter__cleanup(struct a_milter *mip){
 	NYD_IN;
 
 	mip->mi_log_id = a_milter_log_defid;
+	mip->mi_macro_j = a_localhost;
 	a_MILTER_CLEANUP_ZERO(mip);
 
 	a_dkim_cleanup(mip->mi_dkim);
@@ -1234,14 +1238,15 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 		/* Only fx */
 
 		/*a_SEEN_SMFIC_CONNECT,*/
-		a_SEEN_SMFIC_HEADER = 1u<<22, /* ever seen.. */
-		a_SEEN_SMFIC_BODY = 1u<<23,
+		a_SEEN_SMFIC_HEADER = 1u<<21, /* ever seen.. */
+		a_SEEN_SMFIC_BODY = 1u<<22,
 		/*a_SEEN_SMFIC_BODY_EOB,*/
 
-		a_SETUP = 1u<<24, /* ..in a message cycle, DKIM setup performed pre-EOH, */
-		a_SETUP_EOH = 1u<<25, /* ..post EOH */
+		a_SETUP = 1u<<23, /* ..in a message cycle, DKIM setup performed pre-EOH, */
+		a_SETUP_EOH = 1u<<24, /* ..post EOH */
 
-		a_LOG_ID = 1u<<26,
+		a_LOG_ID = 1u<<25,
+		a_MYHOSTNAME = 1u<<26,
 
 		a_ACT_DUNNO = 1u<<27,
 		a_ACT_SIGN = 1u<<28,
@@ -1259,7 +1264,7 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 	pdp = mip->mi_pdp;
 
 	/* Because we may call milter__cleanup() that calls dkim_cleanup() without ever being a_SETUP, this */
-	a_dkim_setup(mip->mi_dkim, FAL0, pdp, &mip->mi_bag, su_empty);
+	a_dkim_setup(mip->mi_dkim, FAL0, pdp, &mip->mi_bag, su_empty, su_empty);
 
 	fb = a_NONE;
 	if(pdp->pd_flags & a_F_DBG)
@@ -1401,7 +1406,7 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 			if(UNLIKELY(fb & a_VVV))
 				su_log_write(su_LOG_INFO, "%smacros for cmd %c/%d: %u bytes",
 					mip->mi_log_id, cmd, cmd, mip->mi_len);
-			else if(cmd != a_SMFIC_CONNECT && (fx & a_LOG_ID))
+			else if(cmd != a_SMFIC_CONNECT && (fx & (a_LOG_ID | a_MYHOSTNAME)) == (a_LOG_ID | a_MYHOSTNAME))
 				break;
 
 			for(bp = &mip->mi_buf[2], l = mip->mi_len - 2; l > 0; bp += nl + dl){
@@ -1497,7 +1502,7 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 					if(fb & a_CLI)
 						fx |= a_CLI;
 				} /* }}} */
-				else if((fb & a_RM_A_R) && nl == 1 +1 && bp[0] == 'j'){
+				else if(nl == 1 +1 && bp[0] == 'j'){
 					struct su_mem_bag *membp;
 					char *cp, c;
 
@@ -1505,8 +1510,9 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 						*cp = su_cs_to_lower(c);
 
 					membp = &mip->mi_bag;
-					mip->mi_rm_j_macro = cp = su_LOFI_TALLOC(char, dl +1);
+					mip->mi_macro_j = cp = su_LOFI_TALLOC(char, dl +1);
 					su_cs_pcopy(cp, &bp[2])[1] = '\0'; /* used as \0\0 list! */
+					fx |= a_MYHOSTNAME;
 				}
 
 				if((fb & a_MIMA) && !(fx & a_MIMA)){ /* {{{ */
@@ -1604,7 +1610,7 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 			char const *hname;
 
 			if(UNLIKELY(fb & a_VVV))
-				su_log_write(su_LOG_INFO, "%sheader <%s>", mip->mi_log_id, &mip->mi_buf[1]);
+				su_log_write(su_LOG_INFO, "%sprocessing header <%s>", mip->mi_log_id, &mip->mi_buf[1]);
 
 			if(fx & a_ACT_PASS)
 				goto jaccept;
@@ -1633,7 +1639,7 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 					hname += su_cs_len(hname) +1;
 					if(*hname == '\0'){
 						if(UNLIKELY(fb & a_VVV))
-							su_log_write(su_LOG_INFO, "%sheader-sign mismatch: %s",
+							su_log_write(su_LOG_INFO, "%sheader-sign mismatch %s",
 								mip->mi_log_id, &mip->mi_buf[1]);
 						break;
 					}
@@ -1642,7 +1648,7 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 
 			if(fx & (a_ACT_DUNNO | a_ACT_VERIFY)){
 				if(fb & a_RM_MASK){
-					for(rmt = 0; rmt < a_RM_HEAD_MAX; ++i)
+					for(rmt = 0; rmt < a_RM_HEAD_MAX; ++rmt)
 						if(!su_cs_cmp_case(a_rm_head_names[rmt], &mip->mi_buf[1])){
 							fh |= a_FH_RM;
 							break;
@@ -1653,7 +1659,8 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 			if(fh == a_FH_NONE)
 				goto jheader_done;
 
-			if(!(fx & a_SETUP) && !a_dkim_setup(mip->mi_dkim, FAL0, pdp, &mip->mi_bag, mip->mi_log_id)){
+			if(!(fx & a_SETUP) && !a_dkim_setup(mip->mi_dkim, FAL0, pdp, &mip->mi_bag,
+					mip->mi_macro_j, mip->mi_log_id)){
 				/* xxx does not happen */
 				rv = su_EX_UNAVAILABLE;
 				goto jleave;
@@ -1662,8 +1669,7 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 
 			i = 1 + su_cs_len(&mip->mi_buf[1]) +1;
 			if(UNLIKELY(fb & a_VVV))
-				su_log_write(su_LOG_INFO, "%susing header: %s: %s",
-					mip->mi_log_id, &mip->mi_buf[1], &mip->mi_buf[i]);
+				su_log_write(su_LOG_INFO, "%s%s: %s", mip->mi_log_id, &mip->mi_buf[1], &mip->mi_buf[i]);
 
 			if(fh & a_FH_SIGN){
 				ASSERT((fx & (a_ACT_DUNNO | a_ACT_SIGN)) &&
@@ -1744,7 +1750,7 @@ jheader_done:
 
 			if(!(fx & a_SETUP_EOH)){
 				if(!a_dkim_setup(mip->mi_dkim, (TRU1 + !(fx & a_SETUP)), pdp, &mip->mi_bag,
-						mip->mi_log_id)){
+						mip->mi_macro_j, mip->mi_log_id)){
 					rv = su_EX_UNAVAILABLE;
 					goto jleave;
 				}
@@ -1795,7 +1801,8 @@ jenofrom:
 			fx |= a_SEEN_SMFIC_BODY;
 
 			if(!(fx & a_SETUP_EOH)){
-				if(!a_dkim_setup(mip->mi_dkim, TRU1, pdp, &mip->mi_bag, mip->mi_log_id)){
+				if(!a_dkim_setup(mip->mi_dkim, TRU1, pdp, &mip->mi_bag,
+						mip->mi_macro_j, mip->mi_log_id)){
 					rv = su_EX_UNAVAILABLE;
 					goto jleave;
 				}
@@ -1995,7 +2002,7 @@ a_milter__macro_parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {
 		char const *msg;
 
 		ASSERT(su_cs_dict_count(&mip->mi_pdp->pd_cli) == 0 && mip->mi_pdp->pd_cli_ip == NIL);
-		if(!su_cs_cmp(dp, "localhost")){
+		if(!su_cs_cmp(dp, a_localhost)){
 			msg = "signing ";
 			rv = a_CLI_ACT_SIGN;
 		}else{
@@ -2144,7 +2151,7 @@ a_milter__macro_parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {
 	/* Default fallback with clients is "pass, ." */
 jdefault:
 	if(mip->mi_pdp->pd_flags & a_F_V)
-		su_log_write(su_LOG_INFO, "%sclient mismatch: DKIM=pass, .", mip->mi_log_id);
+		su_log_write(su_LOG_INFO, "%sclient mismatch DKIM=pass, .", mip->mi_log_id);
 	rv = a_CLI_ACT_PASS;
 
 jleave:
@@ -2177,14 +2184,14 @@ jredo:
 		}else for(;;){
 			uz i;
 
-			i = su_cs_len(cp) +1;
-			if(i == dl && !su_mem_cmp(cp, dp, i -1)){
+			i = su_cs_len(cp);
+			if(i == dl && !su_mem_cmp(cp, dp, i)){
 				if(UNLIKELY(pdp->pd_flags & a_F_V))
 					su_log_write(su_LOG_INFO, "%smilter-macro value match ok: DKIM=%s, %s, %s",
 						mip->mi_log_id, mt, bp, cp);
 				goto jleave;
 			}
-			cp += i;
+			cp += ++i;
 			if(*cp == '\0')
 				break;
 		}
@@ -2257,7 +2264,7 @@ if(mip->mi_pdp->pd_flags & a_F_VV){
 
 		cp = mip->mi_pdp->pd_rm[rmt];
 		if(cp == NIL){
-			cp = mip->mi_rm_j_macro;
+			cp = mip->mi_macro_j;
 			if(mip->mi_pdp->pd_flags & a_F_VVV)
 				su_log_write(su_LOG_INFO, "%s%s: matching against j macro: %s",
 					mip->mi_log_id, a_rm_head_names[rmt], cp);
@@ -2303,13 +2310,13 @@ jmark:
 		su_imf_snap_gut(membp, ls);
 
 	/* C99 */{
-		uz i, c;
+		u32 i, c;
 		struct a_rm_head **rmhpp;
 
 		rmhpp = &mip->mi_rm_head[rmt];
 		i = 0;
-		while(*rmhpp != NIL && (*rmhpp)->rmh_cnt == UZ_BITS){
-			i += UZ_BITS;
+		while(*rmhpp != NIL && (*rmhpp)->rmh_cnt == 32){
+			i += 32;
 			rmhpp = &(*rmhpp)->rmh_next;
 		}
 		if(*rmhpp == NIL)
@@ -2321,10 +2328,9 @@ jmark:
 		i += ++c;
 
 		if(mip->mi_pdp->pd_flags & a_F_VV)
-			su_log_write(su_LOG_INFO, "%s%s %lu%s%s: %.42s",
-				mip->mi_log_id, a_rm_head_names[rmt],
-					S(ul,i), emsg, (mse ? ": mark for deletion" : su_empty),
-				(shtp == NIL ? dp : shtp->imfsht_dat));
+			su_log_write(su_LOG_INFO, "%s%s %u%s%%s%.42s",
+				mip->mi_log_id, a_rm_head_names[rmt], i, emsg, (mse ? ": mark for deletion" : su_empty),
+				(shtp != NIL ? ": " : su_empty), (shtp != NIL ? shtp->imfsht_dat : su_empty));
 	}
 
 	mse = su_EX_OK;
@@ -2347,7 +2353,7 @@ a_milter__verify(struct a_milter *mip){ /* {{{ */
 		struct a_rm_head *rmhp;
 
 		if((rmhp = mip->mi_rm_head[i]) != NIL){
-			u32 mpl, ot, oc;
+			u32 mpl, ot, orc, oc;
 
 			if(UNLIKELY(pdp->pd_flags & a_F_VVV))
 				su_log_write(su_LOG_INFO, "%sremoving headers: %s", mip->mi_log_id, a_rm_head_names[i]);
@@ -2366,14 +2372,17 @@ if(pdp->pd_flags & a_F_VV){
 }
 			}
 
-			for(ot = 0; rmhp != NIL; rmhp = rmhp->rmh_next){
+			for(orc = ot = 0; rmhp != NIL; rmhp = rmhp->rmh_next){
 				for(oc = 0; oc < rmhp->rmh_cnt; ++oc){
-					++ot;
+					++ot; /* 1-based */
+					if((rmhp->rmh_bits & (1u << oc)) == 0)
+						continue;
+					++orc;
 
 					if(LIKELY(!(pdp->pd_flags & (a_F_REPRO | a_F_DBG)))){
 						u32 bs;
 
-						bs = su_boswap_net_32(++ot);
+						bs = su_boswap_net_32(ot);
 						su_mem_copy(&mip->mi_buf[1], &bs, sizeof bs);
 
 						rv = a_milter__write(mip, mpl);
@@ -2391,9 +2400,9 @@ if(pdp->pd_flags & a_F_VV){
 				}
 			}
 
-			if(UNLIKELY(pdp->pd_flags & a_F_VVV))
-				su_log_write(su_LOG_INFO, "%sremoved %u %s headers",
-					mip->mi_log_id, ot, a_rm_head_names[i]);
+			if(UNLIKELY(orc > 0 && (pdp->pd_flags & a_F_VVV)))
+				su_log_write(su_LOG_INFO, "%sremoved %u of %u %s headers",
+					mip->mi_log_id, orc, ot, a_rm_head_names[i]);
 		}
 	}
 
@@ -2459,10 +2468,11 @@ jleave:
 /* dkim {{{ */
 static boole
 a_dkim_setup(struct a_dkim *dkp, boole post_eoh, struct a_pd *pdp, struct su_mem_bag *membp, /* {{{ */
-		char const *log_id){
+		char const *myhostname, char const *log_id){
 	struct a_md *mdp;
 	boole rv;
 	NYD_IN;
+	ASSERT(myhostname != NIL);
 	ASSERT(log_id != NIL);
 
 	rv = TRU1;
@@ -2472,6 +2482,7 @@ a_dkim_setup(struct a_dkim *dkp, boole post_eoh, struct a_pd *pdp, struct su_mem
 		dkp->d_pdp = pdp;
 	}
 
+	dkp->d_myhostname = myhostname;
 	dkp->d_log_id = log_id;
 
 	if(post_eoh){
@@ -2626,12 +2637,11 @@ a_dkim__parse_from(struct a_dkim *dkp, char *store, char const *dat, struct su_m
 	clia = a_CLI_ACT_SIGN;
 	dkp->d_sign_from_domain = store;
 
-	/* Normalize to lowercase, except for --domain-name */
-	if((dom = dkp->d_pdp->pd_domain_name) == NIL){
-		for(dom = ap->imfa_domain; (c = *dom) != '\0'; ++dom)
-			*dom = su_cs_to_lower(c);
+	/* Normalize to lowercase, except for --domain-name that already is */
+	for(dom = ap->imfa_domain; (c = *dom) != '\0'; ++dom)
+		*dom = su_cs_to_lower(c);
+	if((dom = dkp->d_pdp->pd_domain_name) == NIL)
 		dom = ap->imfa_domain;
-	}
 
 	/* Any --sign relations? */
 	if(su_cs_dict_count(&dkp->d_pdp->pd_sign) > 0){
@@ -2655,9 +2665,9 @@ jdom_redo:
 			if(sp != NIL && (first || sp->s_wildcard)){
 				if(dkp->d_pdp->pd_flags & a_F_V)
 					su_log_write(su_LOG_INFO,
-						"%s--sign %s match (From: (%s@)%s): %s%s%s",
+						"%ssign %s match (From: (%s@)%s->%s): %s%s%s",
 						dkp->d_log_id,
-						(first ? "exact" : "wildcard"), ap->imfa_locpar, dom,
+						(first ? "exact" : "wildcard"), ap->imfa_locpar, ap->imfa_domain, dom,
 						(buf != NIL ? buf : (any ? "." : dp)),
 						(sp->s_dom[0] != '\0' ? ", " : su_empty),
 						(sp->s_dom[0] != '\0' ? sp->s_dom : su_empty));
@@ -2682,13 +2692,26 @@ jdom_redo:
 		}
 
 		if(dkp->d_pdp->pd_flags & a_F_V)
-			su_log_write(su_LOG_INFO, "%ssign mismatch, DKIM=pass: (%s@)%s",
-				dkp->d_log_id, ap->imfa_locpar, dom);
+			su_log_write(su_LOG_INFO, "%ssign mismatch, DKIM=pass: (%s@)%s[->%s]",
+				dkp->d_log_id, ap->imfa_locpar, ap->imfa_domain, dom);
 		clia = a_CLI_ACT_PASS;
 		goto jleave;
-	}else if(dkp->d_pdp->pd_flags & a_F_VV)
-		su_log_write(su_LOG_INFO, "%sFrom: header (no sign relations): (%s@)%s",
-			dkp->d_log_id, ap->imfa_locpar, dom);
+	}else{
+		/* sign,localhost (verify,.) */
+		dom = ap->imfa_domain;
+		if(su_cs_cmp(dom, a_localhost)){
+			if(dkp->d_pdp->pd_flags & a_F_VV)
+				su_log_write(su_LOG_INFO, "%sno sign not localhost (From: %s@%s), DKIM=pass",
+					dkp->d_log_id, ap->imfa_locpar, ap->imfa_domain);
+			clia = a_CLI_ACT_PASS;
+			goto jleave;
+		}
+
+		dom = dkp->d_myhostname;
+		if(dkp->d_pdp->pd_flags & a_F_VV)
+			su_log_write(su_LOG_INFO, "%sno sign but localhost (From: (%s@)->%s), DKIM=sign",
+				dkp->d_log_id, ap->imfa_locpar, dom);
+	}
 
 jsign:
 	ASSERT(clia == a_CLI_ACT_SIGN);
@@ -4452,7 +4475,7 @@ a_conf__r(struct a_pd *pdp, char *arg){ /* {{{ */
 			*mac = vp;
 			pdp->pd_flags |= ftyp;
 			if(arg == NIL)
-				*vp++ = '\0'; /* <-> a_milter::mi_rm_j_macro (if used) */
+				*vp++ = '\0'; /* <-> a_milter::mi_macro_j (if used) */
 		}else{
 			if(ftyp == a_F_RM_A_R && x.cp[1] == '\0' && x.cp[0] == '!')
 				pdp->pd_flags |= a_F_RM_A_R_INV;

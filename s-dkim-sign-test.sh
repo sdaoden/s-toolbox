@@ -1087,20 +1087,23 @@ printf \
 cmp 301 t300 t301
 # }}}
 
-echo '=2: Triggers =' # {{{
+echo '=4: Triggers =' # {{{
 
 ## Triggers
 # We have Ed2559 due to '=2: Going ='
 
+# (localhost 410+)
 {
 	printf '\0\0\0\014LFrom\0X@Y.Z\0'
 	printf '\0\0\0\013LSubject\0s\0'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
-} | ${PD} $k > t400 2>ERR
+} | ${PD} -S y.z $k > t400 2>ERR
 x $? 400
 e0sumem 400
 printf \
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=y.z; s=I;\n'\
 ' t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuF\n'\
 '  U=; b=jzrEoivEWbECTM0xAnUjEFKtGZQmw6Ixn5YQ1RZJM7tgzgr/NNhgT/0BOmgFdG+Vd6+a\n'\
@@ -1113,10 +1116,12 @@ cmp 401 t400 t401
 	printf '\0\0\0\013LSubject\0s\0'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
-} | ${PD} $k -!from > t402 2>ERR
+} | ${PD} -S y.z $k -!from > t402 2>ERR
 x $? 402
 e0sumem 402
 printf \
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=y.z; s=I;\n'\
 ' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
 '  3hSuFU=; b=VvdE1nxRMZ/ek/mwzcGMbfzAqE5Q598um9X2WQwTyG2GJ3LBBblUbg1JLO2iIZG\n'\
@@ -1129,10 +1134,12 @@ cmp 403 t402 t403
 	printf '\0\0\0\013LSubject\0s\0'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
-} | ${PD} $k -!from -d z.y > t404 2>ERR
+} | ${PD} -S y.z $k -!from -d z.y > t404 2>ERR
 x $? 404
 e0sumem 404
 printf \
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=z.y; s=I;\n'\
 ' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
 '  3hSuFU=; b=rjeI6gV+4JnSbi1JlaAsUkwbuCUo5E5w0QcdYPsLfrSRQnQDV+dBk4xrMopE1WP\n'\
@@ -1148,12 +1155,34 @@ cmp 405 t404 t405
 } | ${PD} $k -!from -d not.me -S.,z.y > t406 2>ERR
 x $? 406
 e0sumem 406
+cmp 407 t404 t406
+
+### Real thing!!
+
 {
-	echo SMFIC_HEADER SMFIR_CONTINUE
-	echo SMFIC_HEADER SMFIR_CONTINUE
-	cat t404
-} > t407
-cmp 407 t406 t407
+	printf '\0\0\0\140DC'\
+'j\0sdaoden.eu\0{daemon_name}\0sign\0{daemon_addr}\0\06127.0.0.1\0v\0Micky Mouse\0_\0localhost [127.0.0.1]\0'
+	printf '\0\0\0\022LFrom\0X@localhost\0'
+	printf '\0\0\0\013LSubject\0s\0'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} $k > t410 2>ERR
+x $? 410
+e0sumem 410
+printf \
+'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=sdaoden.eu;\n'\
+' s=I; t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
+'  3hSuFU=; b=3+w56Q+Vqyvjh17cV2WhLNL2WFBWvVZhcuKb0smmXrMmwRBmSbl+/gTseYDwvTL\n'\
+'  0cHNQGY/Fvo2reGBSKMBaAA==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t411
+cmp 411 t410 t411
+
+#<unknown>: CMD O/79, 13 data bytes
+#optneg server: version=0x6 actions=0x1FF protocol=2097151
+#optneg response: version=0x6 actions=0x11 protocol=1041358
+#<unknown>: CMD D/68, 96 data bytes
+
+
 
 #.........
 
