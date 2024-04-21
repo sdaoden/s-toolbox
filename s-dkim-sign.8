@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd April 20, 2024
+.Dd April 27, 2024
 .ds VV \\%v0.6.0
 .ds XX \\%S-DKIM-SIGN
 .ds Xx \\%S-dkim-sign
@@ -62,9 +62,6 @@ stored in a
 mail header.
 The signature can be validated by fetching the appropriate public key(s)
 from the domain's DNS (RFC 8499) record.
-DKIM defines two preparation algorithms, simple and relaxed:
-.Nm
-only uses the latter.
 .
 .Pp
 The program is intended to be started via the
@@ -126,10 +123,13 @@ defined by the matching
 .Fl Fl sign
 relation, the specified
 .Fl Fl domain-name ,
-or the one from the extracted address, except for
-.Ql localhost ,
-which instead uses the milter macro
-.Ql j .
+or the one from the extracted address; if, without
+.Fl Fl sign
+relations, that then is
+.Ql @localhost ,
+however, a
+.Ql pass
+decision is made.
 .
 .Pp
 In the following example all messages from
@@ -597,7 +597,9 @@ Increase log verbosity (three levels).
 .
 .Bl -bullet -compact
 .It
-The simple canonicalization mode is not supported.
+Of the two DKIM canonicalization modes
+.Ql simple
+is unsupported.
 .It
 Internationalized UTF-8 email, that is RFC 6530
 .Dq Overview and Framework for Internationalized Email ,
