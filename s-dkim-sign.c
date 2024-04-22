@@ -60,6 +60,10 @@
 #define su_MEM_BAG_SELF (membp)
 #include <su/code.h>
 
+#if su_OS_LINUX
+# include <sys/syscall.h> /* __NR_close_range */
+#endif
+
 /* TODO all std or posix, nonono */
 #include <sys/select.h>
 
@@ -83,6 +87,7 @@
 #include <openssl/pem.h>
 
 #include <su/avopt.h>
+#include <su/bits.h>
 #include <su/boswap.h>
 #include <su/cs.h>
 #include <su/cs-dict.h>
@@ -719,18 +724,31 @@ enum a_flags{
 	a_F_SETUP_MASK = (1u<<4) - 1,
 	a_F_TEST_ERRORS = 1u<<4,
 
-	a_F_DBG = 1u<<8, /* -d */
-	a_F_V = 1u<<9, /* -v */
-	a_F_VV = 1u<<10,
-	a_F_VVV = 1u<<11,
+	a_F_DBG = 1u<<5, /* -d */
+	a_F_V = 1u<<6, /* -v */
+	a_F_VV = 1u<<7,
+	a_F_VVV = 1u<<8,
 	a_F_V_MASK = a_F_V | a_F_VV | a_F_VVV,
 
-	/* For --remove we have*/
-	a_F_RM_A_R = 1u<<21, /* --remove: a-r configured */
-	a_F_RM_A_R_INV = 1u<<22, /* (and: drop invalid headers) */
-	a_F_RM_OTHER = 1u<<23,
-	a_F_RM_MASK = a_F_RM_A_R | a_F_RM_A_R_INV | a_F_RM_OTHER,
+	/**/
+	a_F_RM_ANY = 1u<<10, /* *Any* --remove */
+#define a_RM_HEAD_TYPE_TO_INV_FLAG(RMT) (1u << (11u + S(uz,RMT)))
+	a_F_RM_A_R_INV = 1u<<11, /* a-r: invalid */
+	a_F_RM_A_A_R_INV = 1u<<12,
+	a_F_RM_A_M_S_INV = 1u<<13,
+	a_F_RM_A_S_INV = 1u<<14,
+	a_F_RM_DKIM_INV = 1u<<15,
+#define a_RM_HEAD_TYPE_TO_ANY_FLAG(RMT) (1u << (16u + S(uz,RMT)))
+	a_F_RM_A_R_ANY = 1u<<16, /* a-r: . wildcard */
+	a_F_RM_A_A_R_ANY = 1u<<17,
+	a_F_RM_A_M_S_ANY = 1u<<18,
+	a_F_RM_A_S_ANY = 1u<<19,
+	a_F_RM_DKIM_ANY = 1u<<20,
+	a_F_RM_MASK = a_F_RM_ANY |
+			a_F_RM_A_R_INV | a_F_RM_A_A_R_INV | a_F_RM_A_M_S_INV | a_F_RM_A_S_INV | a_F_RM_DKIM_INV |
+			a_F_RM_A_R_ANY | a_F_RM_A_A_R_ANY | a_F_RM_A_M_S_ANY | a_F_RM_A_S_ANY | a_F_RM_DKIM_ANY,
 
+	/**/
 	a_F_CLI_DOMAINS = 1u<<24, /* --client: any domain names, */
 	a_F_CLI_DOMAIN_WILDCARDS = 1u<<25, /* with wildcards, */
 	a_F_CLI_IPS = 1u<<26, /* ^ any IP addresses (shared dictionary) */
@@ -747,11 +765,20 @@ enum a_cli_action{
 };
 
 enum a_rm_head_type{
+	/* Exact name match, content parsed and matched */
 	a_RM_HEAD_A_R, /* authentication-results: */
-	a_RM_HEAD_ARC_A_R, /* ARC- " */
-	a_RM_HEAD_ARC_M_S, /* "-message-signature */
-	a_RM_HEAD_ARC_S, /* "-seal */
-	a_RM_HEAD_IP, /* IronPort */
+	a_RM_HEAD_A_A_R, /* arc-authentication-results */
+	a_RM_HEAD_TOP_TOKEN_MATCH = a_RM_HEAD_A_A_R,
+	a_RM_HEAD_A_M_S, /* arc-message-signature */
+	a_RM_HEAD_A_S, /* arc-seal */
+	a_RM_HEAD_DKIM, /* -signature */
+	a_RM_HEAD_TOP_D_SEARCH = a_RM_HEAD_DKIM, /* Search for d= */
+	a_RM_HEAD_TOP_MATCHED = a_RM_HEAD_TOP_D_SEARCH,
+
+	/* Exact header name match, on or off */
+	a_RM_HEAD_AUCY, /* autocrypt */
+	a_RM_HEAD_IP, /* ironport */
+	a_RM_HEAD_TOP_CMP = a_RM_HEAD_IP, /* Maximum exact match */
 	a_RM_HEAD_MAX
 };
 
@@ -767,9 +794,9 @@ struct a_line{
 #define a_LINE_SETUP(LP) do{(LP)->l_curr = (LP)->l_fill = 0;}while(0)
 
 struct a_rm_head{
-	struct a_rm_head *rmh_next;
 	u32 rmh_cnt; /* ..of used bits in rmh_bits */
-	u32 rmh_bits; /* Bit set if header shall be removed */
+	u32 rmh_max; /* maximum number of bits (.rmh_bits array size) */
+	uz rmh_bits[VFIELD_SIZE(0)]; /* Bit set if header shall be removed */
 };
 
 struct a_milter{
@@ -845,7 +872,7 @@ struct a_key_algo_tuple{
 struct a_md{
 	struct a_md *md_next;
 	EVP_MD const *md_md;
-	ZIPENUM(u8,a_MD) md_id;
+	u8 md_id;
 	char md_algo[7];
 };
 
@@ -855,8 +882,8 @@ struct a_key{
 	EVP_PKEY *k_key;
 	char *k_sel; /* points into .k_file */
 	uz k_sel_len;
-	ZIPENUM(s32,a_PKEY) k_id;
-	char k_algo[12];
+	u8 k_id;
+	char k_algo[15];
 	char k_file[VFIELD_SIZE(0)];
 };
 
@@ -903,7 +930,7 @@ struct a_pd{
 	char *pd_header_seal; /* --header-seal: NIL: none */
 	char *pd_mima_sign; /* name\0[:val\0:]\0 */
 	char *pd_mima_verify;
-	char *pd_rm[a_RM_HEAD_MAX]; /* --remove a-r etc. (\0|:val\0:)\0 */
+	char *pd_rm[a_RM_HEAD_MAX]; /* --remove a-r etc. (\0|:val\0:)\0; entries NOT lowercased (for -# mode)! */
 	struct a_key *pd_keys; /* --key */
 	u32 pd_key_md_maxsize; /* MAX() across all EVP_PKEY_get_size() and MDs, */
 	u32 pd_key_md_maxsize_b64; /* ..ditto, as base64 (including pad, NUL, etc), */
@@ -972,15 +999,25 @@ static char const a_milter_log_defid[] = "<unknown>: ";
 static char const a_localhost[] = "localhost";
 
 static char const a_rm_head_names[a_RM_HEAD_MAX][sizeof("ARC-Authentication-Results")] = {
+	/* matchables, token */
 	FII(a_RM_HEAD_A_R) "authentication-results",
-	FII(a_RM_HEAD_ARC_A_R) "arc-authentication-results", FII(a_RM_HEAD_ARC_M_S) "arc-message-signature",
-		FII(a_RM_HEAD_ARC_S) "arc-seal",
-	FII(a_RM_HEAD_IP) "ironport"
+		FII(a_RM_HEAD_A_A_R) "arc-authentication-results",
+		/* matchables d= search */
+		FII(a_RM_HEAD_A_M_S) "arc-message-signature", FII(a_RM_HEAD_A_S) "arc-seal",
+		FII(a_RM_HEAD_DKIM) "dkim-signature",
+	/* non-matchables */
+	FII(a_RM_HEAD_AUCY) "autocrypt",
+		FII(a_RM_HEAD_IP) "ironport"
 }, a_rm_head_ids[a_RM_HEAD_MAX][6] = {
 	FII(a_RM_HEAD_A_R) "a-r",
-	FII(a_RM_HEAD_ARC_A_R) "a-a-r", FII(a_RM_HEAD_ARC_M_S) "a-m-s", FII(a_RM_HEAD_ARC_S) "a-s",
-	FII(a_RM_HEAD_IP) "ip"
+		FII(a_RM_HEAD_A_A_R) "a-a-r",
+		FII(a_RM_HEAD_A_M_S) "a-m-s", FII(a_RM_HEAD_A_S) "a-s",
+		FII(a_RM_HEAD_DKIM) "dkim",
+	FII(a_RM_HEAD_AUCY) "aucy", FII(a_RM_HEAD_IP) "ip"
 };
+CTAV(a_RM_HEAD_A_R == 0); CTAV(a_RM_HEAD_A_A_R == 1);
+CTAV(a_RM_HEAD_A_M_S == 2); CTAV(a_RM_HEAD_A_S == 3); CTAV(a_RM_HEAD_DKIM == 4);
+CTAV(a_RM_HEAD_AUCY == 5); CTAV(a_RM_HEAD_IP == 6);
 
 static char const a_sopts[] = "A:C:c:" "d:" "~:!:" "k:" "M:" "R:" "r:" "S:s:" "t:" "#" "Hh";
 static char const * const a_lopts[] = {
@@ -1221,9 +1258,7 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 		a_RESP_CONN = 1u<<5, /* Need to respond to connection requests */
 		a_RESP_HDR = 1u<<6, /* Need to respond to headers */
 
-		a_RM_A_R = 1u<<7, /* --remove.. only set in fb */
-		a_RM_OTHER = 1u<<8,
-		a_RM_MASK = a_RM_A_R | a_RM_OTHER,
+		a_RM_MASK = 1u<<7, /* Any --remove */
 
 		a_SMFIC_OPTNEG_MASK = a_REPRO | a_DBG | a_V | a_VV | a_VVV | a_RESP_CONN | a_RESP_HDR | a_RM_MASK,
 
@@ -1296,10 +1331,8 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 	if(su_cs_dict_count(&pdp->pd_sign) > 0)
 		fb |= a_RESP_HDR;
 
-	if(pdp->pd_flags & a_F_RM_A_R)
-		fb |= a_RM_A_R;
-	if(pdp->pd_flags & a_F_RM_OTHER)
-		fb |= a_RM_OTHER;
+	if(pdp->pd_flags & a_F_RM_ANY)
+		fb |= a_RM_MASK;
 
 	for(fx = a_ACT_DUNNO /* UNINIT(fx,a_ACT_DUNNO)? */;;){
 		rv = a_milter__read(mip);
@@ -1352,7 +1385,7 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 			optneg.actions = su_boswap_net_32(optneg.actions);
 			optneg.protocol = su_boswap_net_32(optneg.protocol);
 			if(UNLIKELY(fb & a_VVV))
-				su_log_write(su_LOG_INFO, "optneg server: version=0x%X actions=0x%X protocol=%u",
+				su_log_write(su_LOG_INFO, "optneg server: version=0x%X actions=0x%X protocol=0x%X",
 					optneg.version, optneg.actions, optneg.protocol);
 
 			/* Use LOG_CRIT in order to surely enter log.  This will not work out! */
@@ -1388,7 +1421,7 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 			optneg.protocol &= fx;
 
 			if(UNLIKELY(fb & a_VVV))
-				su_log_write(su_LOG_INFO, "optneg response: version=0x%X actions=0x%X protocol=%u",
+				su_log_write(su_LOG_INFO, "optneg response: version=0x%X actions=0x%X protocol=0x%X",
 					optneg.version, optneg.actions, optneg.protocol);
 			optneg.version = su_boswap_net_32(optneg.version);
 			optneg.actions = su_boswap_net_32(optneg.actions);
@@ -1464,9 +1497,9 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 					/* xxx copying _ macro data assumes it is 7-bit clean */
 					if(!(fx & a_LOG_ID)){ /* xxx never though */
 						mip->mi_log_id = mip->mi_log_buf;
-						cp = su_cs_pcopy_n(mip->mi_log_buf, &bp[2], sizeof(mip->mi_log_buf) -2);
+						cp = su_cs_pcopy_n(mip->mi_log_buf, &bp[2], sizeof(mip->mi_log_buf) -1);
 						if(cp == NIL){
-							cp = &mip->mi_log_buf[sizeof(mip->mi_log_buf) -2];
+							cp = &mip->mi_log_buf[sizeof(mip->mi_log_buf) -3];
 							cp[-1] = '.'; cp[-2] = '.';
 						}
 						cp[0] = ':'; cp[1] = ' '; cp[2] = '\0';
@@ -1477,6 +1510,7 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 						continue;
 
 					switch(a_milter__macro_parse_(mip, &bp[2], dl, ((fb & a_CLI) == 0))){/*(logs)*/
+					default:
 					case a_CLI_ACT_NONE: FALLTHRU
 					case a_CLI_ACT_ERR:
 						goto jeproto;
@@ -1530,6 +1564,7 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 
 				if((fb & a_MIMA) && !(fx & a_MIMA)){ /* {{{ */
 					switch(a_milter__macro_mima(mip, bp, nl -1, &bp[nl], dl -1)){/*(logs)*/
+					default:
 					case a_CLI_ACT_NONE: FALLTHRU
 					case a_CLI_ACT_ERR:
 						break;
@@ -1568,15 +1603,15 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 			}
 
 			if(LIKELY(cmd == a_SMFIC_CONNECT)){
-				if(LIKELY(!(fb & a_REPRO))){
-					if((fb & a_MIMA) && !(fx & a_MIMA)){
-						if(UNLIKELY((fb & a_V)))
-							su_log_write(su_LOG_INFO, "%smilter-macro mismatch DKIM=pass",
-								mip->mi_log_id);
-						fx &= ~a_ACT_MASK;
-						fx |= a_ACT_PASS;
-					}
-				}else{
+				if((fb & a_MIMA) && !(fx & a_MIMA)){
+					if(UNLIKELY((fb & a_V)))
+						su_log_write(su_LOG_INFO, "%smilter-macro mismatch DKIM=pass",
+							mip->mi_log_id);
+					fx &= ~a_ACT_MASK;
+					fx |= a_ACT_PASS;
+				}
+
+				if(UNLIKELY(fb & a_REPRO)){
 					if(fb & a_MIMA)
 						puts((fx & a_MIMA) ? "--milter-macro OK" : "--milter-macro BAD");
 					if(fb & a_CLI)
@@ -1705,6 +1740,7 @@ su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 				/* May give action hint for From: (and logs) */
 				switch(a_dkim_push_header(mip->mi_dkim, hname, &mip->mi_buf[i], &mip->mi_bag)){
 				default:
+				case a_CLI_ACT_NONE:
 					/* Not From: */
 					break;
 				case a_CLI_ACT_SIGN:
@@ -1944,8 +1980,7 @@ a_milter__write(struct a_milter *mip, uz len){ /* {{{ */
 	s32 rv;
 	ssize_t bw;
 	char *bp;
-	u32 lb;
-	uz l, yet;
+	u32 l, lb, yet;
 	NYD_IN;
 
 	l = S(u32,len);
@@ -1967,8 +2002,8 @@ jwrite:
 		su_time_msleep(250, FAL0); /* XXX select this? */
 		goto jwrite;
 	}
-	yet += bw;
-	l -= bw;
+	yet += S(u32,bw);
+	l -= S(u32,bw);
 	if(l > 0)
 		goto jwrite;
 
@@ -2036,7 +2071,7 @@ a_milter__macro_parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {
 			rv = a_CLI_ACT_VERIFY;
 		}
 		if(mip->mi_pdp->pd_flags & a_F_V)
-			su_log_write(su_LOG_INFO, "%sno client configure, %slocalhost", mip->mi_log_id, msg);
+			su_log_write(su_LOG_INFO, "%sno client configured, %slocalhost", mip->mi_log_id, msg);
 		goto jleave;
 	}
 
@@ -2239,127 +2274,223 @@ jleave:
 static s32
 a_milter__rm_parse(struct a_milter *mip, ZIPENUM(u8,enum a_rm_head_type) rmt, char *dp){ /* {{{ */
 	s32 mse;
-	char *dat;
-	char const *emsg, *dat2;
+	uz dl, l;
+	char *dat, sbuf[256];
+	char const *emsg, *dat2, *cp;
 	struct su_imf_shtok *shtp;
 	void *ls;
 	struct su_mem_bag *membp;
+	struct a_pd *pdp;
 	NYD_IN;
 
+	pdp = mip->mi_pdp;
 	membp = &mip->mi_bag;
 	ls = NIL;
 	shtp = NIL;
-	emsg = su_empty;
-	dat2 = NIL;
+	dat2 = emsg = NIL;
 	dat = NIL;
+	UNINIT(dl, 0);
 
+	/* Drop anyway, .. or parse and match? */
+	LCTAV(a_RM_HEAD_TOP_MATCHED > a_RM_HEAD_TOP_TOKEN_MATCH);
+	LCTAV(a_RM_HEAD_TOP_TOKEN_MATCH < a_RM_HEAD_TOP_D_SEARCH);
+	LCTAV(a_RM_HEAD_TOP_MATCHED >= a_RM_HEAD_TOP_D_SEARCH);
 	mse = TRU1;
-	if(rmt != a_RM_HEAD_A_R)
-		goto jmark;
-
-	ls = su_imf_snap_create(membp);
-
-	/* 'Thing is, we need to dig it */
-	mse = su_imf_parse_struct_header(&shtp, dp, (su_IMF_MODE_RELAX | su_IMF_MODE_OK_DOT_ATEXT |
-			su_IMF_MODE_TOK_SEMICOLON | su_IMF_MODE_TOK_EMPTY | su_IMF_MODE_STOP_EARLY), membp, NIL);
-
-	/* Microsoft produces invalid Authentication-Results where authserv-id is missing */
-	if((mse & su_IMF_ERR_CONTENT) || shtp == NIL || shtp->imfsht_len == 0){
-		emsg = (shtp == NIL) ? ": unparsable" : ": invalid";
-		mse = (/*rmt == a_RM_HEAD_A_R &&*/ (mip->mi_pdp->pd_flags & a_F_RM_A_R_INV) != 0);
+	if(rmt > a_RM_HEAD_TOP_MATCHED || (pdp->pd_flags & a_RM_HEAD_TYPE_TO_ANY_FLAG(rmt))){
+		emsg = "super-wildcard or spec-less match: ";
 		goto jmark;
 	}
+	if(rmt <= a_RM_HEAD_TOP_TOKEN_MATCH){
+		ls = su_imf_snap_create(membp);
 
-	dat = shtp->imfsht_dat;
-	mse = TRU1;
+		/* 'Thing is, we need to dig it */
+		mse = su_imf_parse_struct_header(&shtp, dp, (su_IMF_MODE_RELAX | su_IMF_MODE_OK_DOT_ATEXT |
+					su_IMF_MODE_TOK_SEMICOLON | su_IMF_MODE_TOK_EMPTY), membp, NIL);
 
-	/* Unquote, no matter what XXX quoted-pair's remain; in fact: we need another dedicated IMF matcher!?! */
-	if(shtp->imfsht_len > 1 && *dat == '"'){
-		shtp->imfsht_len -= 2;
-		ASSERT(shtp->imfsht_len > 0); /* (empty is not quoted) */
-		++dat;
-		dat[shtp->imfsht_len] = '\0';
-	}
-
-	if(rmt == a_RM_HEAD_A_R){
-		uz l;
-		char const *cp, *dat2;
-
-		cp = mip->mi_pdp->pd_rm[rmt];
-		if(cp == NIL){
-			cp = mip->mi_macro_j;
-			if(mip->mi_pdp->pd_flags & a_F_VVV)
-				su_log_write(su_LOG_INFO, "%s%s: matching against j macro: %s",
-					mip->mi_log_id, a_rm_head_names[rmt], cp);
+		/* Microsoft produces invalid Authentication-Results where authserv-id is missing */
+		if((mse & su_IMF_ERR_CONTENT) || shtp == NIL || shtp->imfsht_len == 0){
+if(shtp!=NIL){
+while(shtp!=NIL){
+su_log_write(su_LOG_CRIT, "TOKEN %u<%s>",shtp->imfsht_len, shtp->imfsht_dat);
+shtp=shtp->imfsht_next;
+}
+}
+			if(pdp->pd_flags & a_F_VV){
+				snprintf(sbuf, sizeof sbuf, "%s: %.64s",
+					(shtp == NIL ? "unparsable (invalid)" : "invalid"), dp);
+				emsg = sbuf;
+			}
+			mse = ((pdp->pd_flags & a_RM_HEAD_TYPE_TO_INV_FLAG(rmt)) != 0);
+			goto jmark;
 		}
 
-		for(; *cp != '\0'; cp += ++l){
-			boole wildc;
-
-			wildc = (*cp == '.');
-			if(wildc)
-				++cp;
-			/* Invalid matcher handled via flag above */
-			else if(cp[0] == '!' && cp[1] == '\0'){
-				l = 1;
-				continue;
+		/* Search for result token */
+		for(;; shtp = shtp->imfsht_next){
+			dat = shtp->imfsht_dat;
+			/* Unquote: should not happen but is owed to our IMF parser which parses 5322 not that mess */
+			if(shtp->imfsht_len > 1 && *dat == '"'){
+				shtp->imfsht_len -= 2;
+				ASSERT(shtp->imfsht_len > 0); /* (empty is not quoted) */
+				++dat;
+				dat[shtp->imfsht_len] = '\0';
 			}
 
-			l = su_cs_len(cp);
+			/* For authentication-results the first token *is* the result; for ARC-a-r it is the 2nd xxx */
+			if(rmt == a_RM_HEAD_A_R || mse == TRU2)
+{
+su_log_write(su_LOG_CRIT, "A_R or A_A_R: off with <%s> for <%s>",shtp->imfsht_dat,dp);
+				break;
+}
+			mse = TRU2;
 
-			if(l == shtp->imfsht_len && !su_cs_cmp_case(cp, dat))
+			if(shtp->imfsht_next == NIL){
+jeparse_invalid:
+				if(pdp->pd_flags & a_F_VV){
+					snprintf(sbuf, sizeof sbuf, "seems invalid: %.64s", dp);
+					emsg = sbuf;
+				}
+				mse = ((pdp->pd_flags & a_RM_HEAD_TYPE_TO_INV_FLAG(rmt)) != 0);
 				goto jmark;
+			}
+		}
 
-			if(!wildc)
-				continue;
+		dl = shtp->imfsht_len;
+	}else if(rmt <= a_RM_HEAD_TOP_D_SEARCH){ /* XXX low quality parser <> manual! */
+		/* Most Y2K standards each introduce their very own ABNF instead of going hard 5322 phrase/2045 K=V :(.
+		 * We search for a d= entry specified as "d(FWS)*=(FWS)*v" instead of eg RFC 2045 k="?v", and the ARC-
+		 * series is even bogus as it says CFWS for -Signature which is something entirely different than the
+		 * claimed "adopted" DKIM-Signature */
+		boole sep;
+		char *xdp, c;
 
-			for(dat2 = dat; (dat2 = su_cs_find_c(dat2, '.')) != NIL;)
-				if(!su_cs_cmp_case(++dat2, cp))
-					goto jmark;
+		sep = TRU1;
+		for(xdp = dp; (c = *xdp++) != '\0';){
+			if(sep && c == 'd'){
+				while(su_imf_c_ANY_WSP((c = *xdp)))
+					++xdp;
+				if(c == '\0')
+					goto jeparse_invalid;
+				sep = FAL0;
+
+				if(c == '='){
+					while(su_imf_c_ANY_WSP((c = *++xdp))){
+					}
+					dat = xdp;
+					for(;;){
+						if(c == '\0')
+							goto jeparse_invalid;
+						if(c == ';'){
+							while(xdp > dat && su_imf_c_ANY_WSP(xdp[-1]))
+								--xdp;
+							*xdp = '\0';
+							dl = P2UZ(xdp - dat);
+							break;
+						}
+						c = *++xdp;
+					}
+				}
+			}else
+				sep = (su_imf_c_ANY_WSP(c) || c == ';');
 		}
 	}
 
+	cp = pdp->pd_rm[rmt];
+	if(cp == NIL){
+		cp = mip->mi_macro_j;
+		if(pdp->pd_flags & a_F_VVV)
+			su_log_write(su_LOG_INFO, "%s%s: matching against j macro: %s",
+				mip->mi_log_id, a_rm_head_names[rmt], cp);
+	}
+
+	mse = TRU1;
+	for(; *cp != '\0'; cp += ++l){
+		boole wildc;
+
+		wildc = (*cp == '.');
+		if(wildc){
+			++cp;
+			ASSERT(*cp != '\0'); /* Super-wildcard matcher handled via flag above */
+		}
+		/* Invalid matcher handled via flag above */
+		else if(cp[0] == '!' && cp[1] == '\0'){
+			l = 1;
+			continue;
+		}
+
+		l = su_cs_len(cp);
+
+		if(l == dl && !su_cs_cmp_case(cp, dat)){
+			if(pdp->pd_flags & a_F_VV){
+				snprintf(sbuf, sizeof sbuf, "exact match: %s", dat);
+				emsg = sbuf;
+			}
+			goto jmark;
+		}
+
+		if(!wildc)
+			continue;
+		ASSERT(l > 0);
+
+		for(dat2 = dat; (dat2 = su_cs_find_c(dat2, '.')) != NIL;)
+			if(!su_cs_cmp_case(++dat2, cp)){
+				if(pdp->pd_flags & a_F_VV){
+					snprintf(sbuf, sizeof sbuf, "subdomain wildcard match: %s: %s", dat2, dat);
+					emsg = sbuf;
+				}
+				goto jmark;
+			}
+	}
+
+	if(pdp->pd_flags & a_F_VV){
+		snprintf(sbuf, sizeof sbuf, "no match: %s", dat);
+		emsg = sbuf;
+	}
 	mse = FAL0;
+
 jmark:
 	if(ls != NIL)
 		su_imf_snap_gut(membp, ls);
 
 	/* C99 */{
-		u32 i, c;
-		struct a_rm_head **rmhpp;
+		u32 c, m;
+		struct a_rm_head *rmhp;
 
-		rmhpp = &mip->mi_rm_head[rmt];
-		i = 0;
-		while(*rmhpp != NIL && (*rmhpp)->rmh_cnt == 32){
-			i += 32;
-			rmhpp = &(*rmhpp)->rmh_next;
+		rmhp = mip->mi_rm_head[rmt];
+
+		if(rmhp == NIL){
+			c = 0;
+			m = UZ_BITS >> 1;
+			goto Jalloc;
+		}else if((c = rmhp->rmh_cnt) == (m = rmhp->rmh_max)) Jalloc:{
+			struct a_rm_head *rmhpx;
+			u32 x;
+
+			x = (m <<= 1);
+			x = su_BITS_TO_UZ(x) * sizeof(uz);
+			rmhpx = su_LOFI_ALLOC(VSTRUCT_SIZEOF(struct a_rm_head,rmh_bits) + x);
+			rmhpx->rmh_cnt = c;
+			rmhpx->rmh_max = m;
+
+			if(rmhp != NIL){
+				x = su_BITS_WHICH_OFF(c) + 1;
+				x *= sizeof(uz);
+				su_mem_copy(rmhpx->rmh_bits, rmhp->rmh_bits, x);
+			}
+
+			mip->mi_rm_head[rmt] = rmhp = rmhpx;
 		}
-		if(*rmhpp == NIL)
-			*rmhpp = su_LOFI_TCALLOC(struct a_rm_head, 1);
 
-		c = (*rmhpp)->rmh_cnt++;
 		if(mse)
-			(*rmhpp)->rmh_bits |= 1u << c;
-		i += ++c;
+			su_bits_array_set(rmhp->rmh_bits, c);
+		else
+			su_bits_array_clear(rmhp->rmh_bits, c);
+		rmhp->rmh_cnt = ++c;
 
-		if(mip->mi_pdp->pd_flags & a_F_VV){
-			boole match;
-			boole wild;
-
-			match = (shtp != NIL && emsg == NIL);
-			wild = (match && dat2 != NIL);
-
-			su_log_write(su_LOG_INFO, "%s%s no %u %s%s%s%s%s%s%s%.30s",
+		if(pdp->pd_flags & a_F_VV)
+			su_log_write(su_LOG_INFO, "%s%s no %u%s%s: %s",
 				mip->mi_log_id, a_rm_head_names[rmt],
-				i,
-				emsg, (mse ? "mark for deletion" : "keep"),
-					(match && !wild ? " exact match"
-						: (match && wild ? " wildcard match: " : su_empty)),
-					(match && wild ? dat2 : su_empty),
-					(match ? ": " : su_empty),
-					(match ? dat : su_empty),
-					(shtp != NIL ? ": " : su_empty), (shtp != NIL ? shtp->imfsht_dat : su_empty));
-		}
+				c, (emsg != NIL ? ": " : su_empty), (emsg != NIL ? emsg : su_empty),
+				(mse ? "remove" : "keep"));
 	}
 
 	mse = su_EX_OK;
@@ -2382,10 +2513,10 @@ a_milter__verify(struct a_milter *mip){ /* {{{ */
 		struct a_rm_head *rmhp;
 
 		if((rmhp = mip->mi_rm_head[i]) != NIL){
-			u32 mpl, ot, orc, oc;
+			u32 mpl, otc, orc;
 
 			if(UNLIKELY(pdp->pd_flags & a_F_VVV))
-				su_log_write(su_LOG_INFO, "%sremoving headers: %s", mip->mi_log_id, a_rm_head_names[i]);
+				su_log_write(su_LOG_INFO, "%sremoving: %s", mip->mi_log_id, a_rm_head_names[i]);
 
 			UNINIT(mpl, 0);
 			if(LIKELY(!(pdp->pd_flags & (a_F_REPRO | a_F_DBG)))){
@@ -2397,37 +2528,38 @@ a_milter__verify(struct a_milter *mip){ /* {{{ */
 				mpl = S(u32,P2UZ(++cp - &mip->mi_buf[0]));
 			}
 
-			for(orc = ot = 0; rmhp != NIL; rmhp = rmhp->rmh_next){
-				for(oc = 0; oc < rmhp->rmh_cnt; ++oc){
-					++ot; /* 1-based */
-					if((rmhp->rmh_bits & (1u << oc)) == 0)
+			for(otc = rmhp->rmh_cnt, orc = 0; otc > 0; --otc){
+				/* 1-based */
+				if(!su_bits_array_test(rmhp->rmh_bits, otc - 1))
+					continue;
+				++orc;
+
+				if(LIKELY(!(pdp->pd_flags & (a_F_REPRO | a_F_DBG)))){
+					u32 bs;
+
+					bs = su_boswap_net_32(otc);
+					su_mem_copy(&mip->mi_buf[1], &bs, sizeof bs);
+
+su_log_write(su_LOG_CRIT, "MILTER WRITE len=%u %u <%s><%X>",mpl,*(u32*)&mip->mi_buf[1], &mip->mi_buf[5],mip->mi_buf[mpl-1]);
+					rv = a_milter__write(mip, mpl);
+					if(rv != su_EX_OK)
+						goto jleave;
+
+					if(LIKELY(!(pdp->pd_flags & a_F_VV)))
 						continue;
-					++orc;
+				}else if(UNLIKELY(pdp->pd_flags & a_F_REPRO))
+					printf("SMFIR CHGHEADER %s %u\n", a_rm_head_names[i], otc);
 
-					if(LIKELY(!(pdp->pd_flags & (a_F_REPRO | a_F_DBG)))){
-						u32 bs;
+				if(UNLIKELY(pdp->pd_flags & a_F_VVV))
+					su_log_write(su_LOG_INFO, "%s%s: removed %u",
+						mip->mi_log_id, a_rm_head_names[i], otc);
 
-						bs = su_boswap_net_32(ot);
-						su_mem_copy(&mip->mi_buf[1], &bs, sizeof bs);
 
-						rv = a_milter__write(mip, mpl);
-						if(rv != su_EX_OK)
-							goto jleave;
-
-						if(LIKELY(!(pdp->pd_flags & a_F_VV)))
-							continue;
-					}else if(UNLIKELY(pdp->pd_flags & a_F_REPRO))
-						printf("SMFIR CHGHEADER %s %u\n", a_rm_head_names[i], ot);
-
-					if(UNLIKELY(pdp->pd_flags & a_F_VVV))
-						su_log_write(su_LOG_INFO, "%s%s: removed %u",
-							mip->mi_log_id, a_rm_head_names[i], ot);
-				}
 			}
 
 			if(UNLIKELY(orc > 0 && (pdp->pd_flags & a_F_VV)))
 				su_log_write(su_LOG_INFO, "%sremoved %u of %u %s headers",
-					mip->mi_log_id, orc, ot, a_rm_head_names[i]);
+					mip->mi_log_id, orc, rmhp->rmh_cnt, a_rm_head_names[i]);
 		}
 	}
 
@@ -2623,8 +2755,8 @@ a_dkim_push_header(struct a_dkim *dkp, char const *name, char const *dat, struct
 		}
 	}
 
-	hp->h_dlen = dl;
-	hp->h_nlen = nl;
+	hp->h_dlen = S(u32,dl);
+	hp->h_nlen = S(u32,nl);
 	hp->h_dat = &su_cs_pcopy(hp->h_name, name)[1];
 	dat = su_cs_pcopy(hp->h_dat, dat);
 
@@ -2662,7 +2794,7 @@ a_dkim__parse_from(struct a_dkim *dkp, char *store, char const *dat, struct su_m
 
 	/* Normalize to lowercase, except for --domain-name that already is */
 	for(dom = ap->imfa_domain; (c = *dom) != '\0'; ++dom)
-		*dom = su_cs_to_lower(c);
+		*dom = S(char,su_cs_to_lower(c));
 	if((dom = dkp->d_pdp->pd_domain_name) == NIL)
 		dom = ap->imfa_domain;
 
@@ -2721,17 +2853,20 @@ jdom_redo:
 		goto jleave;
 	}else{
 		/* sign,localhost (verify,.) */
-		dom = ap->imfa_domain;
-		if(!su_cs_cmp(dom, a_localhost)){
+		if(!su_cs_cmp(ap->imfa_domain, a_localhost)){
 			if(dkp->d_pdp->pd_flags & a_F_VV)
 				su_log_write(su_LOG_INFO, "%sno sign and From: %s@localhost, DKIM=pass",
 					dkp->d_log_id, ap->imfa_locpar);
 			clia = a_CLI_ACT_PASS;
 			goto jleave;
 		}
+
 		if(dkp->d_pdp->pd_flags & a_F_VV)
-			su_log_write(su_LOG_INFO, "%sno sign not @localhost (From: %s@%s), DKIM=sign",
-				dkp->d_log_id, ap->imfa_locpar, dom);
+			su_log_write(su_LOG_INFO, "%sno sign not @localhost (From: %s@%s%s%s%s), DKIM=sign",
+				dkp->d_log_id, ap->imfa_locpar, ap->imfa_domain,
+				(dom != ap->imfa_domain ? "[->" : su_empty),
+				(dom != ap->imfa_domain ? dom : su_empty),
+				(dom != ap->imfa_domain ? "]" : su_empty));
 	}
 
 jsign:
@@ -2909,7 +3044,7 @@ jdigup:		/* C99 */{
 	}
 
 	if(f & a_FINAL){
-		dl = 1;
+		/*dl = 1;*/
 		goto jfinal;
 	}
 
@@ -2942,7 +3077,7 @@ jfinal:	/* C99 */{
 			f |= a_ERR;
 			goto jleave;
 		}
-		mdcp->mdc_b_diglen = EVP_EncodeBlock(S(uc*,mdcp->mdc_b_digdat), S(uc*,ob), obl);
+		mdcp->mdc_b_diglen = S(u32,EVP_EncodeBlock(S(uc*,mdcp->mdc_b_digdat), S(uc*,ob), S(int,obl)));
 	}
 	}goto jleave;
 } /* }}} */
@@ -3034,7 +3169,6 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 
 		/* Key might be --sign constrained though */
 		if(dkp->d_sign != NIL && dkp->d_sign->s_anykey){
-			uz i;
 			struct a_sign *sp;
 
 			for(sp = dkp->d_sign, i = 0;;){
@@ -3203,7 +3337,7 @@ jesifi:
 		a.slz = pdp->pd_key_md_maxsize;
 		if(!EVP_DigestSign(mdcp->mdc_md_ctx, sigp, &a.slz, S(uc*,dkim_start), P2UZ(dkim_end - dkim_start)))
 			goto jesifi;
-		i = EVP_EncodeBlock(b64sigp, sigp, a.slz) +1;
+		i = S(uz,EVP_EncodeBlock(b64sigp, sigp, S(int,a.slz))) +1;
 
 		/* Finalize writing " b=" */
 		/* C99 */{
@@ -3260,7 +3394,7 @@ a_dkim__head_prep(struct a_dkim *dkp, char const *np, char const *dp, char **mib
 	for(cp = np; (c = *cp) != '\0'; ++cp){
 		/*if(su_cs_is_blank(c)) @HVALWS
 		 *	break;*/
-		*to++ = su_cs_to_lower(c);
+		*to++ = S(char,su_cs_to_lower(c));
 	}
 	*to++ = ':';
 
@@ -3411,6 +3545,22 @@ a_conf_finish(struct a_pd *pdp){ /* {{{ */
 		}
 	}
 
+	if(UNLIKELY(pdp->pd_flags & a_F_MODE_TEST) && (pdp->pd_flags & a_F_RM_ANY)){
+		u32 rmt;
+
+		for(rmt = 0; rmt <= a_RM_HEAD_TOP_MATCHED; ++rmt){
+			if(pdp->pd_flags & a_RM_HEAD_TYPE_TO_ANY_FLAG(rmt)){
+				if((pdp->pd_flags & a_RM_HEAD_TYPE_TO_INV_FLAG(rmt)) ||
+						pdp->pd_rm[rmt][0] != '.' || pdp->pd_rm[rmt][1] != '\0' ||
+						pdp->pd_rm[rmt][2] != '\0'){
+					a_conf__err(pdp, _("--remove: . implies anything else, including !: %s\n"),
+						a_rm_head_names[rmt]);
+					pdp->pd_flags |= a_F_TEST_ERRORS;
+				}
+			}
+		}
+	}
+
 jleave:
 	NYD_OU;
 	return rv;
@@ -3438,7 +3588,7 @@ a_conf_cleanup(struct a_pd *pdp){ /* {{{ */
 	if(pdp->pd_mima_verify != NIL)
 		su_FREE(pdp->pd_mima_verify);
 
-	if(pdp->pd_flags & a_F_RM_MASK){
+	if(pdp->pd_flags & a_F_RM_ANY){
 		u32 i;
 
 		for(i = 0; i < a_RM_HEAD_MAX; ++i)
@@ -3527,7 +3677,7 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 			union {void *vp; uz f;} u;
 			char const *spec;
 
-			spec = arr[cnt],
+			spec = arr[cnt];
 			u.vp = su_cs_dict_lookup(&pdp->pd_cli, spec);
 
 			i = su_cs_len(spec);
@@ -3551,11 +3701,9 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 		struct a_srch *sp;
 
 		for(sp = pdp->pd_cli_ip; sp != NIL; sp = sp->s_next){
-			char *cp;
-
-			cp = UNCONST(char*,inet_ntop((sp->s_type & a_SRCH_TYPE_IPV4 ? AF_INET : AF_INET6),
+			cp = inet_ntop((sp->s_type & a_SRCH_TYPE_IPV4 ? AF_INET : AF_INET6),
 					(sp->s_type & a_SRCH_TYPE_IPV4 ? S(void*,&sp->s_ip.v4)
-						: S(void*,&sp->s_ip.v6)), buf, sizeof(buf)));
+						: S(void*,&sp->s_ip.v6)), buf, sizeof(buf));
 			if(cp == NIL){
 				a_conf__err(pdp, _("--client: error displaying IP address\n"));
 				rv = su_EX_OSERR;
@@ -3604,8 +3752,8 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 				fputs(spec, stdout);
 				j += su_cs_len(spec);
 			}else
-				j += fprintf(stdout, "%.*s@%s%s", S(int,sp->s_spec_dom_off - 1), spec,
-						(sp->s_wildcard ? "." : su_empty), &spec[sp->s_spec_dom_off]);
+				j += S(uz,fprintf(stdout, "%.*s@%s%s", S(int,sp->s_spec_dom_off - 1), spec,
+						(sp->s_wildcard ? "." : su_empty), &spec[sp->s_spec_dom_off]));
 
 			if(*sp->s_dom != '\0' || sp->s_anykey){
 				putc(',', stdout);
@@ -3679,7 +3827,7 @@ jhredo:
 	if(pdp->pd_dkim_sig_ttl != 0)
 		fprintf(stdout, "ttl %lu\n", S(ul,pdp->pd_dkim_sig_ttl));
 
-	if(pdp->pd_flags & a_F_RM_MASK){
+	if(pdp->pd_flags & a_F_RM_ANY){
 		for(i = 0; i < a_RM_HEAD_MAX; ++i)
 			if((cp = pdp->pd_rm[i]) != NIL)
 				a_conf__list_cpxarr("remove ", a_rm_head_ids[i], cp, TRU1);
@@ -3730,11 +3878,12 @@ a_conf__list_cpxarr(char const *name, const char *name2_or_nil, char const *cp, 
 
 static s32
 a_conf_arg(struct a_pd *pdp, s32 o, char *arg){ /* {{{ */
-	union {char *cp; uz i;} x;
+	union {char *cp; uz i; u32 f;} x;
 	NYD_IN;
 
 	/* In long-option order */
 	switch(o){
+	default: break;
 	case 'C': o = a_conf__C(pdp, arg, NIL); break;
 	case 'c': o = a_conf__c(pdp, arg); break;
 
@@ -3748,7 +3897,7 @@ a_conf_arg(struct a_pd *pdp, s32 o, char *arg){ /* {{{ */
 			su_FREE(x.cp);
 		/* Normalize to lowercase */
 		for(x.cp = arg; *x.cp != '\0'; ++x.cp)
-			*x.cp = su_cs_to_lower(*x.cp);
+			*x.cp = S(char,su_cs_to_lower(*x.cp));
 		x.i = P2UZ(x.cp - arg);
 		pdp->pd_sign_longest_domain = MAX(pdp->pd_sign_longest_domain, S(u32,x.i));
 		pdp->pd_domain_name = su_cs_dup(arg, 0);
@@ -3781,13 +3930,13 @@ a_conf_arg(struct a_pd *pdp, s32 o, char *arg){ /* {{{ */
 	case -3: o = -o; pdp->pd_flags |= a_F_DBG; break;
 	case -4:
 		o = -o;
-		x.i = pdp->pd_flags;
+		x.f = pdp->pd_flags;
 #if DVLDBGOR(0, 1)
-		if(!(x.i & a_F_V))
+		if(!(x.f & a_F_V))
 			su_log_set_level(su_LOG_INFO);
 #endif
-		x.i = ((x.i << 1) | a_F_V) & a_F_V_MASK;
-		pdp->pd_flags = (pdp->pd_flags & ~S(uz,a_F_V_MASK)) | x.i;
+		x.f = ((x.f << 1) | a_F_V) & a_F_V_MASK;
+		pdp->pd_flags = (pdp->pd_flags & ~S(uz,a_F_V_MASK)) | x.f;
 		break;
 	}
 
@@ -3843,7 +3992,7 @@ jeact:
 	}
 
 jactok:
-	rv = su_EX_OK;
+	/*rv = su_EX_OK;*/
 
 	arg = su_cs_trim(arg);
 	if(*arg == '\0'){
@@ -4111,7 +4260,7 @@ jon_error_arg_nul:
 		char c;
 
 		for(vp = cp = arg; (c = *cp) != '\0'; ++cp)
-			*cp = su_cs_to_lower(c);
+			*cp = S(char,su_cs_to_lower(c));
 		i = P2UZ(cp - vp) + 1;
 	}
 
@@ -4298,7 +4447,7 @@ jekeyo:
 			}else{
 				u32 kmaxsize;
 
-				kmaxsize = EVP_PKEY_get_size(pkeyp);
+				kmaxsize = S(u32,EVP_PKEY_get_size(pkeyp));
 				if(kmaxsize == 0 || kmaxsize > S32_MAX){
 					a_conf__err(pdp, _("--key: cannot determine EVP_PKEY_get_size(): %s: %s\n"),
 						katp->kat_pkey_name, xarg);
@@ -4332,7 +4481,7 @@ jekeyo:
 				mdp->md_next = pdp->pd_mds;
 				pdp->pd_mds = mdp;
 				mdp->md_md = mdmdp;
-				mdp->md_id = katp->kat_md;
+				mdp->md_id = S(u8,katp->kat_md);
 				su_cs_pcopy(mdp->md_algo, katp->kat_md_name);
 			}
 
@@ -4341,7 +4490,7 @@ jekeyo:
 			kp->k_next = NIL;
 			kp->k_md = mdp;
 			kp->k_key = pkeyp;
-			kp->k_id = katp->kat_pkey;
+			kp->k_id = S(u8,katp->kat_pkey);
 			su_cs_pcopy(kp->k_algo, katp->kat_pkey_name);
 			kp->k_sel = su_cs_pcopy(kp->k_file, xarg) +1;
 			sel = su_cs_pcopy(kp->k_sel, sel);
@@ -4481,7 +4630,6 @@ a_conf__r(struct a_pd *pdp, char *arg){ /* {{{ */
 			for(ftyp = 0;;){
 				if(!su_cs_cmp_case(x.cp, a_rm_head_ids[ftyp])){
 					mac = &pdp->pd_rm[ftyp];
-					ftyp = (ftyp == a_RM_HEAD_A_R) ? a_F_RM_A_R : a_F_RM_OTHER;
 					break;
 				}
 				if(++ftyp == a_RM_HEAD_MAX){
@@ -4491,15 +4639,27 @@ a_conf__r(struct a_pd *pdp, char *arg){ /* {{{ */
 				}
 			}
 
-			if(*mac != NIL)
+			if(*mac != NIL){
+				pdp->pd_flags &= ~(a_RM_HEAD_TYPE_TO_ANY_FLAG(ftyp) | a_RM_HEAD_TYPE_TO_INV_FLAG(ftyp));
 				su_FREE(*mac);
+			}
 			*mac = vp;
-			pdp->pd_flags |= ftyp;
+			pdp->pd_flags |= a_F_RM_ANY;
 			if(arg == NIL)
 				*vp++ = '\0'; /* <-> a_milter::mi_macro_j (if used) */
+			else if(ftyp > a_RM_HEAD_TOP_MATCHED){
+				a_conf__err(pdp, _("--remove: type does not take argument: %s\n"), x.cp);
+				rv = -su_EX_DATAERR;
+				goto jleave;
+			}
 		}else{
-			if(ftyp == a_F_RM_A_R && x.cp[1] == '\0' && x.cp[0] == '!')
-				pdp->pd_flags |= a_F_RM_A_R_INV;
+			if(x.cp[1] == '\0'){
+				if(x.cp[0] == '.')
+					pdp->pd_flags |= a_RM_HEAD_TYPE_TO_ANY_FLAG(ftyp);
+				else if(x.cp[0] == '!')
+					pdp->pd_flags |= a_RM_HEAD_TYPE_TO_INV_FLAG(ftyp);
+			}
+			/* We do not lowercase it for -# */
 			vp = su_cs_pcopy(vp, x.cp) +1;
 		}
 	}
@@ -4536,7 +4696,7 @@ a_conf__S(struct a_pd *pdp, char *arg){ /* {{{ */
 				xarg = spec;
 			else{
 				pdp->pd_flags |= a_F_SIGN_LOCAL_PARTS;
-				dom_off = P2UZ(++xarg - spec);
+				dom_off = S(u32,P2UZ(++xarg - spec));
 
 				if(UNLIKELY(pdp->pd_flags & a_F_MODE_TEST)){ /* --test-mode "verifies" {{{ */
 					struct su_mem_bag memb;
@@ -4625,7 +4785,7 @@ jerr:
 
 				/* Normalize */
 				while(i-- != 0)
-					dom[i] = su_cs_to_lower(dom[i]);
+					dom[i] = S(char,su_cs_to_lower(dom[i]));
 			}else{
 				a_conf__err(pdp, _("--sign: domain is invalid RFC 5321: %s: %s\n"), spec, dom);
 				goto jerr;
@@ -4865,7 +5025,7 @@ jskip:
 			if(cx != '\\')
 				goto jredo;
 		}
-		cx = c;
+		cx = S(char,c);
 	}
 #undef a_LINE_GETC
 }
@@ -4964,9 +5124,11 @@ a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 	else{
 		char *cp;
 
-		if(msg != xb)
+		if(msg != xb){
 			su_cs_pcopy_n(xb, msg, sizeof(xb));
-		cp = xb;
+			msg = xb;
+		}
+
 		for(cp = xb; *cp != '\0'; ++cp)
 			if(*cp == '\n')
 				*cp = ' ';
@@ -5182,6 +5344,7 @@ jhss_redo:
 			mpv = su_EX_OK;
 			goto jleave;
 
+		default: break;
 		case su_AVOPT_STATE_ERR_ARG:
 			emsg = su_avopt_fmt_err_arg;
 			goto jerropt;
