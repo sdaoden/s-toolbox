@@ -66,6 +66,7 @@
 
 /* TODO all std or posix, nonono */
 #include <sys/select.h>
+#include <sys/socket.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -109,10 +110,12 @@
 /* We assume it initializes itself (maybe more) */
 #if !defined OPENSSL_VERSION_NUMBER || OPENSSL_VERSION_NUMBER + 0 < 0x10100000L
 # error This SSL library is not supported it seems.  OpenSSL >= 1.1.0 it must be.
-#elif OPENSSL_VERSION_NUMBER + 0 >= 0x10100000L
+#elif !defined LIBRESSL_VERSION_NUMBER && OPENSSL_VERSION_NUMBER + 0 >= 0x30000000L
 # define a_MD_FETCH
+# define a_PKEY_GET_SIZE(X) EVP_PKEY_get_size(X)
 #else
 # undef a_MD_FETCH
+# define a_PKEY_GET_SIZE(X) EVP_MAX_KEY_LENGTH
 #endif
 
 /* milter-protocol.txt {{{ */
@@ -795,8 +798,8 @@ struct a_line{
 
 struct a_rm_head{
 	u32 rmh_cnt; /* ..of used bits in rmh_bits */
-	u32 rmh_max; /* maximum number of bits (.rmh_bits array size) */
-	uz rmh_bits[VFIELD_SIZE(0)]; /* Bit set if header shall be removed */
+	u32 rmh_top; /* maximum bit (.rmh_bits array size) */
+	uz rmh_bits[VFIELD_SIZE(0)]; /* Bit set if header shall be removed; bit 0: any set at all */
 };
 
 struct a_milter{
@@ -2297,7 +2300,7 @@ a_milter__rm_parse(struct a_milter *mip, ZIPENUM(u8,enum a_rm_head_type) rmt, ch
 	LCTAV(a_RM_HEAD_TOP_MATCHED >= a_RM_HEAD_TOP_D_SEARCH);
 	mse = TRU1;
 	if(rmt > a_RM_HEAD_TOP_MATCHED || (pdp->pd_flags & a_RM_HEAD_TYPE_TO_ANY_FLAG(rmt))){
-		emsg = "super-wildcard or spec-less match: ";
+		emsg = "super-wildcard or spec-less match";
 		goto jmark;
 	}
 	if(rmt <= a_RM_HEAD_TOP_TOKEN_MATCH){
@@ -2307,8 +2310,9 @@ a_milter__rm_parse(struct a_milter *mip, ZIPENUM(u8,enum a_rm_head_type) rmt, ch
 		mse = su_imf_parse_struct_header(&shtp, dp, (su_IMF_MODE_RELAX | su_IMF_MODE_OK_DOT_ATEXT |
 					su_IMF_MODE_TOK_SEMICOLON | su_IMF_MODE_TOK_EMPTY), membp, NIL);
 
-		/* Microsoft produces invalid Authentication-Results where authserv-id is missing */
-		if((mse & su_IMF_ERR_CONTENT) || shtp == NIL || shtp->imfsht_len == 0){
+		/* Microsoft produces invalid Authentication-Results where authserv-id is missing.
+		 * We cannot check ERR_CONTENT because FIXME */
+		if(/*(mse & su_IMF_ERR_CONTENT) ||*/ shtp == NIL || shtp->imfsht_len == 0 || shtp->imfsht_next == NIL){
 if(shtp!=NIL){
 while(shtp!=NIL){
 su_log_write(su_LOG_CRIT, "TOKEN %u<%s>",shtp->imfsht_len, shtp->imfsht_dat);
@@ -2442,7 +2446,7 @@ jeparse_invalid:
 	}
 
 	if(pdp->pd_flags & a_F_VV){
-		snprintf(sbuf, sizeof sbuf, "no match: %s", dat);
+		snprintf(sbuf, sizeof sbuf, "mismatch: %s", dat);
 		emsg = sbuf;
 	}
 	mse = FAL0;
@@ -2452,24 +2456,24 @@ jmark:
 		su_imf_snap_gut(membp, ls);
 
 	/* C99 */{
-		u32 c, m;
+		u32 c, t;
 		struct a_rm_head *rmhp;
 
 		rmhp = mip->mi_rm_head[rmt];
 
 		if(rmhp == NIL){
 			c = 0;
-			m = UZ_BITS >> 1;
+			t = UZ_BITS >> 1;
 			goto Jalloc;
-		}else if((c = rmhp->rmh_cnt) == (m = rmhp->rmh_max)) Jalloc:{
+		}else if((c = rmhp->rmh_cnt) == (t = rmhp->rmh_top)) Jalloc:{
 			struct a_rm_head *rmhpx;
 			u32 x;
 
-			x = (m <<= 1);
+			x = (t <<= 1);
 			x = su_BITS_TO_UZ(x) * sizeof(uz);
-			rmhpx = su_LOFI_ALLOC(VSTRUCT_SIZEOF(struct a_rm_head,rmh_bits) + x);
+			rmhpx = su_LOFI_CALLOC(VSTRUCT_SIZEOF(struct a_rm_head,rmh_bits) + x);
 			rmhpx->rmh_cnt = c;
-			rmhpx->rmh_max = m;
+			rmhpx->rmh_top = t;
 
 			if(rmhp != NIL){
 				x = su_BITS_WHICH_OFF(c) + 1;
@@ -2480,14 +2484,14 @@ jmark:
 			mip->mi_rm_head[rmt] = rmhp = rmhpx;
 		}
 
-		if(mse)
-			su_bits_array_set(rmhp->rmh_bits, c);
-		else
-			su_bits_array_clear(rmhp->rmh_bits, c);
 		rmhp->rmh_cnt = ++c;
+		if(mse){
+			*rmhp->rmh_bits |= 1u;
+			su_bits_array_set(rmhp->rmh_bits, c);
+		}
 
 		if(pdp->pd_flags & a_F_VV)
-			su_log_write(su_LOG_INFO, "%s%s no %u%s%s: %s",
+			su_log_write(su_LOG_INFO, "%s%s %u%s%s: %s",
 				mip->mi_log_id, a_rm_head_names[rmt],
 				c, (emsg != NIL ? ": " : su_empty), (emsg != NIL ? emsg : su_empty),
 				(mse ? "remove" : "keep"));
@@ -2512,7 +2516,7 @@ a_milter__verify(struct a_milter *mip){ /* {{{ */
 	for(i = 0; i < a_RM_HEAD_MAX; ++i){
 		struct a_rm_head *rmhp;
 
-		if((rmhp = mip->mi_rm_head[i]) != NIL){
+		if((rmhp = mip->mi_rm_head[i]) != NIL && (*rmhp->rmh_bits & 1u)){
 			u32 mpl, otc, orc;
 
 			if(UNLIKELY(pdp->pd_flags & a_F_VVV))
@@ -2530,7 +2534,7 @@ a_milter__verify(struct a_milter *mip){ /* {{{ */
 
 			for(otc = rmhp->rmh_cnt, orc = 0; otc > 0; --otc){
 				/* 1-based */
-				if(!su_bits_array_test(rmhp->rmh_bits, otc - 1))
+				if(!su_bits_array_test(rmhp->rmh_bits, otc))
 					continue;
 				++orc;
 
@@ -2539,8 +2543,6 @@ a_milter__verify(struct a_milter *mip){ /* {{{ */
 
 					bs = su_boswap_net_32(otc);
 					su_mem_copy(&mip->mi_buf[1], &bs, sizeof bs);
-
-su_log_write(su_LOG_CRIT, "MILTER WRITE len=%u %u <%s><%X>",mpl,*(u32*)&mip->mi_buf[1], &mip->mi_buf[5],mip->mi_buf[mpl-1]);
 					rv = a_milter__write(mip, mpl);
 					if(rv != su_EX_OK)
 						goto jleave;
@@ -2553,8 +2555,6 @@ su_log_write(su_LOG_CRIT, "MILTER WRITE len=%u %u <%s><%X>",mpl,*(u32*)&mip->mi_
 				if(UNLIKELY(pdp->pd_flags & a_F_VVV))
 					su_log_write(su_LOG_INFO, "%s%s: removed %u",
 						mip->mi_log_id, a_rm_head_names[i], otc);
-
-
 			}
 
 			if(UNLIKELY(orc > 0 && (pdp->pd_flags & a_F_VV)))
@@ -2861,12 +2861,14 @@ jdom_redo:
 			goto jleave;
 		}
 
-		if(dkp->d_pdp->pd_flags & a_F_VV)
+		if(dkp->d_pdp->pd_flags & a_F_VV){
+			boole xlog;
+
+			xlog = (dom != ap->imfa_domain || su_cs_cmp_case(dom, ap->imfa_domain));
 			su_log_write(su_LOG_INFO, "%sno sign not @localhost (From: %s@%s%s%s%s), DKIM=sign",
 				dkp->d_log_id, ap->imfa_locpar, ap->imfa_domain,
-				(dom != ap->imfa_domain ? "[->" : su_empty),
-				(dom != ap->imfa_domain ? dom : su_empty),
-				(dom != ap->imfa_domain ? "]" : su_empty));
+				(xlog ? "[->" : su_empty), (xlog ? dom : su_empty), (xlog ? "]" : su_empty));
+		}
 	}
 
 jsign:
@@ -4447,7 +4449,7 @@ jekeyo:
 			}else{
 				u32 kmaxsize;
 
-				kmaxsize = S(u32,EVP_PKEY_get_size(pkeyp));
+				kmaxsize = S(u32,a_PKEY_GET_SIZE(pkeyp));
 				if(kmaxsize == 0 || kmaxsize > S32_MAX){
 					a_conf__err(pdp, _("--key: cannot determine EVP_PKEY_get_size(): %s: %s\n"),
 						katp->kat_pkey_name, xarg);
