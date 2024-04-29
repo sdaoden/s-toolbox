@@ -67,7 +67,7 @@ e0() {
 }
 
 e0sumem() {
-	sed -E -i'' '/.+\[debug\]: su_mem_.+(LINGER|LOFI|lofi).+/d' ERR
+	sed -E -i'' -e '/.+\[debug\]: su_mem_.+(LINGER|LOFI|lofi).+/d' ERR
 	e0 "$@"
 }
 
@@ -161,13 +161,19 @@ algo_ed25519_sha256= algo_rsa_sha256= algo_rsa_sha1=
 [ "$algos" != "${algos#* rsa-sha1}" ] && algo_rsa_sha1=y
 
 ka= kf= k= kR= k2a= k2f= k2= k2R=
-[ -n "$algo_rsa_sha1" ] &&
-	ka=rsa-sha1 kf=pri-rsa.pem k=--key=$ka,I,$kf kR='key '$ka', I, '$kf \
-	k2a=$ka k2f=$kf k2=--key=$ka,II,$kf k2R='key '$ka', II, '$kf
-[ -n "$algo_rsa_sha256" ] &&
-	ka=rsa-sha256 kf=pri-rsa.pem k=--key=$ka,I,$kf kR='key '$ka', I, '$kf \
-	k2a=$ka k2f=$kf k2=--key=$ka,II,$kf k2R='key '$ka', II, '$kf
-[ -n "$algo_ed25519_sha256" ] && ka=ed25519-sha256 kf=pri-ed25519.pem k=--key=$ka,I,$kf kR='key '$ka', I, '$kf
+# we cannot do "x=y z=$x" due to {Free,Net}BSD sh(1)
+if [ -n "$algo_rsa_sha1" ]; then
+	ka=rsa-sha1 kf=pri-rsa.pem
+	k=--key=$ka,I,$kf kR='key '$ka', I, '$kf k2a=$ka k2f=$kf k2=--key=$ka,II,$kf k2R='key '$ka', II, '$kf
+fi
+if [ -n "$algo_rsa_sha256" ]; then
+	ka=rsa-sha256 kf=pri-rsa.pem
+	k=--key=$ka,I,$kf kR='key '$ka', I, '$kf k2a=$ka k2f=$kf k2=--key=$ka,II,$kf k2R='key '$ka', II, '$kf
+fi
+if [ -n "$algo_ed25519_sha256" ]; then
+	ka=ed25519-sha256 kf=pri-ed25519.pem
+	k=--key=$ka,I,$kf kR='key '$ka', I, '$kf
+fi
 [ -z "$k" ] && { echo >&2 no keys to test; exit 78; } # EX_CONFIG
 [ $k2a = $ka ] && k2a= k2f= k2= k2R=
 
@@ -818,14 +824,14 @@ if command -v seq >/dev/null 2>&1; then :; else
 fi
 
 {
-	printf '\0\0\0\013LFrom\0 X@Y\0'
-	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
-	printf '\0\0\313\376B'
-	seq 8888 | sed 's/$/\r/'
-	printf '\0\0\167\235B'
-	seq 8889 13421 | sed 's/$/\r/'
-	printf '\0\0\0\01E'
-	printf '\0\0\0\01Q'
+printf '\0\0\0\013LFrom\0 X@Y\0'
+printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
+printf '\0\0\313\376B'
+seq 8888 | ${AWK} '{sub("$", "\r"); print}'
+printf '\0\0\167\235B'
+seq 8889 13421 | ${AWK} '{sub("$", "\r"); print}'
+printf '\0\0\0\01E'
+printf '\0\0\0\01Q'
 } | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t204 2>ERR
 x $? 204
 e0sumem 204
@@ -844,9 +850,9 @@ cmp 205 t204 t205
 	printf '\0\0\0\013LFrom\0 X@Y\0'
 	printf '\0\0\0\030LSubject\0 Y\t \n \r\n \t Z  \0'
 	printf '\0\0\145\346B'
-	seq 4532 | sed 's/$/\r/'
+	seq 4532 | ${AWK} '{sub("$", "\r"); print}'
 	printf '\0\0\335\265B'
-	seq 4533 13421 | sed 's/$/\r/'
+	seq 4533 13421 | ${AWK} '{sub("$", "\r"); print}'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
 } | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t206 2>ERR
@@ -868,9 +874,9 @@ cmp 207 t204 t206
 	printf '\0\0\0\002B8\0\0\0\002B\r\0\0\0\002B\n'
 	printf '\0\0\0\002B9\0\0\0\002B\r\0\0\0\002B\n'
 	printf '\0\0\145\313B'
-	seq 10 4532 | sed 's/$/\r/'
+	seq 10 4532 | ${AWK} '{sub("$", "\r"); print}'
 	printf '\0\0\335\265B'
-	seq 4533 13421 | sed 's/$/\r/'
+	seq 4533 13421 | ${AWK} '{sub("$", "\r"); print}'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
 } | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t208 2>ERR
