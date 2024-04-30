@@ -2311,14 +2311,8 @@ a_milter__rm_parse(struct a_milter *mip, ZIPENUM(u8,enum a_rm_head_type) rmt, ch
 					su_IMF_MODE_TOK_SEMICOLON | su_IMF_MODE_TOK_EMPTY), membp, NIL);
 
 		/* Microsoft produces invalid Authentication-Results where authserv-id is missing.
-		 * We cannot check ERR_CONTENT because FIXME */
+		 * We cannot check ERR_CONTENT because IMF parses atext and there is a @ in =@ TODO */
 		if(/*(mse & su_IMF_ERR_CONTENT) ||*/ shtp == NIL || shtp->imfsht_len == 0 || shtp->imfsht_next == NIL){
-if(shtp!=NIL){
-while(shtp!=NIL){
-su_log_write(su_LOG_CRIT, "TOKEN %u<%s>",shtp->imfsht_len, shtp->imfsht_dat);
-shtp=shtp->imfsht_next;
-}
-}
 			if(pdp->pd_flags & a_F_VV){
 				snprintf(sbuf, sizeof sbuf, "%s: %.64s",
 					(shtp == NIL ? "unparsable (invalid)" : "invalid"), dp);
@@ -2341,10 +2335,7 @@ shtp=shtp->imfsht_next;
 
 			/* For authentication-results the first token *is* the result; for ARC-a-r it is the 2nd xxx */
 			if(rmt == a_RM_HEAD_A_R || mse == TRU2)
-{
-su_log_write(su_LOG_CRIT, "A_R or A_A_R: off with <%s> for <%s>",shtp->imfsht_dat,dp);
 				break;
-}
 			mse = TRU2;
 
 			if(shtp->imfsht_next == NIL){
@@ -2465,7 +2456,7 @@ jmark:
 			c = 0;
 			t = UZ_BITS >> 1;
 			goto Jalloc;
-		}else if((c = rmhp->rmh_cnt) == (t = rmhp->rmh_top)) Jalloc:{
+		}else if((c = rmhp->rmh_cnt) + 1 >= (t = rmhp->rmh_top)) Jalloc:{
 			struct a_rm_head *rmhpx;
 			u32 x;
 
