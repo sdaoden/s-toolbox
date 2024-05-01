@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd April 30, 2024
+.Dd May 01, 2024
 .ds VV \\%v0.6.0
 .ds XX \\%S-DKIM-SIGN
 .ds Xx \\%S-dkim-sign
@@ -208,10 +208,12 @@ remove a-r
 .
 .Pp
 .Nm \*(xx-key-create
-is a simple shell script which uses
+is a simple shell script which uses the
 .St -p1003.2
 standard tools and
 .Xr openssl 1
+found in the
+.Ev PATH
 to create the private/public key tuple to anticipate in DKIM, as well
 as readily formatting the according DNS record.
 In interactive usage it will print a result abstract.
@@ -480,6 +482,8 @@ s which support
 matching are
 .Ql a-r
 .Pf ( Ql Authentication-\:Results ) ,
+.Ql mo-a-r
+.Pf ( Ql X-Mailman-\:Original-\:Authentication-\:Results ) ,
 .Ql a-a-r
 .Pf ( Ql ARC-Authentication-\:Results ) .
 Lesser quality parsers exist for
@@ -487,9 +491,11 @@ Lesser quality parsers exist for
 .Pf ( Ql ARC-Message-Signature ) ,
 .Ql a-s
 .Pf ( Ql ARC-Seal ) ,
-and
 .Ql dkim
-.Pf ( Ql DKIM-Signature ) .
+.Pf ( Ql DKIM-Signature )
+and
+.Ql mo-dkim
+.Pf ( Ql X-Mailman-\:Original-\:DKIM-Signature ) .
 .Dq All or nothing
 removal (without
 .Ar spec )

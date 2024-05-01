@@ -55,6 +55,7 @@
 #define _ATFILE_SOURCE
 */
 #define _GNU_SOURCE /* Always the same mess */
+#define __EXTENSIONS__ /* SunOS (xxx not really) */
 
 /* 'Want to have the short memory macros */
 #define su_MEM_BAG_SELF (membp)
@@ -733,23 +734,31 @@ enum a_flags{
 	a_F_VVV = 1u<<8,
 	a_F_V_MASK = a_F_V | a_F_VV | a_F_VVV,
 
-	/**/
-	a_F_RM_ANY = 1u<<10, /* *Any* --remove */
-#define a_RM_HEAD_TYPE_TO_INV_FLAG(RMT) (1u << (11u + S(uz,RMT)))
-	a_F_RM_A_R_INV = 1u<<11, /* a-r: invalid */
+	/* <> enum a_rm_head_type inv/any fast triggers */
+	a_F_RM_ANY = 1u<<9, /* *Any* --remove */
+#define a_RM_HEAD_TYPE_TO_INV_FLAG(RMT) (1u << (10u + S(uz,RMT)))
+	a_F_RM_A_R_INV = 1u<<10, /* a-r: invalid */
+	a_F_RM_MO_A_R_INV = 1u<<11,
 	a_F_RM_A_A_R_INV = 1u<<12,
 	a_F_RM_A_M_S_INV = 1u<<13,
 	a_F_RM_A_S_INV = 1u<<14,
 	a_F_RM_DKIM_INV = 1u<<15,
-#define a_RM_HEAD_TYPE_TO_ANY_FLAG(RMT) (1u << (16u + S(uz,RMT)))
-	a_F_RM_A_R_ANY = 1u<<16, /* a-r: . wildcard */
-	a_F_RM_A_A_R_ANY = 1u<<17,
-	a_F_RM_A_M_S_ANY = 1u<<18,
-	a_F_RM_A_S_ANY = 1u<<19,
-	a_F_RM_DKIM_ANY = 1u<<20,
+	a_F_RM_MO_DKIM_INV = 1u<<16,
+#define a_RM_HEAD_TYPE_TO_ANY_FLAG(RMT) (1u << (17u + S(uz,RMT)))
+	a_F_RM_A_R_ANY = 1u<<17, /* a-r: . wildcard */
+	a_F_RM_MO_A_R_ANY = 1u<<18,
+	a_F_RM_A_A_R_ANY = 1u<<19,
+	a_F_RM_A_M_S_ANY = 1u<<20,
+	a_F_RM_A_S_ANY = 1u<<21,
+	a_F_RM_DKIM_ANY = 1u<<22,
+	a_F_RM_MO_DKIM_ANY = 1u<<23,
 	a_F_RM_MASK = a_F_RM_ANY |
-			a_F_RM_A_R_INV | a_F_RM_A_A_R_INV | a_F_RM_A_M_S_INV | a_F_RM_A_S_INV | a_F_RM_DKIM_INV |
-			a_F_RM_A_R_ANY | a_F_RM_A_A_R_ANY | a_F_RM_A_M_S_ANY | a_F_RM_A_S_ANY | a_F_RM_DKIM_ANY,
+			a_F_RM_A_R_INV | a_F_RM_MO_A_R_INV |
+				a_F_RM_A_A_R_INV | a_F_RM_A_M_S_INV | a_F_RM_A_S_INV |
+				a_F_RM_DKIM_INV | a_F_RM_MO_DKIM_INV |
+			a_F_RM_A_R_ANY | a_F_RM_MO_A_R_ANY |
+				a_F_RM_A_A_R_ANY | a_F_RM_A_M_S_ANY | a_F_RM_A_S_ANY |
+				a_F_RM_DKIM_ANY | a_F_RM_MO_DKIM_ANY,
 
 	/**/
 	a_F_CLI_DOMAINS = 1u<<24, /* --client: any domain names, */
@@ -770,12 +779,14 @@ enum a_cli_action{
 enum a_rm_head_type{
 	/* Exact name match, content parsed and matched */
 	a_RM_HEAD_A_R, /* authentication-results: */
+	a_RM_HEAD_MO_A_R, /* x-mailman-original-authentication-results */
 	a_RM_HEAD_A_A_R, /* arc-authentication-results */
 	a_RM_HEAD_TOP_TOKEN_MATCH = a_RM_HEAD_A_A_R,
 	a_RM_HEAD_A_M_S, /* arc-message-signature */
 	a_RM_HEAD_A_S, /* arc-seal */
 	a_RM_HEAD_DKIM, /* -signature */
-	a_RM_HEAD_TOP_D_SEARCH = a_RM_HEAD_DKIM, /* Search for d= */
+	a_RM_HEAD_MO_DKIM, /* x-mailman-original-dkim-signature */
+	a_RM_HEAD_TOP_D_SEARCH = a_RM_HEAD_MO_DKIM, /* Search for d= */
 	a_RM_HEAD_TOP_MATCHED = a_RM_HEAD_TOP_D_SEARCH,
 
 	/* Exact header name match, on or off */
@@ -1001,26 +1012,27 @@ enum{a_HEADER_SIGSEA_OFF_SIGN = 0, a_HEADER_SIGSEA_OFF_SEAL = 2}; /* (base + EXT
 static char const a_milter_log_defid[] = "<unknown>: ";
 static char const a_localhost[] = "localhost";
 
-static char const a_rm_head_names[a_RM_HEAD_MAX][sizeof("ARC-Authentication-Results")] = {
+static char const a_rm_head_names[a_RM_HEAD_MAX][sizeof("X-Mailman-Original-Authentication-Results")] = {
 	/* matchables, token */
 	FII(a_RM_HEAD_A_R) "authentication-results",
+		FII(a_RM_HEAD_MO_A_R) "x-mailman-original-authentication-results",
 		FII(a_RM_HEAD_A_A_R) "arc-authentication-results",
 		/* matchables d= search */
 		FII(a_RM_HEAD_A_M_S) "arc-message-signature", FII(a_RM_HEAD_A_S) "arc-seal",
-		FII(a_RM_HEAD_DKIM) "dkim-signature",
+		FII(a_RM_HEAD_DKIM) "dkim-signature", FII(a_RM_HEAD_MO_DKIM) "x-mailman-original-dkim-signature",
 	/* non-matchables */
 	FII(a_RM_HEAD_AUCY) "autocrypt",
 		FII(a_RM_HEAD_IP) "ironport"
-}, a_rm_head_ids[a_RM_HEAD_MAX][6] = {
-	FII(a_RM_HEAD_A_R) "a-r",
-		FII(a_RM_HEAD_A_A_R) "a-a-r",
-		FII(a_RM_HEAD_A_M_S) "a-m-s", FII(a_RM_HEAD_A_S) "a-s",
-		FII(a_RM_HEAD_DKIM) "dkim",
+}, a_rm_head_ids[a_RM_HEAD_MAX][8] = {
+	FII(a_RM_HEAD_A_R) "a-r", FII(a_RM_HEAD_MO_A_R) "mo-a-r",
+		FII(a_RM_HEAD_A_A_R) "a-a-r", FII(a_RM_HEAD_A_M_S) "a-m-s", FII(a_RM_HEAD_A_S) "a-s",
+		FII(a_RM_HEAD_DKIM) "dkim", FII(a_RM_HEAD_MO_DKIM) "mo-dkim",
 	FII(a_RM_HEAD_AUCY) "aucy", FII(a_RM_HEAD_IP) "ip"
 };
-CTAV(a_RM_HEAD_A_R == 0); CTAV(a_RM_HEAD_A_A_R == 1);
-CTAV(a_RM_HEAD_A_M_S == 2); CTAV(a_RM_HEAD_A_S == 3); CTAV(a_RM_HEAD_DKIM == 4);
-CTAV(a_RM_HEAD_AUCY == 5); CTAV(a_RM_HEAD_IP == 6);
+CTAV(a_RM_HEAD_A_R == 0); CTAV(a_RM_HEAD_MO_A_R == 1);
+CTAV(a_RM_HEAD_A_A_R == 2); CTAV(a_RM_HEAD_A_M_S == 3); CTAV(a_RM_HEAD_A_S == 4);
+CTAV(a_RM_HEAD_DKIM == 5); CTAV(a_RM_HEAD_MO_DKIM == 6);
+CTAV(a_RM_HEAD_AUCY == 7); CTAV(a_RM_HEAD_IP == 8);
 
 static char const a_sopts[] = "A:C:c:" "d:" "~:!:" "k:" "M:" "R:" "r:" "S:s:" "t:" "#" "Hh";
 static char const * const a_lopts[] = {

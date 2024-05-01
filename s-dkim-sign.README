@@ -30,7 +30,17 @@ s-dkim-sign-key-create helper will always be installed there).
 RELEASES
 --------
 
-v0.6.0, 2024-04-30: (first release)
+v0.6.0, 2024-05-01: (first release)
+  + Linux (musl, glibc), *BSD:
+    As above.
+  + OpenIndiana 2024:
+    Sorry, but GNU make (gmake(1)) needs to be installed, and
+        PATH=/usr/openssl/3.1/bin:$PATH \
+        LD_LIBRARY_PATH=/usr/openssl/3.1/lib/amd64:$LD_LIBRARY_PATH \
+        C_INCLUDE_PATH=/usr/openssl/3.1/include:$C_INCLUDE_PATH \
+        SHELL=/usr/xpg4/bin/sh
+    is needed in the environment for the build; the first is also
+    a precondition for a functioning s-dkim-sign-key-create.
 
 THANKS
 ------
