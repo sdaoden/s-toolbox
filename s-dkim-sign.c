@@ -617,7 +617,7 @@
 #endif
 
 /* Milter protocol: constants, commands and responses, collected and merged from all over the place {{{ */
-/* Maximal (body) chunk size (TODO but see a_SMFIP_MDS_256K, a_SMFIP_MDS_1M); the latter is for tests.. */
+/* Maximal (body) chunk size (XXX but see a_SMFIP_MDS_256K, a_SMFIP_MDS_1M); the latter is for tests.. */
 #define a_MILTER_STD_CHUNK_SIZE 65535
 #define a_MILTER_CHUNK_SIZE a_MILTER_STD_CHUNK_SIZE
 
@@ -1423,6 +1423,8 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 					 (optneg.protocol & a_SMFIP_MASK_NOREPLY) != a_SMFIP_MASK_NOREPLY))
 /*
 FIXME we yet do not deal with that (noreplies not working as we wanna)
+FIXME
+FIXME
 */
 				su_log_write(su_LOG_INFO,
 					_("Mail server cannot restrict milter protocol usage, lots of I/O noise"));
@@ -1448,7 +1450,6 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 				if(rv != su_EX_OK)
 					goto jleave;
 			}else
-/* FIXME REPRO SHOULD DUMP REAL VALUES */
 				fprintf(stdout, "OPTNEG NR_CONN=%d NR_HDR=%d\n",
 					!!(fb & a_RESP_CONN), !!(fb & a_RESP_HDR));
 
@@ -1651,9 +1652,6 @@ FIXME we yet do not deal with that (noreplies not working as we wanna)
 			if(fx & a_ACT_PASS)
 				goto jaccept;
 
-/*
-FIXME
-*/
 			if((fx & a_SMFIC_CONNECT_MASK) != (fb & a_SMFIC_CONNECT_MASK)){
 				if(UNLIKELY(fb & a_VV))
 					su_log_write(su_LOG_INFO, "%sconditions not met DKIM=X->pass", mip->mi_log_id);
@@ -1696,7 +1694,6 @@ FIXME
 			if(!(fx & a_SEEN_SMFIC_HEADER)){
 				/* XXX should never trigger here, then -> SMFIC_CONNECT! */
 				if((fx & a_SMFIC_CONNECT_MASK) != (fb & a_SMFIC_CONNECT_MASK)){
-su_log_write(su_LOG_CRIT, "IMPL_ERROR SMIFC_HEADER 1");/* FIXME */
 					goto jaccept;
 				}
 			}
@@ -1892,7 +1889,7 @@ jenofrom:
 				ASSERT(fx & a_ACT_SIGN);
 				rv = a_milter__sign(mip);
 			}
-			if(rv != su_EX_OK) /* TODO */
+			if(rv != su_EX_OK)
 				goto jleave;
 
 jaccept:
@@ -2867,7 +2864,7 @@ jdom_redo:
 		if(dkp->d_pdp->pd_flags & a_F_VV){
 			boole xlog;
 
-			xlog = (dom != ap->imfa_domain || su_cs_cmp_case(dom, ap->imfa_domain));
+			xlog = (su_cs_cmp_case(dom, ap->imfa_domain) != 0);
 			su_log_write(su_LOG_INFO, "%sno sign not @localhost (From: %s@%s%s%s%s), DKIM=sign",
 				dkp->d_log_id, ap->imfa_locpar, ap->imfa_domain,
 				(xlog ? "[->" : su_empty), (xlog ? dom : su_empty), (xlog ? "]" : su_empty));
@@ -5262,7 +5259,7 @@ main(int argc, char *argv[]){ /* {{{ */
 	avo.avo_current_arg = getenv("SOURCE_DATE_EPOCH"); /* xxx su_env_get? */
 	isrepro_x = (avo.avo_current_arg != NIL);
 	su_state_create(su_STATE_CREATE_RANDOM, (!isrepro_x ? NIL : VAL_NAME),
-		(DVLDBGOR(su_LOG_DEBUG, (mpv ? su_LOG_ERR : su_LOG_DEBUG)) | DVL(su_STATE_DEBUG |)
+		(DVLDBGOR(su_LOG_DEBUG, (!isrepro_x ? su_LOG_ERR : su_LOG_DEBUG)) | DVL(su_STATE_DEBUG |)
 			(!isrepro_x ? (su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID)
 				: (su_STATE_LOG_SHOW_LEVEL | su_STATE_LOG_SHOW_PID | su_STATE_REPRODUCIBLE))),
 		su_STATE_ERR_NOPASS);

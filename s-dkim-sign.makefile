@@ -79,6 +79,7 @@ LDFLAGS += $(SULDF) $(SULDFOPT)
 
 CC = cc
 INSTALL = install
+LN = ln
 MKDIR = mkdir
 RM = rm
 
@@ -113,16 +114,16 @@ distclean: clean
 
 install: all
 	$(MKDIR) -p -m 0755 "$(LIBEXECDIR)"
-	$(MKDIR) -p -m 0755 "$(SBINCDIR)"
+	$(MKDIR) -p -m 0755 "$(SBINDIR)"
 	$(INSTALL) -m 0755 "$(VAL_NAME)" "$(LIBEXECDIR)"/
 	if [ -n "$(SUSTRIP)" ]; then $(SUSTRIP) -s "$(LIBEXECDIR)/$(VAL_NAME)"; fi
-	$(INSTALL) -m 0755 "$(MYNAME)"-key-create.sh "$(LIBEXECDIR)"/"$(VAL_NAME)"-key-create
+	$(INSTALL) -m 0755 "$(MYNAME)"-key-create.sh "$(SBINDIR)"/"$(VAL_NAME)"-key-create
 	$(MKDIR) -p -m 0755 "$(MANDIR)"
 	$(INSTALL) -m 0644 $(MYNAME).$(MYMANEXT) "$(MANDIR)/$(VAL_NAME).$(MYMANEXT)"
 	$(LN) -s "$(VAL_NAME).$(MYMANEXT)" "$(MANDIR)/$(VAL_NAME)-key-create.$(MYMANEXT)"
 
 uninstall:
-	$(RM) -f "$(LIBEXECDIR)/$(VAL_NAME)" "$(SBINCDIR)/$(VAL_NAME)"-key-create \
+	$(RM) -f "$(LIBEXECDIR)/$(VAL_NAME)" "$(SBINDIR)/$(VAL_NAME)"-key-create \
 		"$(MANDIR)/$(VAL_NAME).$(MYMANEXT)" "$(MANDIR)/$(VAL_NAME)-key-create.$(MYMANEXT)"
 
 d-release:
