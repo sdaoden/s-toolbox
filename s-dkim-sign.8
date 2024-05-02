@@ -291,7 +291,7 @@ applies to all entries.
 .Mx Fl debug
 .It Fl Fl debug
 Dry-run sandbox: no real action is performed, but only logged.
-All messages remain umodified.
+All messages remain unmodified.
 .
 .Mx Fl domain-name
 .It Fl Fl domain-name Ar domain , Fl d Ns ..
@@ -333,7 +333,7 @@ further entries may then be prefixed with exclamation mark
 to denote desired list exclusion.
 Attempts to exclude
 .Ql From
-is an error, no other rules apply (untested: name validity, duplicates).
+are errors, no other rules apply (untested: name validity, duplicates).
 An effectively empty list is not used.
 .Bd -literal -offset indent
 --header-sign=@!in-reply-to,,,!to,!cc
@@ -415,12 +415,10 @@ to the private key file in PEM format;
 file accessibility is not tested, but recommendable is tight-most
 (readable by only root and the user identity running
 .Nm ) .
-(In 2024, with multiple and mixed RSA/Ed25519 keys, placing the RSA
-one(s) first may improve interoperability.)
 .
 .Mx Fl long-help
 .It Fl Fl long-help , H
-A long help listing that also shows available signature algorithms.
+A help listing that includes available signature algorithms.
 .
 .Mx Fl milter-macro
 .It Fl Fl milter-macro Ar action,name Ns Oo Ar ,value.. Oc , Fl M Ns ..

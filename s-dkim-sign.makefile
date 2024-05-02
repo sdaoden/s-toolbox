@@ -151,6 +151,6 @@ d-release:
 	\
 	git reset &&\
 	echo 'now edit makefile and src/su/.makefile, then run' &&\
-	echo 's-nail -Aich -Snofollowup-to -Sreply-to=ich -Ssmime-sign -Sno-on-compose-leave -a ~/src/www.git/steffen.asc -a ~/src/www.git/steffen@sdaoden.eu.pem s-announce@lists.sdaoden.eu'
+	echo 's-nail -Aich -Snofollowup-to -Sreply-to=ich -Ssmime-sign -a ~/src/www.git/steffen.asc s-announce@lists.sdaoden.eu'
 
 # s-mk-mode
