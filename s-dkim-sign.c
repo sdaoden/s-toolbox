@@ -55,7 +55,6 @@
 #define _ATFILE_SOURCE
 */
 #define _GNU_SOURCE /* Always the same mess */
-#define __EXTENSIONS__ /* SunOS (xxx not really) */
 
 /* 'Want to have the short memory macros */
 #define su_MEM_BAG_SELF (membp)
@@ -869,6 +868,7 @@ struct a_dkim{
 
 /* */
 struct a_key_algo_tuple{
+	/* EVP_PKEY_* always defined (1.0-3.1) so no #ifdef effort */
 	enum{
 		a_KAT_PKEY_NONE,
 		a_KAT_PKEY_ED25519 = EVP_PKEY_ED25519,
@@ -1405,8 +1405,7 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 
 			/* Use LOG_CRIT in order to surely enter log.  This will not work out! */
 			if(optneg.version < 6){
-				su_log_write(su_LOG_CRIT,
-					_("Mail server milter protocol version too low, bailing out"));
+				su_log_write(su_LOG_CRIT, _("Mail server milter protocol version too low, bailing out"));
 				rv = su_EX_UNAVAILABLE;
 				goto jleave;
 			}
@@ -1419,15 +1418,14 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 			}
 			optneg.actions = (fb & a_RM_MASK) ? a_SMFIF_MASK_4US : a_SMFIF_ADDHDRS;
 
-			if(UNLIKELY(fb & a_VV) && ((optneg.protocol & a_SMFIP_MASK_NOSEND) != a_SMFIP_MASK_NOSEND ||
-					 (optneg.protocol & a_SMFIP_MASK_NOREPLY) != a_SMFIP_MASK_NOREPLY))
-/*
-FIXME we yet do not deal with that (noreplies not working as we wanna)
-FIXME
-FIXME
-*/
-				su_log_write(su_LOG_INFO,
-					_("Mail server cannot restrict milter protocol usage, lots of I/O noise"));
+			if((optneg.protocol & a_SMFIP_MASK_NOSEND) != a_SMFIP_MASK_NOSEND ||
+					 (optneg.protocol & a_SMFIP_MASK_NOREPLY) != a_SMFIP_MASK_NOREPLY){
+				/* XXX We could deal with non-desired-protocol restrictions, if we would! */
+				su_log_write(su_LOG_CRIT,
+					_("Mail server cannot restrict milter protocol the needed way, bailing out"));
+				rv = su_EX_UNAVAILABLE;
+				goto jleave;
+			}
 
 			fx = (a_SMFIP_MASK_NOSEND & ~(a_SMFIP_NOBODY | a_SMFIP_NOHDRS)) |
 					(a_SMFIP_MASK_NOREPLY /*& ~(a_SMFIP_NR_BODY)*/);
@@ -2320,7 +2318,8 @@ a_milter__rm_parse(struct a_milter *mip, ZIPENUM(u8,enum a_rm_head_type) rmt, ch
 					su_IMF_MODE_TOK_SEMICOLON | su_IMF_MODE_TOK_EMPTY), membp, NIL);
 
 		/* Microsoft produces invalid Authentication-Results where authserv-id is missing.
-		 * We cannot check ERR_CONTENT because IMF parses atext and there is a @ in =@ TODO */
+		 * XXX We cannot check ERR_CONTENT because IMF parses atext and there is a @ in i=@DOMAIN --
+		 * XXX effectively DKIM uses VCHAR instead of atext, but for our point of interest, it is ok */
 		if(/*(mse & su_IMF_ERR_CONTENT) ||*/ shtp == NIL || shtp->imfsht_len == 0 || shtp->imfsht_next == NIL){
 			if(pdp->pd_flags & a_F_VV){
 				snprintf(sbuf, sizeof sbuf, "%s: %.64s",
@@ -2343,7 +2342,7 @@ a_milter__rm_parse(struct a_milter *mip, ZIPENUM(u8,enum a_rm_head_type) rmt, ch
 			}
 
 			/* For authentication-results the first token *is* the result; for ARC-a-r it is the 2nd xxx */
-			if(rmt == a_RM_HEAD_A_R || mse == TRU2)
+			if(rmt == a_RM_HEAD_A_R || rmt == a_RM_HEAD_MO_A_R || mse == TRU2)
 				break;
 			mse = TRU2;
 
@@ -3115,8 +3114,6 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 	 * Since we have to do this, include digest/signature ouput and base64 variants in that heap, too.
 	 * And if really the milter buffer is not large enough, do a single allocation */
 
-	/* Add names for h= field (entries separated with ": ", end with CRLF) */
-/* FIXME not what this does */
 	for(hp = dkp->d_sign_head; (xhp = hp) != NIL; hp = hp->h_next){
 		do
 			dkp->d_sign_head_totlen += xhp->h_nlen + 1 + xhp->h_dlen + 1 + 1; /* xxx wrap */
@@ -3360,8 +3357,6 @@ jesifi:
 
 		/* Result! */
 		i = P2UZ(cp - dkim_res_start) +1;
-
-/* FIXME verify calc */
 		dkrp = su_LOFI_ALLOC(VSTRUCT_SIZEOF(struct a_dkim_res,dr_dat) + sizeof("DKIM-Signature") -1 + i + 2 +1);
 		dkrp->dr_next = dkp->d_sign_res;
 		dkp->d_sign_res = dkrp;
@@ -3369,7 +3364,6 @@ jesifi:
 		dkrp->dr_len = S(u32,sizeof("DKIM-Signature") + i);
 		su_mem_copy(&su_cs_pcopy(dkrp->dr_dat, "DKIM-Signature")[1], dkim_res_start, i);
 		dkrp->dr_dat[dkrp->dr_len] = '\0';
-
 		if(pdp->pd_flags & a_F_VV)
 			su_log_write(su_LOG_INFO, "%sDKIM create ok: %s-%s(=%s=%s)\n",
 				dkp->d_log_id, kp->k_algo, kp->k_md->md_algo, kp->k_sel, kp->k_file);
@@ -3552,8 +3546,7 @@ a_conf_finish(struct a_pd *pdp){ /* {{{ */
 
 		for(rmt = 0; rmt <= a_RM_HEAD_TOP_MATCHED; ++rmt){
 			if(pdp->pd_flags & a_RM_HEAD_TYPE_TO_ANY_FLAG(rmt)){
-				if((pdp->pd_flags & a_RM_HEAD_TYPE_TO_INV_FLAG(rmt)) ||
-						pdp->pd_rm[rmt][0] != '.' || pdp->pd_rm[rmt][1] != '\0' ||
+				if(pdp->pd_rm[rmt][0] != '.' || pdp->pd_rm[rmt][1] != '\0' ||
 						pdp->pd_rm[rmt][2] != '\0'){
 					a_conf__err(pdp, _("--remove: . implies anything else, including !: %s\n"),
 						a_rm_head_names[rmt]);
@@ -4657,7 +4650,8 @@ a_conf__r(struct a_pd *pdp, char *arg){ /* {{{ */
 		}else{
 			if(x.cp[1] == '\0'){
 				if(x.cp[0] == '.')
-					pdp->pd_flags |= a_RM_HEAD_TYPE_TO_ANY_FLAG(ftyp);
+					pdp->pd_flags |= a_RM_HEAD_TYPE_TO_ANY_FLAG(ftyp) |
+							a_RM_HEAD_TYPE_TO_INV_FLAG(ftyp);
 				else if(x.cp[0] == '!')
 					pdp->pd_flags |= a_RM_HEAD_TYPE_TO_INV_FLAG(ftyp);
 			}
@@ -5124,16 +5118,18 @@ a_misc_log_write(u32 lvl_a_flags, char const *msg, uz len){
 	if(UNLIKELY(su_state_has(su_STATE_REPRODUCIBLE)))
 		write(STDERR_FILENO, msg, len);
 	else{
-		char *cp;
+		char *cp, c;
 
-		if(msg != xb){
-			su_cs_pcopy_n(xb, msg, sizeof(xb));
-			msg = xb;
+		if((cp = su_cs_find_c(msg, '\n')) != NIL && cp[1] != '\0'){
+			if(msg != xb){
+				su_cs_pcopy_n(xb, msg, sizeof(xb));
+				msg = xb;
+			}
+
+			for(cp = xb; (c = *cp) != '\0' && *++cp != '\0';)
+				if(c == '\n')
+					cp[-1] = ' ';
 		}
-
-		for(cp = xb; *cp != '\0'; ++cp)
-			if(*cp == '\n')
-				*cp = ' ';
 
 		syslog(S(int,lvl_a_flags & su_LOG_PRIMASK), "%.950s", msg);
 	}

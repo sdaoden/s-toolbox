@@ -9,15 +9,20 @@ RSA_DEFBITS=2048
 RSA_MINBITS=1024
 ALGO_PARAM_DEF=ed25519
 
+: ${SHELL:=/bin/sh}
+: ${AWK:=awk}
+: ${OPENSSL:=openssl}
+
 #  --  >8  --  8<  --  #
 
 # For heaven's sake auto-redirect on SunOS/Solaris
-if [ -z "${__DKIM_KEY_CREATE_UP}" ] && [ -d /usr/xpg4 ]; then
-	if [ "x${SHELL}" = x ] || [ "x${SHELL}" = x/bin/sh ]; then
+if [ -z "$__DKIM_KEY_CREATE_UP" ] && [ -d /usr/xpg4 ]; then
+	__DKIM_KEY_CREATE_UP=y
+	if [ "x$SHELL" = x/bin/sh ]; then
 		echo >&2 'SunOS/Solaris, redirecting through $SHELL=/usr/xpg4/bin/sh'
-		__DKIM_KEY_CREATE_UP=y PATH=/usr/xpg4/bin:${PATH} SHELL=/usr/xpg4/bin/sh
+		PATH=/usr/xpg4/bin:${PATH} SHELL=/usr/xpg4/bin/sh
 		export __DKIM_KEY_CREATE_UP PATH SHELL
-		exec /usr/xpg4/bin/sh "${0}" "${@}"
+		exec $SHELL "$0" "$@"
 	fi
 fi
 
@@ -67,12 +72,33 @@ esac
 	> "$prefix"-dkim-dns-$algo.txt
 ) || exit $EX_CANTCREAT
 
-openssl genpkey -quiet \
-	-out "$prefix"-dkim-pri-$algo.pem -outform PEM \
-	-algorithm $algo $opt || exit $EX_DATAERR
+x=
+while :; do
+	$OPENSSL genpkey -out "$prefix"-dkim-pri-$algo.pem -outform PEM -algorithm $algo $opt
+	[ $? -eq 0 ] && break
 
-openssl pkey -pubout < "$prefix"-dkim-pri-$algo.pem |
-awk -v off=$off '
+	echo >&2
+	echo >&2 '$OPENSSL='$OPENSSL' genpkey seems incompatible; is it an old version?'
+	if [ -x /usr/openssl/3.1/bin/openssl ]; then
+		x=/usr/openssl/3.1/bin/openssl
+	elif [ -x /usr/openssl/1.1/bin/openssl ]; then
+		x=/usr/openssl/1.1/bin/openssl
+	elif [ -x /usr/pkg/bin/openssl ]; then
+		x=/usr/pkg/bin/openssl
+	elif [ -x /opt/csw/bin/openssl ]; then
+		x=/opt/csw/bin/openssl
+	fi
+	if [ xx = x"$x" ] || [ x"$x" = x"$OPENSSL" ]; then
+		echo >&2 'Please place version >= 1.1.0 (early) in $PATH, or $OPENSSL=, rerun.'
+		exit $EX_DATAERR
+	fi
+	OPENSSL=$x
+	echo >&2 'I will try $OPENSSL='$OPENSSL' instead; restarting operation ...'
+	echo >&2
+done
+
+$OPENSSL pkey -pubout < "$prefix"-dkim-pri-$algo.pem |
+$AWK -v off=$off '
 	BEGIN{on=0}
 	/^-+BEGIN PUBLIC KEY-+$/{on=1;next}
 	/^-+END PUBLIC KEY-+$/{exit}

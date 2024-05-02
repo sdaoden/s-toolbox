@@ -13,14 +13,14 @@ The program is intended to be started via the postfix(1) spawn(8)
 daemon, which takes care of the correct user and group credentials,
 timeouts and stale server garbage collection etc.; efficient operation
 requires postfix versions which support the milter operation
-'SMFIC_QUIT_NC' (somewhen after version 3.9), elder versions will start
+SMFIC_QUIT_NC (somewhen after version 3.9), elder versions will start
 a new spawn(8) + s-dkim-sign(8) program couple for every SMTP or local
 connection.
 
 Dependencies are OpenSSL 1.1.0+ (-compatible) and a POSIX environment
 (make, sh, awk etc).  libmilter is not needed.  To build this
 software run "make install".  At the top of the makefile there are
-some variables, which may be overwritten from the command line:
+some variables, which may also be overwritten from the command line:
 
   $ make DESTDIR=.xxx PREFIX=/usr LIBEXEC=sbin install
 
@@ -30,17 +30,17 @@ s-dkim-sign-key-create helper will always be installed there).
 RELEASES
 --------
 
-v0.6.0, 2024-05-01: (first release)
+v0.6.0, 2024-05-02: (first release)
   + Linux (musl, glibc), *BSD:
     As above.
   + OpenIndiana 2024:
-    Sorry, but GNU make (gmake(1)) needs to be installed, and
-        PATH=/usr/openssl/3.1/bin:$PATH \
+    GNU make (gmake(1); or BSD make) must be used, and
         LD_LIBRARY_PATH=/usr/openssl/3.1/lib/amd64:$LD_LIBRARY_PATH \
         C_INCLUDE_PATH=/usr/openssl/3.1/include:$C_INCLUDE_PATH \
-        SHELL=/usr/xpg4/bin/sh
-    is needed in the environment for the build; the first is also
-    a precondition for a functioning s-dkim-sign-key-create.
+        SHELL=/usr/xpg4/bin/sh \
+        INSTALL=/usr/gnu/bin/install
+    is needed in the environment for the build.  (Or /1.1/, or wherever
+    it is installed, /opt/csw, /usr/pkg, etc etc.)
 
 THANKS
 ------
