@@ -108,7 +108,7 @@ clean:
 	if [ -n "$(SULIB_BLD)" ]; then \
 		cd src/su && $(MAKE) -f .makefile clean rm="$(RM)" CC="$(CC)";\
 	fi
-	$(RM) -f "$(VAL_NAME)"
+	$(RM) -rf "$(VAL_NAME)" .test
 
 distclean: clean
 
