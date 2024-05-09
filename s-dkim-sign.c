@@ -886,8 +886,8 @@ struct a_key_algo_tuple{
 struct a_md{
 	struct a_md *md_next;
 	EVP_MD const *md_md;
-	u8 md_id;
-	char md_algo[7];
+	u32 md_id;
+	char md_algo[12];
 };
 
 struct a_key{
@@ -896,8 +896,8 @@ struct a_key{
 	EVP_PKEY *k_key;
 	char *k_sel; /* points into .k_file */
 	uz k_sel_len;
-	u8 k_id;
-	char k_algo[15];
+	u32 k_id;
+	char k_algo[12];
 	char k_file[VFIELD_SIZE(0)];
 };
 
@@ -4476,7 +4476,7 @@ jekeyo:
 				mdp->md_next = pdp->pd_mds;
 				pdp->pd_mds = mdp;
 				mdp->md_md = mdmdp;
-				mdp->md_id = S(u8,katp->kat_md);
+				mdp->md_id = katp->kat_md;
 				su_cs_pcopy(mdp->md_algo, katp->kat_md_name);
 			}
 
@@ -4485,7 +4485,7 @@ jekeyo:
 			kp->k_next = NIL;
 			kp->k_md = mdp;
 			kp->k_key = pkeyp;
-			kp->k_id = S(u8,katp->kat_pkey);
+			kp->k_id = katp->kat_pkey;
 			su_cs_pcopy(kp->k_algo, katp->kat_pkey_name);
 			kp->k_sel = su_cs_pcopy(kp->k_file, xarg) +1;
 			sel = su_cs_pcopy(kp->k_sel, sel);
