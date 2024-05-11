@@ -872,6 +872,7 @@ struct a_key_algo_tuple{
 	enum{
 		a_KAT_PKEY_NONE,
 		a_KAT_PKEY_ED25519 = EVP_PKEY_ED25519,
+		a_KAT_PKEY_XED25519 = -EVP_PKEY_ED25519,
 		a_KAT_PKEY_RSA = EVP_PKEY_RSA
 	} kat_pkey;
 	enum{
@@ -886,8 +887,8 @@ struct a_key_algo_tuple{
 struct a_md{
 	struct a_md *md_next;
 	EVP_MD const *md_md;
-	u32 md_id;
-	char md_algo[12];
+	u8 md_id;
+	char md_algo[15];
 };
 
 struct a_key{
@@ -896,7 +897,7 @@ struct a_key{
 	EVP_PKEY *k_key;
 	char *k_sel; /* points into .k_file */
 	uz k_sel_len;
-	u32 k_id;
+	s32 k_id;
 	char k_algo[12];
 	char k_file[VFIELD_SIZE(0)];
 };
@@ -963,6 +964,7 @@ static struct a_key_algo_tuple const a_kata[] = {
 #ifndef OPENSSL_NO_SHA256
 # ifndef OPENSSL_NO_ECX
 	{a_KAT_PKEY_ED25519, a_KAT_MD_SHA256, "ed25519", "sha256"},
+	{a_KAT_PKEY_XED25519, a_KAT_MD_SHA256, "xed25519", "sha256"},
 # endif
 # ifndef OPENSSL_NO_RSA
 	{a_KAT_PKEY_RSA, a_KAT_MD_SHA256, "rsa", "sha256"},
@@ -974,7 +976,7 @@ static struct a_key_algo_tuple const a_kata[] = {
 # endif
 #endif
 };
-CTAV(FIELD_SIZEOF(struct a_key,k_algo) >= sizeof("ed25519"));
+CTAV(FIELD_SIZEOF(struct a_key,k_algo) >= sizeof("xed25519"));
 CTAV(FIELD_SIZEOF(struct a_md,md_algo) >= sizeof("sha256"));
 
 /* RFC 6376, 5.4.1; extension: author (RFC 9057); remains are senseless.
@@ -3321,21 +3323,51 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 
 		a_dkim__head_prep(dkp, "DKIM-Signature", dkim_res_start, &dkim_end, FAL0);
 
-		/* Unfortunately there is no easy accessible property that tells us which codepath to take */
 		EVP_MD_CTX_reset(mdcp->mdc_md_ctx);
-		if(!EVP_DigestSignInit(mdcp->mdc_md_ctx, NIL, mdcp->mdc_md->md_md, NIL, kp->k_key) &&
-				!EVP_DigestSignInit(mdcp->mdc_md_ctx, NIL, NIL, NIL, kp->k_key)){
-jesifi:
-			su_log_write(su_LOG_CRIT,
-				_("%scannot EVP_DigestSign(Init)?(3) %s-%s(=%s=%s): %s\n"),
-				dkp->d_log_id, kp->k_algo, kp->k_md->md_algo, kp->k_sel, kp->k_file,
-				ERR_error_string(ERR_get_error(), NIL));
-			goto jleave;
-		}
+		/* C99 */{
+			/* Unfortunately *SSL gives us no easy accessible property that tells us whether DigestSign
+			 * works with a real EVP_MD or only with NIL */
+			EVP_MD const *mdp;
+			uz dl;
+			uc *dp;
 
-		a.slz = pdp->pd_key_md_maxsize;
-		if(!EVP_DigestSign(mdcp->mdc_md_ctx, sigp, &a.slz, S(uc*,dkim_start), P2UZ(dkim_end - dkim_start)))
-			goto jesifi;
+			dp = S(uc*,dkim_start);
+			dl = P2UZ(dkim_end - dkim_start);
+			mdp = mdcp->mdc_md->md_md;
+
+			if(kp->k_id == a_KAT_PKEY_XED25519)
+				mdp = NIL;
+			/* RFC 8463 is unfortunately very special and requests double digesting! */
+			else if(kp->k_id == a_KAT_PKEY_ED25519){
+				EVP_MD_CTX_reset(mdcp->mdc_md_ctx);
+				if(!EVP_DigestInit_ex(mdcp->mdc_md_ctx, mdp, NIL) ||
+						!EVP_DigestUpdate(mdcp->mdc_md_ctx, dp, dl) ||
+						!EVP_DigestFinal(mdcp->mdc_md_ctx, b64sigp, &a.sl32)){
+					su_log_write(su_LOG_CRIT,
+						_("%scannot ed25519 double-EVP_Digest*(3) %s-%s(=%s=%s): %s\n"),
+						dkp->d_log_id, kp->k_algo, mdcp->mdc_md->md_algo, kp->k_sel, kp->k_file,
+						ERR_error_string(ERR_get_error(), NIL));
+					goto jleave;
+				}
+				dp = b64sigp;
+				dl = a.sl32;
+				mdp = NIL;
+			}
+
+			EVP_MD_CTX_reset(mdcp->mdc_md_ctx);
+			if(!EVP_DigestSignInit(mdcp->mdc_md_ctx, NIL, mdp, NIL, kp->k_key)){
+jesifi:
+				su_log_write(su_LOG_CRIT,
+					_("%scannot EVP_DigestSign(Init)?(3) %s-%s(=%s=%s): %s\n"),
+					dkp->d_log_id, kp->k_algo, kp->k_md->md_algo, kp->k_sel, kp->k_file,
+					ERR_error_string(ERR_get_error(), NIL));
+				goto jleave;
+			}
+
+			a.slz = pdp->pd_key_md_maxsize;
+			if(!EVP_DigestSign(mdcp->mdc_md_ctx, sigp, &a.slz, dp, dl))
+				goto jesifi;
+		}
 		i = S(uz,EVP_EncodeBlock(b64sigp, sigp, S(int,a.slz))) +1;
 
 		/* Finalize writing " b=" */
@@ -4400,7 +4432,7 @@ jekey:
 
 			for(lkpp = &pdp->pd_keys; (kp = *lkpp) != NIL; lkpp = &kp->k_next){
 				/* (It was a hard error; but then, maybe yet another selector??) */
-				if((pdp->pd_flags & a_F_MODE_TEST) && UCMP(32, kp->k_id, ==, katp->kat_pkey) &&
+				if((pdp->pd_flags & a_F_MODE_TEST) && kp->k_id == katp->kat_pkey &&
 						kp->k_md->md_id == katp->kat_md && !su_cs_cmp(kp->k_file, xarg))
 					su_log_write(su_LOG_DEBUG, _("--key: already specified: %s\n"), xarg);
 
@@ -4435,7 +4467,7 @@ jekeyo:
 				goto jekey;
 			}
 
-			if(UCMP(32, EVP_PKEY_id(pkeyp), !=, katp->kat_pkey)){
+			if(UCMP(32, EVP_PKEY_id(pkeyp), !=, ABS(katp->kat_pkey))){
 				a_conf__err(pdp, _("--key: private key is not of the specified algorithm: %s: %s\n"),
 					katp->kat_pkey_name, xarg);
 				goto jekey;
