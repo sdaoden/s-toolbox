@@ -30,6 +30,15 @@ s-dkim-sign-key-create helper will always be installed there).
 RELEASES
 --------
 
+v0.6.1, 2024-05-12:
+  - Adds the algorithm big_ed-sha256 which effectively is RFC 8463
+    (aka ed25519-sha256), but performs three digest operations where
+    only two are needed.
+    We keep our two-digest ed25519-sha256 "as-is".
+    (If the big players do not start to support RFC 8463 by fall 2024,
+    i will propose a draft xed25519-sha256 which changes the algorithm
+    accordingly.)
+
 v0.6.0, 2024-05-02: (first release)
   + Linux (musl, glibc), *BSD:
     As above.
@@ -52,6 +61,7 @@ errors.
 
 Hanno Böck              https://itsec.hboeck.de
 Thorsten Glaser         tg at mirbsd dot de
+                        juef at juef dot net
 Murray S. Kucherawy     superuser at gmail dot com
 John Levine             johnl at taugh dot com
 Joachim Lindenberg      postfix-users at lindenberg dot one

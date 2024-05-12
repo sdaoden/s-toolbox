@@ -33,8 +33,15 @@ s-cdda-to-db.pl (plus support) v0.8.0 (2021-06-18):
      The latter roots in old habits originating in perl(1) evolution
      problems Y2K2-3 (5.8.0 and 5.8.1).
 
-s-dkim-sign.c (plus support) v0.6.0 (2024-05-02):
+s-dkim-sign.c (plus support) v0.6.1 (2024-05-12):
    postfix(1)-only RFC 6376/8463 DKIM sign-only milter.
+  - Adds the algorithm big_ed-sha256 which effectively is RFC 8463
+    (aka ed25519-sha256), but performs three digest operations where
+    only two are needed.
+    We keep our two-digest ed25519-sha256 "as-is".
+    (If the big players do not start to support RFC 8463 by fall 2024,
+    i will propose a draft xed25519-sha256 which changes the algorithm
+    accordingly.)
 
 s-postgray.c (plus support) v0.8.2 (2024-02-29):
    postfix(1) graylisting policy daemon.  See its README + manual for more.
