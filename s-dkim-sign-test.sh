@@ -762,7 +762,32 @@ echo ok 93
 
 echo '=2: Going =' # {{{
 
-##
+# 6376, 3.4.4/5 (empty body hash of 3.4.4: 47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=)
+if [ -n "$algo_rsa_sha256" ]; then
+	echo 'key=rsa-sha256,I,pri-rsa.pem' > x.rc
+	echo 'header-seal from' >> x.rc
+	{
+		printf '\0\0\0\013LFrom\0 X@Y\0'
+		printf '\0\0\0\023LSubject\0 Y\t\r\n\tZ  \0'
+		printf '\0\0\0\01E'
+		printf '\0\0\0\01Q'
+	} | ${PD} -R x.rc > t200-rsa 2>ERR
+	x $? 200-rsa
+	e0sumem 200-rsa
+printf \
+'DKIM-Signature:v=1; a=rsa-sha256; c=relaxed/relaxed; d=y; s=I;\n'\
+' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
+'  3hSuFU=; b=fkhliqdp/tDI3ksZmswguuA7qiBhMFRSPTH3aTUYRDB809kCZHRv+ZvxbupCFmv\n'\
+'  WgNQWPVz04I+eGiyIYwguZ2GhiMKHZNyln3Ih1M062NA4g8mSQ72HcB1xtL6EKmdzrUf1hVxEn\n'\
+'  /P/QdYdhXVnK/4tGbuh9MH+CvlGW4/5lddPlO31pnwa1k/q3B4s4qvsVFBPRAdbxsUynUtdKU6\n'\
+'  zVAsn1S4anqRbW+gNLZX1JikJUnyWHTmYIsx7dhhc7AJQMZPi1U5nO20Xbboci/5jj/8XC4Stm\n'\
+'  lzJut4dfIs1xsgBB21snyvCj3uYQBcK/YEWCGoDLSQ/VsK8VZKUgUo2QA==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t201-rsa
+	cmp 201-rsa t200-rsa t201-rsa
+else
+	echo >&2 'RSA not supported, skipping tests t200-rsa,t201-rsa'
+fi
+
 if [ -z "$algo_ed25519_sha256" ]; then
 	echo >&2 'Skipping further tests due to lack of Ed25519 algorithm'
 	exit 0
@@ -771,7 +796,7 @@ fi
 echo $kR > x.rc
 echo 'header-seal from' >> x.rc
 
-# 6376, 3.4.4/5 (empty body hash of 3.4.4: 47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=)
+# same
 {
 	printf '\0\0\0\013LFrom\0 X@Y\0'
 	printf '\0\0\0\023LSubject\0 Y\t\r\n\tZ  \0'
@@ -792,6 +817,44 @@ printf \
 '  sG9vD5myIH0f+z0Y2hDBvCg==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t201
 cmp 201 t200 t201
+
+# same, mixed
+if [ -n "$algo_rsa_sha256" ]; then
+	echo 'key=big_ed-sha256,III,pri-ed25519.pem' >> x.rc
+	echo 'key=rsa-sha256,II,pri-rsa.pem' >> x.rc
+	{
+		printf '\0\0\0\013LFrom\0 X@Y\0'
+		printf '\0\0\0\023LSubject\0 Y\t\r\n\tZ  \0'
+		printf '\0\0\0\01E'
+		printf '\0\0\0\01Q'
+	} | ${PD} -R x.rc > t200-mix 2>ERR
+	x $? 200-mix
+	e0sumem 200-mix
+printf \
+'DKIM-Signature:v=1; a=rsa-sha256; c=relaxed/relaxed; d=y; s=II;\n'\
+' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
+'  3hSuFU=; b=EiRf59wANQ8MN5c1KnfdI51skZJTYzbCJc/nWwZoh6arCkR3kR7CucW/fHmctkK\n'\
+'  NGCXK0nEU8jnuJa4YGx7XCLzkqXc9gULecHnvdaOLx7Guutfm8nBHV/6dyBTfEEdKa+oaTEKs8\n'\
+'  LEDbxy/9hDswjMszKyaYyPq79SFXYH60yJJwAZTglcNhZwd092xql7fLlij53s77Q5Zqye0yLy\n'\
+'  Z+JiGPpSILrADTMH5ROyCB/j15l1CNnWR7EPR3txs9+/5GksQTkXtdjdr3cwMr0e0me8ucEZZG\n'\
+'  1SP7XjhkcYPnKLohhgudi8Kw1/9sSsJt0Q+9eJELtNsMKsKPK1rXm1JYg==\n'\
+'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=y; s=III;\n'\
+' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
+'  3hSuFU=; b=85yrMYJLX8wAGK9hUNn8Q81UK1cN8w4ic9dDPDrjzL/wUbGIcgUkXQ008ct87ey\n'\
+'  47lfcOJeoiTW6tluyeg0yCw==\n'\
+'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=y; s=I;\n'\
+' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
+'  3hSuFU=; b=Wv2zq8YuDiqQSIKGINHUyLMvHXERzRO9N5ZQulDIeHrHSvbg4IQSJI+CJTCOUzF\n'\
+'  eXLutbxP4RFxirZtJKsbsDg==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t201-mix
+	cmp 201-mix t200-mix t201-mix
+else
+	echo >&2 'RSA not supported, skipping tests t200-mix,t201-mix'
+fi
+
+##
+echo $kR > x.rc
+echo 'header-seal from' >> x.rc
 
 # 6376, 3.4.5; also (contrary to RFC 6376): header continuation line: lonely \n / \r is WSP!!
 {

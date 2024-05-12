@@ -33,7 +33,7 @@
 #define su_FILE s_dkim_sign
 
 /* */
-#define a_VERSION "0.6.0"
+#define a_VERSION "0.6.1"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* --sign max selectors (<> manual) */
@@ -871,8 +871,8 @@ struct a_key_algo_tuple{
 	/* EVP_PKEY_* always defined (1.0-3.1) so no #ifdef effort */
 	enum{
 		a_KAT_PKEY_NONE,
-		a_KAT_PKEY_ED25519 = EVP_PKEY_ED25519,
-		a_KAT_PKEY_XED25519 = -EVP_PKEY_ED25519,
+		a_KAT_PKEY_BIG_ED = EVP_PKEY_ED25519,
+		a_KAT_PKEY_ED25519 = -EVP_PKEY_ED25519,
 		a_KAT_PKEY_RSA = EVP_PKEY_RSA
 	} kat_pkey;
 	enum{
@@ -880,6 +880,7 @@ struct a_key_algo_tuple{
 		a_KAT_MD_SHA256,
 		a_KAT_MD_SHA1
 	} kat_md;
+	char kat_name[8]; /* "our name" */
 	char kat_pkey_name[8];
 	char kat_md_name[8];
 };
@@ -887,8 +888,7 @@ struct a_key_algo_tuple{
 struct a_md{
 	struct a_md *md_next;
 	EVP_MD const *md_md;
-	u8 md_id;
-	char md_algo[15];
+	struct a_key_algo_tuple const *md_katp;
 };
 
 struct a_key{
@@ -897,8 +897,7 @@ struct a_key{
 	EVP_PKEY *k_key;
 	char *k_sel; /* points into .k_file */
 	uz k_sel_len;
-	s32 k_id;
-	char k_algo[12];
+	struct a_key_algo_tuple const *k_katp;
 	char k_file[VFIELD_SIZE(0)];
 };
 
@@ -963,21 +962,19 @@ struct a_pd{
 static struct a_key_algo_tuple const a_kata[] = {
 #ifndef OPENSSL_NO_SHA256
 # ifndef OPENSSL_NO_ECX
-	{a_KAT_PKEY_ED25519, a_KAT_MD_SHA256, "ed25519", "sha256"},
-	{a_KAT_PKEY_XED25519, a_KAT_MD_SHA256, "xed25519", "sha256"},
+	{a_KAT_PKEY_BIG_ED, a_KAT_MD_SHA256, "big_ed", "ed25519", "sha256"},
+	{a_KAT_PKEY_ED25519, a_KAT_MD_SHA256, "ed25519", "ed25519", "sha256"},
 # endif
 # ifndef OPENSSL_NO_RSA
-	{a_KAT_PKEY_RSA, a_KAT_MD_SHA256, "rsa", "sha256"},
+	{a_KAT_PKEY_RSA, a_KAT_MD_SHA256, "rsa", "rsa", "sha256"},
 # endif
 #endif
 #ifndef OPENSSL_NO_SHA1
 # ifndef OPENSSL_NO_RSA
-	{a_KAT_PKEY_RSA, a_KAT_MD_SHA1, "rsa", "sha1"}
+	{a_KAT_PKEY_RSA, a_KAT_MD_SHA1, "rsa", "rsa", "sha1"}
 # endif
 #endif
 };
-CTAV(FIELD_SIZEOF(struct a_key,k_algo) >= sizeof("xed25519"));
-CTAV(FIELD_SIZEOF(struct a_md,md_algo) >= sizeof("sha256"));
 
 /* RFC 6376, 5.4.1; extension: author (RFC 9057); remains are senseless.
  * (We need to go a bit 'round the corner to be able to detect alloc size via sizeof()) */
@@ -2682,7 +2679,7 @@ a_dkim_setup(struct a_dkim *dkp, boole post_eoh, struct a_pd *pdp, struct su_mem
 			if(!EVP_DigestInit_ex(mdcp->mdc_md_ctx, mdp->md_md, NIL)){
 jbail:
 				su_log_write(su_LOG_CRIT, _("%scannot EVP_DigestInit_ex(3) message-digest %s: %s\n"),
-					log_id, mdp->md_algo, ERR_error_string(ERR_get_error(), NIL));
+					log_id, mdp->md_katp->kat_md_name, ERR_error_string(ERR_get_error(), NIL));
 				a_dkim_cleanup(dkp);
 				rv = FAL0;
 				break;
@@ -3031,7 +3028,7 @@ jdigup:		/* C99 */{
 			for(mdcp = dkp->d_sign_mdctxs; mdcp != NIL; mdcp = mdcp->mdc_next){
 				if(!EVP_DigestUpdate(mdcp->mdc_md_ctx, ob_base, P2UZ(ob - ob_base))){
 					su_log_write(su_LOG_CRIT, _("%scannot EVP_DigestUpdate(3) for %s: %s\n"),
-						dkp->d_log_id, mdcp->mdc_md->md_algo,
+						dkp->d_log_id, mdcp->mdc_md->md_katp->kat_md_name,
 						ERR_error_string(ERR_get_error(), NIL));
 					f |= a_ERR;
 					goto jleave;
@@ -3058,7 +3055,7 @@ jleave:
 	NYD_OU;
 	return ((f &= a_ERR) == a_NONE);
 
-jfinal:	/* C99 */{
+jfinal:/* C99 */{
 	struct a_md_ctx *mdcp;
 
 	if(f & a_BUF_ALLOC)
@@ -3076,7 +3073,8 @@ jfinal:	/* C99 */{
 		obl = 0; /* xxx out only */
 		if(!EVP_DigestFinal(mdcp->mdc_md_ctx, S(uc*,ob), &obl)){
 			su_log_write(su_LOG_CRIT, _("%scannot EVP_DigestFinal(3) %s: %s\n"),
-				dkp->d_log_id, mdcp->mdc_md->md_algo, ERR_error_string(ERR_get_error(), NIL));
+				dkp->d_log_id, mdcp->mdc_md->md_katp->kat_md_name,
+				ERR_error_string(ERR_get_error(), NIL));
 			f |= a_ERR;
 			goto jleave;
 		}
@@ -3189,9 +3187,9 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 
 		cp = dkim_res_start;
 		cp = su_cs_pcopy(cp, "v=1; a=");
-		cp = su_cs_pcopy(cp, kp->k_algo);
+		cp = su_cs_pcopy(cp, kp->k_katp->kat_pkey_name);
 		*cp++ = '-';
-		cp = su_cs_pcopy(cp, kp->k_md->md_algo);
+		cp = su_cs_pcopy(cp, kp->k_katp->kat_md_name);
 		cp = su_cs_pcopy(cp, "; c=relaxed/relaxed");
 
 		/* This is ok only because it surely is far inside the buffer! */
@@ -3323,7 +3321,7 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 
 		a_dkim__head_prep(dkp, "DKIM-Signature", dkim_res_start, &dkim_end, FAL0);
 
-		EVP_MD_CTX_reset(mdcp->mdc_md_ctx);
+		/* It could be easy except that RFC 8463 makes it difficult; i got this wrong, thus v0.6.1 */
 		/* C99 */{
 			/* Unfortunately *SSL gives us no easy accessible property that tells us whether DigestSign
 			 * works with a real EVP_MD or only with NIL */
@@ -3335,18 +3333,18 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 			dl = P2UZ(dkim_end - dkim_start);
 			mdp = mdcp->mdc_md->md_md;
 
-			if(kp->k_id == a_KAT_PKEY_XED25519)
+			if(kp->k_katp->kat_pkey == a_KAT_PKEY_ED25519)
 				mdp = NIL;
 			/* RFC 8463 is unfortunately very special and requests double digesting! */
-			else if(kp->k_id == a_KAT_PKEY_ED25519){
+			else if(kp->k_katp->kat_pkey == a_KAT_PKEY_BIG_ED){
 				EVP_MD_CTX_reset(mdcp->mdc_md_ctx);
 				if(!EVP_DigestInit_ex(mdcp->mdc_md_ctx, mdp, NIL) ||
 						!EVP_DigestUpdate(mdcp->mdc_md_ctx, dp, dl) ||
 						!EVP_DigestFinal(mdcp->mdc_md_ctx, b64sigp, &a.sl32)){
 					su_log_write(su_LOG_CRIT,
 						_("%scannot ed25519 double-EVP_Digest*(3) %s-%s(=%s=%s): %s\n"),
-						dkp->d_log_id, kp->k_algo, mdcp->mdc_md->md_algo, kp->k_sel, kp->k_file,
-						ERR_error_string(ERR_get_error(), NIL));
+						dkp->d_log_id, kp->k_katp->kat_name, mdcp->mdc_md->md_katp->kat_md_name,
+						kp->k_sel, kp->k_file, ERR_error_string(ERR_get_error(), NIL));
 					goto jleave;
 				}
 				dp = b64sigp;
@@ -3359,8 +3357,8 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 jesifi:
 				su_log_write(su_LOG_CRIT,
 					_("%scannot EVP_DigestSign(Init)?(3) %s-%s(=%s=%s): %s\n"),
-					dkp->d_log_id, kp->k_algo, kp->k_md->md_algo, kp->k_sel, kp->k_file,
-					ERR_error_string(ERR_get_error(), NIL));
+					dkp->d_log_id, kp->k_katp->kat_name, kp->k_katp->kat_md_name,
+					kp->k_sel, kp->k_file, ERR_error_string(ERR_get_error(), NIL));
 				goto jleave;
 			}
 
@@ -3398,7 +3396,7 @@ jesifi:
 		dkrp->dr_dat[dkrp->dr_len] = '\0';
 		if(pdp->pd_flags & a_F_VV)
 			su_log_write(su_LOG_INFO, "%sDKIM create ok: %s-%s(=%s=%s)\n",
-				dkp->d_log_id, kp->k_algo, kp->k_md->md_algo, kp->k_sel, kp->k_file);
+				dkp->d_log_id, kp->k_katp->kat_name, kp->k_katp->kat_md_name, kp->k_sel, kp->k_file);
 jnext_key:;
 	}
 
@@ -3680,8 +3678,8 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 		struct a_key *kp;
 
 		for(kp = pdp->pd_keys; kp != NIL; kp = kp->k_next)
-			fprintf(stdout, "key %s-%s, %s,%s%s\n", kp->k_algo, kp->k_md->md_algo, kp->k_sel,
-				((kp->k_sel_len > 25 || su_cs_len(kp->k_file) > 25) ? "\\\n\t" : " "),
+			fprintf(stdout, "key %s-%s, %s,%s%s\n", kp->k_katp->kat_name, kp->k_katp->kat_md_name,
+				kp->k_sel, ((kp->k_sel_len > 25 || su_cs_len(kp->k_file) > 25) ? "\\\n\t" : " "),
 				kp->k_file);
 	}
 
@@ -4392,7 +4390,7 @@ jekey:
 			}
 			i = P2UZ(cp - xarg);
 			for(katp = &a_kata[0];;){
-				if(!su_cs_cmp_case_n(xarg, katp->kat_pkey_name, i))
+				if(!su_cs_cmp_case_n(xarg, katp->kat_name, i))
 					break;
 				else if(++katp == &a_kata[NELEM(a_kata)])
 					goto jekey;
@@ -4432,8 +4430,8 @@ jekey:
 
 			for(lkpp = &pdp->pd_keys; (kp = *lkpp) != NIL; lkpp = &kp->k_next){
 				/* (It was a hard error; but then, maybe yet another selector??) */
-				if((pdp->pd_flags & a_F_MODE_TEST) && kp->k_id == katp->kat_pkey &&
-						kp->k_md->md_id == katp->kat_md && !su_cs_cmp(kp->k_file, xarg))
+				if((pdp->pd_flags & a_F_MODE_TEST) && kp->k_katp == katp &&
+						!su_cs_cmp(kp->k_file, xarg))
 					su_log_write(su_LOG_DEBUG, _("--key: already specified: %s\n"), xarg);
 
 				if(!su_cs_cmp(kp->k_sel, sel)){
@@ -4468,16 +4466,18 @@ jekeyo:
 			}
 
 			if(UCMP(32, EVP_PKEY_id(pkeyp), !=, ABS(katp->kat_pkey))){
-				a_conf__err(pdp, _("--key: private key is not of the specified algorithm: %s: %s\n"),
-					katp->kat_pkey_name, xarg);
+				a_conf__err(pdp,
+					("--key: private key is not of the specified algorithm: %s (%s): %s\n"),
+					katp->kat_name, katp->kat_pkey_name, xarg);
 				goto jekey;
 			}else{
 				u32 kmaxsize;
 
 				kmaxsize = S(u32,a_PKEY_GET_SIZE(pkeyp));
 				if(kmaxsize == 0 || kmaxsize > S32_MAX){
-					a_conf__err(pdp, _("--key: cannot determine EVP_PKEY_get_size(): %s: %s\n"),
-						katp->kat_pkey_name, xarg);
+					a_conf__err(pdp,
+						("--key: cannot determine EVP_PKEY_get_size(): %s (%s): %s\n"),
+						katp->kat_name, katp->kat_pkey_name, xarg);
 					goto jekey;
 				}
 				pdp->pd_key_md_maxsize = MAX(pdp->pd_key_md_maxsize, kmaxsize);
@@ -4485,7 +4485,7 @@ jekeyo:
 
 			/* So then, find message digest, or create it anew */
 			for(mdp = pdp->pd_mds; mdp != NIL; mdp = mdp->md_next)
-				if(mdp->md_id == katp->kat_md)
+				if(mdp->md_katp->kat_md == katp->kat_md)
 					break;
 			if(mdp == NIL){
 				/* It may not be available in this installation */
@@ -4497,7 +4497,7 @@ jekeyo:
 #else
 					EVP_get_digestbyname(katp->kat_md_name)
 #endif
-				;
+					;
 				if(mdmdp == NIL){
 					a_conf__err(pdp, _("--key: message digest algorithm not available: %s: %s\n"),
 						katp->kat_md_name, ERR_error_string(ERR_get_error(), NIL));
@@ -4508,8 +4508,7 @@ jekeyo:
 				mdp->md_next = pdp->pd_mds;
 				pdp->pd_mds = mdp;
 				mdp->md_md = mdmdp;
-				mdp->md_id = katp->kat_md;
-				su_cs_pcopy(mdp->md_algo, katp->kat_md_name);
+				mdp->md_katp = katp;
 			}
 
 			kp = su_ALLOC(VSTRUCT_SIZEOF(struct a_key,k_file) + su_cs_len(xarg) +1 + su_cs_len(sel) +1);
@@ -4517,13 +4516,11 @@ jekeyo:
 			kp->k_next = NIL;
 			kp->k_md = mdp;
 			kp->k_key = pkeyp;
-			kp->k_id = katp->kat_pkey;
-			su_cs_pcopy(kp->k_algo, katp->kat_pkey_name);
 			kp->k_sel = su_cs_pcopy(kp->k_file, xarg) +1;
 			sel = su_cs_pcopy(kp->k_sel, sel);
 			kp->k_sel_len = P2UZ(sel - kp->k_sel);
-
 			pdp->pd_key_sel_len_max = MAX(pdp->pd_key_sel_len_max, kp->k_sel_len);
+			kp->k_katp = katp;
 			}break;
 		}
 	}
@@ -5188,7 +5185,7 @@ a_misc_usage(FILE *fp){
 	fprintf(fp, V_(a_1), VAL_NAME, (VAL_NAME_IS_MYNAME ? "" : MYNAME), (VAL_NAME_IS_MYNAME ? "" : " "), a_VERSION);
 
 	for(katp = a_kata; katp < &a_kata[NELEM(a_kata)]; ++katp)
-		fprintf(fp, "%s%s-%s", (katp == a_kata ? su_empty : ", "), katp->kat_pkey_name, katp->kat_md_name);
+		fprintf(fp, "%s%s-%s", (katp == a_kata ? su_empty : ", "), katp->kat_name, katp->kat_md_name);
 
 	fprintf(fp, V_(a_2), a_CONTACT);
 
