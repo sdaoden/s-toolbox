@@ -4,9 +4,6 @@
  *@ - TODO DKIM-I i= DKIM value (optional additional --sign arg).
  *@ - TODO Make somehow addressable postfix's "(may be forged)":
  *@	s-dkim-sign: [15506][info]: start.gursama.com [185.28.39.97] (may be forged): no --client's match: "pass, ."
- *@ - TODO I would like to have "an additional --client" match for {mail_addr} macro of M.
- *@        But *especially* signing localhost->localhost mails seems so stupid.
- *@ - xxx Three level verbosity?
  *@ - TODO Would like to have "sender localhost && rcpt localhost && pass".
  *@ - TODO internationalized selectors are missing (a_key.k_sel).
  *@ - TODO server mode missing -- must be started by spawn(8).
@@ -880,9 +877,11 @@ struct a_key_algo_tuple{
 		a_KAT_MD_SHA256,
 		a_KAT_MD_SHA1
 	} kat_md;
-	char kat_name[8]; /* "our name" */
-	char kat_pkey_name[8];
-	char kat_md_name[8];
+	boole kat_sign_md; /* DigestSign() takes MD (XXX *SSL gives us no accessible property to automatize this) */
+	boole kat_extern_md; /* DigestSign() must be passed prepared MD TODO only because of RFC 8463 */
+	char kat_name[10]; /* "our pkey name" */
+	char kat_pkey_name[10];
+	char kat_md_name[10];
 };
 
 struct a_md{
@@ -937,7 +936,7 @@ struct a_pd{
 	BITENUM(u32,a_flags) pd_flags;
 	u32 pd_argc;
 	char **pd_argv;
-	s64 pd_source_date_epoch;
+	s64 pd_source_date_epoch; /* a_F_REPRO mode */
 	/* Configuration */
 	char *pd_domain_name; /* --domain-name */
 	char *pd_header_sign; /* --header-sign: NIL: a_HEADER_SIGSEA_OFF_SIGN */
@@ -962,16 +961,16 @@ struct a_pd{
 static struct a_key_algo_tuple const a_kata[] = {
 #ifndef OPENSSL_NO_SHA256
 # ifndef OPENSSL_NO_ECX
-	{a_KAT_PKEY_BIG_ED, a_KAT_MD_SHA256, "big_ed", "ed25519", "sha256"},
-	{a_KAT_PKEY_ED25519, a_KAT_MD_SHA256, "ed25519", "ed25519", "sha256"},
+	{a_KAT_PKEY_BIG_ED, a_KAT_MD_SHA256, FAL0, TRU1, "big_ed", "ed25519", "sha256"},
+	{a_KAT_PKEY_ED25519, a_KAT_MD_SHA256, FAL0, FAL0, "ed25519", "ed25519", "sha256"},
 # endif
 # ifndef OPENSSL_NO_RSA
-	{a_KAT_PKEY_RSA, a_KAT_MD_SHA256, "rsa", "rsa", "sha256"},
+	{a_KAT_PKEY_RSA, a_KAT_MD_SHA256, TRU1, FAL0, "rsa", "rsa", "sha256"},
 # endif
 #endif
 #ifndef OPENSSL_NO_SHA1
 # ifndef OPENSSL_NO_RSA
-	{a_KAT_PKEY_RSA, a_KAT_MD_SHA1, "rsa", "rsa", "sha1"}
+	{a_KAT_PKEY_RSA, a_KAT_MD_SHA1, TRU1, FAL0, "rsa", "rsa", "sha1"}
 # endif
 #endif
 };
@@ -1379,7 +1378,7 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 			a_milter__cleanup(mip);
 			if(mip->mi_log_buf[0] != '\0')
 				mip->mi_log_id = mip->mi_log_buf; /* same connection */
-			/* Since we do this in SMFIC_CONNECT (which we may not see), SMFIC_HEADER, This means "during first */
+			/* Normally in SMFIC_CONNECT or later, but which we may not have seen XXX */
 			if(!(fb & a_B_ACT_MASK)){
 				fb |= (fx & a_ACT_MASK) >> a_ACT_SHIFTER;
 				a_DBG(su_log_write(su_LOG_DEBUG, "SMFIC_ABORT sets base mask %u", fb & a_B_ACT_MASK);)
@@ -1402,7 +1401,7 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 				su_log_write(su_LOG_INFO, "optneg server: version=0x%X actions=0x%X protocol=0x%X",
 					optneg.version, optneg.actions, optneg.protocol);
 
-			/* Use LOG_CRIT in order to surely enter log.  This will not work out! */
+			/* Use LOG_CRIT in order to surely enter log */
 			if(optneg.version < 6){
 				su_log_write(su_LOG_CRIT, _("Mail server milter protocol version too low, bailing out"));
 				rv = su_EX_UNAVAILABLE;
@@ -1805,7 +1804,7 @@ jheader_done:
 				goto jaccept;
 
 			if(!(fx & a_SEEN_SMFIC_BODY)){
-				if((fx & a_ACT_SIGN) && (!(fx & a_SETUP) || !(fx & a_FROM)))
+				if((fx & a_ACT_SIGN) && (fx & (a_SETUP | a_FROM)) != (a_SETUP | a_FROM))
 					goto jenofrom;
 				/* XXX should never trigger here, then -> SMFIC_CONNECT! */
 				if((fx & a_SMFIC_CONNECT_MASK) != (fb & a_SMFIC_CONNECT_MASK)){
@@ -1985,7 +1984,7 @@ jleave:
 } /* }}} */
 
 static s32
-a_milter__write(struct a_milter *mip, uz len){ /* {{{ */
+a_milter__write(struct a_milter *mip, uz len){ /* {{{ XXX screams for writev */
 	s32 rv;
 	ssize_t bw;
 	char *bp;
@@ -2545,7 +2544,7 @@ a_milter__verify(struct a_milter *mip){ /* {{{ */
 					if(rv != su_EX_OK)
 						goto jleave;
 
-					if(LIKELY(!(pdp->pd_flags & a_F_VV)))
+					if(LIKELY(!(pdp->pd_flags & a_F_VVV)))
 						continue;
 				}else if(UNLIKELY(pdp->pd_flags & a_F_REPRO))
 					printf("SMFIR CHGHEADER %s %u\n", a_rm_head_names[i], otc);
@@ -3321,36 +3320,33 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 
 		a_dkim__head_prep(dkp, "DKIM-Signature", dkim_res_start, &dkim_end, FAL0);
 
-		/* It could be easy except that RFC 8463 makes it difficult; i got this wrong, thus v0.6.1 */
 		/* C99 */{
-			/* Unfortunately *SSL gives us no easy accessible property that tells us whether DigestSign
-			 * works with a real EVP_MD or only with NIL */
 			EVP_MD const *mdp;
 			uz dl;
 			uc *dp;
 
 			dp = S(uc*,dkim_start);
 			dl = P2UZ(dkim_end - dkim_start);
-			mdp = mdcp->mdc_md->md_md;
 
-			if(kp->k_katp->kat_pkey == a_KAT_PKEY_ED25519)
-				mdp = NIL;
-			/* RFC 8463 is unfortunately very special and requests double digesting! */
-			else if(kp->k_katp->kat_pkey == a_KAT_PKEY_BIG_ED){
+			if(kp->k_katp->kat_extern_md){
+				mdp = mdcp->mdc_md->md_md;
+
 				EVP_MD_CTX_reset(mdcp->mdc_md_ctx);
 				if(!EVP_DigestInit_ex(mdcp->mdc_md_ctx, mdp, NIL) ||
 						!EVP_DigestUpdate(mdcp->mdc_md_ctx, dp, dl) ||
 						!EVP_DigestFinal(mdcp->mdc_md_ctx, b64sigp, &a.sl32)){
 					su_log_write(su_LOG_CRIT,
 						_("%scannot ed25519 double-EVP_Digest*(3) %s-%s(=%s=%s): %s\n"),
-						dkp->d_log_id, kp->k_katp->kat_name, mdcp->mdc_md->md_katp->kat_md_name,
+						dkp->d_log_id, kp->k_katp->kat_name, kp->k_katp->kat_md_name,
 						kp->k_sel, kp->k_file, ERR_error_string(ERR_get_error(), NIL));
 					goto jleave;
 				}
+
 				dp = b64sigp;
 				dl = a.sl32;
-				mdp = NIL;
 			}
+
+			mdp = kp->k_katp->kat_sign_md ? mdcp->mdc_md->md_md : NIL;
 
 			EVP_MD_CTX_reset(mdcp->mdc_md_ctx);
 			if(!EVP_DigestSignInit(mdcp->mdc_md_ctx, NIL, mdp, NIL, kp->k_key)){
@@ -3544,8 +3540,12 @@ a_conf_finish(struct a_pd *pdp){ /* {{{ */
 		}
 	}
 
+	/* test mode shortcut */
+	if(LIKELY(!(pdp->pd_flags & a_F_MODE_TEST)))
+		goto jleave;
+
 	/* --header-seal: verify members are part of --header-sign */
-	if(UNLIKELY(pdp->pd_flags & a_F_MODE_TEST) && pdp->pd_header_seal != NIL){
+	if(pdp->pd_header_seal != NIL){
 		char const *sea, *sig;
 
 		for(sea = pdp->pd_header_seal;;){
@@ -3571,7 +3571,7 @@ a_conf_finish(struct a_pd *pdp){ /* {{{ */
 		}
 	}
 
-	if(UNLIKELY(pdp->pd_flags & a_F_MODE_TEST) && (pdp->pd_flags & a_F_RM_ANY)){
+	if(pdp->pd_flags & a_F_RM_ANY){
 		u32 rmt;
 
 		for(rmt = 0; rmt <= a_RM_HEAD_TOP_MATCHED; ++rmt){
@@ -4398,9 +4398,15 @@ jekey:
 
 			for(xarg = ++cp;; ++katp){
 				if(!su_cs_cmp_case(xarg, katp->kat_md_name)){
-					if(katp->kat_md == a_KAT_MD_SHA1 && !(pdp->pd_flags & a_F_MODE_TEST))
-						su_log_write(su_LOG_NOTICE,
-							_("--key: RFC 8301 forbids usage of SHA-1"));
+					if(UNLIKELY(katp->kat_md == a_KAT_MD_SHA1) && (pdp->pd_flags & a_F_MODE_TEST)){
+						boole x;
+
+						x = ((pdp->pd_flags & a_F_TEST_ERRORS) != 0);
+						a_conf__err(pdp, _("--key: RFC 8301 forbids usage of SHA-1: %s\n"),
+							arg_orig);
+						if(!x)
+							pdp->pd_flags ^= a_F_TEST_ERRORS;
+					}
 					break;
 				}
 				if(&katp[1] == &a_kata[NELEM(a_kata)] || katp->kat_pkey != katp[1].kat_pkey){
@@ -4762,7 +4768,7 @@ a_conf__S(struct a_pd *pdp, char *arg){ /* {{{ */
 								imfap->imfa_display_name, imfap->imfa_locpar,
 								imfap->imfa_domain,
 								(imfap->imfa_mse & su_IMF_ERR_MASK ? " ERRORS"
-								: su_empty));
+								 : su_empty));
 						}
 					}
 
