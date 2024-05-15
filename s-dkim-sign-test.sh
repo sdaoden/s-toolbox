@@ -42,12 +42,12 @@ pwd=. #$(pwd) || exit 3
 ### First of all create some resources {{{
 
 x() {
-	[ $1 -eq 0 ] || { echo >&2 'bad '$2; exit 1; }
+	[ $1 -eq 0 ] || { echo >&2 'bad '$2': '$1; exit 1; }
 	[ -n "$REDIR" ] || echo ok $2
 }
 
 y() {
-	[ $1 -ne 0 ] || { echo >&2 'bad '$2; exit 1; }
+	[ $1 -ne 0 ] || { echo >&2 'bad '$2': '$1; exit 1; }
 	[ -n "$REDIR" ] || echo ok $2
 }
 
@@ -292,92 +292,112 @@ else
 fi
 
 if [ -z "$algo_rsa_sha256" ]; then
-	echo no rsa-sha256, skip 4.1-4.6
+	echo no rsa-sha256, skip 3.7-3.12
+	4.1-4.6
 else
-	${PD} -# --key rsa-sha256,ed1,pri-rsa.pem > t4.1 2>ERR
-	x $? 4.1
-	e0 4.1
-	${PD} -# --key=' rsa-sha256 ,  ed1  ,   pri-rsa.pem  ' > t4.2 2>ERR
-	x $? 4.2
-	e0 4.2
-	cmp 4.3 t4.1 t4.2
+	${PD} -# --key rsa-sha256,ed1,pri-rsa.pem > t3.7 2>ERR
+	x $? 3.7
+	e0 3.7
+	${PD} -# --key=' rsa-sha256 ,  ed1  ,   pri-rsa.pem  ' > t3.8 2>ERR
+	x $? 3.8
+	e0 3.8
+	cmp 3.9 t3.7 t3.8
 
-	${PD} -# -k rsa-sha256,ed1,pri-rsa.pem > t4.4 2>ERR
-	x $? 4.4
-	e0 4.4
-	${PD} -# -k' rsa-sha256 ,  ed1  ,   pri-rsa.pem  ' > t4.5 2>ERR
-	x $? 4.5
-	e0 4.5
-	cmp 4.6 t4.4 t4.5
+	${PD} -# -k rsa-sha256,ed1,pri-rsa.pem > t3.10 2>ERR
+	x $? 3.10
+	e0 3.10
+	${PD} -# -k' rsa-sha256 ,  ed1  ,   pri-rsa.pem  ' > t3.11 2>ERR
+	x $? 3.11
+	e0 3.11
+	cmp 3.12 t3.10 t3.11
 fi
 
 if [ -z "$algo_rsa_sha1" ]; then
-	echo no rsa-sha1, skip 5.1-5.6
+	echo no rsa-sha1, skip 3.13-3.18
 else
-	${PD} -# --key rsa-sha1,ed1,pri-rsa.pem > t5.1 2>ERR
-	x $? 5.1
-	e0 5.1
-	${PD} -# --key=' rsa-sha1 ,  ed1  ,   pri-rsa.pem  ' > t5.2 2>ERR
-	x $? 5.2
-	e0 5.2
-	cmp 5.3 t5.1 t5.2
+	echo '--key: RFC 8301 forbids usage of SHA-1: rsa-sha1' > t3.sha1-err
 
-	${PD} -# -k rsa-sha1,ed1,pri-rsa.pem > t5.4 2>ERR
-	x $? 5.4
-	e0 5.4
-	${PD} -# -k' rsa-sha1 ,  ed1  ,   pri-rsa.pem  ' > t5.5 2>ERR
-	x $? 5.5
-	e0 5.5
-	cmp 5.6 t5.4 t5.5
+	${PD} -# --key rsa-sha1,ed1,pri-rsa.pem > t3.13 2>ERR
+	x $? 3.13
+	cmp 3.13-err ERR t3.sha1-err
+	${PD} -# --key='rsa-sha1 ,  ed1  ,   pri-rsa.pem  ' > t3.14 2>ERR
+	x $? 3.14
+	cmp 3.14-err ERR t3.sha1-err
+	cmp 3.15 t3.13 t3.14
+
+	${PD} -# -k rsa-sha1,ed1,pri-rsa.pem > t3.16 2>ERR
+	x $? 3.16
+	cmp 3.16-err ERR t3.sha1-err
+	${PD} -# -k'rsa-sha1 ,  ed1  ,   pri-rsa.pem  ' > t3.17 2>ERR
+	x $? 3.17
+	cmp 3.17-err ERR t3.sha1-err
+	cmp 3.18 t3.16 t3.17
 fi
 
-${PD} -# --key rsax-sha256,no1.-,pri-rsa.pem > t6.1 2>&1
-y $? 6.1
-${PD} -# --key rsa-sha256x,no1.-,pri-rsa.pem > t6.2 2>&1
-y $? 6.2
-${PD} -# --key 'rsa-sha256,    ,pri-rsa.pem' > t6.3 2>&1
-y $? 6.3
-${PD} -# --key rsa-sha256,.no,pri-rsa.pem > t6.4 2>&1
-y $? 6.4
-${PD} -# --key rsa-sha256,-no,pri-rsa.pem > t6.5 2>&1
-y $? 6.5
-${PD} -# --key 'rsa-sha256,no1.-,pri-rsax.pem' > t6.6 2>&1
-y $? 6.6
-${PD} -# --key $ka,no1.-,$kf > t6.7 2>ERR
-x $? 6.7
-e0 6.7
+${PD} -# --key rsax-sha256,no1.-,pri-rsa.pem > t3.20 2>&1
+y $? 3.20
+${PD} -# --key rsa-sha256x,no1.-,pri-rsa.pem > t3.21 2>&1
+y $? 3.21
+${PD} -# --key 'rsa-sha256,    ,pri-rsa.pem' > t3.22 2>&1
+y $? 3.22
+${PD} -# --key rsa-sha256,.no,pri-rsa.pem > t3.23 2>&1
+y $? 3.23
+${PD} -# --key rsa-sha256,-no,pri-rsa.pem > t3.24 2>&1
+y $? 3.24
+${PD} -# --key 'rsa-sha256,no1.-,pri-rsax.pem' > t3.25 2>&1
+y $? 3.25
+${PD} -# --key $ka,no1.-,$kf > t3.26 2>ERR
+x $? 3.26
+e0 3.26
 
-${PD} -# --key $ka,this-is-a-very-long-selector-that-wraps-lines-i-guess,$kf > t6.8 2>ERR
-x $? 6.8
-e0 6.8
-${PD} -# -R t6.8 > t6.9 2>ERR
-x $? 6.9
-e0 6.9
-cmp 6.10 t6.8 t6.9
-{ read -r i1; read i2; } < t6.9
+${PD} -# --key $ka,this-is-a-very-long-selector-that-wraps-lines-i-guess,$kf > t3.30 2>ERR
+x $? 3.30
+e0 3.30
+${PD} -# -R t3.30 > t3.31 2>ERR
+x $? 3.31
+e0 3.31
+cmp 3.32 t3.30 t3.31
+{ read -r i1; read i2; } < t3.31
 [ -n "$i2" ]
-x $? 6.11
+x $? 3.33
 
-${PD} -# --key ',,,' > t6.12 2>&1
-y $? 6.12
-${PD} -# --key 'rsa-sha256,,' > t6.13 2>&1
-y $? 6.13
-${PD} -# --key 'rsa-sha256,s,' > t6.14 2>&1
-y $? 6.14
-${PD} -# --key 'rsa-sha256,s' > t6.15 2>&1
-y $? 6.15
+${PD} -# --key ',,,' > t3.34 2>&1
+y $? 3.34
+${PD} -# --key 'rsa-sha256,,' > t3.35 2>&1
+y $? 3.35
+${PD} -# --key 'rsa-sha256,s,' > t3.36 2>&1
+y $? 3.36
+${PD} -# --key 'rsa-sha256,s' > t3.37 2>&1
+y $? 3.37
 
-${PD} -# > t6.16 2>ERR
-x $? 6.16
-e0 6.16
+${PD} -# > t3.40 2>ERR
+x $? 3.40
+e0 3.40
 (	# needs at least one --key, except then
 	unset SOURCE_DATE_EPOCH
-	${PD} -# > t6.17 2>&1
-	y $? 6.17
+	${PD} -# > t3.41 2>&1
+	y $? 3.41
 )
 # }}}
 
-# 4.* --milter-macro {{{
+# 5.* --domain-name {{{
+${PD} -# --domain-name my.dom.ain > t5.1 2>&1
+x $? 5.1
+${PD} -# -d my.dom.ain > t5.2 2>&1
+x $? 5.2
+cmp 5.3 t5.1 t5.2
+echo 'domain-name my.dom.ain' > t5.4
+cmp 5.4 t5.2 t5.4
+
+${PD} -# --domain-name .mydom > t5.5 2>&1
+y $? 5.5
+${PD} -# --domain-name -mydom > t5.6 2>&1
+y $? 5.6
+${PD} -# --domain-name 1.dom > t5.7 2>&1
+x $? 5.7
+# }}}
+
+# 7.* --milter-macro {{{
 ${PD} -# --milter-macro sign,oha > t7.1 2>ERR
 x $? 7.1
 e0 7.1
@@ -420,23 +440,6 @@ eX 7.12
 ${PD} -# --milter-macro sign,,,, > t7.13 2>ERR
 y $? 7.13
 eX 7.13
-# }}}
-
-# 5.* --domain-name {{{
-${PD} -# --domain-name my.dom.ain > t5.1 2>&1
-x $? 5.1
-${PD} -# -d my.dom.ain > t5.2 2>&1
-x $? 5.2
-cmp 5.3 t5.1 t5.2
-echo 'domain-name my.dom.ain' > t5.4
-cmp 5.4 t5.2 t5.4
-
-${PD} -# --domain-name .mydom > t5.5 2>&1
-y $? 5.5
-${PD} -# --domain-name -mydom > t5.6 2>&1
-y $? 5.6
-${PD} -# --domain-name 1.dom > t5.7 2>&1
-x $? 5.7
 # }}}
 
 # 8.* --sign {{{
