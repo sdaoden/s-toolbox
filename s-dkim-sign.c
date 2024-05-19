@@ -112,7 +112,7 @@
 # define a_PKEY_GET_SIZE(X) EVP_PKEY_get_size(X)
 #else
 # undef a_MD_FETCH
-# define a_PKEY_GET_SIZE(X) EVP_MAX_KEY_LENGTH
+# define a_PKEY_GET_SIZE(X) EVP_PKEY_size(X)
 #endif
 
 /* milter-protocol.txt {{{ */
