@@ -315,7 +315,7 @@ fi
 if [ -z "$algo_rsa_sha1" ]; then
 	echo no rsa-sha1, skip 3.13-3.18
 else
-	echo '--key: RFC 8301 forbids usage of SHA-1: rsa-sha1' > t3.sha1-err
+	echo '--key: usage of obsolete digest sha1: rsa-sha1' > t3.sha1-err
 
 	${PD} -# --key rsa-sha1,ed1,pri-rsa.pem > t3.13 2>ERR
 	x $? 3.13

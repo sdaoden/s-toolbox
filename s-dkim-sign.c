@@ -51,7 +51,9 @@
 #define _POSIX_C_SOURCE 200809L
 #define _ATFILE_SOURCE
 */
-#define _GNU_SOURCE /* Always the same mess */
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE /* Always the same mess */
+#endif
 
 /* 'Want to have the short memory macros */
 #define su_MEM_BAG_SELF (membp)
@@ -103,6 +105,8 @@
 # define NYD_ENABLE
 #endif
 #include "su/code-in.h"
+
+NSPC_USE(su)
 
 /* We assume it initializes itself (maybe more) */
 #if !defined OPENSSL_VERSION_NUMBER || OPENSSL_VERSION_NUMBER + 0 < 0x10100000L
@@ -772,6 +776,20 @@ enum a_cli_action{
 	a_CLI_ACT_VERIFY
 };
 
+enum a_md_type{
+	a_MD_NONE,
+	a_MD_SHA256,
+	a_MD_SHA1
+};
+
+enum a_pkey_type{
+	/* EVP_PKEY_* always defined (1.0-3.1) so no #ifdef effort */
+	a_PKEY_NONE,
+	a_PKEY_BIG_ED = EVP_PKEY_ED25519,
+	a_PKEY_ED25519 = -EVP_PKEY_ED25519,
+	a_PKEY_RSA = EVP_PKEY_RSA
+};
+
 enum a_rm_head_type{
 	/* Exact name match, content parsed and matched */
 	a_RM_HEAD_A_R, /* authentication-results: */
@@ -790,6 +808,16 @@ enum a_rm_head_type{
 	a_RM_HEAD_IP, /* ironport */
 	a_RM_HEAD_TOP_CMP = a_RM_HEAD_IP, /* Maximum exact match */
 	a_RM_HEAD_MAX
+};
+
+enum a_srch_type{
+	a_SRCH_NONE,
+	a_SRCH_SET = 1u<<0, /* (so dict_lookup() return NIL has meaning) */
+	a_SRCH_IPV4 = 1u<<1,
+	a_SRCH_IPV6 = 1u<<2,
+	a_SRCH_EXACT = 1u<<3, /* Not wildcard or CIDR */
+	a_SRCH_VERIFY = 1u<<4, /* Verify action */
+	a_SRCH_PASS = 1u<<5 /* No action, pass */
 };
 
 /**/
@@ -865,21 +893,13 @@ struct a_dkim{
 
 /* */
 struct a_key_algo_tuple{
-	/* EVP_PKEY_* always defined (1.0-3.1) so no #ifdef effort */
-	enum{
-		a_KAT_PKEY_NONE,
-		a_KAT_PKEY_BIG_ED = EVP_PKEY_ED25519,
-		a_KAT_PKEY_ED25519 = -EVP_PKEY_ED25519,
-		a_KAT_PKEY_RSA = EVP_PKEY_RSA
-	} kat_pkey;
-	enum{
-		a_KAT_MD_NONE,
-		a_KAT_MD_SHA256,
-		a_KAT_MD_SHA1
-	} kat_md;
+	enum a_pkey_type kat_pkey;
+	ZIPENUM(u8,enum a_md_type) kat_md;
+	boole kat_obs_pkey;
+	boole kat_obs_md;
 	boole kat_sign_md; /* DigestSign() takes MD (XXX *SSL gives us no accessible property to automatize this) */
 	boole kat_extern_md; /* DigestSign() must be passed prepared MD TODO only because of RFC 8463 */
-	char kat_name[10]; /* "our pkey name" */
+	char kat_name[11]; /* "our pkey name" */
 	char kat_pkey_name[10];
 	char kat_md_name[10];
 };
@@ -908,28 +928,22 @@ struct a_sign{ /* Stored in dictionary */
 	char s_dom[VFIELD_SIZE(3)]; /* d= value if given (else From:'s address domain) */
 };
 
+union a_srch_ip{
+	/* (Let us just place that align thing, ok?  I feel better that way) */
+	u64 align;
+	struct in_addr v4;
+	struct in6_addr v6;
+	/* And whatever else is needed to use this */
+	char const *cp;
+	uz f;
+	void *vp;
+};
+
 struct a_srch{
 	struct a_srch *s_next;
-	enum a_srch_type{
-		a_SRCH_TYPE_NONE,
-		a_SRCH_TYPE_SET = 1u<<0, /* (so dict_lookup() return NIL has meaning) */
-		a_SRCH_TYPE_IPV4 = 1u<<1,
-		a_SRCH_TYPE_IPV6 = 1u<<2,
-		a_SRCH_TYPE_EXACT = 1u<<3, /* Not wildcard or CIDR */
-		a_SRCH_TYPE_VERIFY = 1u<<4, /* Verify action */
-		a_SRCH_TYPE_PASS = 1u<<5 /* No action, pass */
-	} s_type;
+	BITENUM(u32,enum a_srch_type) s_type;
 	u32 s_mask; /* CIDR mask */
-	union a_srch_ip{
-		/* (Let us just place that align thing, ok?  I feel better that way) */
-		u64 align;
-		struct in_addr v4;
-		struct in6_addr v6;
-		/* And whatever else is needed to use this */
-		char *cp;
-		uz f;
-		void *vp;
-	} s_ip;
+	union a_srch_ip s_ip;
 };
 
 struct a_pd{
@@ -961,16 +975,16 @@ struct a_pd{
 static struct a_key_algo_tuple const a_kata[] = {
 #ifndef OPENSSL_NO_SHA256
 # ifndef OPENSSL_NO_ECX
-	{a_KAT_PKEY_BIG_ED, a_KAT_MD_SHA256, FAL0, TRU1, "big_ed", "ed25519", "sha256"},
-	{a_KAT_PKEY_ED25519, a_KAT_MD_SHA256, FAL0, FAL0, "ed25519", "ed25519", "sha256"},
+	{a_PKEY_BIG_ED, a_MD_SHA256, FAL0, FAL0, FAL0, TRU1, "big_ed", "ed25519", "sha256"},
+	{a_PKEY_ED25519, a_MD_SHA256, FAL0, FAL0, FAL0, FAL0, "ed25519", "ed25519", "sha256"},
 # endif
 # ifndef OPENSSL_NO_RSA
-	{a_KAT_PKEY_RSA, a_KAT_MD_SHA256, TRU1, FAL0, "rsa", "rsa", "sha256"},
+	{a_PKEY_RSA, a_MD_SHA256, FAL0, FAL0, TRU1, FAL0, "rsa", "rsa", "sha256"},
 # endif
 #endif
 #ifndef OPENSSL_NO_SHA1
 # ifndef OPENSSL_NO_RSA
-	{a_KAT_PKEY_RSA, a_KAT_MD_SHA1, TRU1, FAL0, "rsa", "rsa", "sha1"}
+	{a_PKEY_RSA, a_MD_SHA1, FAL0, TRU1, TRU1, FAL0, "rsa", "rsa", "sha1"}
 # endif
 #endif
 };
@@ -1969,7 +1983,7 @@ jread:
 
 	/* Was this u32 length or payload? */
 	if(mip->mi_len == 0){
-		l = *S(u32*,mip->mi_buf);
+		l = *R(u32*,mip->mi_buf);
 		mip->mi_len = l = su_boswap_net_32(l);
 		if(l > 0){
 			yet = 0;
@@ -1993,7 +2007,7 @@ a_milter__write(struct a_milter *mip, uz len){ /* {{{ XXX screams for writev */
 
 	l = S(u32,len);
 	lb = su_boswap_net_32(l);
-	bp = S(char*,&lb);
+	bp = R(char*,&lb);
 	yet = 0;
 	l = sizeof(lb);
 jwrite:
@@ -2016,7 +2030,7 @@ jwrite:
 		goto jwrite;
 
 	/* Was this u32 length or payload? */
-	if(bp == S(char*,&lb)){
+	if(bp == R(char*,&lb)){
 		l = S(u32,len);
 		if(l > 0){
 			bp = &mip->mi_buf[0];
@@ -2043,7 +2057,7 @@ a_milter__macro_parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {
 	rv = a_CLI_ACT_ERR;
 
 	/* "localhost [127.0.0.1]" (plus optional additional data): isolate fields */
-	addr = su_mem_find(dp, '[', dl);
+	addr = S(char*,su_mem_find(dp, '[', dl));
 	if(addr == NIL)
 		goto jleave;
 	else{
@@ -2055,7 +2069,7 @@ a_milter__macro_parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {
 		*x = *addr++ = '\0';
 
 		dl -= P2UZ(addr - dp);
-		x = su_mem_find(addr, ']', dl);
+		x = S(char*,su_mem_find(addr, ']', dl));
 		if(x == NIL || x == addr)
 			goto jleave;
 		*x = '\0';
@@ -2090,13 +2104,13 @@ a_milter__macro_parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {
 		for(any = FAL0, first = TRU1;; first = FAL0){
 			sip.vp = su_cs_dict_lookup(&mip->mi_pdp->pd_cli, dp);
 
-			if(sip.vp != NIL && (first || !(sip.f & a_SRCH_TYPE_EXACT))){
+			if(sip.vp != NIL && (first || !(sip.f & a_SRCH_EXACT))){
 				char const *act;
 
-				if(sip.f & a_SRCH_TYPE_VERIFY){
+				if(sip.f & a_SRCH_VERIFY){
 					act = "verify";
 					rv = a_CLI_ACT_VERIFY;
-				}else if(sip.f & a_SRCH_TYPE_PASS){
+				}else if(sip.f & a_SRCH_PASS){
 					act = "pass";
 					rv = a_CLI_ACT_PASS;
 				}else{
@@ -2143,10 +2157,10 @@ a_milter__macro_parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {
 		if(sip_x.vp != NIL){
 			char const *act;
 
-			if(sip.f & a_SRCH_TYPE_VERIFY){
+			if(sip.f & a_SRCH_VERIFY){
 				act = "verify";
 				rv = a_CLI_ACT_VERIFY;
-			}else if(sip.f & a_SRCH_TYPE_PASS){
+			}else if(sip.f & a_SRCH_PASS){
 				act = "pass";
 				rv = a_CLI_ACT_PASS;
 			}else{
@@ -2165,7 +2179,7 @@ a_milter__macro_parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {
 		uz max, i;
 		u32 *ip, mask;
 
-		if((af == AF_INET) != ((sp->s_type & a_SRCH_TYPE_IPV4) != 0))
+		if((af == AF_INET) != ((sp->s_type & a_SRCH_IPV4) != 0))
 			continue;
 
 		/* a_conf__C() LCTA()s this works! */
@@ -2199,10 +2213,10 @@ a_milter__macro_parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {
 				: su_mem_cmp(sp->s_ip.v6.s6_addr, sip_x.v6.s6_addr, sizeof(sip_x.v6.s6_addr)))){
 			char const *act;
 
-			if(sip.f & a_SRCH_TYPE_VERIFY){
+			if(sip.f & a_SRCH_VERIFY){
 				act = "verify";
 				rv = a_CLI_ACT_VERIFY;
-			}else if(sip.f & a_SRCH_TYPE_PASS){
+			}else if(sip.f & a_SRCH_PASS){
 				act = "pass";
 				rv = a_CLI_ACT_PASS;
 			}else{
@@ -2468,7 +2482,7 @@ jmark:
 
 			x = (t <<= 1);
 			x = su_BITS_TO_UZ(x) * sizeof(uz);
-			rmhpx = su_LOFI_CALLOC(VSTRUCT_SIZEOF(struct a_rm_head,rmh_bits) + x);
+			rmhpx = S(struct a_rm_head*,su_LOFI_CALLOC(VSTRUCT_SIZEOF(struct a_rm_head,rmh_bits) + x));
 			rmhpx->rmh_cnt = c;
 			rmhpx->rmh_top = t;
 
@@ -2729,7 +2743,7 @@ a_dkim_push_header(struct a_dkim *dkp, char const *name, char const *dat, struct
 	++i; /* NUL */
 	if(isfrom)
 		i <<= 1;
-	hp = su_LOFI_ALLOC(VSTRUCT_SIZEOF(struct a_head,h_name) + i);
+	hp = S(struct a_head*,su_LOFI_ALLOC(VSTRUCT_SIZEOF(struct a_head,h_name) + i));
 	hp->h_next = hp->h_same_older = hp->h_same_newer = NIL;
 
 	if((xhp = dkp->d_sign_head) == NIL){
@@ -2802,7 +2816,7 @@ a_dkim__parse_from(struct a_dkim *dkp, char *store, char const *dat, struct su_m
 		char *buf, *cp, *dp;
 
 		if(dkp->d_pdp->pd_flags & a_F_SIGN_LOCAL_PARTS){
-			buf = su_LOFI_ALLOC(ap->imfa_locpar_len + 1 + ap->imfa_domain_len +1);
+			buf = S(char*,su_LOFI_ALLOC(ap->imfa_locpar_len + 1 + ap->imfa_domain_len +1));
 			cp = su_cs_pcopy(buf, ap->imfa_locpar);
 			*cp++ = '@';
 		}else
@@ -2813,7 +2827,7 @@ jdom_redo:
 		for(any = FAL0, first = TRU1;; first = FAL0){
 			if(buf != NIL)
 				su_cs_pcopy(cp, dp);
-			sp = su_cs_dict_lookup(&dkp->d_pdp->pd_sign, (buf != NIL ? buf : dp));
+			sp = S(struct a_sign*,su_cs_dict_lookup(&dkp->d_pdp->pd_sign, (buf != NIL ? buf : dp)));
 			if(sp != NIL && (first || sp->s_wildcard)){
 				if(dkp->d_pdp->pd_flags & a_F_V)
 					su_log_write(su_LOG_INFO,
@@ -3070,14 +3084,14 @@ jfinal:/* C99 */{
 		u32 obl;
 
 		obl = 0; /* xxx out only */
-		if(!EVP_DigestFinal(mdcp->mdc_md_ctx, S(uc*,ob), &obl)){
+		if(!EVP_DigestFinal(mdcp->mdc_md_ctx, R(uc*,ob), &obl)){
 			su_log_write(su_LOG_CRIT, _("%scannot EVP_DigestFinal(3) %s: %s\n"),
 				dkp->d_log_id, mdcp->mdc_md->md_katp->kat_md_name,
 				ERR_error_string(ERR_get_error(), NIL));
 			f |= a_ERR;
 			goto jleave;
 		}
-		mdcp->mdc_b_diglen = S(u32,EVP_EncodeBlock(S(uc*,mdcp->mdc_b_digdat), S(uc*,ob), S(int,obl)));
+		mdcp->mdc_b_diglen = S(u32,EVP_EncodeBlock(R(uc*,mdcp->mdc_b_digdat), R(uc*,ob), S(int,obl)));
 	}
 	}goto jleave;
 } /* }}} */
@@ -3138,13 +3152,13 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 	i <<= 1;
 	if(i >= a_MILTER_CHUNK_SIZE){
 		i = ALIGN_PAGE(i);
-		mibuf = su_LOFI_ALLOC(i);
+		mibuf = S(char*,su_LOFI_ALLOC(i));
 	}DVL(else i = a_MILTER_CHUNK_SIZE - 1;)
 
-	sigp = S(uc*,mibuf);
+	sigp = R(uc*,mibuf);
 	b64sigp = &sigp[pdp->pd_key_md_maxsize];
 
-	dkim_start = S(char*,&b64sigp[pdp->pd_key_md_maxsize_b64]);
+	dkim_start = R(char*,&b64sigp[pdp->pd_key_md_maxsize_b64]);
 	dkim_var_start = dkim_start;
 	dkim_res_start = &dkim_start[i >> 1]; /* should be sufficient anyway! */
 
@@ -3325,7 +3339,7 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 			uz dl;
 			uc *dp;
 
-			dp = S(uc*,dkim_start);
+			dp = R(uc*,dkim_start);
 			dl = P2UZ(dkim_end - dkim_start);
 
 			if(kp->k_katp->kat_extern_md){
@@ -3369,7 +3383,7 @@ jesifi:
 			char c;
 			char const *sp;
 
-			for(sp = S(char*,b64sigp); (c = *sp++) != '\0'; ++i){
+			for(sp = R(char*,b64sigp); (c = *sp++) != '\0'; ++i){
 				if(P2UZ(cp - cpx) >= 78 - 4){
 					/*cp[0] = '\015'; */cp[0] = '\012'; cp[1] = ' '; cp[2] = ' '; cp += 3;
 					cpx = cp;
@@ -3383,7 +3397,8 @@ jesifi:
 
 		/* Result! */
 		i = P2UZ(cp - dkim_res_start) +1;
-		dkrp = su_LOFI_ALLOC(VSTRUCT_SIZEOF(struct a_dkim_res,dr_dat) + sizeof("DKIM-Signature") -1 + i + 2 +1);
+		dkrp = S(struct a_dkim_res*,su_LOFI_ALLOC(VSTRUCT_SIZEOF(struct a_dkim_res,dr_dat) +
+				sizeof("DKIM-Signature") -1 + i + 2 +1));
 		dkrp->dr_next = dkp->d_sign_res;
 		dkp->d_sign_res = dkrp;
 		dkrp->dr_name_len = sizeof("DKIM-Signature") -1;
@@ -3512,7 +3527,7 @@ a_conf_finish(struct a_pd *pdp){ /* {{{ */
 		u32 i;
 		struct a_sign *sp;
 
-		sp = su_cs_dict_view_data(&dv);
+		sp = S(struct a_sign*,su_cs_dict_view_data(&dv));
 
 		if(!sp->s_anykey)
 			continue;
@@ -3696,7 +3711,7 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 		su_CS_DICT_FOREACH(&pdp->pd_cli, &dv)
 			arr[cnt++] = su_cs_dict_view_key(&dv);
 		arr[cnt] = NIL;
-		su_sort_shell_vpp(S(void const**,arr), cnt, su_cs_toolbox.tb_cmp);
+		su_sort_shell_vpp(R(void const**,arr), cnt, su_cs_toolbox.tb_cmp);
 
 		for(cnt = 0; arr[cnt] != NIL; ++cnt){
 			union {void *vp; uz f;} u;
@@ -3706,15 +3721,15 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 			u.vp = su_cs_dict_lookup(&pdp->pd_cli, spec);
 
 			i = su_cs_len(spec);
-			if(u.f & (a_SRCH_TYPE_IPV4 | a_SRCH_TYPE_IPV6)){
-				ASSERT(u.f & a_SRCH_TYPE_EXACT);
+			if(u.f & (a_SRCH_IPV4 | a_SRCH_IPV6)){
+				ASSERT(u.f & a_SRCH_EXACT);
 				--i;
 				ASSERT(spec[i] == '\06');
 			}
 
 			fprintf(stdout, "client %s, %s%.*s\n",
-				(u.f & a_SRCH_TYPE_VERIFY ? "verify" : (u.f & a_SRCH_TYPE_PASS ? "pass" : "sign")),
-				(u.f & a_SRCH_TYPE_EXACT ? su_empty : "."),
+				(u.f & a_SRCH_VERIFY ? "verify" : (u.f & a_SRCH_PASS ? "pass" : "sign")),
+				(u.f & a_SRCH_EXACT ? su_empty : "."),
 				S(int,i), spec);
 		}
 
@@ -3726,8 +3741,8 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 		struct a_srch *sp;
 
 		for(sp = pdp->pd_cli_ip; sp != NIL; sp = sp->s_next){
-			cp = inet_ntop((sp->s_type & a_SRCH_TYPE_IPV4 ? AF_INET : AF_INET6),
-					(sp->s_type & a_SRCH_TYPE_IPV4 ? S(void*,&sp->s_ip.v4)
+			cp = inet_ntop((sp->s_type & a_SRCH_IPV4 ? AF_INET : AF_INET6),
+					(sp->s_type & a_SRCH_IPV4 ? S(void*,&sp->s_ip.v4)
 						: S(void*,&sp->s_ip.v6)), buf, sizeof(buf));
 			if(cp == NIL){
 				a_conf__err(pdp, _("--client: error displaying IP address\n"));
@@ -3735,8 +3750,8 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 				continue;
 			}
 			fprintf(stdout, "client %s, %s/%u\n",
-				(sp->s_type & a_SRCH_TYPE_VERIFY ? "verify" :
-					(sp->s_type & a_SRCH_TYPE_PASS ? "pass" : "sign")), cp, sp->s_mask);
+				(sp->s_type & a_SRCH_VERIFY ? "verify" :
+					(sp->s_type & a_SRCH_PASS ? "pass" : "sign")), cp, sp->s_mask);
 		}
 	} /* }}} */
 
@@ -3751,14 +3766,14 @@ a_conf_list_values(struct a_pd *pdp){ /* {{{ */
 		su_CS_DICT_FOREACH(&pdp->pd_sign, &dv)
 			arr[cnt++] = su_cs_dict_view_key(&dv);
 		arr[cnt] = NIL;
-		su_sort_shell_vpp(S(void const**,arr), cnt, su_cs_toolbox.tb_cmp);
+		su_sort_shell_vpp(R(void const**,arr), cnt, su_cs_toolbox.tb_cmp);
 
 		for(cnt = 0; arr[cnt] != NIL; ++cnt){
 			struct a_sign *sp;
 			char const *spec;
 
 			spec = arr[cnt];
-			sp = su_cs_dict_lookup(&pdp->pd_sign, spec);
+			sp = S(struct a_sign*,su_cs_dict_lookup(&pdp->pd_sign, spec));
 
 			if(pdp->pd_flags & a_F_VV)
 				fprintf(stdout, "# %s%s%s\n",
@@ -3992,24 +4007,24 @@ a_conf__C(struct a_pd *pdp, char *arg, char const *act_or_nil){ /* {{{ */
 		else{
 			arg = UNCONST(char*,action);
 			action = "sign";
-			act = a_SRCH_TYPE_NONE;
+			act = a_SRCH_NONE;
 			goto jactok;
 		}
 	}
 
 	if(action[1] == '\0'){
 		switch(action[0]){
-		case 's': act = a_SRCH_TYPE_NONE; break;
-		case 'v': act = a_SRCH_TYPE_VERIFY; break;
-		case 'p': act = a_SRCH_TYPE_PASS; break;
+		case 's': act = a_SRCH_NONE; break;
+		case 'v': act = a_SRCH_VERIFY; break;
+		case 'p': act = a_SRCH_PASS; break;
 		default: goto jeact;
 		}
 	}else if(!su_cs_cmp(action, "sign"))
-		act = a_SRCH_TYPE_NONE;
+		act = a_SRCH_NONE;
 	else if(!su_cs_cmp(action, "verify"))
-		act = a_SRCH_TYPE_VERIFY;
+		act = a_SRCH_VERIFY;
 	else if(!su_cs_cmp(action, "pass"))
-		act = a_SRCH_TYPE_PASS;
+		act = a_SRCH_PASS;
 	else{
 jeact:
 		sip.cp = N_("--client: invalid action: %s, %s\n");
@@ -4086,7 +4101,7 @@ jcname:
 
 	pdp->pd_flags |= (a_F_CLI_DOMAINS | (m ? a_F_CLI_DOMAIN_WILDCARDS : a_F_NONE));
 
-	sip.f = a_SRCH_TYPE_SET | act | (m ? 0 : a_SRCH_TYPE_EXACT);
+	sip.f = a_SRCH_SET | act | (m ? 0 : a_SRCH_EXACT);
 	rv = su_cs_dict_replace(&pdp->pd_cli, arg, sip.vp);
 	if(rv > 0){
 		a_conf__err(pdp, _("--client: software error: %s\n"), su_err_doc(rv));
@@ -4172,7 +4187,7 @@ jca:/* C99 */{
 		sip.f = su_cs_len(buf);
 		buf[sip.f] = '\06';
 		buf[++sip.f] = '\0';
-		sip.f = a_SRCH_TYPE_SET | (rv == AF_INET ? a_SRCH_TYPE_IPV4 : a_SRCH_TYPE_IPV6) | a_SRCH_TYPE_EXACT | act;
+		sip.f = a_SRCH_SET | (rv == AF_INET ? a_SRCH_IPV4 : a_SRCH_IPV6) | a_SRCH_EXACT | act;
 		rv = su_cs_dict_replace(&pdp->pd_cli, buf, sip.vp);
 		if(rv > 0){
 			a_conf__err(pdp, _("--client: software error: %s\n"), su_err_doc(rv));
@@ -4193,7 +4208,7 @@ jca:/* C99 */{
 			*pdp->pd_cli_ip_tail = sp;
 		pdp->pd_cli_ip_tail = &sp->s_next;
 		sp->s_next = NIL;
-		sp->s_type = (rv == AF_INET ? a_SRCH_TYPE_IPV4 : a_SRCH_TYPE_IPV6) | act;
+		sp->s_type = (rv == AF_INET ? a_SRCH_IPV4 : a_SRCH_IPV6) | act;
 		sp->s_mask = m;
 		su_mem_copy(&sp->s_ip, &sip, sizeof(sip));
 	}
@@ -4217,7 +4232,7 @@ a_conf__c(struct a_pd *pdp, char *arg){ /* {{{ */
 
 	path = su_cs_sep_c(&arg, ',', FAL0);
 	if(arg == NIL)
-		action = "sign";
+		action = UNCONST(char*,"sign");
 	else{
 		action = path;
 		path = su_cs_trim(arg);
@@ -4398,14 +4413,18 @@ jekey:
 
 			for(xarg = ++cp;; ++katp){
 				if(!su_cs_cmp_case(xarg, katp->kat_md_name)){
-					if(UNLIKELY(katp->kat_md == a_KAT_MD_SHA1) && (pdp->pd_flags & a_F_MODE_TEST)){
+					if(pdp->pd_flags & a_F_MODE_TEST){
 						boole x;
 
 						x = ((pdp->pd_flags & a_F_TEST_ERRORS) != 0);
-						a_conf__err(pdp, _("--key: RFC 8301 forbids usage of SHA-1: %s\n"),
-							arg_orig);
+						if(katp->kat_obs_pkey)
+							a_conf__err(pdp, _("--key: usage of obsolete algo %s: %s\n"),
+								katp->kat_pkey_name, arg_orig);
+						if(katp->kat_obs_md)
+							a_conf__err(pdp, _("--key: usage of obsolete digest %s: %s\n"),
+								katp->kat_md_name, arg_orig);
 						if(!x)
-							pdp->pd_flags ^= a_F_TEST_ERRORS;
+							pdp->pd_flags &= ~a_F_TEST_ERRORS;
 					}
 					break;
 				}
@@ -4517,7 +4536,8 @@ jekeyo:
 				mdp->md_katp = katp;
 			}
 
-			kp = su_ALLOC(VSTRUCT_SIZEOF(struct a_key,k_file) + su_cs_len(xarg) +1 + su_cs_len(sel) +1);
+			kp = S(struct a_key*,su_ALLOC(VSTRUCT_SIZEOF(struct a_key,k_file) +
+					su_cs_len(xarg) +1 + su_cs_len(sel) +1));
 			*lkpp = kp;
 			kp->k_next = NIL;
 			kp->k_md = mdp;
@@ -4828,8 +4848,8 @@ jerr:
 			struct a_sign *sp;
 			uz i;
 
-			sp = su_ALLOC(VSTRUCT_SIZEOF(struct a_sign,s_dom) + su_cs_len(dom) +1 + su_cs_len(xarg)
-					+a_SIGN_MAX_SELECTORS);
+			sp = S(struct a_sign*,su_ALLOC(VSTRUCT_SIZEOF(struct a_sign,s_dom) +
+					su_cs_len(dom) +1 + su_cs_len(xarg) +a_SIGN_MAX_SELECTORS));
 
 			snp = su_cs_pcopy(sp->s_dom, dom) +1;
 
@@ -5215,7 +5235,7 @@ a_misc_dump_doc(up cookie, boole has_arg, char const *sopt, char const *lopt, ch
 		x1 = x3 = su_empty;
 
 	/* I18N: long option[=ARG][ short option [ARG]]: doc */
-	fprintf(S(FILE*,cookie), _("%s%s%s%s%s: %s\n"), lopt, x1, x2, sopt, x3, V_(doc));
+	fprintf(R(FILE*,cookie), _("%s%s%s%s%s: %s\n"), lopt, x1, x2, sopt, x3, V_(doc));
 
 	NYD_OU;
 	return TRU1;
