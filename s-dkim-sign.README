@@ -32,6 +32,8 @@ RELEASES
 
 v0.6.2, 202?-??-??:
   - Fix compilation with LibRESSL and OpenSSL < 3.0.0.
+  - The built-in set of headers includes some extensions more (including
+    ones that "normally" not occur in "main headers").
   - Stuff:
     o Make it compile with C++
     o Generalize management of "obsoletion", and "need separate digest"

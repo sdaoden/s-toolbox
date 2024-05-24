@@ -35,7 +35,7 @@ SUFDEVEL=-Dsu_HAVE_DEBUG -Dsu_HAVE_DEVEL -Dsu_NYD_ENABLE
 SUFOPT=-O1 -g $(SUINC)
 #SUFOPT=-DNDEBUG -O2 $(SUINC)
 SULDF_SUN=
-SULDF_X=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed,--enable-new-dtags -fPIE -pie
+SULDF_X=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed -Wl,--enable-new-dtags -fPIE -pie
 SULDF=$$(x=$$(uname); [ "$${x}" = "$${x\#Sun*}" ] && echo "$(SULDF_X)" || echo "$(SULDF_SUN)")
 SULDFOPT=
 #SULDFOPT=-Wl,-O1,--sort-common

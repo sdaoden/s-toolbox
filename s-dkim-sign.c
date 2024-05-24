@@ -30,7 +30,7 @@
 #define su_FILE s_dkim_sign
 
 /* */
-#define a_VERSION "0.6.1"
+#define a_VERSION "0.6.2"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* --sign max selectors (<> manual) */
@@ -989,18 +989,22 @@ static struct a_key_algo_tuple const a_kata[] = {
 #endif
 };
 
-/* RFC 6376, 5.4.1; extension: author (RFC 9057); remains are senseless.
+/* RFC 6376, 5.4.1 (in order; EXT: extensions); remains are senseless.
  * (We need to go a bit 'round the corner to be able to detect alloc size via sizeof()) */
 #define a_HEADER_SIGSEA__BASE \
-	"author\0" "from\0" /*"reply-to\0"*/ "subject\0" "date\0" "to\0" "cc\0" \
-	"resent-date\0" "resent-from\0" "resent-to\0" "resent-cc\0" \
+	"author\0"/* EXT RFC9057 */ "from\0" /*"reply-to\0" below*/ "subject\0" "date\0" "to\0" "cc\0" \
+	"resent-author\0"/* EXT */ "resent-date\0" "resent-from\0" "resent-sender\0"/* EXT */ \
+		"resent-to\0" "resent-cc\0" "resent-reply-to\0"/* EXT */ "resent-message-id\0"/* EXT */\
 	"in-reply-to\0" "references\0"
-#define a_HEADER_SIGSEA__MIME "mime-version\0" "content-type\0" "content-transfer-encoding\0"
-#define a_HEADER_SIGSEA__EXT "message-id\0" "mail-followup-to\0" "openpgp\0"
 #define a_HEADER_SIGSEA__ML \
 	"list-id\0" \
 	"list-help\0" "list-subscribe\0" "list-unsubscribe\0" \
 	"list-post\0" "list-owner\0" "list-archive\0"
+#define a_HEADER_SIGSEA__MIME \
+	"mime-version\0" "content-type\0" "content-transfer-encoding\0" \
+	"content-disposition\0"/* "EXT" */ \
+	/* EXT: these not in main mail header, *normally* */ "content-id\0" "content-description\0"
+#define a_HEADER_SIGSEA__EXT "message-id\0" "mail-followup-to\0" "openpgp\0"
 
 #define a_HEADER_SIGSEA_SIGN \
 	"reply-to\0" a_HEADER_SIGSEA__BASE a_HEADER_SIGSEA__ML ""
