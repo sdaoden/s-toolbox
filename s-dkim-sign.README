@@ -30,7 +30,10 @@ s-dkim-sign-key-create helper will always be installed there).
 RELEASES
 --------
 
-v0.6.2, 202?-??-??:
+v0.6.2, 2024-05-30:
+  - FIX --client IP with CIDR mask (false code takeover from s-postgray,
+    Coverity.com CID 1586924; unfortunately s-dkim-sign was stuck in
+    some Coverity.com queue since end of April).
   - Fix compilation with LibRESSL and OpenSSL < 3.0.0.
   - The built-in set of headers includes some extensions more (including
     ones that "normally" not occur in "main headers").
@@ -74,6 +77,8 @@ John Levine             johnl at taugh dot com
 Joachim Lindenberg      postfix-users at lindenberg dot one
 A. Jean Mahoney         mahoney at nostrum dot com
 Matus UHLAR - fantomas  uhlar at fantomas dot sk
+
+Coverity.com, project 30153.
 
 Thank you!
 

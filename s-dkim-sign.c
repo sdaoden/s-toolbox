@@ -2188,7 +2188,7 @@ a_milter__macro_parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {
 
 		/* a_conf__C() LCTA()s this works! */
 		su_mem_copy(&sip_x, &sip, sizeof(sip));
-		if(rv == AF_INET){
+		if(af == AF_INET){
 			ip = R(u32*,&sip_x.v4.s_addr);
 			max = 1;
 		}else{
@@ -2213,7 +2213,7 @@ a_milter__macro_parse_(struct a_milter *mip, char *dp, uz dl, boole bltin){ /* {
 			ip[i] &= su_boswap_net_32(xm);
 		}while(++i != max);
 
-		if(((rv == AF_INET) ? su_mem_cmp(&sp->s_ip.v4.s_addr, &sip_x.v4.s_addr, sizeof(sip_x.v4.s_addr))
+		if(((af == AF_INET) ? su_mem_cmp(&sp->s_ip.v4.s_addr, &sip_x.v4.s_addr, sizeof(sip_x.v4.s_addr))
 				: su_mem_cmp(sp->s_ip.v6.s6_addr, sip_x.v6.s6_addr, sizeof(sip_x.v6.s6_addr)))){
 			char const *act;
 
