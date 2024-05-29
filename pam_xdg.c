@@ -6,6 +6,10 @@
  *@ - Uses "rm -rf" to drop per-user directories. XXX Unroll this?  nftw?
  *@   Problems are (also dependent on operating system)
  *@   E[MN]FILE failures, ordering issues, mode changes, mounts, subvolumes..
+ *@
+ *@ Thanks:
+ *@	Jan Beich	(jbeich at FreeBSD dot org)
+ *@	Andre Albsmeier	(mail at fbsd2 dot e4m dot org)
  *
  * Copyright (c) 2021 - 2024 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -202,7 +206,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 	}
 
 	/* We need the user we go for */
-	if((res = pam_get_item(pamh, PAM_USER, (void const**)&user)) != PAM_SUCCESS){
+	if((res = pam_get_item(pamh, PAM_USER, (void const**)&user)) != PAM_SUCCESS || user == NULL || *user == '\0'){
 		user = "<lookup failed>";
 		emsg = "cannot query PAM_USER name";
 		goto jepam;
