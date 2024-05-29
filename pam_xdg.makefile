@@ -22,7 +22,7 @@ XDG_FLAGS = \
 	-D XDG_DATA_DIR_LOCAL=$(XDG_DATA_DIR_LOCAL) \
 	-D XDG_RUNTIME_DIR_OUTER=$(XDG_RUNTIME_DIR_OUTER) \
 
-CC = cc
+CC ?= cc
 CFLAGS = -DNDEBUG \
 	-O2 -W -Wall -Wextra -pedantic \
 	-Wno-uninitialized -Wno-unused-result -Wno-unused-value \
@@ -33,8 +33,9 @@ CFLAGS = -DNDEBUG \
 	-D_FORTIFY_SOURCE=3 \
 	-fcf-protection=full \
 	-fPIE
-LDFLAGS = -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
-	-Wl,--enable-new-dtags -pie -fPIE -shared
+LDF_SUN=
+LDF_X=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed -Wl,--enable-new-dtags -fPIE -pie
+LDFLAGS=$$(x=$$(uname); [ "$${x}" = "$${x\#Sun*}" ] && echo "$(SULDF_X)" || echo "$(SULDF_SUN)") -shared
 LDLIBS = -lpam
 
 INSTALL = install

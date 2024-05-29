@@ -54,6 +54,10 @@
 #ifndef _GNU_SOURCE
 # define _GNU_SOURCE /* Always the same mess */
 #endif
+/* SunOS/Solaris (fdopen()) */
+#ifndef __EXTENSIONS__
+# define __EXTENSIONS__
+#endif
 
 /* 'Want to have the short memory macros */
 #define su_MEM_BAG_SELF (membp)
@@ -1045,10 +1049,12 @@ static char const a_rm_head_names[a_RM_HEAD_MAX][sizeof("X-Mailman-Original-Auth
 		FII(a_RM_HEAD_DKIM) "dkim", FII(a_RM_HEAD_MO_DKIM) "mo-dkim",
 	FII(a_RM_HEAD_AUCY) "aucy", FII(a_RM_HEAD_IP) "ip"
 };
-CTAV(a_RM_HEAD_A_R == 0); CTAV(a_RM_HEAD_MO_A_R == 1);
-CTAV(a_RM_HEAD_A_A_R == 2); CTAV(a_RM_HEAD_A_M_S == 3); CTAV(a_RM_HEAD_A_S == 4);
-CTAV(a_RM_HEAD_DKIM == 5); CTAV(a_RM_HEAD_MO_DKIM == 6);
-CTAV(a_RM_HEAD_AUCY == 7); CTAV(a_RM_HEAD_IP == 8);
+CTAV(a_RM_HEAD_A_R == 0 &&
+	a_RM_HEAD_MO_A_R == 1 &&
+	a_RM_HEAD_A_A_R == 2 &&
+	a_RM_HEAD_A_M_S == 3 && a_RM_HEAD_A_S == 4 &&
+	a_RM_HEAD_DKIM == 5 && a_RM_HEAD_MO_DKIM == 6 &&
+	a_RM_HEAD_AUCY == 7 && a_RM_HEAD_IP == 8);
 
 static char const a_sopts[] = "A:C:c:" "d:" "~:!:" "k:" "M:" "R:" "r:" "S:s:" "t:" "#" "Hh";
 static char const * const a_lopts[] = {

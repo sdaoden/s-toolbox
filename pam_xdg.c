@@ -87,7 +87,7 @@
 #include <security/pam_modules.h>
 #ifdef OPENPAM_VERSION
 # include <security/openpam.h>
-#else
+#elif !defined __solaris__ && !defined __sun
 # include <security/pam_ext.h>
 #endif
 
@@ -123,10 +123,19 @@
 # define a_LOG(HDL, LVL, ...) ((void)HDL, openpam_log(LVL, __VA_ARGS__))
 # define a_LOG_ERR PAM_LOG_ERROR
 # define a_LOG_NOTICE PAM_LOG_NOTICE
-#else
+#elif !defined __solaris__ && !defined __sun
 # define a_LOG(HDL, LVL, ...) pam_syslog(HDL, LVL, __VA_ARGS__)
+#else
+# define a_LOG(HDL, LVL, ...) syslog(LVL, __VA_ARGS__)
+# define a_GET_ITEM_ARG_CAST(X) (void**)X
+#endif
+
+#ifndef a_LOG_ERR
 # define a_LOG_ERR LOG_ERR
 # define a_LOG_NOTICE LOG_NOTICE
+#endif
+#ifndef a_GET_ITEM_ARG_CAST
+# define a_GET_ITEM_ARG_CAST(X) (void const**)X
 #endif
 
 /* Just put it all in one big fun, use two exec paths */
@@ -206,7 +215,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 	}
 
 	/* We need the user we go for */
-	if((res = pam_get_item(pamh, PAM_USER, (void const**)&user)) != PAM_SUCCESS || user == NULL || *user == '\0'){
+	if((res = pam_get_item(pamh, PAM_USER, a_GET_ITEM_ARG_CAST(&user))) != PAM_SUCCESS || user == NULL || *user == '\0'){
 		user = "<lookup failed>";
 		emsg = "cannot query PAM_USER name";
 		goto jepam;

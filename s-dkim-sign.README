@@ -40,6 +40,17 @@ v0.6.2, 2024-05-30:
   - Stuff:
     o Make it compile with C++
     o Generalize management of "obsoletion", and "need separate digest"
+  + Linux (musl, glibc), *BSD:
+    As above.
+  + OpenIndiana 2024:
+    GNU make (gmake(1); or BSD make) must be used, and
+      $ CFLAGS=-O2 gmake CC=gcc \
+        LD_LIBRARY_PATH=/usr/openssl/3.1/lib/amd64:$LD_LIBRARY_PATH \
+        C_INCLUDE_PATH=/usr/openssl/3.1/include:$C_INCLUDE_PATH \
+        SHELL=/usr/xpg4/bin/sh \
+        INSTALL=/usr/gnu/bin/install
+    is needed in the environment for the build.  (Or /1.1/, or wherever
+    it is installed, /opt/csw, /usr/pkg, etc.  SHELL is maybe optional.)
 
 v0.6.1, 2024-05-12:
   - Adds the algorithm big_ed-sha256 which effectively is RFC 8463
@@ -50,16 +61,6 @@ v0.6.1, 2024-05-12:
     accordingly.)
 
 v0.6.0, 2024-05-02: (first release)
-  + Linux (musl, glibc), *BSD:
-    As above.
-  + OpenIndiana 2024:
-    GNU make (gmake(1); or BSD make) must be used, and
-        LD_LIBRARY_PATH=/usr/openssl/3.1/lib/amd64:$LD_LIBRARY_PATH \
-        C_INCLUDE_PATH=/usr/openssl/3.1/include:$C_INCLUDE_PATH \
-        SHELL=/usr/xpg4/bin/sh \
-        INSTALL=/usr/gnu/bin/install
-    is needed in the environment for the build.  (Or /1.1/, or wherever
-    it is installed, /opt/csw, /usr/pkg, etc etc.)
 
 THANKS
 ------

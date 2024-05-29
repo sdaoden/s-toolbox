@@ -1,5 +1,5 @@
 #@ Makefile for s-dkim-sign(8).
-#@	$ make -f s-dkim-sign.makefile DESTDIR=.x CC=clang test install
+#@	$ CFLAGS=-O2 SUFOPT=' ' make DESTDIR=.x CC=clang test install
 #@ NOTE 1: "test" target with sanitizer requires SANITIZER=y make(1) argument.
 #@ NOTE 2: for now requires bundled SU tools that are part of S-nail!!
 
@@ -29,16 +29,19 @@ SULIB_BLD=
 #SULIB_BLD=src/su/.clib.a
 SUINC=
 #SUINC=-I./include
-SUFLVLC=#-std=c89
-SUFDEVEL=-Dsu_HAVE_DEBUG -Dsu_HAVE_DEVEL -Dsu_NYD_ENABLE
-#SUFDEVEL=
-SUFOPT=-O1 -g $(SUINC)
-#SUFOPT=-DNDEBUG -O2 $(SUINC)
+SUFLVLC=-std=c99
+SUFDEVEL=-Dsu_HAVE_DEBUG -Dsu_HAVE_DEVEL -Dsu_NYD_ENABLE -g
+#SUFDEVEL=-DNDEBUG
+SUFOPT?=-O1
+#SUFOPT?=-O2
 SULDF_SUN=
 SULDF_X=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed -Wl,--enable-new-dtags -fPIE -pie
 SULDF=$$(x=$$(uname); [ "$${x}" = "$${x\#Sun*}" ] && echo "$(SULDF_X)" || echo "$(SULDF_SUN)")
-SULDFOPT=
-#SULDFOPT=-Wl,-O1,--sort-common
+SULDFOPT_SUN=
+SULDFOPT_X=
+#SULDFOPT_X=-Wl,-O1 -Wl,--sort-common
+SULDFOPT=$$(x=$$(uname); [ "$${x}" = "$${x\#Sun*}" ] && echo "$(SULDFOPT_X)" || echo "$(SULDFOPT_SUN)")
+
 SUSTRIP=
 #SUSTRIP=strip
 
@@ -48,7 +51,7 @@ LIBEXECDIR = $(DESTDIR)$(PREFIX)/$(LIBEXEC)
 SBINDIR = $(DESTDIR)$(PREFIX)/$(SBIN)
 MANDIR = $(DESTDIR)$(PREFIX)/share/man/man$(MYMANEXT)
 
-SUF = $(SUFDEVEL) \
+SUF = $(SUINC) $(SUFDEVEL) \
 
 SUFWW = #-Weverything
 SUFW = -W -Wall -pedantic $(SUFWW) \
@@ -77,7 +80,7 @@ SUFS = -fPIE \
 CFLAGS += $(SUFLVLC) $(SUF) $(SUFW) $(SUFS) $(SUFOPT)
 LDFLAGS += $(SULDF) $(SULDFOPT)
 
-CC = cc
+CC ?= cc
 INSTALL = install
 LN = ln
 MKDIR = mkdir
