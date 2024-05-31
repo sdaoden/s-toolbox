@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #@ Create and update OAuth2 access tokens (for S-nail).
 #
-# 2022 - 2023 Steffen Nurpmeso <steffen@sdaoden.eu>
+# 2022 - 2024 Steffen Nurpmeso <steffen@sdaoden.eu>
 # Public Domain
 
 # Empty and no builtin configs
@@ -433,14 +433,22 @@ def act_authorize(args, cfg, dt): #{{{
 			b = b + " '" + u + "'"
 			print(b, file=sys.stderr)
 			print('\n    - Shall i invoke this command? [y/else] ', end='', file=sys.stderr)
-			i = input()
+			try:
+				i = input()
+			except KeyboardInterrupt:
+				print('PANIC: interrupt', file=sys.stderr)
+				return EX_TEMPFAIL
 			if i == 'Y' or i == 'y':
 				os.system(b)
 		else:
 			print('   %s' % u, file=sys.stderr)
 
 		print('\nPlease enter authorization [URI?code=]token: ', end='', file=sys.stderr)
-		auth_code = input()
+		try:
+			auth_code = input()
+		except KeyboardInterrupt:
+			print('PANIC: interrupt', file=sys.stderr)
+			return EX_TEMPFAIL
 	elif cfg['flow'] == 'redirect':
 		try:
 			s = socket.socket()
@@ -501,8 +509,6 @@ def act_authorize(args, cfg, dt): #{{{
 		with http.server.HTTPServer((sa, sp), django) as httpd:
 			try:
 				httpd.handle_request()
-			except KeyboardInterrupt:
-				pass
 			except Exception as e:
 				print('PANIC: HTTP server handle: %s' % e, file=sys.stderr)
 				return EX_NOINPUT
@@ -676,12 +682,19 @@ def act_access(args, cfg, dt): #{{{
 		resp = json.loads(urlopen(cfg['token_endpoint'], p).read())
 		if args.debug:
 			print('# Response is %s' % resp, file=sys.stderr)
+	except KeyboardInterrupt:
+		print('PANIC: interrupt', file=sys.stderr)
+		return EX_TEMPFAIL
 	except Exception as e:
 		print('  ! refresh_token response: %s' % e, file=sys.stderr)
 		if args.automatic:
 			return EX_NOINPUT
 		print('  ! Let us try --authorize instead (sleeping 3 seconds)', file=sys.stderr)
-		time.sleep(3)
+		try:
+			time.sleep(3)
+		except KeyboardInterrupt:
+			print('PANIC: interrupt', file=sys.stderr)
+			return EX_TEMPFAIL
 		return act_authorize(args, cfg, dt)
 	return response_check_and_config_save(args, cfg, dt, resp)
 #}}}
