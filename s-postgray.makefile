@@ -71,13 +71,17 @@ SULIB_BLD=
 SUINC=
 #SUINC=-I./include
 SUFLVLC=#-std=c89
-SUFDEVEL=-Dsu_HAVE_DEBUG -Dsu_HAVE_DEVEL -Dsu_NYD_ENABLE
-#SUFDEVEL=
-SUFOPT=-O1 -g $(SUINC)
-#SUFOPT=-DNDEBUG -O2 $(SUINC)
-SULDF=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed,--enable-new-dtags -pie -fPIE
-SULDFOPT=
-#SULDFOPT=-Wl,-O1,--sort-common
+SUFDEVEL=-Dsu_HAVE_DEBUG -Dsu_HAVE_DEVEL -Dsu_NYD_ENABLE -g
+#SUFDEVEL=-DNDEBUG
+SUFOPT?=-O1
+#SUFOPT?=-O2
+SULDF_SUN=
+SULDF_X=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed -Wl,--enable-new-dtags -fPIE -pie
+SULDF=$$(x=$$(uname); [ "$${x}" = "$${x\#Sun*}" ] && echo "$(SULDF_X)" || echo "$(SULDF_SUN)")
+SULDFOPT_SUN=
+SULDFOPT_X=
+#SULDFOPT_X=-Wl,-O1 -Wl,--sort-common
+SULDFOPT=$$(x=$$(uname); [ "$${x}" = "$${x\#Sun*}" ] && echo "$(SULDFOPT_X)" || echo "$(SULDFOPT_SUN)")
 SUSTRIP=
 #SUSTRIP=strip
 
@@ -86,7 +90,7 @@ SUSTRIP=
 LIBEXECDIR = $(DESTDIR)$(PREFIX)/$(LIBEXEC)
 MANDIR = $(DESTDIR)$(PREFIX)/share/man/man$(MYMANEXT)
 
-SUF = $(SUFDEVEL) \
+SUF = $(SUINC) $(SUFDEVEL) \
 
 SUFWW = #-Weverything
 SUFW = -W -Wall -pedantic $(SUFWW) \
@@ -115,7 +119,6 @@ SUFS = -fPIE \
 CFLAGS += $(SUFLVLC) $(SUF) $(SUFW) $(SUFS) $(SUFOPT)
 LDFLAGS += $(SULDF) $(SULDFOPT)
 
-CC = cc
 INSTALL = install
 MKDIR = mkdir
 RM = rm
@@ -292,6 +295,6 @@ d-release:
 	\
 	git reset &&\
 	echo 'now edit makefile and src/su/.makefile, then run' &&\
-	echo 's-nail -Aich -Snofollowup-to -Sreply-to=ich -Ssmime-sign -Sno-on-compose-leave -a ~/src/www.git/steffen.asc -a ~/src/www.git/steffen@sdaoden.eu.pem s-announce@lists.sdaoden.eu'
+	echo 's-nail -Aich -Snofollowup-to -Sreply-to=ich -Ssmime-sign -a ~/src/www.git/steffen.asc s-announce@lists.sdaoden.eu'
 
 # s-mk-mode

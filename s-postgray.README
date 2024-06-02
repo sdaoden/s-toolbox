@@ -29,6 +29,12 @@ are "not handled".
 RELEASES
 --------
 
+v0.8.3, 2024-06-06:
+- FIX: two timeout calculations could overflow 16-bit and cause faulty
+  gray DB entry timeouts thus.
+- Because i liked having those, add new --gc-timeout=0 case which never
+  outdates elder entries except due to --limit excess.
+
 v0.8.2, 2024-02-29:
 - FIX: actually match small --allow/--block CIDR in order!
 - FIX: deal with allow empty from<> aka sender= seen in automated

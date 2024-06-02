@@ -41,7 +41,6 @@ SULDFOPT_SUN=
 SULDFOPT_X=
 #SULDFOPT_X=-Wl,-O1 -Wl,--sort-common
 SULDFOPT=$$(x=$$(uname); [ "$${x}" = "$${x\#Sun*}" ] && echo "$(SULDFOPT_X)" || echo "$(SULDFOPT_SUN)")
-
 SUSTRIP=
 #SUSTRIP=strip
 

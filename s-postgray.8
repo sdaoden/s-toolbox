@@ -15,8 +15,8 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd February 29, 2024
-.ds VV \\%v0.8.2
+.Dd June 6, 2024
+.ds VV \\%v0.8.3
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
 .ds xx \\%s-postgray
@@ -366,11 +366,15 @@ Those which come sooner do not increment
 .
 .Mx Fl delay-progressive
 .It Fl Fl delay-progressive , p
-If set each counted retry doubles
+If set
 .Fl Fl delay-min
-for the next one until
+is multiplied with each counted retry until
 .Fl Fl count
 is reached.
+This mode asserts that the maximum delay
+.Ql delay-min * count
+is smaller than
+.Fl Fl delay-max .
 .
 .Mx Fl focus-sender
 .It Fl Fl focus-sender , f
@@ -413,6 +417,8 @@ Duration until a DB entry is seen as unused and removed.
 Each time an entry is used the timeout is reset.
 This timeout is also an indication for how often a GC shall be
 performed, but GC happens due to circumstances, too.
+The value 0 disables DB entry timeouts: GC then adds a cleanup removal
+pass for (as many) entries that passed the maximum timeout (as needed).
 .
 .Mx Fl help
 .It Fl Fl help , h
