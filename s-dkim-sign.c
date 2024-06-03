@@ -945,7 +945,7 @@ union a_srch_ip{
 
 struct a_srch{
 	struct a_srch *s_next;
-	BITENUM(u32,enum a_srch_type) s_type;
+	BITENUM(u32,a_srch_type) s_type;
 	u32 s_mask; /* CIDR mask */
 	union a_srch_ip s_ip;
 };
