@@ -34,15 +34,27 @@ s-cdda-to-db.pl (plus support) v0.8.0 (2021-06-18):
 
 s-dkim-sign.c (plus support) v0.6.2 (2024-05-30):
    postfix(1)-only RFC 6376/8463 DKIM sign-only milter.
-s-postgray.c (plus support) v0.8.2 (2024-02-29):
+   [.]
+   - FIX --client IP with CIDR mask (false code takeover from s-postgray,
+     Coverity.com CID 1586924; unfortunately s-dkim-sign was stuck in
+     some Coverity.com queue since end of April).
+   - Fix compilation with LibRESSL and OpenSSL < 3.0.0.
+   - The built-in set of headers includes some extensions more (including
+     ones that "normally" not occur in "main headers").
+   - Stuff:
+     o Make it compile with C++
+     o Generalize management of "obsoletion", and "need separate digest"
+
+s-postgray.c (plus support) v0.8.3 (2024-06-06):
    postfix(1) graylisting policy daemon.  See its README + manual for more.
    [* Many, many thanks to Jens Schleusener, and his cron job!]
-   - FIX: allow empty from=<> aka sender=, do not DUNNO those!
-     (Empty from=<> was seen in some automated response emails.)
-   - FIX: actually match small --allow/--block CIDR in order!
-   - --test-mode mentions if CIDR address/mask do not fit.
-   - --resource-file supports line continuation.
-   - fix a bit FreeBSD capsicum call ("no problem").
+   [.]
+   - FIX: two timeout calculations could overflow 16-bit and cause faulty
+     gray DB entry timeouts thus.
+   - Because i liked having those, add new --gc-timeout=0 case which never
+     outdates elder entries except due to --limit excess.
+   - Stuff:
+     o Make it compile with C++
 
 Not for the masses:
 -------------------

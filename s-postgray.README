@@ -34,6 +34,8 @@ v0.8.3, 2024-06-06:
   gray DB entry timeouts thus.
 - Because i liked having those, add new --gc-timeout=0 case which never
   outdates elder entries except due to --limit excess.
+- Stuff:
+  o Make it compile with C++
 
 v0.8.2, 2024-02-29:
 - FIX: actually match small --allow/--block CIDR in order!
