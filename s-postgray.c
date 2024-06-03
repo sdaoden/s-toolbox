@@ -90,8 +90,8 @@
 #define a_OPENLOG_FLAGS_LOGGER (LOG_NDELAY)
 
 /* */
-#define a_DBGIF 1
-# define a_DBG(X) X
+#define a_DBGIF 0
+# define a_DBG(X)
 # define a_DBG2(X)
 # define a_NYD_FILE /* Must be in store-path on at least FreeBSD "/tmp/" */ VAL_NAME ".dat"
 
@@ -101,7 +101,9 @@
 #define _POSIX_C_SOURCE 200809L
 #define _ATFILE_SOURCE
 */
-#define _GNU_SOURCE /* Always the same mess */
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE /* Always the same mess */
+#endif
 
 #include <su/code.h>
 
@@ -198,6 +200,8 @@
 # define NYD2_ENABLE
 #endif
 #include "su/code-in.h"
+
+NSPC_USE(su)
 
 /* defines, enums, types, rodata, bss {{{ */
 
@@ -317,23 +321,27 @@ enum a_answer{
 	a_ANSWER_NODEFER
 };
 
+enum a_srch_type{
+	a_SRCH_TYPE_NONE,
+	a_SRCH_TYPE_IPV4,
+	a_SRCH_TYPE_IPV6
+};
+
 /* Fuzzy search white/blacklist */
+union a_srch_ip{
+	/* (Let us just place that align thing, ok?  I feel better that way) */
+	u64 align;
+	struct in_addr v4;
+	struct in6_addr v6;
+	/* And whatever else is needed to use this */
+	char const *cp;
+};
+
 struct a_srch{
 	struct a_srch *s_next;
-	enum a_srch_type{
-		a_SRCH_TYPE_NONE,
-		a_SRCH_TYPE_IPV4,
-		a_SRCH_TYPE_IPV6
-	} s_type;
+	BITENUM(u32,a_srch_type) s_type;
 	u32 s_mask; /* CIDR mask */
-	union a_srch_ip{
-		/* (Let us just place that align thing, ok?  I feel better that way) */
-		u64 align;
-		struct in_addr v4;
-		struct in6_addr v6;
-		/* And whatever else is needed to use this */
-		char *cp;
-	} s_ip;
+	union a_srch_ip s_ip;
 };
 
 struct a_line{
@@ -1000,11 +1008,16 @@ a_client__req(struct a_pg *pgp){
 	if(pgp->pg_flags & a_F_FOCUS_SENDER){
 		iov[0].iov_base = UNCONST(char*,su_empty);
 		iov[0].iov_len = sizeof(su_empty[0]);
-	}else
-		iov[0].iov_len = su_cs_len(iov[0].iov_base = pgp->pg_r) +1;
-	iov[1].iov_len = su_cs_len(iov[1].iov_base = pgp->pg_s) +1;
-	iov[2].iov_len = su_cs_len(iov[2].iov_base = pgp->pg_ca) +1;
-	iov[3].iov_len = su_cs_len(iov[3].iov_base = pgp->pg_cname) +1;
+	}else{
+		iov[0].iov_base = pgp->pg_r;
+		iov[0].iov_len = su_cs_len(pgp->pg_r) +1;
+	}
+	iov[1].iov_base = pgp->pg_s;
+	iov[1].iov_len = su_cs_len(pgp->pg_s) +1;
+	iov[2].iov_base = pgp->pg_ca;
+	iov[2].iov_len = su_cs_len(pgp->pg_ca) +1;
+	iov[3].iov_base = pgp->pg_cname;
+	iov[3].iov_len = su_cs_len(pgp->pg_cname) +1;
 	iov[4].iov_base = UNCONST(char*,su_empty);
 	iov[4].iov_len = sizeof(su_empty[0]);
 
@@ -3230,7 +3243,7 @@ jcname:
 	pgp->pg_cname = entry;
 	if(a_norm_triple_cname(pgp)){
 		cp = pgp->pg_cname;
-		pgp->pg_cname = sip.cp;
+		pgp->pg_cname = UNCONST(char*,sip.cp);
 
 		if(!(pgp->pg_flags & a_F_MODE_TEST)){
 			union {void *p; up v;} u;
@@ -3245,7 +3258,7 @@ jcname:
 			fprintf(stdout, "%s %s%s\n", me, (m == 0 ? su_empty : "."), cp);
 		}
 	}else{
-		pgp->pg_cname = sip.cp;
+		pgp->pg_cname = UNCONST(char*,sip.cp);
 
 		sip.cp = N_("Invalid domain name: %s\n");
 		cp = UNCONST(char*,su_empty);
@@ -4005,7 +4018,7 @@ a_misc_dump_doc(up cookie, boole has_arg, char const *sopt, char const *lopt, ch
 		x1 = x3 = su_empty;
 
 	/* I18N: long option[=ARG][ short option [ARG]]: doc */
-	fprintf(S(FILE*,cookie), _("%s%s%s%s%s: %s\n"), lopt, x1, x2, sopt, x3, V_(doc));
+	fprintf(R(FILE*,cookie), _("%s%s%s%s%s: %s\n"), lopt, x1, x2, sopt, x3, V_(doc));
 
 	NYD2_OU;
 	return TRU1;
