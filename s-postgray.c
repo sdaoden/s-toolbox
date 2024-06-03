@@ -633,14 +633,14 @@ a_client(struct a_pg *pgp){
 	}
 
 	isstartup = FAL0;
-	rv = su_EX_OK;/* xxx uninit? */
+	UNINIT(rv, su_EX_OK);
 	if(0){
 jretry_all:
 		close(pgp->pg_clima_fd);
 		close(reafd);
 	}
 
-	pgp->pg_clima_fd = reafd = -1;
+	pgp->pg_clima_fd = -1;
 
 	while((reafd = open(a_REA_NAME, O_WRONLY | O_CREAT | a_O_NOFOLLOW | a_O_NOCTTY, 0644)) == -1){
 		if((rv = su_err_by_errno()) == su_ERR_INTR)
@@ -1459,11 +1459,9 @@ jepid:
 static s32
 a_server__reset(struct a_pg *pgp){
 	sigset_t ssn, sso;
-	struct a_master *mp;
 	s32 rv;
+	struct a_master *mp;
 	NYD_IN;
-
-	rv = su_EX_OK;
 
 	sigfillset(&ssn);
 #if defined a_HAVE_SANDBOX_SIGNAL && VAL_OS_SANDBOX > 1
@@ -2267,6 +2265,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 			key[u.z] = '\0';
 
 			d = S(up,ibuf);
+			nmin = S(s16,d & U16_MAX);
 
 			if(UNLIKELY(oe_ne_min < 0)){
 				ASSERT(pgp->pg_gc_timeout == 0);
@@ -2276,7 +2275,6 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 				}
 				nmin = S16_MIN; /* timeout */
 			}else if(LIKELY(oe_ne_min > 0)){
-				nmin = S(s16,d & U16_MAX);
 				if(nmin < 0 && S16_MIN + 1 + oe_ne_min >= nmin){
 jtimeout:
 					if(!(d & 0x80000000) || pgp->pg_gc_timeout != 0){
