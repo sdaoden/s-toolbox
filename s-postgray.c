@@ -2757,19 +2757,11 @@ jgray_set:
 				continue;
 			}
 
-			/* Henceforth assume we cannot grow larger XXX Why? */
-			i = su_cs_dict_count(&mp->m_gray);
-			if(i > 0){
-				pgp->pg_limit = i;
-				if(pgp->pg_limit_delay != 0)
-					pgp->pg_limit_delay = i - (i >> 3);
-			}
-
 			if(!(pgp->pg_flags & a_F_MASTER_NOMEM_LOGGED)){
 				pgp->pg_flags |= a_F_MASTER_NOMEM_LOGGED;
 				/*if(pgp->pg_flags & a_F_V)*/
 					su_log_write(su_LOG_WARN,
-						_("out-of-memory, limit now is %lu (logged once only)"), S(ul,i));
+						_("out-of-memory, --limit too high (logged once only)?"));
 			}
 
 			/* XXX Make limit excess return configurable? REJECT?? */
