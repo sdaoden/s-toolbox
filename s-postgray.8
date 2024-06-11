@@ -145,16 +145,12 @@ mode will generate only one error per message).
 .
 .Bd -literal -offset indent
 #@ /etc/postfix/master.cf:
-\&...
 
 postgray unix - n n - - spawn
   user=ANON-USR
   argv=/usr/libexec/s-postgray -vvR /etc/postgray.rc -c 0
 
-\&...
-
 #@ /etc/postfix/main.cf:
-\&...
 
 default_privs = ANON-USR
 
@@ -227,7 +223,25 @@ smtpd_recipient_restrictions =
    permit
 
 smtpd_policy_service_default_action = DUNNO
-\&...
+
+#@ /etc/s-postgray.rc
+
+store-path /var/lib/pg
+
+delay-min 0
+delay-progressive
+server-timeout 0
+
+# notorious
+allow .gmail.com
+allow .google.com
+allow .outlook.com
+allow .yahoo.com
+allow .yandex.com
+  allow .yandex.net
+
+allow .paypal.com
+  allow .paypal.de
 .Ed
 .
 .
@@ -431,6 +445,7 @@ or
 .It Fl Fl limit Ar no , Fl L Ar no
 Number of DB entries until new ones are not handled,
 effectively turning them into accepted graylist members.
+(DB maintenance tries to achieve a maximum of 88 percent fill-level.)
 Data size depends on actual email (recipient /) sender / client_address
 value data, but is stored compactly; accounting say 256 bytes per
 entry seems to be (overly) plenty.

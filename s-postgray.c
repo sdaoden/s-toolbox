@@ -1,9 +1,9 @@
 /*@ s-postgray(8) - postfix protocol policy (RFC 6647 graylisting) server.
- *@ We assume postfix(1) protocol constraints:
- *@ - No whitespace (at BOL and EOL, nor) in between key, =, and value.
- *@ - Lowercase keys.
+ *@ - We assume postfix(1) protocol constraints:
+ *@   + No whitespace (at BOL and EOL, nor) in between key, =, and value.
+ *@   + Lowercase keys.
  *@ - TODO - -# could check blacklist members are not shadowed by white ones.
- *@ - TODO - But statistics IPs and names could share dict, as for s-dkim-sign.
+ *@ - TODO - But statistics IPs and names could share dict, like for s-dkim-sign.
  *@ - XXX-1 - VERP delimiters are +=, and are not configurable.
  *@ - XXX-2 - We assume numeric IDs in VERP addresses come after the delimiter.
  *@ - XXX-3 - E-Mail addresses must be normalized and stripped of comments etc.
@@ -90,9 +90,9 @@
 #define a_OPENLOG_FLAGS_LOGGER (LOG_NDELAY)
 
 /* */
-#define a_DBGIF 0
-# define a_DBG(X)
-# define a_DBG2(X)
+#define a_DBGIF 1
+# define a_DBG(X) X
+# define a_DBG2(X) X
 # define a_NYD_FILE /* Must be in store-path on at least FreeBSD "/tmp/" */ VAL_NAME ".dat"
 
 /* -- >8 -- 8< -- */
@@ -527,6 +527,7 @@ static void a_server__on_sig(int sig);
 static void a_server__gray_create(struct a_pg *pgp);
 static void a_server__gray_load(struct a_pg *pgp);
 static boole a_server__gray_save(struct a_pg *pgp);
+/* force_deletes: only with !=TRU1 (FAL0, TRUM1..) we care for --limit, otherwise *try* to give away memory */
 static void a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, boole force_deletes,
 		struct su_timespec *tsp_or_nil);
 static char a_server__gray_lookup(struct a_pg *pgp, char const *key);
@@ -2169,13 +2170,13 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 		if(a_misc_os_resource_delay(i))
 			continue;
 		if(i != su_ERR_NOENT)
-			su_log_write(su_LOG_ERR, _("cannot load gray DB in %s: %s"),
+			su_log_write(su_LOG_ERR, _("gray DB cannot load in %s: %s"),
 				pgp->pg_store_path, V_(su_err_doc(-1)));
 		goto jleave;
 	}
 
 	if(!su_pathinfo_fstat(&pi, i)){
-		su_log_write(su_LOG_ERR, _("cannot fstat(2) gray DB in %s: %s"),
+		su_log_write(su_LOG_ERR, _("gray DB cannot fstat(2) in %s: %s"),
 			pgp->pg_store_path, V_(su_err_doc(-1)));
 		p.l = -1;
 	}else if(pi.pi_size > S(u32,S32_MAX))
@@ -2183,7 +2184,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 	else{
 		p.v = mmap(NIL, S(u32,pi.pi_size), PROT_READ, MAP_SHARED, i, 0);
 		if(p.l == -1)
-			su_log_write(su_LOG_ERR, _("cannot mmap(2) gray DB, skip: %s: %s"),
+			su_log_write(su_LOG_ERR, _("gray DB cannot mmap(2), skip in %s: %s"),
 				pgp->pg_store_path, V_(su_err_doc(su_err_by_errno())));
 	}
 
@@ -2228,7 +2229,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 					if(pgp->pg_gc_timeout != 0){
 						if(a_DBGIF || (pgp->pg_flags & a_F_V))
 							su_log_write(su_LOG_INFO,
-								_("skipping timed out gray DB content: %s"),
+								_("gray DB skipping timed out content in %s"),
 								pgp->pg_store_path);
 						goto jleave;
 					}
@@ -2236,7 +2237,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 				}
 			}else{
 				if(a_DBGIF || (pgp->pg_flags & a_F_V))
-					su_log_write(su_LOG_INFO, _("ignoring gray DB future timestamp: %s"),
+					su_log_write(su_LOG_INFO, _("gray DB ignoring future timestamp in %s"),
 						pgp->pg_store_path);
 				xbe = 0;
 			}
@@ -2270,7 +2271,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 			if(UNLIKELY(oe_ne_min < 0)){
 				ASSERT(pgp->pg_gc_timeout == 0);
 				if(!(d & 0x80000000)){
-					a_DBG(su_log_write(su_LOG_DEBUG, "load DB timeout skip non-accepted: %s", key));
+					a_DBG(su_log_write(su_LOG_DEBUG, "gray DB load timeout skip gray: %s", key));
 					goto jskip;
 				}
 				nmin = S16_MIN; /* timeout */
@@ -2279,8 +2280,8 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 jtimeout:
 					if(!(d & 0x80000000) || pgp->pg_gc_timeout != 0){
 						a_DBG(su_log_write(su_LOG_DEBUG,
-							"load skip timeout acc=%d, count=%d min=%hd/%hd: %s",
-							!!(d & 0x80000000), S(ul,(d & 0x7FFF0000) >> 16),
+							"gray DB load skip timeout gray=%d, count=%d min=%hd/%hd: %s",
+							!(d & 0x80000000), S(ul,(d & 0x7FFF0000) >> 16),
 							nmin, oe_ne_min, key);)
 						goto jskip;
 					}
@@ -2291,8 +2292,8 @@ jtimeout:
 					if(-nmin >= pgp->pg_gc_timeout)
 						goto jtimeout;
 					if(!(d & 0x80000000) && -nmin >= pgp->pg_delay_max){
-						a_DBG(su_log_write(su_LOG_DEBUG, "load skip non-accepted timeout: %s",
-							key);)
+						a_DBG(su_log_write(su_LOG_DEBUG,
+							"gray DB load skip gray >delay-max: %s", key);)
 						goto jskip;
 					}
 				}
@@ -2301,13 +2302,13 @@ jtimeout:
 			d = (d & 0xFFFF0000u) | S(u16,nmin);
 			insrv = su_cs_dict_insert(&mp->m_gray, key, R(void*,d));
 			if(insrv > su_ERR_NONE){
-				su_log_write(su_LOG_ERR, _("after out of memory skipping rest of gray DB in %s"),
+				su_log_write(su_LOG_ERR, _("gray DB skipping rest after out of memory in %s"),
 					pgp->pg_store_path);
 				goto jleave;
 			}
-			a_DBG(su_log_write(su_LOG_DEBUG, "load%s: acc=%d, count=%d min=%hd: %s",
+			a_DBG(su_log_write(su_LOG_DEBUG, "gray DB load%s: gray=%d, count=%d min=%hd: %s",
 				(insrv == -1 ? " -> replace" : su_empty),
-				!!(d & 0x80000000), S(ul,(d & 0x7FFF0000) >> 16), nmin, key);)
+				!(d & 0x80000000), S(ul,(d & 0x7FFF0000) >> 16), nmin, key);)
 		}
 
 jskip:
@@ -2315,13 +2316,13 @@ jskip:
 	}
 	if(base != p.c)
 jerr:
-		su_log_write(su_LOG_WARN, _("corrupt gray DB in %s"), pgp->pg_store_path);
+		su_log_write(su_LOG_WARN, _("gray DB corrupt in %s"), pgp->pg_store_path);
 
 	if(a_DBGIF || (pgp->pg_flags & a_F_V)){
 		struct su_timespec ts2;
 
 		su_timespec_sub(su_timespec_current(&ts2), &ts);
-		su_log_write(su_LOG_INFO, _("loaded %lu entries in %lu:%09lu seconds from gray DB in %s"),
+		su_log_write(su_LOG_INFO, _("gray DB loaded %lu entries in %lu:%09lu seconds in %s"),
 			S(ul,su_cs_dict_count(&mp->m_gray)),
 			S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), pgp->pg_store_path);
 	}
@@ -2353,7 +2354,7 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
 			continue;
 		if(a_misc_os_resource_delay(fd))
 			continue;
-		su_log_write(su_LOG_CRIT, _("cannot create gray DB in %s: %s"),
+		su_log_write(su_LOG_CRIT, _("gray DB cannot be created in %s: %s"),
 			pgp->pg_store_path, V_(su_err_doc(su_err_by_errno())));
 		rv = FAL0;
 		goto jleave;
@@ -2387,7 +2388,7 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
 
 		/* (setrlimit(2) sandbox up to that size(, too)) */
 		if(UNLIKELY(S(uz,S32_MAX) - i < xlen)){
-			su_log_write(su_LOG_WARN, _("truncating gray DB near 2GB size in: %s"), pgp->pg_store_path);
+			su_log_write(su_LOG_WARN, _("gray DB truncation near 2GB size in %s"), pgp->pg_store_path);
 			break;
 		}
 
@@ -2396,8 +2397,8 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
 		xlen += i;
 		++cnt;
 
-		a_DBG(su_log_write(su_LOG_DEBUG, "save: acc=%d, count=%lu nmin=%hd: %s",
-			!!(d & 0x80000000), S(ul,(d & 0x7FFF0000) >> 16), S(s16,d & 0xFFFF), su_cs_dict_view_key(&dv));)
+		a_DBG(su_log_write(su_LOG_DEBUG, "gray DB save: gray=%d, count=%lu nmin=%hd: %s",
+			!(d & 0x80000000), S(ul,(d & 0x7FFF0000) >> 16), S(s16,d & 0xFFFF), su_cs_dict_view_key(&dv));)
 	}
 
 jclose:
@@ -2408,7 +2409,7 @@ jclose:
 		struct su_timespec ts2;
 
 		su_timespec_sub(su_timespec_current(&ts2), &ts);
-		su_log_write(su_LOG_INFO, _("saved %lu entries in %lu:%09lu seconds to gray DB in %s"),
+		su_log_write(su_LOG_INFO, _("gray DB saved %lu entries in %lu:%09lu seconds in %s"),
 			S(ul,cnt), S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), pgp->pg_store_path);
 	}
 
@@ -2417,11 +2418,11 @@ jleave:
 	return rv;
 
 jerr:
-	su_log_write(su_LOG_CRIT, _("cannot write gray DB in %s: %s"),
+	su_log_write(su_LOG_CRIT, _("gray DB cannot be written in %s: %s"),
 		pgp->pg_store_path, V_(su_err_doc(su_err_by_errno())));
 
 	if(!a_sandbox_rm_in_store_path(pgp, a_GRAY_DB_NAME))
-		su_log_write(su_LOG_CRIT, _("cannot even unlink corrupt gray DB in %s: %s"),
+		su_log_write(su_LOG_CRIT, _("gray DB cannot even be unlinked in %s %s"),
 			pgp->pg_store_path, V_(su_err_doc(-1)));
 
 	rv = FAL0;
@@ -2429,20 +2430,32 @@ jerr:
 } /* }}} */
 
 static void
-a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, boole force_deletes, /* {{{ */
+a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, boole force_deletes, /* XXX to complicated {{{ */
 		struct su_timespec *tsp_or_nil){
 	enum{
 		a_NONE,
-		a_GC_M1 = 1u<<0,
-		a_GC_ANY = 1u<<1,
-		a_GC_DODEL = 1u<<2,
-		a_GC_BALANCED = 1u<<3
+		a_GC_T0 = 1u<<0, /* --gc-timeout==0 */
+		a_CNT_GT1 = 1u<<1, /* --count>1 */
+
+		a_GC_DEL_FORCE = 1u<<8, /* have to delete anything */
+		a_GC_DEL_TIMEOUT = 1u<<9, /* delete timeout entries */
+		a_GC_DEL_GRAY = 1u<<10, /* delete non-accepted (> delay-max) */
+		a_GC_DEL_MASK = a_GC_DEL_TIMEOUT | a_GC_DEL_GRAY,
+		a_GC_DEL_ANY = 1u<<11, /* */
+
+		a_GC2_DEL_FORCE = 1u<<16,
+		a_GC2_DEL_GRAY = 1u<<17, /* round 2.. */
+		a_GC2_DEL_GRAY_C1 = 1u<<18, /* round two, just drop any gray with count==1 */
+		a_GC2_DEL_GRAY_MASK = a_GC2_DEL_GRAY | a_GC2_DEL_GRAY_C1,
+		a_GC2_DEL_TIMEOUT = 1u<<19, /* look for entries which are adjusted-timeout */
+
+		a_GC_BALANCED = 1u<<24
 	};
 
 	struct su_timespec ts;
 	struct su_cs_dict_view dv;
-	s16 t, oe_ne_min, t_75, t_88;
-	u32 f, xlimit, c_75, c_88;
+	s16 t, oe_ne_min, t_50, t_75, t_88;
+	u32 f, xlimit, c_gray, c_gray_c1, c_50, c_75, c_88, c;
 	struct a_master *mp;
 	NYD_IN;
 	ASSERT(!only_time_tick || !force_deletes);
@@ -2462,7 +2475,7 @@ a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, boole force_d
 		mp->m_epoch = su_timespec_current(tsp_or_nil)->ts_sec;
 		t = pgp->pg_gc_timeout;
 		if(UNLIKELY(tsp_or_nil->ts_sec < xe)){
-			su_log_write(su_LOG_INFO, _("clock jump, gray DB time base (simply) reset"));
+			su_log_write(su_LOG_INFO, _("gray DB resets time base due to clock jump"));
 			xe -= tsp_or_nil->ts_sec;
 			mp->m_base_epoch -= xe; /* easier+cheaper than updating the DB; incorrect, hmm */
 			if(only_time_tick)
@@ -2473,6 +2486,8 @@ a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, boole force_d
 			if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE)))
 				xe /= su_TIME_MIN_SECS;
 			if(LIKELY(xe < S16_MAX - a_DB_CLEANUP_MIN_DELAY_MINS && (t == 0 || xe < t) && only_time_tick)){
+
+/*FIXME*/
 				mp->m_epoch_min = S(s16,xe);
 				goto jleave;
 			}
@@ -2485,11 +2500,13 @@ a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, boole force_d
 					/* Drop content regardless of force_deletes etc, delay should be pretty small.
 					 * Do not call clear(), but keep the node array to shortcut this run */
 					if(a_DBGIF || (pgp->pg_flags & a_F_V))
-						su_log_write(su_LOG_INFO, _("dropping timed out gray DB content: %s"),
+						su_log_write(su_LOG_INFO,
+							_("gray DB dropped due to overall timeout in %s"),
 							pgp->pg_store_path);
 					su_cs_dict_clear_elems(&mp->m_gray);
 					goto jleave;
 				}
+				f |= a_GC_DEL_FORCE | a_GC_DEL_GRAY; /* regardless of only_time_tick! */
 				xe = -1;
 			}
 		}
@@ -2497,36 +2514,45 @@ a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, boole force_d
 		oe_ne_min = S(s16,xe);
 	}
 
-	/* We will iterate all entries and update their time.  We may need to cleanup even, check some thresholds */
+	/* We will iterate all entries and update their time.  We may need to cleanup even, check some thresholds.
+	 * The ~88 percent xlimit is in the --limit manual */
 	xlimit = pgp->pg_limit - (pgp->pg_limit >> 3);
 	if(t == 0){
-		f |= a_GC_M1;
+		f |= a_GC_T0;
 		t = S16_MAX;
 	}
-	c_88 = c_75 = 0;
-	t_88 = t_75 = t;
+
+	c_88 = c_75 = c_50 = c_gray_c1 = c_gray = 0;
+	t_88 = t_75 = t_50 = t;
+	t_50 = t >> 1;
 	t_75 -= t >> 2;
 	t_88 -= t >> 3;
-	if(force_deletes){
-		force_deletes = TRUM1;
-		f |= a_GC_DODEL;
-	}else if(su_cs_dict_count(&mp->m_gray) >= xlimit){
-		force_deletes = TRUM1;
-		f |= a_GC_DODEL;
-	}else if(!only_time_tick)
-		f |= a_GC_DODEL;
+	if(f & a_GC_T0)
+		t = 0;
 
-	a_DBG(su_log_write(su_LOG_DEBUG, "gray gc: start%s epoch=%lu min=%d: dodel=%d / gcm1=%d t88=%hd t75=%hd",
-		(force_deletes ? _(" in force mode") : su_empty), S(ul,mp->m_epoch), mp->m_epoch_min,
-		!!(f & a_GC_DODEL), !!(f & a_GC_M1), t_88, t_75);)
+	c = su_cs_dict_count(&mp->m_gray);
+
+	if(force_deletes)
+		f |= a_GC_DEL_FORCE | a_GC_DEL_TIMEOUT | a_GC_DEL_GRAY;
+	else if(c > xlimit)
+		f |= a_GC_DEL_FORCE | a_GC_DEL_TIMEOUT | a_GC_DEL_GRAY;
+	else if(!only_time_tick)
+		f |= a_GC_DEL_TIMEOUT | a_GC_DEL_GRAY;
+
+	if(pgp->pg_count > 1)
+		f |= a_CNT_GT1;
+
+	a_DBG(su_log_write(su_LOG_DEBUG,
+		"gray DB main5ce: start%s epoch=%lu min=%d count=%u: del=%d/%d t0=%d t=%hd t88=%hd t75=%hd",
+		((f & a_GC_DEL_FORCE) ? _(" in force mode") : su_empty), S(ul,mp->m_epoch), mp->m_epoch_min,
+		c, !!(f & a_GC_DEL_TIMEOUT), !!(f & a_GC_DEL_GRAY), !!(f & a_GC_T0), t, t_88, t_75);)
 	if(a_DBGIF || (pgp->pg_flags & a_F_V))
-		su_log_write(su_LOG_INFO, _("gray DB maintentance: forced=%d size=%u (do-del=%d): %s"),
-			!!force_deletes, su_cs_dict_count(&mp->m_gray), !!(f & a_GC_DODEL), pgp->pg_store_path);
-
+		su_log_write(su_LOG_INFO, _("gray DB main5ce: forced=%d size=%u del-timeout=%d del-gray=%d in %s"),
+			!!(f & a_GC_DEL_FORCE), c, !!(f & a_GC_DEL_TIMEOUT), !!(f & a_GC_DEL_GRAY), pgp->pg_store_path);
 	ASSERT(su_cs_dict_flags(&mp->m_gray) & su_CS_DICT_FROZEN);
-	su_cs_dict_view_setup(&dv, &mp->m_gray);
-jredo:
-	for(su_cs_dict_view_begin(&dv); su_cs_dict_view_is_valid(&dv);){
+
+	/* Round 1: update time, remove "dead" entries; possibly collect statistics for later removal decisions */
+	for(su_cs_dict_view_begin(su_cs_dict_view_setup(&dv, &mp->m_gray)); su_cs_dict_view_is_valid(&dv);){
 		s16 nmin;
 		up d;
 
@@ -2534,94 +2560,188 @@ jredo:
 		nmin = S(s16,d & U16_MAX);
 
 		if(UNLIKELY(oe_ne_min < 0)){
-			ASSERT(f & a_GC_M1);
+			ASSERT(f & a_GC_T0);
+			ASSERT(f & a_GC_DEL_GRAY);
 			if(!(d & 0x80000000)){
-				a_DBG(su_log_write(su_LOG_DEBUG, "maintenance timeout skip non-accepted: %s",
+				a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce timeout skip gray: %s",
 					su_cs_dict_view_key(&dv)));
 				goto jdel;
 			}
 			nmin = S16_MIN; /* timeout */
-		}else if(nmin < 0 && S16_MIN + 1 + oe_ne_min >= nmin)
+		}else if(nmin < 0 && S16_MIN + 1 + oe_ne_min >= nmin) /* -nmin <= S16_MAX! */
 			goto jtimeout;
 		else{
 			nmin -= oe_ne_min;
 			ASSERT(nmin <= 0);
 			if(-nmin >= t){
 jtimeout:
-				/* Normally .pg_delay_max should be far from t, but be safe and check !accepted */
-				if(t != 0 || !(d & 0x80000000)){
+				/* Normally .pg_delay_max should be far from t, but be safe and check gray */
+				if(t != 0 && (f & a_GC_DEL_TIMEOUT)){
 					a_DBG(su_log_write(su_LOG_DEBUG,
-						"maintenance skip timeout acc=%d, count=%d min=%hd/%hd: %s",
-						!!(d & 0x80000000), S(ul,(d & 0x7FFF0000) >> 16), nmin, oe_ne_min,
+						"gray DB main5ce skip timeout gray=%d, count=%lu min=%hd/%hd: %s",
+						!(d & 0x80000000), S(ul,(d & 0x7FFF0000) >> 16), nmin, oe_ne_min,
 						su_cs_dict_view_key(&dv));)
 					goto jdel;
 				}
+				if(!(d & 0x80000000)){
+					if(f & a_GC_DEL_GRAY){
+						a_DBG(su_log_write(su_LOG_DEBUG,
+							"gray DB main5ce skip timeout gray, min=%hd/%hd: %s",
+							nmin, oe_ne_min, su_cs_dict_view_key(&dv));)
+						goto jdel;
+					}
+					d = 0;
+				}
 				nmin = S16_MIN;
 			}else if(!(d & 0x80000000) && -nmin >= pgp->pg_delay_max){
-				a_DBG(su_log_write(su_LOG_DEBUG, "maintenance skip non-accepted timeout: %s",
-					su_cs_dict_view_key(&dv));)
+				if(f & a_GC_DEL_GRAY){
+					a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce skip gray >delay-max: %s",
+						su_cs_dict_view_key(&dv));)
 jdel:
-				if(f & a_GC_DODEL){
-					f |= a_GC_ANY;
+					f |= a_GC_DEL_ANY;
+					a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce del: %s",
+						su_cs_dict_view_key(&dv));)
 					su_cs_dict_view_remove(&dv);
+					--c;
+					continue;
 				}
-				continue;
+				d = 0;
 			}
 		}
 		ASSERT(nmin <= 0);
 
-		if((f & a_GC_DODEL) && nmin == S16_MIN)
-			goto jdel;
+		/* Do not honour GC_DEL_FORCE for these in first run, to not give away possibly prescious entries */
+		if((f & (a_GC_T0 | a_GC_DEL_TIMEOUT)) == (a_GC_T0 | a_GC_DEL_TIMEOUT) && nmin == S16_MIN){
+			if(/*(f & a_GC_DEL_FORCE) ||*/ c > xlimit)
+				goto jdel;
+		}
 
 		d = (d & 0xFFFF0000u) | S(u16,nmin);
 
-		if(force_deletes < FAL0){
-			if(-nmin >= t_88)
+		/* In force mode we may need to give away more entries later on, dependent upon some statistics */
+		if(f & a_GC_DEL_FORCE){
+			ASSERT(nmin != S16_MIN || (f & a_GC_T0));
+			if(nmin == S16_MIN || -nmin >= t_88)
 				++c_88;
 			else if(-nmin >= t_75)
 				++c_75;
+			else if(-nmin >= t_50)
+				++c_50;
+			/*else*/ if(!(d & 0x80000000)){
+				++c_gray;
+				if((f & a_CNT_GT1) && (d & 0x7FFF000u) == (1u << 16))
+					++c_gray_c1;
+			}
 		}
 
-		a_DBG(su_log_write(su_LOG_DEBUG, "gc: keep: acc=%d, min=%hd: %s",
-			!!(d & 0x80000000), nmin, su_cs_dict_view_key(&dv));)
-		d = (d & 0xFFFF0000u) | S(u16,nmin);
+		a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce keep%s: gray=%d, min=%hd: %s",
+			(f & a_GC_DEL_FORCE ? su_empty : " yet"), !(d & 0x80000000), nmin, su_cs_dict_view_key(&dv));)
 		su_cs_dict_view_set_data(&dv, R(void*,d));
 		su_cs_dict_view_next(&dv);
 	}
 
-	/* In force_deletes mode try to give back more, if necessary */
-	if((f & a_GC_M1) || force_deletes < FAL0){
-		u32 c;
+	/* If we are forced to give away more, we have to decide what "good" entries to delete */
+	if(!(f & a_GC_DEL_FORCE))
+		goto jdone;
 
-		f &= ~a_GC_M1;
-		force_deletes = TRU1;
-		oe_ne_min = 0;
+	/* proto doc: care for --limit except for !=TRU1 */
+	ASSERT(c == su_cs_dict_count(&mp->m_gray));
+	if(force_deletes == TRU1)
+		f |= a_GC2_DEL_FORCE;
+	if(!(f & a_GC2_DEL_FORCE) && c <= xlimit)
+		goto jdone;
 
-		c = su_cs_dict_count(&mp->m_gray);
-
-		if(c > xlimit){
-			if(c - c_88 <= xlimit)
-				t = t_88;
-			else if(c - c_75 <= xlimit)
-				t = t_75;
-			else
-				t >>= 1;
-			/* else we cannot help it, really */
-			a_DBG(su_log_write(su_LOG_DEBUG,
-				"gc: forced and still too large (target %u), restart with %s of gc-timeout",
-				xlimit, (t == t_88 ? "88%" : (t == t_75) ? "75%" : "50%"));)
-			goto jredo;
-		}
+	/* With --count>1 prefer deletion of gray entries with count==1 above all */
+	if((f & a_CNT_GT1) && c_gray_c1 > 0){
+		f |= a_GC2_DEL_GRAY_C1;
+		if(!(f & a_GC2_DEL_FORCE) && c - c_gray_c1 <= xlimit)
+			goto jgc2;
+		c -= c_gray_c1;
 	}
 
+	/* Always delete some gray ones when they make up 25% or more of all entries.
+	 * All grays that excessed .gc_delay_max are already gone */
+	if(c_gray >= c >> 2){
+		f |= a_GC2_DEL_GRAY;
+		if(!(f & a_GC2_DEL_FORCE) && (c < c_gray || c - c_gray <= xlimit))
+			goto jgc2;
+		c -= MIN(c, c_gray);
+	}
+
+	f |= a_GC2_DEL_TIMEOUT;
+	if(c < c_88 || c - c_88 <= xlimit){
+		t = t_88;
+		goto jgc2;
+	}
+	if(c < c_75 || c - c_75 <= xlimit){
+		t = t_75;
+		goto jgc2;
+	}
+	if(c < c_50 || c - c_50 <= xlimit){
+		t = t_50;
+		goto jgc2;
+	}
+	t = 0;
+
+jgc2:
+	/* Round 2 removes as much as possible/necessary, nothing else */
+	a_DBG(su_log_write(su_LOG_DEBUG,
+		"gray DB main5ce, STILL (%u target %u), c=%d (88/75=%u/%u) t=%hd (100/88/75/50=%hd/%hd/%hd/%hd->%s) "
+			"gray=%d (%u) gray-cnt-1=%d (%u)",
+		su_cs_dict_count(&mp->m_gray), xlimit,
+		!!(f & a_GC2_DEL_TIMEOUT), c_88, c_75,
+		!!(f & a_GC2_DEL_TIMEOUT),
+			pgp->pg_gc_timeout, t_88, t_75, t_50,
+				(t == t_88 ? "88%" : (t == t_75) ? "75%" : (t == t_50) ? "~50%" : "ANY-ENTRY"),
+		!!(f & a_GC2_DEL_GRAY), c_gray, !!(f & a_GC2_DEL_GRAY_C1), c_gray_c1);)
+
+	c = su_cs_dict_count(&mp->m_gray);
+	for(su_cs_dict_view_begin(&dv); su_cs_dict_view_is_valid(&dv);){
+		s16 nmin;
+		up d;
+
+		d = R(up,su_cs_dict_view_data(&dv));
+		nmin = S(s16,d & U16_MAX);
+		ASSERT(nmin <= 0);
+
+		if(/*(f & a_GC2_DEL_GRAY_MASK) &&*/ !(d & 0x80000000)){
+			if(f & a_GC2_DEL_GRAY){
+				a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce del/2: gray count=%lu min=%hd: %s",
+					S(ul,(d & 0x7FFF0000) >> 16), nmin, su_cs_dict_view_key(&dv));)
+				goto jdel2;
+			}
+			if((f & a_GC2_DEL_GRAY_C1) && (d & 0x7FFF000u) == (1u << 16)){
+				a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce del/2: gray-c1 min=%hd: %s",
+					nmin, su_cs_dict_view_key(&dv));)
+				goto jdel2;
+			}
+		}else if((f & a_GC2_DEL_TIMEOUT) && -nmin >= t){
+			a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce del/2: count=%lu min=%hd: %s",
+				S(ul,(d & 0x7FFF0000) >> 16), nmin, su_cs_dict_view_key(&dv));)
+			goto jdel2;
+		}
+
+		su_cs_dict_view_next(&dv);
+		continue;
+jdel2:
+		f |= a_GC_DEL_ANY;
+		a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce del/2: %s", su_cs_dict_view_key(&dv));)
+		su_cs_dict_view_remove(&dv);
+		--c;
+
+		if(!(f & a_GC2_DEL_FORCE) && c <= xlimit)
+			break;
+	}
+
+jdone:
 	if(mp->m_cleanup_cnt < S16_MAX)
 		++mp->m_cleanup_cnt;
 
 	/* Do not balance when force_deletes mode is on, client is waiting */
-	if((f & a_GC_ANY) && !force_deletes && !only_time_tick &&
+	if((f & a_GC_DEL_ANY) && !force_deletes && !only_time_tick &&
 			mp->m_cleanup_cnt >= pgp->pg_gc_rebalance && pgp->pg_gc_rebalance != 0){
 		su_cs_dict_add_flags(su_cs_dict_balance(&mp->m_gray), su_CS_DICT_FROZEN);
-		a_DBG(su_log_write(su_LOG_DEBUG, "gc: rebalance after %u: count=%u, new size=%u",
+		a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce rebalance after %u: count=%u, new size=%u",
 			mp->m_cleanup_cnt, su_cs_dict_count(&mp->m_gray), su_cs_dict_size(&mp->m_gray));)
 		mp->m_cleanup_cnt = 0;
 		f |= a_GC_BALANCED;
@@ -2632,8 +2752,8 @@ jdel:
 
 		su_timespec_sub(su_timespec_current(&ts2), tsp_or_nil);
 		su_log_write(su_LOG_INFO,
-			_("gray DB maintentance: forced=%d size=%u balanced=%d took %lu:%09lu seconds: %s"),
-			!!force_deletes, su_cs_dict_count(&mp->m_gray), !!(f & a_GC_BALANCED),
+			_("gray DB main5ce forced=%d size=%u balanced=%d took %lu:%09lu seconds in %s"),
+			!!(f & a_GC_DEL_FORCE), su_cs_dict_count(&mp->m_gray), !!(f & a_GC_BALANCED),
 			S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), pgp->pg_store_path);
 	}
 
@@ -2671,7 +2791,7 @@ jretry_nent:
 
 		/* We ran against this wall, try a cleanup if allowed */
 		if(UCMP(16, mp->m_epoch_min, >=, a_DB_CLEANUP_MIN_DELAY_MINS)){
-			a_server__gray_maintenance(pgp, FAL0, TRU1, NIL);
+			a_server__gray_maintenance(pgp, FAL0, TRUM1, NIL);
 			goto jretry_nent;
 		}
 
@@ -2692,7 +2812,7 @@ jretry_nent:
 
 	/* If yet accepted, update it quick */
 	if(d & 0x80000000u){
-		a_DBG(su_log_write(su_LOG_DEBUG, "gray up quick: %s", key);)
+		a_DBG(su_log_write(su_LOG_DEBUG, "gray up quick accepted: %s", key);)
 		ASSERT(rv == a_ANSWER_NODEFER);
 		ASSERT(cnt == 0);
 		goto jgray_set;

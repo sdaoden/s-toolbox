@@ -29,11 +29,15 @@ are "not handled".
 RELEASES
 --------
 
-v0.8.3, 2024-06-06:
+v0.8.3, 2024-06-14:
 - FIX: two timeout calculations could overflow 16-bit and cause faulty
   gray DB entry timeouts thus.
 - Because i liked having those, add new --gc-timeout=0 case which never
   outdates elder entries except due to --limit excess.
+- Gray DB maintenance, when faced with the necessity to remove entries
+  to keep within --limit's, more less dumb (and maybe more secure).
+- No longer auto-adjusts --limit when repeatedly in out-of-memory
+  situations, only logs.
 - Stuff:
   o Make it compile with C++
 
