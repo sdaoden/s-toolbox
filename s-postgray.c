@@ -2179,9 +2179,10 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 		su_log_write(su_LOG_ERR, _("gray DB cannot fstat(2) in %s: %s"),
 			pgp->pg_store_path, V_(su_err_doc(-1)));
 		p.l = -1;
-	}else if(pi.pi_size > S(u32,S32_MAX))
-		goto jerr;
-	else{
+	}else if(pi.pi_size > S(u32,S32_MAX)){
+		su_log_write(su_LOG_ERR, _("gray DB corrupt (too large) in %s"), pgp->pg_store_path);
+		p.l = -1;
+	}else{
 		p.v = mmap(NIL, S(u32,pi.pi_size), PROT_READ, MAP_SHARED, i, 0);
 		if(p.l == -1)
 			su_log_write(su_LOG_ERR, _("gray DB cannot mmap(2), skip in %s: %s"),
@@ -2635,7 +2636,7 @@ jdel:
 		}
 
 		a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce keep%s: gray=%d, min=%hd: %s",
-			(f & a_GC_DEL_FORCE ? su_empty : " yet"), !(d & 0x80000000), nmin, su_cs_dict_view_key(&dv));)
+			(f & a_GC_DEL_FORCE ? " yet" : su_empty), !(d & 0x80000000), nmin, su_cs_dict_view_key(&dv));)
 		su_cs_dict_view_set_data(&dv, R(void*,d));
 		su_cs_dict_view_next(&dv);
 	}
