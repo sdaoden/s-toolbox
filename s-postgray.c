@@ -281,7 +281,7 @@ enum a_flags{
 	a_F_FOCUS_SENDER = 1u<<6, /* -f */
 	a_F_UNTAMED = 1u<<7, /* -u */
 
-	a_F_SETUP_MASK = (1u<<12) - 1,
+	a_F_SETUP_MASK = (1u<<8) - 1,
 
 	a_F_DELAY_PROGRESSIVE = 1u<<13, /* -p */
 	a_F_V = 1u<<14, /* -v */
@@ -2914,7 +2914,7 @@ static void
 a_conf_setup(struct a_pg *pgp, BITENUM(u32,a_avo_flags) f){
 	NYD2_IN;
 
-	pgp->pg_flags &= ~S(uz,a_F_SETUP_MASK);
+	pgp->pg_flags &= S(uz,a_F_SETUP_MASK);
 
 	LCTAV(VAL_4_MASK <= 32);
 	LCTAV(VAL_6_MASK <= 128);
