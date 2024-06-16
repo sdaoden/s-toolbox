@@ -16,15 +16,17 @@ MSG_DEFER='DEFER_IF_PERMIT 4.2.0 Cannot hurry love'
 LC_ALL=C SOURCE_DATE_EPOCH=844221007
 export LC_ALL SOURCE_DATE_EPOCH
 
-s4= s5= s6= s7= s8= s9=
+s4= s5= s6= s7= s8= s9= s10=
 while [ $# -gt 0 ]; do
 	case $1 in
+	1|2|3) ;;
 	4) s4=y;;
 	5) s5=y;;
 	6) s6=y;;
 	7) s7=y;;
 	8) s8=y;;
 	9) s9=y;;
+	10) s10=y;;
 	*)
 		echo >&2 'No such test to skip: '$1
 		echo >&2 'Synopsis: '$0' [:test major number to skip, eg 5:]'
@@ -1060,6 +1062,274 @@ eval $PG -R ./9.rc --status $REDIR
 [ $? -eq 0 ] || exit 101
 
 eval $PG -R ./9.rc --shutdown $REDIR
+[ $? -eq 0 ] || exit 101
+fi
+# }}}
+
+##
+echo '=10: gray --gc-linger (slow: needs sleeping)=' # {{{
+if [ -n "$s10" ]; then
+	echo 'skipping 10'
+else
+
+rm -f *.db
+RCADD='--gc-timeout=5 --count=1 '
+
+cat > ./10.in <<'_EOT'; cat > ./10.x <<_EOT; cat > ./10.y <<_EOT
+recipient=x@y
+sender=y@z
+client_address=127.1.1.0
+client_name=xy
+
+recipient=x@y
+sender=y@z
+client_address=127.1.2.0
+client_name=xy
+
+recipient=x@y
+sender=y@z
+client_address=127.1.3.0
+client_name=xy
+
+recipient=x@y
+sender=y@z
+client_address=127.1.4.0
+client_name=xy
+
+recipient=x@y
+sender=y@z
+client_address=127.1.5.0
+client_name=xy
+
+_EOT
+action=$MSG_DEFER
+
+action=$MSG_DEFER
+
+action=$MSG_DEFER
+
+action=$MSG_DEFER
+
+action=$MSG_DEFER
+
+_EOT
+action=DUNNO
+
+action=DUNNO
+
+action=DUNNO
+
+action=DUNNO
+
+action=DUNNO
+
+_EOT
+
+< ./10.in eval $PG -R ./x.rc $RCADD > ./10.0 $REDIR
+cmp -s ./10.0 ./10.x || exit 101
+[ -n "$REDIR" ] || echo ok 10.0
+
+xsleep 1
+
+< ./10.in eval $PG -R ./x.rc $RCADD > ./10.1 $REDIR
+cmp -s ./10.1 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.1
+
+xsleep 2
+RCADD='--gc-timeout=3'
+printf 'action=%s\n\n' "$MSG_DEFER" > ./10.x
+printf 'action=DUNNO\n\n' > ./10.y
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.1.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.2.1 $REDIR
+cmp -s ./10.2.1 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.2.1
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.2.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.2.2 $REDIR
+cmp -s ./10.2.2 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.2.2
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.3.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.2.3 $REDIR
+cmp -s ./10.2.3 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.2.3
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.4.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.2.4 $REDIR
+cmp -s ./10.2.4 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.2.4
+
+xsleep 2
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.1.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.2.5 $REDIR
+cmp -s ./10.2.5 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.2.5
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.2.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.2.6 $REDIR
+cmp -s ./10.2.6 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.2.6
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.3.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.2.7 $REDIR
+cmp -s ./10.2.7 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.2.7
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.4.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.2.8 $REDIR
+cmp -s ./10.2.8 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.2.8
+
+xsleep 2
+
+#-- Force server restart, gray DB load
+eval $PG -R ./x.rc $RCADD --shutdown $REDIR
+[ $? -eq 0 ] || exit 101
+
+# ..but sleep a bit so times are adjusted!
+xsleep 1
+RCADD='--gc-timeout=2 --gc-linger'
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.5.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.3.2 $REDIR
+cmp -s ./10.3.2 ./10.x || exit 101
+[ -n "$REDIR" ] || echo ok 10.3.2
+
+eval $PG -R ./x.rc $RCADD --shutdown $REDIR
+[ $? -eq 0 ] || exit 101
+
+xsleep 4
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.1.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.4 $REDIR
+cmp -s ./10.4 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.4
+
+eval $PG -R ./x.rc $RCADD --shutdown $REDIR
+[ $? -eq 0 ] || exit 101
+
+xsleep 2
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.1.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.5 $REDIR
+cmp -s ./10.5 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.5
+
+# due to --gc-linger still alive
+eval $PG -R ./x.rc $RCADD --shutdown $REDIR
+[ $? -eq 0 ] || exit 101
+
+xsleep 2
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.1.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.6.1 $REDIR
+cmp -s ./10.6.1 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.6.1
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.2.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.6.2 $REDIR
+cmp -s ./10.6.2 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.6.2
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.3.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.6.3 $REDIR
+cmp -s ./10.6.3 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.6.3
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.4.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.6.4 $REDIR
+cmp -s ./10.6.4 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.6.4
+
+# (that is gone)
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.5.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.6.5 $REDIR
+cmp -s ./10.6.5 ./10.x || exit 101
+[ -n "$REDIR" ] || echo ok 10.6.5
+
+# due to --gc-linger still alive
+eval $PG -R ./x.rc $RCADD --shutdown $REDIR
+[ $? -eq 0 ] || exit 101
+RCADD='--gc-timeout=2'
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.4.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.7 $REDIR
+cmp -s ./10.7 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.7
+
+xsleep 1
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.4.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.8 $REDIR
+cmp -s ./10.8 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.8
+
+xsleep 1
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.4.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.8 $REDIR
+cmp -s ./10.8 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.8
+
+eval $PG -R ./x.rc $RCADD --shutdown $REDIR
+[ $? -eq 0 ] || exit 101
+RCADD='--gc-timeout=2 --gc-linger'
+
+xsleep 2
+
+# (all gone but 4.0)
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.1.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.9.1 $REDIR
+cmp -s ./10.9.1 ./10.x || exit 101
+[ -n "$REDIR" ] || echo ok 10.9.1
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.2.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.9.2 $REDIR
+cmp -s ./10.9.2 ./10.x || exit 101
+[ -n "$REDIR" ] || echo ok 10.9.2
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.3.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.9.3 $REDIR
+cmp -s ./10.9.3 ./10.x || exit 101
+[ -n "$REDIR" ] || echo ok 10.9.3
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.4.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.9.4 $REDIR
+cmp -s ./10.9.4 ./10.y || exit 101
+[ -n "$REDIR" ] || echo ok 10.9.4
+
+printf \
+'recipient=x@y\nsender=y@z\nclient_address=127.1.5.0\nclient_name=xy\n\n'\
+	| eval $PG -R ./x.rc $RCADD > ./10.9.5 $REDIR
+cmp -s ./10.9.5 ./10.x || exit 101
+[ -n "$REDIR" ] || echo ok 10.9.5
+
+eval $PG -R ./x.rc --shutdown $REDIR
 [ $? -eq 0 ] || exit 101
 fi
 # }}}

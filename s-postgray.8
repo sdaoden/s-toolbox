@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd June 6, 2024
+.Dd June 13, 2024
 .ds VV \\%v0.8.3
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
@@ -230,6 +230,7 @@ store-path /var/lib/pg
 
 delay-min 0
 delay-progressive
+gc-linger
 server-timeout 0
 
 # notorious
@@ -416,6 +417,14 @@ An existing DB can be reused: the next load removes recipients, so this
 is one way (DB remains
 .Dq compatible ) .
 .
+.Mx Fl gc-linger
+.It Fl Fl gc-linger
+Use a different GC behaviour: instead of removing
+.Fl Fl gc-timeout
+entries upon the next garbage collection, keep them until the DB excesses
+.Fl Fl limit
+(or memory constraints require DB shrinkage: condition logged).
+.
 .Mx Fl gc-rebalance
 .It Fl Fl gc-rebalance Ar no , Fl G Ar no
 Number of DB GC runs before rebalancing occurs.
@@ -427,12 +436,12 @@ may render rebalancing undesired.
 .
 .Mx Fl gc-timeout
 .It Fl Fl gc-timeout Ar mins , Fl g Ar mins
-Duration until a DB entry is seen as unused and removed.
+Duration until a DB entry is seen as unused and maybe removed.
 Each time an entry is used the timeout is reset.
 This timeout is also an indication for how often a GC shall be
 performed, but GC happens due to circumstances, too.
-The value 0 disables DB entry timeouts: GC then adds a cleanup removal
-pass for (as many) entries that passed the maximum timeout (as needed).
+And see
+.Fl Fl gc-linger .
 .
 .Mx Fl help
 .It Fl Fl help , h
