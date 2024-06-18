@@ -281,31 +281,32 @@ enum a_flags{
 	a_F_FOCUS_SENDER = 1u<<6, /* -f */
 	a_F_UNTAMED = 1u<<7, /* -u */
 
-	a_F_SETUP_MASK = (1u<<8) - 1,
-
-	a_F_DELAY_PROGRESSIVE = 1u<<12, /* -p */
-	a_F_GC_LINGER = 1u<<13, /* --gc-linger */
-	a_F_V = 1u<<14, /* -v */
-	a_F_VV = 1u<<15,
-	a_F_V_MASK = a_F_V | a_F_VV,
-
 	/* */
-	a_F_TEST_ERRORS = 1u<<16,
-	a_F_NOFREE_MSG_ALLOW = 1u<<17,
-	a_F_NOFREE_MSG_BLOCK = 1u<<18,
-	a_F_NOFREE_MSG_DEFER = 1u<<19,
-	a_F_NOFREE_STORE_PATH = 1u<<20,
+	a_F_TEST_ERRORS = 1u<<8,
+	a_F_NOFREE_MSG_ALLOW = 1u<<9,
+	a_F_NOFREE_MSG_BLOCK = 1u<<10,
+	a_F_NOFREE_MSG_DEFER = 1u<<11,
+	a_F_NOFREE_STORE_PATH = 1u<<12,
 
 	/* Client */
 	a_F_CLIENT_NONE,
 
 	/* Master (server-only control block) */
 	a_F_MASTER_NONE = 0,
-	a_F_MASTER_IN_SETUP = 1u<<24, /* First time config evaluation from within server */
-	a_F_MASTER_ACCEPT_SUSPENDED = 1u<<25,
-	a_F_MASTER_LIMIT_EXCESS_LOGGED = 1u<<26,
-	a_F_MASTER_NOMEM_LOGGED = 1u<<27,
-	a_F_MASTER_FLAG = 1u<<30 /* It is the master */
+	a_F_MASTER_IN_SETUP = 1u<<16, /* First time config evaluation from within server */
+	a_F_MASTER_ACCEPT_SUSPENDED = 1u<<17,
+	a_F_MASTER_LIMIT_EXCESS_LOGGED = 1u<<18,
+	a_F_MASTER_NOMEM_LOGGED = 1u<<19,
+	a_F_MASTER_FLAG = 1u<<20, /* It is the master */
+
+	/* Modifieable bits */
+	a_F_SETUP_CONST_MASK = (1u<<24) - 1,
+
+	a_F_DELAY_PROGRESSIVE = 1u<<24, /* -p */
+	a_F_GC_LINGER = 1u<<25, /* --gc-linger */
+	a_F_V = 1u<<26, /* -v */
+	a_F_VV = 1u<<27,
+	a_F_V_MASK = a_F_V | a_F_VV
 };
 
 enum a_avo_flags{
@@ -2931,7 +2932,7 @@ static void
 a_conf_setup(struct a_pg *pgp, BITENUM(u32,a_avo_flags) f){
 	NYD2_IN;
 
-	pgp->pg_flags &= S(uz,a_F_SETUP_MASK);
+	pgp->pg_flags &= S(uz,a_F_SETUP_CONST_MASK);
 
 	LCTAV(VAL_4_MASK <= 32);
 	LCTAV(VAL_6_MASK <= 128);
