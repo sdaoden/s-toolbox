@@ -89,10 +89,11 @@
 #define a_OPENLOG_FLAGS (LOG_NDELAY)
 #define a_OPENLOG_FLAGS_LOGGER (LOG_NDELAY)
 
-/* */
+/* (xxx tests *may* fail with these, make them less tight to pass) */
 #define a_DBGIF 0
 # define a_DBG(X)
 # define a_DBG2(X)
+# define a_DBGM10E(X)
 # define a_NYD_FILE /* Must be in store-path on at least FreeBSD "/tmp/" */ VAL_NAME ".dat"
 
 /* -- >8 -- 8< -- */
@@ -1665,6 +1666,10 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 #endif
 			     if((rv = a_server__wb_setup(pgp, TRU1)) != su_EX_OK)
 				goto jleave;
+			else{
+				a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce: call after config reload");)
+				a_server__gray_maintenance(pgp, FAL0, 0, NIL);
+			}
 		}
 
 		if(UNLIKELY(a_server_usr2)){
@@ -1737,6 +1742,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 		}
 
 		/* epoch housekeeping */
+		a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce: call by event loop");)
 		a_server__gray_maintenance(pgp, TRU1, 0, NIL);
 
 		/* */
@@ -1773,6 +1779,7 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 			i = S(u16,mp->m_epoch_min);
 			if(i >= pgp->pg_gc_timeout >> 1 || (i >= su_TIME_DAY_MINS && /* xxx magic */
 						su_cs_dict_count(&mp->m_gray) >= pgp->pg_limit - (pgp->pg_limit >> 3))){
+				a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce: call by event loop, afterwork");)
 				a_server__gray_maintenance(pgp, FAL0, 0, NIL);
 				continue;
 			}
@@ -2355,6 +2362,7 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
 	boole rv;
 	NYD_IN;
 
+	a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB save enter\n");)
 	rv = TRU1;
 
 	while((fd = a_sandbox_open(pgp, TRU1, a_GRAY_DB_NAME, (O_WRONLY | O_CREAT | O_TRUNC),
@@ -2369,6 +2377,7 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
 		goto jleave;
 	}
 
+	a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce: call by DB save");)
 	a_server__gray_maintenance(pgp, FAL0, 0, &ts);
 	mp = pgp->pg_master;
 	ASSERT(mp->m_base_epoch == mp->m_epoch);
@@ -2406,7 +2415,7 @@ a_server__gray_save(struct a_pg *pgp){ /* {{{ */
 		xlen += i;
 		++cnt;
 
-		a_DBG(su_log_write(su_LOG_DEBUG, "gray DB save: gray=%d (count=%lu) nmin=%hd: %s",
+		a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB save: gray=%d (count=%lu) nmin=%hd: %s",
 			!(d & 0x80000000), S(ul,(d & 0x7FFF0000) >> 16), S(s16,d & 0xFFFF), su_cs_dict_view_key(&dv));)
 	}
 
@@ -2423,6 +2432,7 @@ jclose:
 	}
 
 jleave:
+	a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB save leave\n");)
 	NYD_OU;
 	return rv;
 
@@ -2477,6 +2487,10 @@ a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, u32 xlimit, s
 	if(pgp->pg_flags & a_F_GC_LINGER)
 		f |= a_GC_LINGER;
 
+	a_DBGM10E(su_log_write(su_LOG_DEBUG,
+		"gray DB main5ce enter: only_time_tick=%d xlimit=%u linger=%d count=%u\n",
+		only_time_tick, xlimit, !!(f & a_GC_LINGER), su_cs_dict_count(&mp->m_gray));)
+
 	/* Update our epoch XXX-MONO */
 	/* C99 */{
 		s64 xe;
@@ -2497,9 +2511,10 @@ a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, u32 xlimit, s
 			xe = tsp_or_nil->ts_sec - mp->m_base_epoch;
 			if(LIKELY(!su_state_has(su_STATE_REPRODUCIBLE)))
 				xe /= su_TIME_MIN_SECS;
-			if(LIKELY(xe < S16_MAX - a_DB_CLEANUP_MIN_DELAY_MINS &&
-					(xe < t || (f & a_GC_LINGER)) && only_time_tick)){
-/*FIXME*/
+			/* If at all possible, do nothing but tracking as time goes */
+			if(LIKELY(only_time_tick && xe < S16_MAX - a_DB_CLEANUP_MIN_DELAY_MINS &&
+					(xe < t || (f & a_GC_LINGER)))){
+				a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce: only_time_tick, bye");)
 				mp->m_epoch_min = S(s16,xe);
 				goto jleave;
 			}
@@ -2508,9 +2523,11 @@ a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, u32 xlimit, s
 			mp->m_epoch_min = 0;
 
 			if(xe >= t){
-				if(!(f & a_F_GC_LINGER)){
+				if(!(f & a_GC_LINGER)){
 					/* Drop content regardless of xlimit etc, delay should be pretty small.
 					 * Do not call clear(), but keep the node array to shortcut this run */
+					a_DBGM10E(su_log_write(su_LOG_DEBUG,
+						"gray DB main5ce: overall timeout, drop DB");)
 					if(a_DBGIF || (pgp->pg_flags & a_F_V))
 						su_log_write(su_LOG_INFO,
 							_("gray DB dropped due to overall timeout in %s"),
@@ -2518,7 +2535,8 @@ a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, u32 xlimit, s
 					su_cs_dict_clear_elems(&mp->m_gray);
 					goto jleave;
 				}
-				f |= a_GC_DEL_FORCE | a_GC_DEL_GRAY; /* regardless of only_time_tick! */
+				/* If gc-timeout is due, delete regardless of only_time_tick xxx no force mode?? */
+				f |= /*a_GC_DEL_FORCE |*/ a_GC_DEL_TIMEOUT | a_GC_DEL_GRAY;
 				xe = -1;
 			}
 		}
@@ -2549,13 +2567,14 @@ a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, u32 xlimit, s
 	if(pgp->pg_count > 1)
 		f |= a_CNT_GT1;
 
-	a_DBG(su_log_write(su_LOG_DEBUG,
-		"gray DB main5ce: start%s epoch=%lu min=%d count=%u del=%d/%d linger=%d t/88/75/50=%hd/%hd/%hd/%hd",
-		((f & a_GC_DEL_FORCE) ? _(" in force mode") : su_empty), S(ul,mp->m_epoch), mp->m_epoch_min,
-		c, !!(f & a_GC_DEL_TIMEOUT), !!(f & a_GC_DEL_GRAY), !!(f & a_GC_LINGER), t, t_88, t_75, t_50);)
+	a_DBGM10E(su_log_write(su_LOG_DEBUG,
+		"gray DB main5ce: start%s count=%u target=%u epoch=%lu min=%d del=%d/%d linger=%d "
+			"t/88/75/50=%hd/%hd/%hd/%hd",
+		((f & a_GC_DEL_FORCE) ? _(" in force mode") : su_empty), c, xlimit, S(ul,mp->m_epoch), mp->m_epoch_min,
+		!!(f & a_GC_DEL_TIMEOUT), !!(f & a_GC_DEL_GRAY), !!(f & a_GC_LINGER), t, t_88, t_75, t_50);)
 	if(a_DBGIF || (pgp->pg_flags & a_F_V))
 		su_log_write(su_LOG_INFO,
-			_("gray DB main5ce: size=%u target=%u force-del=%d del-timeout=%d del-gray=%d in %s"),
+			_("gray DB main5ce: count=%u target=%u force-del=%d del-timeout=%d del-gray=%d in %s"),
 			c, xlimit, !!(f & a_GC_DEL_FORCE), !!(f & a_GC_DEL_TIMEOUT), !!(f & a_GC_DEL_GRAY),
 			pgp->pg_store_path);
 	ASSERT(su_cs_dict_flags(&mp->m_gray) & su_CS_DICT_FROZEN);
@@ -2574,7 +2593,7 @@ a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, u32 xlimit, s
 			ASSERT(f & a_GC_LINGER);
 			ASSERT(f & a_GC_DEL_GRAY);
 			if(!(d & 0x80000000)){
-				a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce timeout gray: %s",
+				a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce timeout gray: %s",
 					su_cs_dict_view_key(&dv)));
 				goto jgray;
 			}
@@ -2595,8 +2614,8 @@ a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, u32 xlimit, s
 jtimeout:
 					ASSERT(d & 0x80000000);
 					if(!(f & a_GC_LINGER) && (f & a_GC_DEL_TIMEOUT)){
-						a_DBG(su_log_write(su_LOG_DEBUG,
-							"gray DB main5ce timeout min=%hd/%hd: %s",
+						a_DBGM10E(su_log_write(su_LOG_DEBUG,
+							"gray DB main5ce timeout min=%hd (%hd): %s",
 							nmin, oe_ne_min, su_cs_dict_view_key(&dv));)
 						goto jdel;
 					}
@@ -2605,11 +2624,11 @@ jtimeout:
 			}else if(-nmin >= pgp->pg_delay_max){
 jgray:
 				if(f & a_GC_DEL_GRAY){
-					a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce gray >delay-max: %s",
+					a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce gray >delay-max: %s",
 						su_cs_dict_view_key(&dv));)
 jdel:
 					f |= a_GC_DEL_ANY;
-					a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce delete/1: %s",
+					a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce delete/1: %s",
 						su_cs_dict_view_key(&dv));)
 					su_cs_dict_view_remove(&dv);
 					--c;
@@ -2638,7 +2657,7 @@ jdel:
 				++c_50;
 		}
 
-		a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce keep%s: gray=%d, min=%hd: %s",
+		a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce keep%s: gray=%d, min=%hd: %s",
 			(f & a_GC_DEL_FORCE ? " yet" : su_empty), !(d & 0x80000000), nmin, su_cs_dict_view_key(&dv));)
 		su_cs_dict_view_set_data(&dv, R(void*,d));
 		su_cs_dict_view_next(&dv);
@@ -2697,7 +2716,7 @@ jdel:
 
 jgc2:
 	c = su_cs_dict_count(&mp->m_gray);
-	a_DBG(su_log_write(su_LOG_DEBUG,
+	a_DBGM10E(su_log_write(su_LOG_DEBUG,
 		"gray DB main5ce, STILL (%u -> %u); "
 			"cnts=88/75/50=%u/%u/%u (del=%d); linger=%u (del=%d); "
 			"times=100/88/75/50=%hd/%hd/%hd/%hd=%hd; "
@@ -2717,24 +2736,24 @@ jgc2:
 		if(LIKELY(d & 0x80000000)){
 			if(f & a_GC2_DEL_LINGER){
 				if(nmin == S16_MIN){
-					a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce del/TIME: lingers: %s",
+					a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce del/TIME: lingers: %s",
 						su_cs_dict_view_key(&dv));)
 					goto jdel2;
 				}
 			}
 			if(f & a_GC2_DEL_TIMEOUT){
 				if(-nmin >= t){
-					a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce del/TIME: min=%hd>%hd: %s",
+					a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce del/TIME: min=%hd>%hd: %s",
 						nmin, t, su_cs_dict_view_key(&dv));)
 					goto jdel2;
 				}
 			}
 		}else if(f & a_GC2_DEL_GRAY){
-			a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce del/GRAY: count=%lu (min=%hd): %s",
+			a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce del/GRAY: count=%lu (min=%hd): %s",
 				S(ul,(d & 0x7FFF0000) >> 16), nmin, su_cs_dict_view_key(&dv));)
 			goto jdel2;
 		}else if((f & a_GC2_DEL_GRAY_C1) && (d & 0x7FFF000u) == (1u << 16)){
-			a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce del/GRAY: C=1 min=%hd: %s",
+			a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce del/GRAY: C=1 min=%hd: %s",
 				nmin, su_cs_dict_view_key(&dv));)
 			goto jdel2;
 		}
@@ -2743,7 +2762,7 @@ jgc2:
 		continue;
 jdel2:
 		f |= a_GC_DEL_ANY;
-		a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce delete/2: %s", su_cs_dict_view_key(&dv));)
+		a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce delete/2: %s", su_cs_dict_view_key(&dv));)
 		su_cs_dict_view_remove(&dv);
 		--c;
 
@@ -2759,7 +2778,7 @@ jdone:
 	if((f & a_GC_DEL_ANY) && !(f & a_XLIMIT) && !only_time_tick &&
 			mp->m_cleanup_cnt >= pgp->pg_gc_rebalance && pgp->pg_gc_rebalance != 0){
 		su_cs_dict_add_flags(su_cs_dict_balance(&mp->m_gray), su_CS_DICT_FROZEN);
-		a_DBG(su_log_write(su_LOG_DEBUG, "gray DB main5ce rebalance after %u: count=%u, new size=%u",
+		a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce rebalance after %u: count=%u, new size=%u",
 			mp->m_cleanup_cnt, su_cs_dict_count(&mp->m_gray), su_cs_dict_size(&mp->m_gray));)
 		mp->m_cleanup_cnt = 0;
 		f |= a_GC_BALANCED;
@@ -2770,12 +2789,14 @@ jdone:
 
 		su_timespec_sub(su_timespec_current(&ts2), tsp_or_nil);
 		su_log_write(su_LOG_INFO,
-			_("gray DB main5ce forced=%d size=%u balanced=%d/%hu took %lu:%09lu seconds in %s"),
+			_("gray DB main5ce forced=%d count=%u balanced=%d/%hu took %lu:%09lu seconds in %s"),
 			!!(f & a_GC_DEL_FORCE), su_cs_dict_count(&mp->m_gray), !!(f & a_GC_BALANCED), mp->m_cleanup_cnt,
 			S(ul,ts2.ts_sec), S(ul,ts2.ts_nano), pgp->pg_store_path);
 	}
 
 jleave:
+	a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce leave epoch_min=%hd base_epoch=%lu epoch=%lu count=%u\n",
+		mp->m_epoch_min, mp->m_base_epoch, mp->m_epoch, su_cs_dict_count(&mp->m_gray));)
 	NYD_OU;
 } /* }}} */
 
@@ -2809,6 +2830,7 @@ jretry_nent:
 
 		/* We ran against this wall, try a cleanup if allowed */
 		if(UCMP(16, mp->m_epoch_min, >=, a_DB_CLEANUP_MIN_DELAY_MINS)){
+			a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce: call by insert, limit excess");)
 			a_server__gray_maintenance(pgp, FAL0, (pgp->pg_limit - (pgp->pg_limit >> 3)), NIL);
 			goto jretry_nent;
 		}
@@ -2891,6 +2913,7 @@ jgray_set:
 				a_DBG(su_log_write(su_LOG_DEBUG, "out of OS memory resources, trying gray DB cleanup");)
 				i = su_cs_dict_count(&mp->m_gray);
 				i = i - (i >> 2); /* xxx config?? */
+				a_DBGM10E(su_log_write(su_LOG_DEBUG, "gray DB main5ce: call by insert, enomem");)
 				a_server__gray_maintenance(pgp, FAL0, i, NIL);
 			}
 

@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd June 13, 2024
+.Dd June 18, 2024
 .ds VV \\%v0.8.3
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
@@ -110,11 +110,12 @@ Dependent upon the operating-system sandbox, and
 .Fl Fl untamed ,
 sending a
 .Ql HUP
-signal will re-evaluate the configuration;
+signal will re-evaluate the configuration, and update the graylist
+database accordingly;
 if supported, it may not be possible to change or add file paths
 (without violating security constraints), and modifying
 .Fl Fl limit Ns
-s can never be hard-reflected by the (already entered) sandbox.
+s can never be hard-reflected by the (already entered) sandbox;
 Sending
 .Ql TERM
 initiates a server shutdown, and causes active clients to terminate.
