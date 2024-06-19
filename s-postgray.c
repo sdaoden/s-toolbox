@@ -4424,8 +4424,10 @@ a_sandbox__rlimit(struct a_pg *pgp, boole server){
 
 	rl.rlim_cur = rl.rlim_max = 0;
 
+# if !su_OS_SOLARIS && !su_OS_SUNOS /* XXX ifdef RLIMIT_NPROC? */
 	if(setrlimit(RLIMIT_NPROC, &rl) == -1)
 		a_sandbox__err("setrlimit", "NPROC", 0);
+# endif
 
 	if(!server){
 # ifndef su_NYD_ENABLE

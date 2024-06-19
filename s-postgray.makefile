@@ -75,7 +75,7 @@ SUFDEVEL=-Dsu_HAVE_DEBUG -Dsu_HAVE_DEVEL -Dsu_NYD_ENABLE -g
 #SUFDEVEL=-DNDEBUG
 SUFOPT?=-O1
 #SUFOPT?=-O2
-SULDF_SUN=
+SULDF_SUN=-lsocket
 SULDF_X=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed -Wl,--enable-new-dtags -fPIE -pie
 SULDF=$$(x=$$(uname); [ "$${x}" = "$${x\#Sun*}" ] && echo "$(SULDF_X)" || echo "$(SULDF_SUN)")
 SULDFOPT_SUN=
