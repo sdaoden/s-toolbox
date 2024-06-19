@@ -135,8 +135,8 @@
 #   warning uclibc never tried, turning off OS sandbox
 #   undef VAL_OS_SANDBOX
 #   define VAL_OS_SANDBOX 0
-#  elif !defined __i386 && !defined __x86_64
-#   warning Linux seccomp is a maintenance mess, turning it off on non-x86 platform
+#  elif !defined __x86_64
+#   warning Linux seccomp is a maintenance mess, turning it off on non-x86_64 platform
 #   undef VAL_OS_SANDBOX
 #   define VAL_OS_SANDBOX 0
 #  else
