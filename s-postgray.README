@@ -30,78 +30,84 @@ RELEASES
 --------
 
 v0.8.3, 2024-06-21:
-- FIX: configuration reload stripped wrong flag mask.
-- FIX: two timeout calculations could overflow 16-bit and cause faulty
-  gray DB entry timeouts thus.
-- Because i liked having those, add new --gc-linger behaviour which
-  never outdates elder entries except due to --limit excess.
-- Gray DB maintenance, when faced with the necessity to remove entries
-  to keep within --limit's, more less dumb (and maybe more secure).
-- No longer auto-adjusts --limit when repeatedly in out-of-memory
-  situations, only logs.
-- Stuff:
-  o Make it compile with C++
+  - FIX: configuration reload stripped wrong flag mask.
+  - FIX: two timeout calculations could overflow 16-bit and cause faulty
+    gray DB entry timeouts thus.
+  - Because i liked having those, add new --gc-linger behaviour which
+    never outdates elder entries except due to --limit excess.
+  - Gray DB maintenance, when faced with the necessity to remove entries
+    to keep within --limit's, more less dumb (and maybe more secure).
+  - No longer auto-adjusts --limit when repeatedly in out-of-memory
+    situations, only logs.
+  - Stuff:
+    o Make it compile with C++
+    o Ported to Solaris (OpenIndiana)
+
+  + Linux (musl, glibc), *BSD:
+    As above.
+  + OpenIndiana 2024:
+    GNU make (gmake(1); or BSD make) must be used.
 
 v0.8.2, 2024-02-29:
-- FIX: actually match small --allow/--block CIDR in order!
-- FIX: deal with allow empty from<> aka sender= seen in automated
-  responses: failing them with DUNNO was suboptimal at best.
-- --test-mode mentions if CIDR address/mask do not fit.
-- --resource-file supports line continuation.
-- fix some exit status codes which uses _ERR_ not _EX_ constants.
-- Disable Linux seccomp on non-x86: each platform needs specifics, and
-  seccomp is de facto not needed at all in the second line, anyway.
-- Linux seccomp: no need for open(2)/openat(2) in client.
-- FreeBSD capsicum: used CAP1|CAP2 not CAP1,CAP2 for _rights_init().
-  Worked in practice though (because its implementations'
-  right_to_index() is identical, and then OR simply assigns it both).
+  - FIX: actually match small --allow/--block CIDR in order!
+  - FIX: deal with allow empty from<> aka sender= seen in automated
+    responses: failing them with DUNNO was suboptimal at best.
+  - --test-mode mentions if CIDR address/mask do not fit.
+  - --resource-file supports line continuation.
+  - fix some exit status codes which uses _ERR_ not _EX_ constants.
+  - Disable Linux seccomp on non-x86: each platform needs specifics, and
+    seccomp is de facto not needed at all in the second line, anyway.
+  - Linux seccomp: no need for open(2)/openat(2) in client.
+  - FreeBSD capsicum: used CAP1|CAP2 not CAP1,CAP2 for _rights_init().
+    Worked in practice though (because its implementations'
+    right_to_index() is identical, and then OR simply assigns it both).
 
 v0.8.1, 2023-04-19:
-* Many, many thanks to Jens Schleusener, and his cron job!
-+ Add --status to query server status.
-+ Server PID is now stored in the lock file (renamed to VAL_NAME.pid),
-  and --startup now waits for server response (like --shutdown does).
-+ Add sandboxing: generic setrlimit(2) based, plus an OS-dependent
-  strict sandboxing that can be disabled via --untamed.  (Because it may
-  require an additional, internally managed, logger process, and may be
-  incompatible to (future) C library changes (see makefile).)
-  (On OpenBSD configured file paths are now even fixed byte-by-byte.)
-- FIX memory map return check.
-- FIX possible error path crash during program startup (missing fmt arg).
-- fix: add missing su_log_set_level() and make --verbose work for users!
-- fix: --startup was missing short -@ equivalent.
-- fix: --test-mode did not include "focus-sender", "once" and "verbose".
-- fix: VAL_MSG_* could not be overwritten on make(1) command line.
-- Typos: treshold->threshold.  (Jens Schleusener)
-- (Source code style change spaces/80 -> tab/120+, saves ~12KB; etc.)
+  * Many, many thanks to Jens Schleusener, and his cron job!
+  + Add --status to query server status.
+  + Server PID is now stored in the lock file (renamed to VAL_NAME.pid),
+    and --startup now waits for server response (like --shutdown does).
+  + Add sandboxing: generic setrlimit(2) based, plus an OS-dependent
+    strict sandboxing that can be disabled via --untamed.  (Because it may
+    require an additional, internally managed, logger process, and may be
+    incompatible to (future) C library changes (see makefile).)
+    (On OpenBSD configured file paths are now even fixed byte-by-byte.)
+  - FIX memory map return check.
+  - FIX possible error path crash during program startup (missing fmt arg).
+  - fix: add missing su_log_set_level() and make --verbose work for users!
+  - fix: --startup was missing short -@ equivalent.
+  - fix: --test-mode did not include "focus-sender", "once" and "verbose".
+  - fix: VAL_MSG_* could not be overwritten on make(1) command line.
+  - Typos: treshold->threshold.  (Jens Schleusener)
+  - (Source code style change spaces/80 -> tab/120+, saves ~12KB; etc.)
 
 v0.8.0, 2022-09-16:
-- New --startup mode to allow it to be driven as a standalone daemon.
-- INCOMPAT!  The gray DB name did not adapt the makefile's VAL_NAME yet.
-- Client no longer exits after five unsuccessful connection attempts.
-  Instead try as long as postfix is willing to let it.
-- "Fixes a miss": if on server startup the socket yet existed (no
-  proper shutdown on last run), startup failed and the missing policy
-  server would cause postfix to refuse acting.
-  Whereas "rm -f PG-SOCKET" in a postfix-startup-script avoids this,
-  it was never announced to be necessary, so henceforth automatize this.
-- Robustness against MFILE,NFILE,NOBUF,NOMEM in file/socket open paths.
-- Fixes some oddities, and clarifies documentation.
+  - New --startup mode to allow it to be driven as a standalone daemon.
+  - INCOMPAT!  The gray DB name did not adapt the makefile's VAL_NAME yet.
+  - Client no longer exits after five unsuccessful connection attempts.
+    Instead try as long as postfix is willing to let it.
+  - "Fixes a miss": if on server startup the socket yet existed (no
+    proper shutdown on last run), startup failed and the missing policy
+    server would cause postfix to refuse acting.
+    Whereas "rm -f PG-SOCKET" in a postfix-startup-script avoids this,
+    it was never announced to be necessary, so henceforth automatize this.
+  - Robustness against MFILE,NFILE,NOBUF,NOMEM in file/socket open paths.
+  - Fixes some oddities, and clarifies documentation.
 
 v0.7.0, 2022-06-07:
-- An iteration that fixes some oddities, and clarifies documentation.
-  (The example configuration is also better.)
-- Bug fixes:
-  . -v and -p were not reset for reload, thus fixated once set.
-  . -b and -B were not command-line-parsed by the server, only in
-    --test-mode (driven by client); usage in resource-file ok, too.
-- --test-mode now outputs a normalized resource file.
-- New --focus-sender approach which i like better.
-  [I personally now use --focus-sender mode with --count=1,
-  --msg-allow=permit and --msg-defer='DEFER 4.2.0 blabla',
-  and reject_unverified_sender thereafter.]
-- New --msg-{allow,block}, and --msg-defer for misnamed --defer-msg,
-  which is kept for compatibility.
+  - An iteration that fixes some oddities, and clarifies documentation.
+    (The example configuration is also better.)
+  - Bug fixes:
+    . -v and -p were not reset for reload, thus fixated once set.
+    . -b and -B were not command-line-parsed by the server, only in
+      --test-mode (driven by client); usage in resource-file ok, too.
+  - --test-mode now outputs a normalized resource file.
+  - New --focus-sender approach which i like better.
+    [I personally now use --focus-sender mode with --count=1,
+    --msg-allow=permit and --msg-defer='DEFER 4.2.0 blabla',
+    and reject_unverified_sender thereafter.]
+  - New --msg-{allow,block}, and --msg-defer for misnamed --defer-msg,
+    which is kept for compatibility.
 
 v0.6.0, 2022-03-31: (first release)
 
@@ -111,6 +117,7 @@ NOTE
 The test script *may* fail on (very, very, very) slow systems: in order
 not to take too long it uses very narrow time limits, and on slow
 systems errors can happen (in particular 5.9).
+Other tests try to skip themselves on slow systems.
 
 THANKS
 ------

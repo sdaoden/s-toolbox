@@ -2,183 +2,184 @@ A repo of some small tools
 ==========================
 
 pam_xdg.c (plus support) v0.8.4 (2024-05-29):
-   XDG Base Directories support via PAM: creation of $XDG_RUNTIME_DIRs,
-   injection of environment variables into sessions.  libpam and OpenPAM.
-   [.]
-   [- port to OpenPAM (BSD).  (Jan Beich)]
-   [- Allow non-XDG-standard paths via make options. (Jan Beich)]
-   [- With "notroot", unsetenv(3) all XDG variables for root.  v0.8.3.]
-   - Fix: pam_get_item() may return NULL (Andre Albsmeier).  [v0.8.4]
+  XDG Base Directories support via PAM: creation of $XDG_RUNTIME_DIRs,
+  injection of environment variables into sessions. libpam and OpenPAM.
+  [.]
+  [- port to OpenPAM (BSD). (Jan Beich)]
+  [- Allow non-XDG-standard paths via make options. (Jan Beich)]
+  [- With "notroot", unsetenv(3) all XDG variables for root.  v0.8.3.]
+  - Fix: pam_get_item() may return NULL (Andre Albsmeier).  [v0.8.4]
 
 s-cdda.c (plus support) v0.8.5 (2021-01-28):
-   Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
-   Developed in 2020 on then current operating-systems and hardware.
-   Not tested with CD-Extra etc (only proofed logically).  Linux and *BSD.
+  Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
+  Developed in 2020 on then current operating-systems and hardware.
+  Not tested with CD-Extra etc (only proofed logically).  Linux and *BSD.
 
 s-cdda-to-db.pl (plus support) v0.8.0 (2021-06-18):
-   Queries content and data of audio CDs through s-cdda(1), collects
-   informations (artist, album, song titles, etc.) of desired tracks,
-   if possible correlates data with a web query against MusicBrainz,
-   then places encoded tracks as well as a human readable and easily
-   parseable database in a per-CD directory under a directory tree.
-   The audio encoders (and sox(1) without --no-volume-normalize) need
-   to be installed separately.
-   (P.S.: the user will be asked to edit collected informations, and
-   will be given a hand for the rather sophisticated, classical music
-   aware database layout while doing so.)
-   (P.P.S.: nice foundation for link farms.)
-   [.]
-   - use POSIX::setlocale() instead of relying on PERL5OPT=-C.
-     The latter roots in old habits originating in perl(1) evolution
-     problems Y2K2-3 (5.8.0 and 5.8.1).
+  Queries content and data of audio CDs through s-cdda(1), collects
+  informations (artist, album, song titles, etc.) of desired tracks,
+  if possible correlates data with a web query against MusicBrainz,
+  then places encoded tracks as well as a human readable and easily
+  parseable database in a per-CD directory under a directory tree.
+  The audio encoders (and sox(1) without --no-volume-normalize) need
+  to be installed separately.
+  (P.S.: the user will be asked to edit collected informations, and
+  will be given a hand for the rather sophisticated, classical music
+  aware database layout while doing so.)
+  (P.P.S.: nice foundation for link farms.)
+  [.]
+  - use POSIX::setlocale() instead of relying on PERL5OPT=-C.
+    The latter roots in old habits originating in perl(1) evolution
+    problems Y2K2-3 (5.8.0 and 5.8.1).
 
 s-dkim-sign.c (plus support) v0.6.2 (2024-05-30):
-   postfix(1)-only RFC 6376/8463 DKIM sign-only milter.
-   [.]
-   - FIX --client IP with CIDR mask (false code takeover from s-postgray,
-     Coverity.com CID 1586924; unfortunately s-dkim-sign was stuck in
-     some Coverity.com queue since end of April).
-   - Fix compilation with LibRESSL and OpenSSL < 3.0.0.
-   - The built-in set of headers includes some extensions more (including
-     ones that "normally" not occur in "main headers").
-   - Stuff:
-     o Make it compile with C++
-     o Generalize management of "obsoletion", and "need separate digest"
+  postfix(1)-only RFC 6376/8463 DKIM sign-only milter.
+  [.]
+  - FIX --client IP with CIDR mask (false code takeover from s-postgray,
+    Coverity.com CID 1586924; unfortunately s-dkim-sign was stuck in
+    some Coverity.com queue since end of April).
+  - Fix compilation with LibRESSL and OpenSSL < 3.0.0.
+  - The built-in set of headers includes some extensions more (including
+    ones that "normally" not occur in "main headers").
+  - Stuff:
+    o Make it compile with C++
+    o Generalize management of "obsoletion", and "need separate digest"
 
 s-postgray.c (plus support) v0.8.3 (2024-06-21):
-   postfix(1) graylisting policy daemon.  See its README + manual for more.
-   [* Many, many thanks to Jens Schleusener, and his cron job!]
-   [.]
-   - FIX: configuration reload stripped wrong flag mask.
-   - FIX: two timeout calculations could overflow 16-bit and cause faulty
-     gray DB entry timeouts thus.
-   - Because i liked having those, add new --gc-linger behaviour which
-     never outdates elder entries except due to --limit excess.
-   - Gray DB maintenance, when faced with the necessity to remove entries
-     to keep within --limit's, more less dumb (and maybe more secure).
-   - No longer auto-adjusts --limit when repeatedly in out-of-memory
-     situations, only logs.
-   - Stuff:
-     o Make it compile with C++
+  postfix(1) graylisting policy daemon. See its README + manual for more.
+  [* Many, many thanks to Jens Schleusener, and his cron job!]
+  [.]
+  - FIX: configuration reload stripped wrong flag mask.
+  - FIX: two timeout calculations could overflow 16-bit and cause faulty
+    gray DB entry timeouts thus.
+  - Because i liked having those, add new --gc-linger behaviour which
+    never outdates elder entries except due to --limit excess.
+  - Gray DB maintenance, when faced with the necessity to remove entries
+    to keep within --limit's, more less dumb (and maybe more secure).
+  - No longer auto-adjusts --limit when repeatedly in out-of-memory
+    situations, only logs.
+  - Stuff:
+    o Make it compile with C++
+    o Ported to Solaris (OpenIndiana)
 
 Not for the masses:
 -------------------
 
 btrfs-snapshot.sh:
-   Simple script to deal with BTRFS snapshots.
-   [.]
-   - (tar)ball support is gone; new syntax fixed.
+  Simple script to deal with BTRFS snapshots.
+  [.]
+  - (tar)ball support is gone; new syntax fixed.
 
 find-command.sh:
-   Find an executable command within a POSIX shell.
-   which(1) is not standardized, and command(1) -v may return non-executable,
-   so here is how it is possible to really find a usable executable file.
-   Thanks to Robert Elz (kre).
+  Find an executable command within a POSIX shell.
+  which(1) is not standardized, and command(1) -v may return non-executable,
+  so here is how it is possible to really find a usable executable file.
+  Thanks to Robert Elz (kre).
 
 git-topic-creator.pl:
-   To ease maintaining of topic branches i use a linear history, so
-   that i can use ``$ git rebase -i`` for fixups and squashes, without
-   having to worry about recreation of topic branches.  Instead i tag
-   commit messages, and use this script to create the topics once i am
-   finished.  Read the --help output for more, and make use of verbosity
-   when you use it first.
+  To ease maintaining of topic branches i use a linear history, so
+  that i can use ``$ git rebase -i`` for fixups and squashes, without
+  having to worry about recreation of topic branches.  Instead i tag
+  commit messages, and use this script to create the topics once i am
+  finished.  Read the --help output for more, and make use of verbosity
+  when you use it first.
 
 gmane-fetch.pl:
-   Download NNTP articles from Gmane.org and Gwene.org, incrementally, and
-   store them in (append them to) a local MBOX.
-   Read and adjust the script header for documentation and configuration.
+  Download NNTP articles from Gmane.org and Gwene.org, incrementally, and
+  store them in (append them to) a local MBOX.
+  Read and adjust the script header for documentation and configuration.
 
 oauth-helper.py:
-   Handles OAuth 2.0 credentials.  Supports Google, Microsoft, Yandex.
-   [.]
-   2024-06-01: handle INT from keyboard specifically.
+  Handles OAuth 2.0 credentials.  Supports Google, Microsoft, Yandex.
+  [.]
+  2024-06-01: handle INT from keyboard specifically.
 
 quote-rndtrip.sh:
-   Round trip quote strings in POSIX (and elder) shell(s).
-   Thanks to Robert Elz (kre).
-   [- ensure outer driver(s) do not leak variabes. (Steven Penny)]
+  Round trip quote strings in POSIX (and elder) shell(s).
+  Thanks to Robert Elz (kre).
+  [- ensure outer driver(s) do not leak variabes. (Steven Penny)]
 
 In the fog:
 -----------
 
 arena-manager:
-   Offers some automatized operations on revision control repositories,
-   like updating, (fast-forward) merging, garbage-collecting.
+  Offers some automatized operations on revision control repositories,
+  like updating, (fast-forward) merging, garbage-collecting.
 
 backup.sh:
-   My private backup script.  Simple (uses tar(1)), but does some stuff
-   which i need for my work flow (backups data which is in local repo
-   clones but not yet pushed to their "real" counterparts).  Needs perl(1).
-   [- FIX faulty xarg/tar -c invocations. (Ralph Corderoy)]
-   XXX No longer used: i switched to (subsets of) filesystem snapshots.
+  My private backup script. Simple (uses tar(1)), but does some stuff
+  which i need for my work flow (backups data which is in local repo
+  clones but not yet pushed to their "real" counterparts).  Needs perl(1).
+  [- FIX faulty xarg/tar -c invocations. (Ralph Corderoy)]
+  XXX No longer used: i switched to (subsets of) filesystem snapshots.
 
 cdoc-freebsd.S:
-   FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on
-   newer ones, but have not tried it in a while.  It had 416 object
-   file bytes when everything was placed in ``.text`` (no .EH frames
-   back then).
+  FreeBSD 5.3 x86 prog to open/close /dev/cdrom tray.  May work on
+  newer ones, but have not tried it in a while.  It had 416 object
+  file bytes when everything was placed in ``.text`` (no .EH frames
+  back then).
 
 entropy-saver.c:
-   Linux: for my use cases i find it annoying that "entropy_avail" is not
-   incremented when i restore the saved random seed that machines have
-   collected so hard.  This little program touches this count also.
-   (Thanks Bernd Petrovitsch for pointing out EAGAIN and EBUSY.)
-   [.]
-   2022-02-23: work when /proc/sys/kernel/random/entropy_avail is not de-
-               cremented when reading /dev/random.
-   2022-04-20: Jason Donenfeld wrote something more generic that made it
-               into busybox etc, and is therefore preferable:
-                  https://git.zx2c4.com/seedrng/plain/seedrng.c
-               P.S.: most preferable would be "echo seed > /dev/random"
+  Linux: for my use cases i find it annoying that "entropy_avail" is not
+  incremented when i restore the saved random seed that machines have
+  collected so hard.  This little program touches this count also.
+  (Thanks Bernd Petrovitsch for pointing out EAGAIN and EBUSY.)
+  [.]
+  2022-02-23: work when /proc/sys/kernel/random/entropy_avail is not de-
+              cremented when reading /dev/random.
+  2022-04-20: Jason Donenfeld wrote something more generic that made it
+              into busybox etc, and is therefore preferable:
+              https://git.zx2c4.com/seedrng/plain/seedrng.c
+              P.S.: most preferable would be "echo seed > /dev/random"
 
 fan-adaptive.sh:
-   "Adaptive", more generic, and much more easily adaptable successor of
-   fancontrol.sh.  For now with simulator and MacBook Air model support.
-   See the script header for more.
+  "Adaptive", more generic, and much more easily adaptable successor of
+  fancontrol.sh.  For now with simulator and MacBook Air model support.
+  See the script header for more.
 
 gen-uushar-wrapper:
-   Creates a shell archive similar to uushar as below, except that the
-   archive (1) consists only of executable file members, and (2) will
-   be itself executable.  Run the generated shell archive script to invoke
-   any of its programs.  Upon first invocation the wrapper creates a
-   hidden directory in $TMPDIR to unpack its members.
-   Without arguments it shows its contents and the creation date.
-   Simply execute it, it guides through the archive creation process.
+  Creates a shell archive similar to uushar as below, except that the
+  archive (1) consists only of executable file members, and (2) will
+  be itself executable.  Run the generated shell archive script to invoke
+  any of its programs.  Upon first invocation the wrapper creates a
+  hidden directory in $TMPDIR to unpack its members.
+  Without arguments it shows its contents and the creation date.
+  Simply execute it, it guides through the archive creation process.
 
 real-periodic.sh:
-   A real periodic for NetBSD, FreeBSD, DragonFly BSD and OpenBSD that
-   ensures that the daily/weekly/monthly maintenance stuff is executed,
-   even if your laptop is running only one hour a day.  Invoke this once
-   per hour in the roots crontab and disable the usual periodic stuff of
-   your system instead.  Note it does not deal with timezone and DST
-   (daylight saving time) switches, but instead only checks the day of
-   the year that is reported by date(1).  E.g., on my FreeBSD 10.0 box::
+  A real periodic for NetBSD, FreeBSD, DragonFly BSD and OpenBSD that
+  ensures that the daily/weekly/monthly maintenance stuff is executed,
+  even if your laptop is running only one hour a day.  Invoke this once
+  per hour in the roots crontab and disable the usual periodic stuff of
+  your system instead.  Note it does not deal with timezone and DST
+  (daylight saving time) switches, but instead only checks the day of
+  the year that is reported by date(1). E.g., on my FreeBSD 10.0 box::
 
-      # do daily/weekly/monthly maintenance
-      15  * * * * root /usr/bin/nice -n 15 /usr/libexec/real-periodic.sh
-      #1  3 * * * root periodic daily
-      #15 4 * * 6 root periodic weekly
-      #30 5 1 * * root periodic monthly
-   ...
+    # do daily/weekly/monthly maintenance
+    15  * * * * root /usr/bin/nice -n 15 /usr/libexec/real-periodic.sh
+    #1  3 * * * root periodic daily
+    #15 4 * * 6 root periodic weekly
+    #30 5 1 * * root periodic monthly
+  ...
 
 uushar (manual in uushar.1):
-   Writes a sh(1) shell script to standard output that recreates the file
-   hierarchy specified by the command line operands.  Directories will be
-   recreated and must be specified before the files they contain.
-   Compared to the well-known shar(1) program, uushar(1) adds optional
-   compression and an uuencode(1)/uudecode(1) binary safe layer::
+  Writes a sh(1) shell script to standard output that recreates the file
+  hierarchy specified by the command line operands. Directories will be
+  recreated and must be specified before the files they contain.
+  Compared to the well-known shar(1) program, uushar(1) adds optional
+  compression and an uuencode(1)/uudecode(1) binary safe layer::
 
-      $ uushar [-(Z|z|J|j)] file ...
+    $ uushar [-(Z|z|J|j)] file ...
 
-   It is easy to insert trojan horses into uushar files.  It is thus
-   strongly recommended that all shell archive files be examined before
-   running them through sh(1).  Archives produced using this
-   implementation of uushar may be easily examined with the command::
+  It is easy to insert trojan horses into uushar files.  It is thus
+  strongly recommended that all shell archive files be examined before
+  running them through sh(1).  Archives produced using this
+  implementation of uushar may be easily examined with the command::
 
-      $ grep '^[^X#]' shar.file
+    $ grep '^[^X#]' shar.file
 
 zte.sh:
-   Control a ZTE modem (MF79 and many others according to web search)
-   from the command line.  Needs curl(1) and OpenSSL(1).
+  Control a ZTE modem (MF79 and many others according to web search)
+  from the command line.  Needs curl(1) and OpenSSL(1).
 
-# s-it-mode
+# s-ts-mode

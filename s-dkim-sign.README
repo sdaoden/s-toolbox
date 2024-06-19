@@ -40,6 +40,7 @@ v0.6.2, 2024-05-30:
   - Stuff:
     o Make it compile with C++
     o Generalize management of "obsoletion", and "need separate digest"
+
   + Linux (musl, glibc), *BSD:
     As above.
   + OpenIndiana 2024:
