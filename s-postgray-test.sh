@@ -1021,49 +1021,71 @@ else
 fi
 # }}}
 
-##
+## (<> s-postgray.c:a_DB_CLEANUP_MIN_DELAY_MINS)
 max=11111
+max_test=$((max / 9))
 echo '=9: gray lots of ('$max': this takes quite some time)=' # {{{
 if [ -n "$s9" ]; then
 	echo 'skipping 9'
 else
-
-rm -f *.db
-
 cat > ./9.rc <<_EOT
 4-mask 24
 count 1
 msg-defer=DeFeR
 delay-min 0
+delay-max 1000
+gc-timeout 1001
 server-timeout 10
 store-path=$pwd
-limit $((max))
+limit $max
 limit-delay=0
 _EOT
 
-> ./9.x
-i=0
-while [ $i -le $max ]; do
-	printf 'recipient=x'$i'@y\nsender=y'$i'@z\nclient_name=xy\n'\
+doit() {
+	rm -f *.db
+	> ./9.x
+	> ./9.0
+	i=0
+	while [ $i -le $max ]; do
+		printf 'recipient=x'$i'@y\nsender=y'$i'@z\nclient_name=xy\n'\
 'client_address='$(((i % 253) + 2)).$(((i % 127) * 2))'.1.3\ninstance=hey'$i'\n\n'
-	if [ $i -lt $max ]; then
-		printf "action=DeFeR\n\n" >> ./9.x
-	else
-		printf "action=DUNNO\n\n" >> ./9.x
-	fi
-	[ $((i % 100)) -eq 0 ] && printf >&2 '\r'$i
-	i=$((i + 1))
-done | eval $PG -R ./9.rc $REDIR > ./9.0
-printf >&2 '\r'
+		if [ $i -lt $max ]; then
+			printf "action=DeFeR\n\n" >> ./9.x
+		else
+			printf "action=DUNNO\n\n" >> ./9.x
+		fi
+		[ -n "$1" ] && [ $((i % 100)) -eq 0 ] && printf >&2 '\r'$i
+		i=$((i + 1))
+	done | eval $PG -R ./9.rc $REDIR > ./9.0
+	[ -n "$1" ] && printf >&2 '\r'
+}
 
-cmp -s ./9.0 ./9.x || exit 101
-[ -n "$REDIR" ] || echo ok 9.0
-
-eval $PG -R ./9.rc --status $REDIR
-[ $? -eq 0 ] || exit 101
-
+eval </dev/null $PG -R ./9.rc $REDIR >/dev/null
 eval $PG -R ./9.rc --shutdown $REDIR
 [ $? -eq 0 ] || exit 101
+start=$(sed '1p;d' *.db)
+max_save=$max
+max=$max_test
+doit
+max=$max_save
+eval $PG -R ./9.rc --shutdown $REDIR
+end=$(sed '1p;d' *.db)
+end=$((end - 1))
+
+if [ "$end" -gt "$start" ]; then
+	echo 'skipping 9, due to speed constraints automatic garbage collection would kick in'
+else
+	echo '[system speed ok, running test]'
+	doit
+	cmp -s ./9.0 ./9.x || exit 101
+	[ -n "$REDIR" ] || echo ok 9.0
+
+	eval $PG -R ./9.rc --status $REDIR
+	[ $? -eq 0 ] || exit 101
+
+	eval $PG -R ./9.rc --shutdown $REDIR
+	[ $? -eq 0 ] || exit 101
+fi
 fi
 # }}}
 
@@ -1075,6 +1097,7 @@ else
 
 rm -f *.db
 cat > ./10.rc-base <<_EOT; cat > ./10.in <<'_EOT'; cat > ./10.x <<_EOT; cat > ./10.y <<_EOT
+untamed
 count 1
 delay-max 2
 delay-min 0
@@ -1234,7 +1257,7 @@ _EOT
 cmp -s ./10.10 ./10.x || exit 101
 [ -n "$REDIR" ] || echo ok 10.10
 
-eval $PG -R ./x.rc --shutdown $REDIR
+eval $PG -R ./10.rc --shutdown $REDIR
 [ $? -eq 0 ] || exit 101
 fi
 # }}}

@@ -73,7 +73,8 @@
 #define a_BUF_SIZE (ALIGN_Z(INET6_ADDRSTRLEN +1) + ((64 + 256 +1) * 3) + 1 + su_IENC_BUFFER_SIZE + 1)
 
 /* Minimum number of minutes in between DB cleanup runs.  And nearest approach to S16_MAX "minutes allowed", too.
- * Together with --limit-delay this forms a barrier against limit excess. */
+ * Together with --limit-delay this forms a barrier against limit excess.
+ * Note: on change the speed test of test "=9: gray lots of" may need adjustment! */
 #define a_DB_CLEANUP_MIN_DELAY_MINS 10
 
 /* The default built-in messages (see manual) */
