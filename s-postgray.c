@@ -699,6 +699,7 @@ jretry_all:
 			goto jleave;
 		}
 	}
+	ASSERT(!(pgp->pg_flags & a_F_MODE_STATUS));
 
 	STRUCT_ZERO(struct sockaddr_un, &soaun);
 	soaun.sun_family = AF_UNIX;
@@ -1742,17 +1743,20 @@ a_server__loop(struct a_pg *pgp){ /* {{{ */
 			break;
 		}
 
-		/* epoch housekeeping */
-		a_DBGM9E(su_log_write(su_LOG_DEBUG, "gray DB main5ce: call by event loop");)
-		a_server__gray_maintenance(pgp, TRU1, 0, NIL);
-
-		/* */
-		for(i = 0; i < mp->m_cli_no; ++i)
+		for(x = i = 0; i < mp->m_cli_no; ++i){
 			if(FD_ISSET(mp->m_cli_fds[i], &rfds)){
+				/* epoch housekeeping */
+				if(!x){
+					x = TRU1;
+					a_DBGM9E(su_log_write(su_LOG_DEBUG, "gray DB main5ce: call by event loop");)
+					a_server__gray_maintenance(pgp, TRU1, 0, NIL);
+				}
+
 				a_server__cli_ready(pgp, i);
 				if(a_server_term)
 					goto jleave;
 			}
+		}
 
 		if(a_server_term)
 			goto jleave;
@@ -2256,7 +2260,7 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 			}
 
 			oe_ne_min = S(s16,xbe);
-			a_DBGM9E(su_log_write(su_LOG_DEBUG, "gray DB load base time relative min is %hd", oe_ne_min));
+			a_DBGM9E(su_log_write(su_LOG_DEBUG, "gray DB load base time oe_ne_min=%hd", oe_ne_min));
 		}else if(*base++ != ' ')
 			goto jerr;
 		/* [recipient]/s[ender]/c[lient address] */
@@ -2281,8 +2285,8 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 
 			d = S(up,ibuf);
 			nmin = S(s16,d & U16_MAX);
-			a_DBGM9E(su_log_write(su_LOG_DEBUG, "gray DB load: gray=%d nmin=%hd count=%d oe_ne_min=%hd: %s",
-				!(d & 0x80000000), nmin, S(int,(d & 0x7FFF0000) >> 16), oe_ne_min, key);)
+			a_DBGM9E(su_log_write(su_LOG_DEBUG, "gray DB load: gray=%d nmin=%hd count=%d: %s",
+				!(d & 0x80000000), nmin, S(int,(d & 0x7FFF0000) >> 16), key);)
 			/* Corrupted database? */
 			if(UNLIKELY(nmin > 0)){
 				nmin = -nmin;
@@ -2597,8 +2601,8 @@ a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, u32 xlimit, s
 
 		d = R(up,su_cs_dict_view_data(&dv));
 		nmin = S(s16,d & U16_MAX);
-		a_DBGM9E(su_log_write(su_LOG_DEBUG, "gray DB main5ce/1: gray=%d nmin=%hd count=%d oe_ne_min=%hd: %s",
-			!(d & 0x80000000), nmin, S(int,(d & 0x7FFF0000) >> 16), oe_ne_min, su_cs_dict_view_key(&dv));)
+		a_DBGM9E(su_log_write(su_LOG_DEBUG, "gray DB main5ce/1: gray=%d nmin=%hd count=%d: %s",
+			!(d & 0x80000000), nmin, S(int,(d & 0x7FFF0000) >> 16), su_cs_dict_view_key(&dv));)
 
 		if(UNLIKELY(oe_ne_min < 0)){
 			ASSERT(f & a_GC_LINGER);

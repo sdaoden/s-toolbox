@@ -458,7 +458,7 @@ cmp -s ./4.5 ./4.5x || exit 101
 
 # And signals!
 eval $PG -R ./x.rc --shutdown $REDIR
-[ $? -ne 75 ] || exit 102
+[ $? -eq 0 ] || exit 102
 [ -n "$REDIR" ] || echo ok 4.sig-1
 
 eval $PG -R ./x.rc --startup $REDIR
@@ -1082,9 +1082,11 @@ else
 
 	eval $PG -R ./9.rc --status $REDIR
 	[ $? -eq 0 ] || exit 101
+	[ -n "$REDIR" ] || echo ok 9.1
 
 	eval $PG -R ./9.rc --shutdown $REDIR
 	[ $? -eq 0 ] || exit 101
+	[ -n "$REDIR" ] || echo ok 9.2
 fi
 fi
 # }}}
