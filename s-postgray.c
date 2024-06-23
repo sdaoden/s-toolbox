@@ -835,15 +835,16 @@ jstartup_shutdown:/* C99 */{
 		xl += y;
 	}while(xl != 3);
 
-	/* Blocks until descriptor goes away, or reads ENQ again (xxx check?) */
+	/* Blocks until descriptor goes away, or reads ENQ again */
 	for(;;){
-		if(read(pgp->pg_clima_fd, &soaun, 1) == -1){
+		xl = read(pgp->pg_clima_fd, &soaun, 1);
+		if(xl == -1){
 			if(su_err_by_errno() == su_ERR_INTR)
 				continue;
 			rv = su_EX_IOERR;
 			goto jleave;
-		}
-		break;
+		}else if(xl == 0 || (pgp->pg_flags & a_F_MODE_STARTUP))
+			break;
 	}
 
 	rv = su_EX_OK;
@@ -1298,6 +1299,11 @@ a_server__logger(struct a_pg *pgp, pid_t srvpid){
 	su_state_clear(su_STATE_LOG_SHOW_PID);
 	rv = su_EX_OK;
 
+	/* Avoid a reassurance lock race: clients talk to real server, but its SIGCLD may reach us after client/master
+	 * socket is gone; since clients treat lock status as real --status, they assume server is running even though
+	 * it is no more; for --shutdown bind(2) may even succeed in this case */
+	close(pgp->pg_master->m_reafd);
+
 	/* The logger shall die only when the "real server" terminates.  Keep reafd open ourselves */
 	signal(SIGCHLD, &a_server__on_sig);
 	sigemptyset(&ssn);
@@ -1395,12 +1401,7 @@ jeio:
 	close(pgp->pg_log_fd);
 	pgp->pg_log_fd = -1;
 
-	if(!su_path_rm(a_FIFO_NAME)){
-		/*su_log_write(su_LOG_CRIT, _("cannot remove privsep log fifo: %s"), V_(su_err_doc(-1)));*/
-		rv = su_EX_OSERR;
-	}
-
-	/* Goes home with exit close(m.m_reafd);*/
+	/* a_FIFO_NAME path removed by server while holding reassurance lock */
 
 	su_state_gut(rv == su_EX_OK ? su_STATE_GUT_ACT_NORM /*DVL(| su_STATE_GUT_MEM_TRACE)*/ : su_STATE_GUT_ACT_QUICK);
 	NYD_OU;
@@ -1492,9 +1493,16 @@ a_server__reset(struct a_pg *pgp){
 	su_FREE(mp->m_cli_fds);
 #endif
 
-	if(a_sandbox_rm_in_store_path(pgp, mp->m_sockpath))
-		rv = su_EX_OK;
-	else{
+	rv = su_EX_OK;
+
+#ifdef a_HAVE_LOG_FIFO
+	if(!(pgp->pg_flags & a_F_UNTAMED) && !a_sandbox_rm_in_store_path(pgp, a_FIFO_NAME)){
+		su_log_write(su_LOG_CRIT, _("cannot remove privsep log fifo: %s"), V_(su_err_doc(-1)));
+		rv = su_EX_OSERR;
+	}
+#endif
+
+	if(!a_sandbox_rm_in_store_path(pgp, mp->m_sockpath)){
 		su_log_write(su_LOG_CRIT, _("cannot remove client/server socket %s/%s: %s"),
 			pgp->pg_store_path, mp->m_sockpath, V_(su_err_doc(-1)));
 		rv = su_EX_OSERR;

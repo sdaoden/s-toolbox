@@ -461,30 +461,44 @@ eval $PG -R ./x.rc --shutdown $REDIR
 [ $? -eq 0 ] || exit 102
 [ -n "$REDIR" ] || echo ok 4.sig-1
 
+eval $PG -R ./x.rc --status $REDIR
+[ $? -eq 1 ] || exit 102
+[ -n "$REDIR" ] || echo ok 4.sig-2
+
+eval $PG -R ./x.rc --status $REDIR
+[ $? -eq 1 ] || exit 102
+[ -n "$REDIR" ] || echo ok 4.sig-3
+
 eval $PG -R ./x.rc --startup $REDIR
 [ $? -eq 0 ] || exit 102
-[ -n "$REDIR" ] || echo ok 4.sig-2
+[ -n "$REDIR" ] || echo ok 4.sig-4
 
 spid=$(cat *.pid);
 kill -HUP $spid || exit 101
 eval $PG -R ./x.rc --status $REDIR
 [ $? -eq 0 ] || exit 102
-[ -n "$REDIR" ] || echo ok 4.sig-3
+[ -n "$REDIR" ] || echo ok 4.sig-5
 
 kill -USR1 $spid || exit 101
 eval $PG -R ./x.rc --status $REDIR
 [ $? -eq 0 ] || exit 102
-[ -n "$REDIR" ] || echo ok 4.sig-4
+[ -n "$REDIR" ] || echo ok 4.sig-6
 
 kill -USR2 $spid || exit 101
 eval $PG -R ./x.rc --status $REDIR
 [ $? -eq 0 ] || exit 102
-[ -n "$REDIR" ] || echo ok 4.sig-5
+[ -n "$REDIR" ] || echo ok 4.sig-7
 
 kill -TERM $spid || exit 101
 delay
+
 eval $PG -R ./x.rc --status $REDIR
 [ $? -eq 1 ] || exit 102
+[ -n "$REDIR" ] || echo ok 4.sig-8
+
+eval $PG -R ./x.rc --status $REDIR
+[ $? -eq 1 ] || exit 102
+[ -n "$REDIR" ] || echo ok 4.sig-9
 
 ## corner cases
 # empty sender=, whitelisted client
@@ -1035,7 +1049,7 @@ msg-defer=DeFeR
 delay-min 0
 delay-max 1000
 gc-timeout 1001
-server-timeout 10
+server-timeout 20
 store-path=$pwd
 limit $max
 limit-delay=0

@@ -29,7 +29,7 @@ are "not handled".
 RELEASES
 --------
 
-v0.8.3, 2024-06-21:
+v0.8.3, 2024-06-23:
   - FIX: configuration reload stripped wrong flag mask.
   - FIX: two timeout calculations could overflow 16-bit and cause faulty
     gray DB entry timeouts thus.
@@ -39,9 +39,12 @@ v0.8.3, 2024-06-21:
     to keep within --limit's, more less dumb (and maybe more secure).
   - No longer auto-adjusts --limit when repeatedly in out-of-memory
     situations, only logs.
+  - fix a race condition in !--untamed mode on FreeBSD and Linux.
   - Stuff:
     o Make it compile with C++
     o Ported to Solaris (OpenIndiana)
+    o Coverity.com defect density 0.00:
+      https://scan.coverity.com/projects/s--postgray
 
   + Linux (musl, glibc), *BSD:
     As above.

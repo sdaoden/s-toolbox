@@ -44,8 +44,10 @@ s-dkim-sign.c (plus support) v0.6.2 (2024-05-30):
   - Stuff:
     o Make it compile with C++
     o Generalize management of "obsoletion", and "need separate digest"
+    o Coverity.com defect density 0.00:
+      https://scan.coverity.com/projects/s-dkim-sign
 
-s-postgray.c (plus support) v0.8.3 (2024-06-21):
+s-postgray.c (plus support) v0.8.3 (2024-06-23):
   postfix(1) graylisting policy daemon. See its README + manual for more.
   [* Many, many thanks to Jens Schleusener, and his cron job!]
   [.]
@@ -58,9 +60,12 @@ s-postgray.c (plus support) v0.8.3 (2024-06-21):
     to keep within --limit's, more less dumb (and maybe more secure).
   - No longer auto-adjusts --limit when repeatedly in out-of-memory
     situations, only logs.
+  - fix a race condition in !--untamed mode on FreeBSD and Linux.
   - Stuff:
     o Make it compile with C++
     o Ported to Solaris (OpenIndiana)
+    o Coverity.com defect density 0.00:
+      https://scan.coverity.com/projects/s--postgray
 
 Not for the masses:
 -------------------
