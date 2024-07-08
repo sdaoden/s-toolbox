@@ -1,9 +1,9 @@
 #!/bin/sh -
 #@ s-dkim-sign-key-create.sh: create keys for DKIM usage.
 syno() { echo >&2 'SYNOPSIS: '$0' [ed25519|rsa[:BITS]] FILENAME-PREFIX'; exit 64; } # EX_USAGE
-#@
-#@ 2024 Steffen Nurpmeso <steffen@sdaoden.eu>
-#@ Public Domain
+#
+# 2024 Steffen Nurpmeso <steffen@sdaoden.eu>
+# Public Domain
 
 RSA_DEFBITS=2048
 RSA_MINBITS=1024
@@ -88,7 +88,7 @@ while :; do
 	elif [ -x /opt/csw/bin/openssl ]; then
 		x=/opt/csw/bin/openssl
 	fi
-	if [ xx = x"$x" ] || [ x"$x" = x"$OPENSSL" ]; then
+	if [ x = x"$x" ] || [ x"$x" = x"$OPENSSL" ]; then
 		echo >&2 'Please place version >= 1.1.0 (early) in $PATH, or $OPENSSL=, rerun.'
 		exit $EX_DATAERR
 	fi
