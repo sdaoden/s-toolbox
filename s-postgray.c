@@ -2568,7 +2568,7 @@ a_server__gray_maintenance(struct a_pg *pgp, boole only_time_tick, u32 xlimit, s
 	/* We will iterate all entries and update their time.  We may need to cleanup even, check some thresholds */
 	c_88 = c_75 = c_50 = c_linger = c_gray_c1 = c_gray = 0;
 	t_88 = t_75 = t_50 = t;
-	t_50 = t >> 1;
+	t_50 >>= 1;
 	t_75 -= t >> 2;
 	t_88 -= t >> 3;
 
