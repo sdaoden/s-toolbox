@@ -4,6 +4,10 @@
 # 2022 - 2024 Steffen Nurpmeso <steffen@sdaoden.eu>
 # Public Domain
 
+SELF = 'oauth-helper.py'
+VERSION = '0.8.0'
+CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>'
+
 # Empty and no builtin configs
 VAL_NAME = 'S-nail'
 
@@ -85,15 +89,17 @@ client = {
 }
 
 def arg_parser(): #{{{
-	p = argparse.ArgumentParser(description='Manage RFC 6749 OAuth 2.0 Authorization Framework access tokens.',
+	p = argparse.ArgumentParser(
+			description=SELF + ' (' + VERSION +
+					'): Manage RFC 6749 OAuth 2.0 Authorization Framework access tokens',
 			epilog='''
 Create a new --resource for --provider via --action=template, fill in
 client_id=, maybe login_hint= (contains documentation!), and all other
 provider needs (alos see according --provider specific --action=manual).
 Run --action=access; at least the first run actually is --action=authorize!
 Force an access token --action=update even for non-expired timeouts.
-(For S-nail one might get away with --action=access --provider=X --resource=Y.)
-		''')
+(For S-nail one might get away with --action=access --provider=X --resource=Y.)''' +
+'  Bugs/Contact via ' + CONTACT)
 
 	p.add_argument('-A', '--automatic', action='store_true',
 		help='no interactivity, exit error if that would happen')
