@@ -70,6 +70,18 @@ s-postgray.c (plus support) v0.8.3 (2024-06-23):
 Not for the masses:
 -------------------
 
+oauth-helper.py:
+  Handles OAuth 2.0 credentials.  Supports Google, Microsoft, Yandex.
+  [.]
+  2024-06-01: handle INT from keyboard specifically.
+
+s-port-knock.README (etc) v0.8.0 (2024-07-17):
+  A simple port knock implementation.
+  It requires modern OpenSSH (ssh-keygen(1)), openssl(1) and sh(1).
+
+Misc:
+-----
+
 btrfs-snapshot.sh:
   Simple script to deal with BTRFS snapshots.
   [.]
@@ -93,11 +105,6 @@ gmane-fetch.pl:
   Download NNTP articles from Gmane.org and Gwene.org, incrementally, and
   store them in (append them to) a local MBOX.
   Read and adjust the script header for documentation and configuration.
-
-oauth-helper.py:
-  Handles OAuth 2.0 credentials.  Supports Google, Microsoft, Yandex.
-  [.]
-  2024-06-01: handle INT from keyboard specifically.
 
 quote-rndtrip.sh:
   Round trip quote strings in POSIX (and elder) shell(s).
