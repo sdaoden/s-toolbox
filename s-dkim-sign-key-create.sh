@@ -1,6 +1,11 @@
 #!/bin/sh -
 #@ s-dkim-sign-key-create.sh: create keys for DKIM usage.
-syno() { echo >&2 'SYNOPSIS: '$0' [ed25519|rsa[:BITS]] FILENAME-PREFIX'; exit 64; } # EX_USAGE
+syno() {
+	echo >&2 'SYNOPSIS: '$0' [ed25519|rsa[:BITS]] FILENAME-PREFIX'
+	echo >&2
+	echo >&2 'Please see manual for more.'
+	exit 64 # EX_USAGE
+}
 #
 # 2024 Steffen Nurpmeso <steffen@sdaoden.eu>
 # Public Domain
@@ -34,6 +39,9 @@ export LC_ALL
 if [ $# -eq 0 ] || [ $# -gt 2 ]; then
 	syno
 elif [ $# -eq 1 ]; then
+	if [ "$1" = -h ] || [ "$1" = --help ]; then
+		syno
+	fi
 	algo=$ALGO_PARAM_DEF
 	prefix=$1
 else
@@ -97,7 +105,7 @@ while :; do
 	echo >&2
 done
 
-$OPENSSL pkey -pubout < "$prefix"-dkim-pri-$algo.pem |
+$OPENSSL pkey -pubout -outform PEM < "$prefix"-dkim-pri-$algo.pem |
 $AWK -v off=$off '
 	BEGIN{on=0}
 	/^-+BEGIN PUBLIC KEY-+$/{on=1;next}
