@@ -2,91 +2,33 @@ S - p o r t - k n o c k
 =======================
 
 A simple port knock implementation.
-It requires modern OpenSSH (ssh-keygen(1)), openssl(1) and sh(1)
-implementations.  (It actively searches for bash(1) *if* the sh(1)
-seems insufficient.  $OPENSSL= may be passed to dedicate that.)
-
-BIG FAT WARNING
----------------
-
-  This software MUST be protected by suitable firewall rules!
-  Any network packet sent to it causes a sh(1)ell script to run!
-  For example the author uses this Linux firewall rule which effectively
-  allows only one packet per source address per minute (and causes a
-  hour-long block otherwise).
-
-    # port_knock: input only server
-    if fwcore_has_i port_knock; then
-            : ${FWCORE_PORT_KNOCK:?port_knock needs FWCORE_PORT_KNOCK}
-            if ipaddr_split ap "${FWCORE_PORT_KNOCK}"; then
-                    add_rule -p udp --dport ${port} \
-                            -m recent --name port_knock --set \
-                            -m recent --name port_knock \
-                              --rcheck --seconds 60 --reap --hitcount 2 \
-                            -m recent --name alien_super --set -j DROP
-                    add_rule -p udp --dport ${port} -j f_m1
-            fi
-    fi
-
-What does this software do?
----------------------------
-
-On servers:
-
-. If the packets seems sane,
-. the OpenSSL private key is used to decrypt the random key,
-. the random key is used to decrypt the signature,
-. the "ssh-keygen -Y" mechanism is used to find a principal for the
-  signature in the "allowed signers" file.
-. (If a $MAGIC string is required, the signature is also verified.)
-
-. On any stage a failure causes the act_block() action,
-. upon overall success the act_allow() action is applied.
-
-  # cd /tmp/
-  # $CC -o zt s-port-knock-bin.c
-
-  # head -n1 ~/.ssh/authorized_keys > .Zpub1
-  # { printf 'uid1 '; cat .Zpub1; } > .Zsigs
-  # echo MAGIC= > .Z.rc
-
-  # ./s-port-knock.sh create-server-key .Zk
-  # PORT_KNOCK_BIN=./zt PORT_KNOCK_SHELL=/bin/bash PORT_KNOCK_RC=./.Z.rc \
-    ./s-port-knock.sh start-server -v 10000 s-port-knock.sh \
-      .Zk-pri.pem .Zsigs
-
-On clients:
-
-. Creates a signature for a SSH public key via "ssh-keygen -Y",
-. (if a $MAGIC string is required, includes that in the signature),
-. encrypts that with a random key,
-. and encrypts the random key for a dedicated target server via an
-  (its) OpenSSL public key,
-. sends the resulting packet to that server,
-. invokes the $PORT_KNOCK_RC act_sent() hook; if that does not return 0,
-  the packet is sent again, etc.
-
-  # cd /tmp/
-  # PORT_KNOCK_BIN=./zt PORT_KNOCK_RC=./.Z.rc \
-    ./s-port-knock.sh knock localhost 10000 .Zk-pub.pem .Zpub1
+Please read the manual for more!
 
 Build and Install
 -----------------
 
   gcc -o /usr/sbin/s-port-knock-bin s-port-knock-bin.c
-  cp s-port-knock.sh /usr/bin
+  cp s-port-knock.sh /usr/bin/
+  cp s-port-knock.8 /usr/share/man/man8/
 
 RELEASES
 --------
 
-v0.8.0, 2024-07-17: (first release)
+v0.8.1, 2024-07-19:
+  - Review iteration that FIXes a false #ifdef, an uninit strerror(),
+    and in the script broken passing/usage of $PORT_KNOCK_SHELL.
+    We also skip select(2) path entirely if a_DISTINCT_SOCKS is unset.
+    (It was borked.)
+  - Change packet format (no separating newline).
+  - Add simplemost manual.
+
   + Linux (musl, glibc), *BSD:
     As above.  (IPv6 support is assumed.)
   + OpenIndiana 2024:
-      $ LD_LIBRARY_PATH=/usr/openssl/3.1/lib/amd64:$LD_LIBRARY_PATH \
-        C_INCLUDE_PATH=/usr/openssl/3.1/include:$C_INCLUDE_PATH \
-        gcc -o /usr/sbin/s-port-knock-bin s-port-knock-bin.c -lsocket
+      $ gcc -o /usr/sbin/s-port-knock-bin s-port-knock-bin.c -lsocket
     is needed in the environment for the build.
     You may need to pass OPENSSL=PATH to the s-port-knock* commands.
+
+v0.8.0, 2024-07-17: (first release)
 
 # s-ts-mode

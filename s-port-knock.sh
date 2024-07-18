@@ -4,7 +4,7 @@
 #
 : ${PORT_KNOCK_BIN:=/usr/sbin/s-port-knock-bin}
 SELF=s-port-knock.sh
-VERSION=0.8.0
+VERSION=0.8.1
 CONTACT='Steffen Nurpmeso <steffen@sdaoden.eu>'
 #
 syno() {
@@ -95,10 +95,12 @@ if [ -z "$__PORT_KNOCK_UP" ]; then
 	fi
 
 	if [ -n "$__PORT_KNOCK_UP" ]; then
-		export __PORT_KNOCK_UP PATH
-		exec "$__PORT_KNOCK_UP" "$0" "$@"
+		PORT_KNOCK_SHELL=$__PORT_KNOCK_UP
+		export __PORT_KNOCK_UP PATH PORT_KNOCK_SHELL
+		exec "$PORT_KNOCK_SHELL" "$0" "$@"
 	fi
 fi
+unset __PORT_KNOCK_UP
 
 if (set -o pipefail); then # >/dev/null 2>&1; then
 	set -o pipefail
@@ -256,7 +258,7 @@ create-server-key)
 	echo '   '"$fprefix"-pub.pem
 	echo 'Server also needs a ssh-keygen(1) allowed_signers_file in format'
 	echo '  PRINCIPAL(ie, email address) KEYTYPE PUBKEY [COMMENT]'
-	echo '(ie, authorized_keys format but prefixed by an PRINCIPAL)'
+	echo '(ie, authorized_keys format but prefixed by a PRINCIPAL)'
 	;;
 knock)
 	[ $# -ne 5 ] && syno
@@ -303,15 +305,15 @@ knock)
 	else
 		if [ -z "$kpk" ]; then
 			tmp_file_new
-			printf "%s\n\n%s\n" "$ek" "$es" > "$tmp_file"
+			printf "%s\n%s\n" "$ek" "$es" > "$tmp_file"
 		fi
 
 		while :; do
-			printf 'knocking ... '
+			printf 'knocking (via %s)... ' "$kexe"
 			if [ -n "$kpk" ]; then
 				"$kexe" client "$3" "$2" "$ek" "$es"
 			else
-				</dev/null bash -c '
+				</dev/null $kexe -c '
 					set -e
 					cat "'"$tmp_file"'" > /dev/udp/"'"$2"'"/"'"$3"'"
 				'

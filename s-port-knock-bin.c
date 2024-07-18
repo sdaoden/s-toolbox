@@ -37,7 +37,6 @@
 
 /* Largest possible pubkey encryption + 1 + 1 + SSH signature (ED25519=~295+, RSA=~1560+) + 1 +1; packet is
  *	1. password encrypted by X509 pubkey (base64) + LF
- *	2. LF (gives as room to place a NUL upon receive)
  *	3. SSH signature cipher-encrypted with password in 1. (base64) + LF */
 #define a_BUF_LEN (2048 + 1024)
 
@@ -89,7 +88,8 @@ main(int argc, char **argv){
 
 	if(argc > 0 && !strcmp(argv[1], "-v")){
 		a_verbose = 1;
-		--argc, ++argv;
+		--argc;
+		++argv;
 	}
 
 	if(argc != 6)
@@ -127,10 +127,10 @@ static int
 a_server(unsigned short portno, char const *cmd, char const *privkey, char const *sigpool){
 	char dbuf[a_BUF_LEN], nbuf[INET6_ADDRSTRLEN +1];
 	char const *myshell, *argv[9];
-	fd_set rfds;
 	struct sigaction siac;
 	socklen_t soal;
 #ifdef a_DISTINCT_SOCKS
+	fd_set rfds;
 	struct sockaddr_in soa4;
 	int sofd4;
 #endif
@@ -172,13 +172,13 @@ a_server(unsigned short portno, char const *cmd, char const *privkey, char const
 			}
 		}
 	}
-#endif
+#endif /* a_DISTINCT_SOCKS */
 
 	while((sofd6 = socket(AF_INET6, SOCK_DGRAM, 0)) == -1){
 		es = errno;
 		if(es == EINTR)
 			continue;
-#ifndef a_DISTINCT_SOCKS
+#ifdef a_DISTINCT_SOCKS
 		if(es == EAFNOSUPPORT){
 			fprintf(stderr, "IPv6 socket unsupported, skipping this\n");
 			break;
@@ -190,17 +190,15 @@ a_server(unsigned short portno, char const *cmd, char const *privkey, char const
 	}
 
 	if(sofd6 != -1){
-#ifdef a_DISTINCT_SOCKS
-# ifdef IPV6_V6ONLY
+#if defined a_DISTINCT_SOCKS && defined IPV6_V6ONLY
 		int one;
 
 		one = 1;
 		if(setsockopt(sofd6, IPPROTO_IPV6, IPV6_V6ONLY, (void*)&one, sizeof(one)) == -1){
-			fprintf(stderr, "IPv6 cannot set server socket option V6ONLY: %s\n", strerror(es));
+			fprintf(stderr, "IPv6 cannot set server socket option V6ONLY: %s\n", strerror(errno));
 			es = a_EX_OSERR;
 			goto jleave;
 		}
-# endif
 #endif
 
 		soa6.sin6_family = AF_INET6;
@@ -218,7 +216,7 @@ a_server(unsigned short portno, char const *cmd, char const *privkey, char const
 	}
 #ifdef a_DISTINCT_SOCKS
 	else if(sofd4 == -1){
-		fprintf(stderr, "Cannot create any server sockets, bailing out\n");
+		fprintf(stderr, "Cannot create any server socket, bailing out\n");
 		es = a_EX_OSERR;
 		goto jleave;
 	}
@@ -257,19 +255,14 @@ a_server(unsigned short portno, char const *cmd, char const *privkey, char const
 		struct sockaddr *sap;
 		int fd;
 
-		FD_ZERO(&rfds);
 #ifdef a_DISTINCT_SOCKS
+		FD_ZERO(&rfds);
 		if(sofd4 != -1)
 			FD_SET(sofd4, &rfds);
 		if(sofd6 != -1)
-#endif
 			FD_SET(sofd6, &rfds);
 
-		es = select((
-#ifdef a_DISTINCT_SOCKS
-				(sofd4 > sofd6) ? sofd4 :
-#endif
-				sofd6) + 1, &rfds, NULL, NULL, NULL);
+		es = select(((sofd4 > sofd6) ? sofd4 : sofd6) + 1, &rfds, NULL, NULL, NULL);
 		if(es == -1){
 			es = errno;
 			if(es == EINTR)
@@ -280,27 +273,24 @@ a_server(unsigned short portno, char const *cmd, char const *privkey, char const
 		}else if(es == 0) /* ?? */
 			continue;
 
-#ifdef a_DISTINCT_SOCKS
 		if(sofd4 != -1 && FD_ISSET(sofd4, &rfds)){
 			FD_CLR(sofd4, &rfds);
 			sadp = &soa4.sin_addr;
 			sap = (struct sockaddr*)&soa4;
 			soal = sizeof soa4;
 			fd = sofd4;
-		}else if(sofd6 != -1) jNext_socket:
-#endif
-		{
+		}else if(sofd6 != -1) jNext_socket:{
 			if(FD_ISSET(sofd6, &rfds)){
 				FD_CLR(sofd6, &rfds);
+#endif /* a_DISTINCT_SOCKS */
 				sadp = &soa6.sin6_addr;
 				sap = (struct sockaddr*)&soa6;
 				soal = sizeof soa6;
 				fd = sofd6;
+#ifdef a_DISTINCT_SOCKS
 			}else
 				continue;
-		}
-#ifdef a_DISTINCT_SOCKS
-		else /* pacify clang */
+		}else /* pacify clang */
 			continue;
 #endif
 
@@ -327,13 +317,15 @@ a_server(unsigned short portno, char const *cmd, char const *privkey, char const
 		/* Linux kernel iptables xt_recent 6.1.98/6.6.40 do not deal with mapped addresses
 		 * (https://bugzilla.kernel.org/show_bug.cgi?id=219038) */
 		if(sap->sa_family == AF_INET6 && strchr(nbuf, '.') != NULL){
-			i = (size_t)strlen(nbuf);
-			if((size_t)i <= sizeof("::ffff:") -1 + 4+4){
+			size_t j;
+
+			j = strlen(nbuf);
+			if(j <= sizeof("::ffff:") -1 + 4+4){
 				fprintf(stderr, "IMPL ERROR: IPv4 mapped address is bogus\n");
 				continue;
 			}
-			i -= sizeof("::ffff:") -1;
-			memmove(nbuf, &nbuf[sizeof("::ffff:") -1], i +1);
+			j -= sizeof("::ffff:") -1;
+			memmove(nbuf, &nbuf[sizeof("::ffff:") -1], j +1);
 		}
 
 		/* Default: do not inspect packet, only block this IP */
@@ -359,17 +351,15 @@ a_server(unsigned short portno, char const *cmd, char const *privkey, char const
 				continue;
 			}
 
+			dbuf[(size_t)i] = '\0';
 			++i;
+
 			if(argv[7] == NULL){
-				c = dbuf[(size_t)i]; /* dbuf is NUL terminated, so never excess */
-				if(c != '\n')
+				if(i == rb)
 					goto jepack;
-				dbuf[(size_t)i] = '\0';
-				if(++i == rb)
-					goto jepack;
+				argv[7] = &dbuf[(size_t)i];
 				if(rb - i < a_SIG_LEN_MIN)
 					goto jfork;
-				argv[7] = &dbuf[(size_t)i];
 			}else if(i != rb){
 jepack:
 				if(a_verbose)
@@ -445,14 +435,12 @@ a_client(char const *host, char const *port, char const *enckey, char const *enc
 	es = a_EX_DATAERR;
 
 	l = strlen(enckey);
-	if(l >= sizeof(buf) - 2 - 1 -1){
+	if(l >= sizeof(buf) - 1 - 1 -1){
 		fprintf(stderr, "Encrypted key is too long\n");
 		goto jleave;
 	}
 	memcpy(buf, enckey, l);
-	buf[l] = '\n';
-	buf[l + 1] = '\n';
-	l += 2;
+	buf[l++] = '\n';
 
 	yet = strlen(encsig);
 	if(yet >= sizeof(buf) - 1 -1 - l){
@@ -499,8 +487,8 @@ jso:
 			es = a_EX_IOERR;
 			goto jleave;
 		}
-		yet += wb;
-		l -= wb;
+		yet += (size_t)wb;
+		l -= (size_t)wb;
 	}
 
 	es = a_EX_OK;
