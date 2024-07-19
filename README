@@ -76,7 +76,7 @@ oauth-helper.py:
   2024-06-01: handle INT from keyboard specifically.
 
 s-port-knock.README (etc) v0.8.1 (2024-07-19):
-  A simple port knock implementation.
+  A simple port knock via SSH signatures.
   It requires modern OpenSSH (ssh-keygen(1)), openssl(1) and sh(1).
   [.]
   - Review iteration that FIXes a false #ifdef, an uninit strerror(),

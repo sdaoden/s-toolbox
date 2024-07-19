@@ -1,5 +1,5 @@
 #!/bin/sh -
-#@ s-port-knock.sh: port knock user interface (for s-port-knock-bin.c server).
+#@ s-port-knock.sh: a simple port knock via SSH signatures.
 #@ Requires (modern) openssl and ssh-keygen with -Y support.
 #
 # (Do not change these, the makefile watches out)

@@ -1,7 +1,7 @@
 S - p o r t - k n o c k
 =======================
 
-A simple port knock implementation.
+A simple port knock via SSH signatures.
 Please read the manual for more!
 
 Build and Install
