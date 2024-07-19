@@ -7,9 +7,7 @@ Please read the manual for more!
 Build and Install
 -----------------
 
-  gcc -o /usr/sbin/s-port-knock-bin s-port-knock-bin.c
-  cp s-port-knock.sh /usr/bin/
-  cp s-port-knock.8 /usr/share/man/man8/
+  make PREFIX=/usr DESTDIR=.x
 
 RELEASES
 --------
