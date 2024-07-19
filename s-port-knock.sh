@@ -2,6 +2,7 @@
 #@ s-port-knock.sh: port knock user interface (for s-port-knock-bin.c server).
 #@ Requires (modern) openssl and ssh-keygen with -Y support.
 #
+# (Do not change these, the makefile watches out)
 : ${PORT_KNOCK_BIN:=/usr/sbin/s-port-knock-bin}
 SELF=s-port-knock.sh
 VERSION=0.8.1
