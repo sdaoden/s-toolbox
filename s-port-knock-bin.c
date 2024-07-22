@@ -86,7 +86,7 @@ main(int argc, char **argv){
 	fclose(stdin);
 	fclose(stdout);
 
-	if(argc > 0 && !strcmp(argv[1], "-v")){
+	if(argc > 1 && !strcmp(argv[1], "-v")){
 		a_verbose = 1;
 		--argc;
 		++argv;

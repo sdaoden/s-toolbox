@@ -216,6 +216,7 @@ incrc() {
 case "$1" in
 create-server-key)
 	[ $# -gt 3 ] && syno
+	[ $# -lt 2 ] && syno
 	fprefix=$2
 
 	algo=rsa opt=
