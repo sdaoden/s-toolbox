@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd May 29, 2024
+.Dd Jul 24, 2024
 .ds VV \\%v0.6.2
 .ds XX \\%S-DKIM-SIGN
 .ds Xx \\%S-dkim-sign
@@ -175,6 +175,10 @@ localhost:smtp inet n - n - - smtpd
 #localhost:421 inet n - n - - smtpd
 # -o syslog_name=lhlist
 # -o smtpd_milters=unix:private/dkim-sign-list
+# (address via mailman:
+# DELIVERY_MODULE = 'SMTPDirect'
+# SMTPHOST = 'localhost'
+# SMTPPORT = 421)
 ..
 dkim-sign unix - n n - - spawn
   user=ANON-USR
@@ -183,14 +187,14 @@ dkim-sign unix - n n - - spawn
 #  user=ANON-USR
 #  argv=/usr/libexec/s-dkim-sign -R /etc/dkim-sign.rc --header-seal=+
 
-#@ /etc/s-dkim-sign.rc
+#@ /etc/dkim-sign.rc
 
 milter-macro sign, {daemon_name}, outwall
 milter-macro verify, {daemon_name}, ingress
 
 key rsa-sha256, rsape, /etc/dkim-pri-rsa.pem
 key big_ed-sha256, edape, /etc/dkim-pri-ed25519.pem
-#key ed25519-sha256, nedape, /etc/dkim-pri-ed25519.pem
+#key ed25519-sha256, xedape, /etc/dkim-pri-ed25519.pem
 
 #client localhost
 
@@ -204,7 +208,11 @@ header-sign *
 header-seal *
 ttl 259200
 
-remove a-r
+remove a-r, !, .my.domain, .his.domain
+remove dkim, !, .com
+remove mo-dkim, .
+remove aucy
+remove ip
 .Ed
 .
 .Pp
@@ -315,7 +323,7 @@ The DKIM standard requires a real
 name, literal( addresse)s are not allowed.
 Receivers will try to locate the public key(s) identified by the chosen
 .Fl Fl key Ns
-s selectors as DNS TXT records  in the form
+s selectors as DNS TXT records in the form
 .Ql Ar selector Ns ._domainkey. Ns Ar domain .
 .
 .Mx Fl header-sign
@@ -454,6 +462,7 @@ therefore
 would be needed.
 The macro is expected to be received when clients connect.
 .
+.
 .Mx Fl remove
 .It Fl Fl remove Ar type Ns Oo Ar ,spec.. Oc , Fl r Ns ..
 Remove the specified
@@ -480,6 +489,7 @@ The
 period
 .Ql \&.
 matches anything, including invalid headers.
+.
 .Pp
 Supported
 .Ar type Ns
@@ -511,6 +521,21 @@ support exists for
 and
 .Ql ip
 .Pf ( Ql IronPort ) .
+.
+.Pp
+.Sy Remarks:
+Regarding
+.Ql Authentication-\:Results
+RFC 7001 says
+.Dq For simplicity and maximum security, a border MTA could remove all \
+  instances of this header field on mail crossing into its trust \
+  boundary
+and
+.Dq A more robust border MTA could allow a specific list of \
+  authenticating MTAs whose information is to be admitted, \
+  removing the header field originating from all others Ns
+\&.
+.
 .
 .Mx Fl resource-file
 .It Fl Fl resource-file Ar path , Fl R Ns ..
@@ -627,7 +652,7 @@ Increase log verbosity (three levels).
 .
 .Xr postfix 1 ,
 .Xr postconf 5 ,
-.Xr spawn 8 ,
+.Xr spawn 8
 .
 .
 .Sh AUTHORS
@@ -649,7 +674,7 @@ RFC 6531
 .Dq SMTP Extension for Internationalized Email ,
 and RFC 6532
 .Dq Internationalized Email Headers ,
-is not supported; the old style using content transfer encoding etc is.
+is not supported; the old content transfer encoding style however is.
 This may affect address matching.
 .It
 Does not support stand-alone mode (usable by any MTA).
