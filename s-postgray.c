@@ -80,7 +80,7 @@
 /* The default built-in messages (see manual) */
 #define a_MSG_ALLOW "DUNNO" /* "OK" */
 #define a_MSG_BLOCK "REJECT" /* "5.7.1 Please go away" */
-#define a_MSG_DEFER "DEFER_IF_PERMIT 4.2.0 Service temporarily faded to Gray"
+#define a_MSG_DEFER "DEFER_IF_PERMIT 4.2.0 Service RFC 6647 greylisted you"
 #define a_MSG_NODEFER "DUNNO"
 
 /* When hitting limit, new entries are delayed that long */
