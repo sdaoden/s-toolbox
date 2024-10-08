@@ -114,7 +114,7 @@ Fine-grained control of signing activity is available via
 .Fl Fl sign
 relations that link specific
 .Fl Fl key Ns
-s to mail addresses, plain domain names, or domain name wildcards,
+s to mail addresses, domain names, or domain name wildcards,
 as are extracted from (the first address of)
 .Ql From
 headers of messages seen by the milter.
@@ -588,8 +588,8 @@ header of processed messages;
 It can be a mail address like
 .Ql local-part@dom.ain ,
 or only a domain without
-.Ql local-part@ ;
-domains with a leading
+.Ql local-part@ .
+Domains with a leading
 .Ql \&.
 period, as in
 .Ql .dom.ain ,

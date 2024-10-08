@@ -1332,7 +1332,7 @@ cmp 407 t404 t406
 	printf '\0\0\0\015O\0\0\0\6\0\0\1\377\0\37\377\377'
 	printf '\0\0\0\140DC'\
 'j\0sdaoden.eu\0{daemon_name}\0sign\0{daemon_addr}\0\06127.0.0.1\0v\0Micky Mouse\0_\0localhost [127.0.0.1]\0'
-	printf '\0\0\0\022LFrom\0X@localhose\0'
+	printf '\0\0\0\015LFrom\0X@lOvE\0'
 	printf '\0\0\0\013LSubject\0s\0'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
@@ -1341,10 +1341,10 @@ x $? 410
 e0sumem 410
 printf \
 'OPTNEG NR_CONN=0 NR_HDR=0\n'\
-'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=localhose;\n'\
-' s=I; t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
-'  3hSuFU=; b=rA9GlZ5TTq11UT7PVl1mDhWtmBQcZ/AkKiPEmmvoz8PNm/Q5dfQWfeYGgE9I41g\n'\
-'  LamFbuv22RetldlMnz9GZCg==\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=love; s=I;\n'\
+' t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuF\n'\
+'  U=; b=2tYWu3IU5MXrsONXgibMEkXwg6iphg+1Ynao0o3o6LxAygdcYGda3j8ALHzMs6FR2MoF\n'\
+'  DZrtpODSAjJ+JdteCg==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t411
 cmp 411 t410 t411
 
@@ -1352,7 +1352,7 @@ cmp 411 t410 t411
 	printf '\0\0\0\015O\0\0\0\6\0\0\1\377\0\37\377\377'
 	printf '\0\0\0\140DC'\
 'j\0sdaoden.eu\0{daemon_name}\0sign\0{daemon_addr}\0\06127.0.0.1\0v\0Micky Mouse\0_\0localhost [127.0.0.1]\0'
-	printf '\0\0\0\022LFrom\0X@localhose\0'
+	printf '\0\0\0\015LFrom\0X@LoVe\0'
 	printf '\0\0\0\013LSubject\0s\0'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
@@ -1363,8 +1363,8 @@ printf \
 'OPTNEG NR_CONN=0 NR_HDR=0\n'\
 'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=sdaoden.eu;\n'\
 ' s=I; t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
-'  3hSuFU=; b=IXdt7cLqVfgvm8uwWiS0MGuGJjQBiiv9qdxsU5kTmLBuQ5HQHO4TAaT/HAbtZKQ\n'\
-'  YkssAlCMTzpnfmzzpQtT6DA==\n'\
+'  3hSuFU=; b=MI2I9S8sswJ48IvkDJIKRxAKjqXeFAOg+tn2YUVu9RYdGwwJnY1VbpL64buc8bl\n'\
+'  7Av0Eqx9hYByry9N0yDN/Cw==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t413
 cmp 413 t412 t413
 
@@ -1372,11 +1372,11 @@ cmp 413 t412 t413
 	printf '\0\0\0\015O\0\0\0\6\0\0\1\377\0\37\377\377'
 	printf '\0\0\0\140DC'\
 'j\0sdaoden.eu\0{daemon_name}\0sign\0{daemon_addr}\0\06127.0.0.1\0v\0Micky Mouse\0_\0localhost [127.0.0.1]\0'
-	printf '\0\0\0\022LFrom\0X@localhose\0'
+	printf '\0\0\0\015LFrom\0X@lOvE\0'
 	printf '\0\0\0\013LSubject\0s\0'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
-} | ${PD} $k --domain-name=sdaoden.eu --sign localhose > t414 2>ERR
+} | ${PD} $k --domain-name=sDAoden.Eu --sign LOve > t414 2>ERR
 x $? 414
 e0sumem 414
 printf \
@@ -1385,8 +1385,8 @@ printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=sdaoden.eu;\n'\
 ' s=I; t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
-'  3hSuFU=; b=IXdt7cLqVfgvm8uwWiS0MGuGJjQBiiv9qdxsU5kTmLBuQ5HQHO4TAaT/HAbtZKQ\n'\
-'  YkssAlCMTzpnfmzzpQtT6DA==\n'\
+'  3hSuFU=; b=ttSSfNJ4hNc5U1NWuDOtGN+vAvslgdqB/a6m9rsGkaoYwp/dwcdjCU5JbPuPmat\n'\
+'  veQC6gy+goEOkjPUbAYYcCw==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t415
 cmp 415 t414 t415
 
@@ -1394,11 +1394,11 @@ cmp 415 t414 t415
 	printf '\0\0\0\015O\0\0\0\6\0\0\1\377\0\37\377\377'
 	printf '\0\0\0\140DC'\
 'j\0sdaoden.eu\0{daemon_name}\0sign\0{daemon_addr}\0\06127.0.0.1\0v\0Micky Mouse\0_\0localhost [127.0.0.1]\0'
-	printf '\0\0\0\022LFrom\0X@localhose\0'
+	printf '\0\0\0\015LFrom\0X@LoVE\0'
 	printf '\0\0\0\013LSubject\0s\0'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
-} | ${PD} $k --domain-name=sdaoden.eu --sign .localhose,sdaoden.eu > t416 2>ERR
+} | ${PD} $k --domain-name=sdaoden.eu --sign .LOvE,sdaoden.eu > t416 2>ERR
 x $? 416
 e0sumem 416
 printf \
@@ -1407,8 +1407,8 @@ printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=sdaoden.eu;\n'\
 ' s=I; t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
-'  3hSuFU=; b=IXdt7cLqVfgvm8uwWiS0MGuGJjQBiiv9qdxsU5kTmLBuQ5HQHO4TAaT/HAbtZKQ\n'\
-'  YkssAlCMTzpnfmzzpQtT6DA==\n'\
+'  3hSuFU=; b=t3Grqhdmd0VnxHLU07Kxip/71V/qSjwYZxO1p91W+2NLtZDzKjx5Fw+bc8IhoLw\n'\
+'  QP5PcKWrN+qNAeoAhK9x9CA==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t417
 cmp 417 t416 t417
 
@@ -1416,11 +1416,11 @@ cmp 417 t416 t417
 	printf '\0\0\0\015O\0\0\0\6\0\0\1\377\0\37\377\377'
 	printf '\0\0\0\140DC'\
 'j\0sdaoden.eu\0{daemon_name}\0sign\0{daemon_addr}\0\06127.0.0.1\0v\0Micky Mouse\0_\0localhost [127.0.0.1]\0'
-	printf '\0\0\0\022LFrom\0X@localhose\0'
+	printf '\0\0\0\015LFrom\0X@LOVE\0'
 	printf '\0\0\0\013LSubject\0s\0'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
-} | ${PD} $k --milter-macro sign,'{daemon_name}',sigh --domain-name=sdaoden.eu --sign .localhose,sdaoden.eu > t418 2>ERR
+} | ${PD} $k --milter-macro sign,'{daemon_name}',sIgH --domain-name=sdaoden.eu --sign .love,sdaoden.eu > t418 2>ERR
 x $? 418
 e0sumem 418
 printf \
@@ -1435,11 +1435,11 @@ cmp 419 t418 t419
 	printf '\0\0\0\015O\0\0\0\6\0\0\1\377\0\37\377\377'
 	printf '\0\0\0\140DC'\
 'j\0sdaoden.eu\0{daemon_name}\0sign\0{daemon_addr}\0\06127.0.0.1\0v\0Micky Mouse\0_\0localhost [127.0.0.1]\0'
-	printf '\0\0\0\022LFrom\0X@localhose\0'
+	printf '\0\0\0\015LFrom\0X@loVE\0'
 	printf '\0\0\0\013LSubject\0s\0'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
-} | ${PD} $k --milter-macro sign,'{daemon_name}',sign --domain-name=sdaoden.eu --sign .localhose,sdaoden.eu > t420 2>ERR
+} | ${PD} $k --milter-macro sign,'{daemon_name}',sign --domain-name=sdaoden.eu --sign .LovE,sdaoden.eu > t420 2>ERR
 x $? 420
 e0sumem 420
 printf \
@@ -1449,10 +1449,33 @@ printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=sdaoden.eu;\n'\
 ' s=I; t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
-'  3hSuFU=; b=IXdt7cLqVfgvm8uwWiS0MGuGJjQBiiv9qdxsU5kTmLBuQ5HQHO4TAaT/HAbtZKQ\n'\
-'  YkssAlCMTzpnfmzzpQtT6DA==\n'\
+'  3hSuFU=; b=6n734Dnzhn7LXfCoXSAgQqGb4GPe6z9B6y1vuATYG5n9y8TxqP1yfsgcMg+OW/s\n'\
+'  Qa84WFZ3TTU92wZ9m9wQpCg==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t421
 cmp 421 t420 t421
+
+{
+	printf '\0\0\0\015O\0\0\0\6\0\0\1\377\0\37\377\377'
+	printf '\0\0\0\140DC'\
+'j\0sdaoden.eu\0{daemon_name}\0sign\0{daemon_addr}\0\06127.0.0.1\0v\0Micky Mouse\0_\0localhost [127.0.0.1]\0'
+	printf '\0\0\0\015LFrom\0X@loVE\0'
+	printf '\0\0\0\013LSubject\0s\0'
+	printf '\0\0\0\01E'
+	printf '\0\0\0\01Q'
+} | ${PD} $k --milter-macro sign,'{daemon_name}',sign --domain-name=sdaoden.eu --sign .LovE,LOve > t422 2>ERR
+x $? 422
+e0sumem 422
+printf \
+'OPTNEG NR_CONN=1 NR_HDR=1\n'\
+'--milter-macro OK\n'\
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'SMFIC_HEADER SMFIR_CONTINUE\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=love; s=I;\n'\
+' t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuF\n'\
+'  U=; b=o/fGDItDDuJNG70/rBMqQs+MmV1OhspWdwd7U/k0re5MSKHs7fs7lLHEY1V5SEKtforC\n'\
+'  gmrLCZofNtJSQzOWAw==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t423
+cmp 423 t422 t423
 
 #.........
 # TODO massively incomplete

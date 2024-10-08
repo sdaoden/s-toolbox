@@ -4814,7 +4814,7 @@ a_conf__S(struct a_pd *pdp, char *arg){ /* {{{ */
 				} /* }}} */
 			}
 
-			/* Catch-all wildcard? */
+			/* Catch-all domain wildcard? */
 			if(*xarg == '\0'){
 jerr:
 				a_conf__err(pdp, _("--sign: invalid spec[,domain[,selector(s)]]: %s: stopped: %s\n"),
@@ -4826,12 +4826,21 @@ jerr:
 			wildcard = (*xarg == '.');
 			if(wildcard){
 				pdp->pd_flags |= a_F_SIGN_WILDCARDS;
+				/* spec must not contain this dot */
 				su_cs_pcopy(xarg, &xarg[1]);
 			}
 
-			if(*xarg != '\0' && !a_misc_is_rfc5321_domain(xarg)){
-				a_conf__err(pdp, _("--sign: spec is an invalid RFC 5321 domain: %s\n"), arg);
-				goto jerr;
+			if(*xarg != '\0'){
+				if(!a_misc_is_rfc5321_domain(xarg)){
+					a_conf__err(pdp, _("--sign: spec is an invalid RFC 5321 domain: %s\n"), arg);
+					goto jerr;
+				}
+
+				/* Normalize domain name; added in v0.6.3: all other "domain"s were always normalized,
+				 * and it was not documented this must be lowercase */
+				do
+					*xarg = S(char,su_cs_to_lower(*xarg));
+				while(*++xarg != '\0');
 			}
 			break;
 
@@ -4846,7 +4855,7 @@ jerr:
 				if(i > pdp->pd_sign_longest_domain)
 					pdp->pd_sign_longest_domain = i;
 
-				/* Normalize */
+				/* Normalize domain name */
 				while(i-- != 0)
 					dom[i] = S(char,su_cs_to_lower(dom[i]));
 			}else{
