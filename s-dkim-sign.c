@@ -791,6 +791,7 @@ enum a_pkey_type{
 	a_PKEY_NONE,
 	a_PKEY_BIG_ED = EVP_PKEY_ED25519,
 	a_PKEY_ED25519 = -EVP_PKEY_ED25519,
+	a_PKEY_ADAED25519 = a_PKEY_ED25519,
 	a_PKEY_RSA = EVP_PKEY_RSA
 };
 
@@ -897,15 +898,15 @@ struct a_dkim{
 
 /* */
 struct a_key_algo_tuple{
-	enum a_pkey_type kat_pkey;
+	enum a_pkey_type kat_pkey; /* (assumed 32-bit) */
 	ZIPENUM(u8,enum a_md_type) kat_md;
 	boole kat_obs_pkey;
 	boole kat_obs_md;
 	boole kat_sign_md; /* DigestSign() takes MD (XXX *SSL gives us no accessible property to automatize this) */
 	boole kat_extern_md; /* DigestSign() must be passed prepared MD TODO only because of RFC 8463 */
 	char kat_name[11]; /* "our pkey name" */
-	char kat_pkey_name[10];
-	char kat_md_name[10];
+	char kat_pkey_name[12];
+	char kat_md_name[8];
 };
 
 struct a_md{
@@ -979,8 +980,9 @@ struct a_pd{
 static struct a_key_algo_tuple const a_kata[] = {
 #ifndef OPENSSL_NO_SHA256
 # ifndef OPENSSL_NO_ECX
+	{a_PKEY_ADAED25519, a_MD_SHA256, FAL0, FAL0, FAL0, FAL0, "adaed25519\0", "adaed25519\0", "sha256\0"},
+	{a_PKEY_ED25519, a_MD_SHA256, FAL0, FAL0, FAL0, FAL0, "ed25519", "adaed25519\0", "sha256"},
 	{a_PKEY_BIG_ED, a_MD_SHA256, FAL0, FAL0, FAL0, TRU1, "big_ed", "ed25519", "sha256"},
-	{a_PKEY_ED25519, a_MD_SHA256, FAL0, FAL0, FAL0, FAL0, "ed25519", "ed25519", "sha256"},
 # endif
 # ifndef OPENSSL_NO_RSA
 	{a_PKEY_RSA, a_MD_SHA256, FAL0, FAL0, TRU1, FAL0, "rsa", "rsa", "sha256"},

@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd Jul 24, 2024
+.Dd Oct 08, 2024
 .ds VV \\%v0.6.2
 .ds XX \\%S-DKIM-SIGN
 .ds Xx \\%S-dkim-sign
@@ -143,17 +143,17 @@ at domain
 including all subdomains, for example
 .Ql at.home.his.domain ,
 are signed with the key
-.Ql edape ,
+.Ql adaedape ,
 all messages from
 .Ql my.domain
 including all subdomains with the keys
-.Ql edape
+.Ql adaedape
 and
 .Ql rsape ,
 however, if messages come from the domain
 .Ql bla.my.domain
 only the key
-.Ql edape
+.Ql adaedape
 will be used.
 Other messages will not be signed.
 .
@@ -193,16 +193,16 @@ milter-macro sign, {daemon_name}, outwall
 milter-macro verify, {daemon_name}, ingress
 
 key rsa-sha256, rsape, /etc/dkim-pri-rsa.pem
-key big_ed-sha256, edape, /etc/dkim-pri-ed25519.pem
-#key ed25519-sha256, xedape, /etc/dkim-pri-ed25519.pem
+#key big_ed-sha256, edape, /etc/dkim-pri-ed25519.pem
+key adaed25519-sha256, adaedape, /etc/dkim-pri-ed25519.pem
 
 #client localhost
 
 domain-name my.domain
 
 sign .my.domain
-sign bla.my.domain , ,  ::edape : :
-sign joe@.his.domain,his.domain,edape
+sign bla.my.domain , ,  ::adaedape : :
+sign joe@.his.domain,his.domain,adaedape
 
 header-sign *
 header-seal *
@@ -404,7 +404,7 @@ hyphen-minus,
 for example
 .Cm rsa-sha1 .
 Dependent on the used crypto library
-.Pf ( Cm ed25519-sha256 ) ,
+.Pf ( Cm adaed25519-sha256 ) ,
 .Cm big_ed-\:sha256 ,
 .Cm rsa-\:sha256 ,
 and
@@ -414,10 +414,9 @@ and
 shows what is built-in.
 The first two are the very same key-wise, except that
 .Cm big_ed-sha256
-is what was standardized as RFC 8463 in 2018, and what should be used;
-as it is unsupported by major email players, however, in the future
-.Cm ed25519-sha256
-could replace it.
+is what was standardized as RFC 8463 in 2018, whereas
+.Cm adaed25519-sha256
+is draft-nurpmeso-dkim-algo-adaed25519.
 The second field specifies the (DNS)
 .Ar selector
 of the public key (please see

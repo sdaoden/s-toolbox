@@ -171,7 +171,8 @@ if [ -n "$algo_rsa_sha256" ]; then
 	k=--key=$ka,I,$kf kR='key '$ka', I, '$kf k2a=$ka k2f=$kf k2=--key=$ka,II,$kf k2R='key '$ka', II, '$kf
 fi
 if [ -n "$algo_ed25519_sha256" ]; then
-	ka=ed25519-sha256 kf=pri-ed25519.pem
+	ken=adaed25519-sha256
+	ka=$ken kf=pri-ed25519.pem
 	k=--key=$ka,I,$kf kR='key '$ka', I, '$kf
 fi
 [ -z "$k" ] && { echo >&2 no keys to test; exit 78; } # EX_CONFIG
@@ -274,18 +275,18 @@ x $? 1.12
 if [ -z "$algo_ed25519_sha256" ]; then
 	echo >&2 no ed25519-sha256, skip 3.1-3.6
 else
-	${PD} -# --key ed25519-sha256,ed1,pri-ed25519.pem > t3.1 2>ERR
+	${PD} -# --key $ken,ed1,pri-ed25519.pem > t3.1 2>ERR
 	x $? 3.1
 	e0 3.1
-	${PD} -# --key=' ed25519-sha256 ,  ed1  ,   pri-ed25519.pem  ' > t3.2 2>ERR
+	${PD} -# --key=' '$ken' ,  ed1  ,   pri-ed25519.pem  ' > t3.2 2>ERR
 	x $? 3.2
 	e0 3.2
 	cmp 3.3 t3.1 t3.2
 
-	${PD} -# -k ed25519-sha256,ed1,pri-ed25519.pem > t3.4 2>ERR
+	${PD} -# -k $ken,ed1,pri-ed25519.pem > t3.4 2>ERR
 	x $? 3.4
 	e0 3.4
-	${PD} -# -k' ed25519-sha256 ,  ed1  ,   pri-ed25519.pem  ' > t3.5 2>ERR
+	${PD} -# -k' '$ken' ,  ed1  ,   pri-ed25519.pem  ' > t3.5 2>ERR
 	x $? 3.5
 	e0 3.5
 	cmp 3.6 t3.4 t3.5
@@ -814,10 +815,10 @@ e0sumem 200
 printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=aua.de; s=I;\n'\
 ' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
-'  3hSuFU=; b=XZsTsoDGBj1ThBUusPXOlKZnJPfTWAcOXp1lLFITL65MW6zgXPLXB9Oum+nkomK\n'\
-'  sG9vD5myIH0f+z0Y2hDBvCg==\n'\
+'  3hSuFU=; b=mFa/i4KMz+8kd5W5VxPZSJW11bPUOzU8rQKiNBnIbGfPNgpOMlGEGCP1gcOHBxA\n'\
+'  zOJGodMLXAkeOvz+sFrMYAw==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t201
 cmp 201 t200 t201
 
@@ -845,10 +846,10 @@ printf \
 ' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
 '  3hSuFU=; b=85yrMYJLX8wAGK9hUNn8Q81UK1cN8w4ic9dDPDrjzL/wUbGIcgUkXQ008ct87ey\n'\
 '  47lfcOJeoiTW6tluyeg0yCw==\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=y; s=I;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=y; s=I;\n'\
 ' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
-'  3hSuFU=; b=Wv2zq8YuDiqQSIKGINHUyLMvHXERzRO9N5ZQulDIeHrHSvbg4IQSJI+CJTCOUzF\n'\
-'  eXLutbxP4RFxirZtJKsbsDg==\n'\
+'  3hSuFU=; b=51vO7e23scSsbqvqCZ1zx5OHwNhyFMMCqxNrLBWauRIeRf3eNtSexhfMVfj1v1u\n'\
+'  2AuAfRDpy8DKiuAXVA/6MDg==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t201-mix
 	cmp 201-mix t200-mix t201-mix
 else
@@ -875,10 +876,10 @@ e0sumem 202
 printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=aua.de; s=I;\n'\
 ' t=844221007; h=from:subject:from; bh=unak6JHq0wL+Q1HP7dW1tjBx9FLA6DffoZ0qr\n'\
-'  Lwbbpo=; b=dNyvWBMO6P6k/nYbpWlm8eK5L4jNb+pper49iOQ/yboY2P5ty2aKFBaRi3cTxx0\n'\
-'  r5z965vlchM5kwa9gN3QtDA==\n'\
+'  Lwbbpo=; b=9IIsxlB7puMYL/+yFwdgzOORX+iYahigFk5IfO9Xo1zK9CdqRDILzJyIjZbUIYE\n'\
+'  a5uqfgVhgjT+yDmfrzeNOBw==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t203
 cmp 203 t202 t203
 
@@ -904,10 +905,10 @@ e0sumem 204
 printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=aua.de; s=I;\n'\
 ' t=844221007; h=from:subject:from; bh=PzUIcKYLlFjDJtEAT+6JZpXkPgH2VFMvaxAEz\n'\
-'  NP3cWk=; b=fGXDjaUMwMmfCW7ADJ1Qc/om2WB7fviw1TLyVj99nPCVXkPqO13ARXrbLzTutel\n'\
-'  4+H2fECaR3nHU2uPAe2JNBA==\n'\
+'  NP3cWk=; b=pAZeE9wLuYn1/K5cCEd/Buigc6kMm6g9WXZCMhGajbSgB1MnU+ukCPhQBbGRQ2B\n'\
+'  AvAmUKUN3IlJdeQTHxX1NDQ==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t205
 cmp 205 t204 t205
 
@@ -964,10 +965,10 @@ e0sumem 210
 printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=aua.de; s=I;\n'\
 ' t=844221007; h=from:subject:from; bh=vq8fFHPPqqkcinB83aEumTVgnU+qPqNqWSUgU\n'\
-'  EkP2L0=; b=fN/etAORxhK2pRauvaW4wCvStge7pxtnzuF8qBwFdi3/e/Jsd+gtOLcAaVjCOYz\n'\
-'  5HZ9haXpkFxcFZSK6V9RMBQ==\n'\
+'  EkP2L0=; b=+zO3JlhBdOuPkWFKVZhbvdztsBLLy5BkYTZQ0xQtsqtDrqO7lUaGUhL926xb8nz\n'\
+'  VuaarvqVysFZvEZMTnMLbCA==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t211
 cmp 211 t210 t211
 
@@ -996,10 +997,10 @@ e0sumem 214
 printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=aua.de; s=I;\n'\
 ' t=844221007; h=from:subject:from; bh=2lM8tKY3+20Uu1AZLSBrCf59CqYv31qtqmmPj\n'\
-'  4rBX7c=; b=YoBrDj6EgTKF6qEeNunu2NDYTJkUsro1jBCnLo5Pe8mEnh3GCGxsVu/XDg/nTvY\n'\
-'  yNRzrLkoCBVJNyLeKfpWyDQ==\n'\
+'  4rBX7c=; b=eoVy9BKkCQ1vCvONtIhDuGxkM+n2Eq6nrZTe0QH5tLUU6hqSiY6hIbtgZzFcrWI\n'\
+'  C3r94nQYf/nVbYNkUgXxkDw==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t215
 cmp 215 t214 t215
 
@@ -1028,10 +1029,10 @@ e0sumem 218
 printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=aua.de; s=I;\n'\
 ' t=844221007; h=from:subject:from; bh=tHOTehVL0EWpeJdZjJlAZZd7rm5SEpYBE1axW\n'\
-'  pHw9Ns=; b=4+ZdjuiWuqk9wb3bIyCcphmKF64N1D08sh167SUL/2CQTk10oZdgIf7SJFNEWpx\n'\
-'  Ko3cRzU+C/b0pgefVEKTAAQ==\n'\
+'  pHw9Ns=; b=0MgCLpQOeyemCvHnzPANiHB3OGhJ6qPRrlmgbDVUhcIRdzBccoGQZVtxquknkA3\n'\
+'  o/brCU9+8U8/syYm0jSXTAA==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t219
 cmp 219 t218 t219
 
@@ -1227,10 +1228,10 @@ e0sumem 300
 printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=aua.de; s=I;\n'\
 ' t=844221007; h=from:subject:from; bh=1PQ35TgmN7Tb2dAok5uHCLKjLLkw6S2FvewVU\n'\
-'  Qf7Du8=; b=kVqi56HEtdB738rjUi/xmqb6aPGFnttFJFz7GlrguSUTKNbmtnD2wpdVDkJlkOK\n'\
-'  c6c+utnGZ/7TEMYR5dcJVCw==\n'\
+'  Qf7Du8=; b=vsXxIJsDHcm3NfohGFQXxQpJh6GdI/hcn7gUv+V8gjJfwYVdHF0j895tvHLgNmO\n'\
+'  4dDim4HMB82dNcNfytRXODw==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t301
 cmp 301 t300 t301
 
@@ -1241,18 +1242,18 @@ cmp 301 t300 t301
 	printf '\0\0\0\002B2'
 	printf '\0\0\0\01E'
 	printf '\0\0\0\01Q'
-} | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t218 2>ERR
-x $? 218
-e0sumem 218
+} | ${PD} -R x.rc --sign 'y   ,auA.DE,I' > t302 2>ERR
+x $? 302
+e0sumem 302
 printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=aua.de; s=I;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=aua.de; s=I;\n'\
 ' t=844221007; h=from:subject:from; bh=tHOTehVL0EWpeJdZjJlAZZd7rm5SEpYBE1axW\n'\
-'  pHw9Ns=; b=4+ZdjuiWuqk9wb3bIyCcphmKF64N1D08sh167SUL/2CQTk10oZdgIf7SJFNEWpx\n'\
-'  Ko3cRzU+C/b0pgefVEKTAAQ==\n'\
-'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t219
-cmp 219 t218 t219
+'  pHw9Ns=; b=0MgCLpQOeyemCvHnzPANiHB3OGhJ6qPRrlmgbDVUhcIRdzBccoGQZVtxquknkA3\n'\
+'  o/brCU9+8U8/syYm0jSXTAA==\n'\
+'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t303
+cmp 303 t302 t303
 # }}}
 
 echo '=4: Triggers =' # {{{
@@ -1272,10 +1273,10 @@ e0sumem 400
 printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=y.z; s=I;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=y.z; s=I;\n'\
 ' t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuF\n'\
-'  U=; b=jzrEoivEWbECTM0xAnUjEFKtGZQmw6Ixn5YQ1RZJM7tgzgr/NNhgT/0BOmgFdG+Vd6+a\n'\
-'  TO2AmTng22hbc1iPCg==\n'\
+'  U=; b=0AjfEcJ41S/5epiXDcZpDYQFA9s9TSkY1N6/sHB4+E2nCm/j2sFpzYOBnCzqB73YfbuI\n'\
+'  AZDkEx39vMLbpEfRAQ==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t401
 cmp 401 t400 t401
 
@@ -1290,10 +1291,10 @@ e0sumem 402
 printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=y.z; s=I;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=y.z; s=I;\n'\
 ' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
-'  3hSuFU=; b=VvdE1nxRMZ/ek/mwzcGMbfzAqE5Q598um9X2WQwTyG2GJ3LBBblUbg1JLO2iIZG\n'\
-'  jwIMoRJjEDytj177XAEFpAg==\n'\
+'  3hSuFU=; b=b3JNUmI1zHAq+E1ioOlIiSlYb8/pDZMZVtGmB227ock368dE4wBVOBqzB+uFmXS\n'\
+'  yhuUi5YqmyYeCyOKWDxwYAw==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t403
 cmp 403 t402 t403
 
@@ -1308,10 +1309,10 @@ e0sumem 404
 printf \
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=z.y; s=I;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=z.y; s=I;\n'\
 ' t=844221007; h=from:subject:from; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
-'  3hSuFU=; b=rjeI6gV+4JnSbi1JlaAsUkwbuCUo5E5w0QcdYPsLfrSRQnQDV+dBk4xrMopE1WP\n'\
-'  G+uw7IEl8XEobd0Va3UAiAg==\n'\
+'  3hSuFU=; b=jJHhEJbzYXJsMZA1aCI6JzZ81k0zizSKqtvSKgIeI1EwGt5yjkbWPHaF5kUzGeI\n'\
+'  vQfxYpU2/I23nOmgZmS/8Dg==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t405
 cmp 405 t404 t405
 
@@ -1340,10 +1341,10 @@ x $? 410
 e0sumem 410
 printf \
 'OPTNEG NR_CONN=0 NR_HDR=0\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=localhose; s=I;\n'\
-' t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuF\n'\
-'  U=; b=t1XwGpSMAnIvXTYtW92ir792XpEDiI/xuw0ksxT1AjQEkmmud0WqDxOKk6eIqYLZqjhj\n'\
-'  BdteiqJOZc0GPxvZCw==\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=localhose;\n'\
+' s=I; t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
+'  3hSuFU=; b=rA9GlZ5TTq11UT7PVl1mDhWtmBQcZ/AkKiPEmmvoz8PNm/Q5dfQWfeYGgE9I41g\n'\
+'  LamFbuv22RetldlMnz9GZCg==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t411
 cmp 411 t410 t411
 
@@ -1360,10 +1361,10 @@ x $? 412
 e0sumem 412
 printf \
 'OPTNEG NR_CONN=0 NR_HDR=0\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=sdaoden.eu;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=sdaoden.eu;\n'\
 ' s=I; t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
-'  3hSuFU=; b=FMbNkXvqm2U2sAD/1dl/WTzIUUXedG3N0prqmDeyBC6VSEbXOcuGjQknPMff1F6\n'\
-'  kUuRR7C5eOH1a9mDYj3VqDw==\n'\
+'  3hSuFU=; b=IXdt7cLqVfgvm8uwWiS0MGuGJjQBiiv9qdxsU5kTmLBuQ5HQHO4TAaT/HAbtZKQ\n'\
+'  YkssAlCMTzpnfmzzpQtT6DA==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t413
 cmp 413 t412 t413
 
@@ -1382,10 +1383,10 @@ printf \
 'OPTNEG NR_CONN=0 NR_HDR=1\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=sdaoden.eu;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=sdaoden.eu;\n'\
 ' s=I; t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
-'  3hSuFU=; b=FMbNkXvqm2U2sAD/1dl/WTzIUUXedG3N0prqmDeyBC6VSEbXOcuGjQknPMff1F6\n'\
-'  kUuRR7C5eOH1a9mDYj3VqDw==\n'\
+'  3hSuFU=; b=IXdt7cLqVfgvm8uwWiS0MGuGJjQBiiv9qdxsU5kTmLBuQ5HQHO4TAaT/HAbtZKQ\n'\
+'  YkssAlCMTzpnfmzzpQtT6DA==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t415
 cmp 415 t414 t415
 
@@ -1404,10 +1405,10 @@ printf \
 'OPTNEG NR_CONN=0 NR_HDR=1\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=sdaoden.eu;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=sdaoden.eu;\n'\
 ' s=I; t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
-'  3hSuFU=; b=FMbNkXvqm2U2sAD/1dl/WTzIUUXedG3N0prqmDeyBC6VSEbXOcuGjQknPMff1F6\n'\
-'  kUuRR7C5eOH1a9mDYj3VqDw==\n'\
+'  3hSuFU=; b=IXdt7cLqVfgvm8uwWiS0MGuGJjQBiiv9qdxsU5kTmLBuQ5HQHO4TAaT/HAbtZKQ\n'\
+'  YkssAlCMTzpnfmzzpQtT6DA==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t417
 cmp 417 t416 t417
 
@@ -1446,10 +1447,10 @@ printf \
 '--milter-macro OK\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
 'SMFIC_HEADER SMFIR_CONTINUE\n'\
-'DKIM-Signature:v=1; a=ed25519-sha256; c=relaxed/relaxed; d=sdaoden.eu;\n'\
+'DKIM-Signature:v=1; a='$ken'; c=relaxed/relaxed; d=sdaoden.eu;\n'\
 ' s=I; t=844221007; h=from:subject; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG\n'\
-'  3hSuFU=; b=FMbNkXvqm2U2sAD/1dl/WTzIUUXedG3N0prqmDeyBC6VSEbXOcuGjQknPMff1F6\n'\
-'  kUuRR7C5eOH1a9mDYj3VqDw==\n'\
+'  3hSuFU=; b=IXdt7cLqVfgvm8uwWiS0MGuGJjQBiiv9qdxsU5kTmLBuQ5HQHO4TAaT/HAbtZKQ\n'\
+'  YkssAlCMTzpnfmzzpQtT6DA==\n'\
 'SMFIC_BODYEOB SMFIR_ACCEPT\n' > t421
 cmp 421 t420 t421
 
