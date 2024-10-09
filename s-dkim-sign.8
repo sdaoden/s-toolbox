@@ -345,8 +345,8 @@ Attempts to exclude
 are errors, no other rules apply (untested: name validity, duplicates).
 An effectively empty list is not used.
 .Bd -literal -offset indent
---header-sign=@!in-reply-to,,,!to,!cc
---header-sign '*  !message-id ,  !to ,, !cc , ,'
+--header-sign=@!in-reply-to,,,!to,!cc,openpgp
+--header-sign '* !message-id , !to ,, !cc,BlahBlahBlah'
 .Ed
 .
 .Mx Fl header-sign-show
