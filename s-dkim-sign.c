@@ -790,8 +790,7 @@ enum a_pkey_type{
 	/* EVP_PKEY_* always defined (1.0-3.1) so no #ifdef effort */
 	a_PKEY_NONE,
 	a_PKEY_BIG_ED = EVP_PKEY_ED25519,
-	a_PKEY_ED25519 = -EVP_PKEY_ED25519,
-	a_PKEY_ADAED25519 = a_PKEY_ED25519,
+	a_PKEY_ADAED25519 = -EVP_PKEY_ED25519,
 	a_PKEY_RSA = EVP_PKEY_RSA
 };
 
@@ -981,7 +980,6 @@ static struct a_key_algo_tuple const a_kata[] = {
 #ifndef OPENSSL_NO_SHA256
 # ifndef OPENSSL_NO_ECX
 	{a_PKEY_ADAED25519, a_MD_SHA256, FAL0, FAL0, FAL0, FAL0, "adaed25519\0", "adaed25519\0", "sha256\0"},
-	{a_PKEY_ED25519, a_MD_SHA256, FAL0, FAL0, FAL0, FAL0, "ed25519", "adaed25519\0", "sha256"},
 	{a_PKEY_BIG_ED, a_MD_SHA256, FAL0, FAL0, FAL0, TRU1, "big_ed", "ed25519", "sha256"},
 # endif
 # ifndef OPENSSL_NO_RSA
