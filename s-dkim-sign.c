@@ -1,5 +1,6 @@
 /*@ s-dkim-sign(8) - [postfix-only] RFC 6376/[8301]/8463 DKIM sign-only milter.
  *@ - OpenSSL must be 1.1.0 or above.
+ *@ - TODO --remove could support user free form header removal (all or nothing; not any a_AUTO_RMs).
  *@ - TODO Invalid messages (eg no From:) should not only be pass but also reject'- or quarantine'able.
  *@ - TODO DKIM-I i= DKIM value (optional additional --sign arg).
  *@ - TODO Make somehow addressable postfix's "(may be forged)":
@@ -35,6 +36,9 @@
 
 /* --sign max selectors (<> manual) */
 #define a_SIGN_MAX_SELECTORS 5
+
+/* Whether we remove a_rm_head_names[(a_RM_HEAD_USER_MAX..a_RM_HEAD_MAX) -1] *always* (but for "pass" actions)? */
+#define a_AUTO_RM 1
 
 /**/
 #define a_OPENLOG_FLAGS (LOG_NDELAY)
@@ -738,7 +742,7 @@ enum a_flags{
 	a_F_VVV = 1u<<8,
 	a_F_V_MASK = a_F_V | a_F_VV | a_F_VVV,
 
-	/* <> enum a_rm_head_type inv/any fast triggers */
+	/* for remove= <> enum a_rm_head_type inv/any fast triggers (< a_RM_HEAD_USER_MAX) */
 	a_F_RM_ANY = 1u<<9, /* *Any* --remove */
 #define a_RM_HEAD_TYPE_TO_INV_FLAG(RMT) (1u << (10u + S(uz,RMT)))
 	a_F_RM_A_R_INV = 1u<<10, /* a-r: invalid */
@@ -799,19 +803,29 @@ enum a_rm_head_type{
 	a_RM_HEAD_A_R, /* authentication-results: */
 	a_RM_HEAD_MO_A_R, /* x-mailman-original-authentication-results */
 	a_RM_HEAD_A_A_R, /* arc-authentication-results */
+
 	a_RM_HEAD_TOP_TOKEN_MATCH = a_RM_HEAD_A_A_R,
+
 	a_RM_HEAD_A_M_S, /* arc-message-signature */
 	a_RM_HEAD_A_S, /* arc-seal */
 	a_RM_HEAD_DKIM, /* -signature */
 	a_RM_HEAD_MO_DKIM, /* x-mailman-original-dkim-signature */
+
 	a_RM_HEAD_TOP_D_SEARCH = a_RM_HEAD_MO_DKIM, /* Search for d= */
 	a_RM_HEAD_TOP_MATCHED = a_RM_HEAD_TOP_D_SEARCH,
 
 	/* Exact header name match, on or off */
 	a_RM_HEAD_AUCY, /* autocrypt */
 	a_RM_HEAD_IP, /* ironport */
+
 	a_RM_HEAD_TOP_CMP = a_RM_HEAD_IP, /* Maximum exact match */
-	a_RM_HEAD_MAX
+	a_RM_HEAD_USER_MAX,
+
+	/* a_AUTO_RM range: no a_F_RM_* bits, no entry in a_rm_head_ids[] */
+	a_RM_HEAD_DKIM_STORE = a_RM_HEAD_USER_MAX,
+
+	a_RM_HEAD_TOP_AUTO = a_RM_HEAD_DKIM_STORE,
+	a_RM_HEAD_MAX = a_AUTO_RM ? a_RM_HEAD_TOP_AUTO + 1 : a_RM_HEAD_USER_MAX
 };
 
 enum a_srch_type{
@@ -961,7 +975,9 @@ struct a_pd{
 	char *pd_header_seal; /* --header-seal: NIL: none */
 	char *pd_mima_sign; /* name\0[:val\0:]\0 */
 	char *pd_mima_verify;
-	char *pd_rm[a_RM_HEAD_MAX]; /* --remove a-r etc. (\0|:val\0:)\0; entries NOT lowercased (for -# mode)! */
+	/* --remove a-r etc. (\0|:val\0:)\0; entries NOT lowercased (for -# mode)!
+	 * (Below we go for NELEM(>pd_rm) not RM_HEAD_USER_MAX!) */
+	char *pd_rm[a_RM_HEAD_USER_MAX];
 	struct a_key *pd_keys; /* --key */
 	u32 pd_key_md_maxsize; /* MAX() across all EVP_PKEY_get_size() and MDs, */
 	u32 pd_key_md_maxsize_b64; /* ..ditto, as base64 (including pad, NUL, etc), */
@@ -1043,18 +1059,23 @@ static char const a_rm_head_names[a_RM_HEAD_MAX][sizeof("X-Mailman-Original-Auth
 	/* non-matchables */
 	FII(a_RM_HEAD_AUCY) "autocrypt",
 		FII(a_RM_HEAD_IP) "ironport"
-}, a_rm_head_ids[a_RM_HEAD_MAX][8] = {
+	/* automatics */
+#if a_AUTO_RM
+	, FII(a_RM_HEAD_DKIM_STORE) "dkim-store"
+#endif
+}, a_rm_head_ids[a_RM_HEAD_USER_MAX][8] = {
 	FII(a_RM_HEAD_A_R) "a-r", FII(a_RM_HEAD_MO_A_R) "mo-a-r",
 		FII(a_RM_HEAD_A_A_R) "a-a-r", FII(a_RM_HEAD_A_M_S) "a-m-s", FII(a_RM_HEAD_A_S) "a-s",
 		FII(a_RM_HEAD_DKIM) "dkim", FII(a_RM_HEAD_MO_DKIM) "mo-dkim",
-	FII(a_RM_HEAD_AUCY) "aucy", FII(a_RM_HEAD_IP) "ip"
+	FII(a_RM_HEAD_AUCY) "aucy", FII(a_RM_HEAD_IP) "ip",
 };
 CTAV(a_RM_HEAD_A_R == 0 &&
 	a_RM_HEAD_MO_A_R == 1 &&
 	a_RM_HEAD_A_A_R == 2 &&
 	a_RM_HEAD_A_M_S == 3 && a_RM_HEAD_A_S == 4 &&
 	a_RM_HEAD_DKIM == 5 && a_RM_HEAD_MO_DKIM == 6 &&
-	a_RM_HEAD_AUCY == 7 && a_RM_HEAD_IP == 8);
+	a_RM_HEAD_AUCY == 7 && a_RM_HEAD_IP == 8 &&
+	(!a_AUTO_RM || (a_RM_HEAD_DKIM_STORE == 9)));
 
 static char const a_sopts[] = "A:C:c:" "d:" "~:!:" "k:" "M:" "R:" "r:" "S:s:" "t:" "#" "Hh";
 static char const * const a_lopts[] = {
@@ -1141,6 +1162,7 @@ static s32 a_milter__rm_parse(struct a_milter *mip, ZIPENUM(u8,enum a_rm_head_ty
 
 static s32 a_milter__verify(struct a_milter *mip);
 static s32 a_milter__sign(struct a_milter *mip);
+static s32 a_milter__rm_heads(struct a_milter *mip, boole only_autos);
 
 /* post_eoh must be >TRU1 if there was no !pre_eoh; !post_eoh only ensures _cleanup() can be called */
 static boole a_dkim_setup(struct a_dkim *dkp, boole post_eoh, struct a_pd *pdp, struct su_mem_bag *membp,
@@ -1438,7 +1460,7 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 				rv = su_EX_UNAVAILABLE;
 				goto jleave;
 			}
-			optneg.actions = (fb & a_RM_MASK) ? a_SMFIF_MASK_4US : a_SMFIF_ADDHDRS;
+			optneg.actions = (a_AUTO_RM || (fb & a_RM_MASK)) ? a_SMFIF_MASK_4US : a_SMFIF_ADDHDRS;
 
 			if((optneg.protocol & a_SMFIP_MASK_NOSEND) != a_SMFIP_MASK_NOSEND ||
 					 (optneg.protocol & a_SMFIP_MASK_NOREPLY) != a_SMFIP_MASK_NOREPLY){
@@ -1692,7 +1714,7 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 			break; /* }}} */
 
 		case a_SMFIC_HEADER:{ /* {{{ */
-			enum {a_FH_NONE, a_FH_SIGN = 1u<<0, a_FH_RM = 1u<<1};
+			enum {a_FH_NONE, a_FH_SIGN = 1u<<0, a_FH_RM = 1u<<1, a_FH_RM_AUTO = 1u<<2};
 
 			uz i;
 			u8 fh, rmt;
@@ -1722,6 +1744,15 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 			UNINIT(hname, NIL);
 			fh = a_FH_NONE;
 
+#if a_AUTO_RM
+			/* These cannot be signed/verified, they are always removed */
+			for(rmt = a_RM_HEAD_USER_MAX; rmt < a_RM_HEAD_MAX; ++rmt)
+				if(!su_cs_cmp_case(a_rm_head_names[rmt], &mip->mi_buf[1])){
+					fh |= a_FH_RM_AUTO;
+					goto jheader_step;
+				}
+#endif
+
 			if(fx & (a_ACT_DUNNO | a_ACT_SIGN)){
 				hname = pdp->pd_header_sign;
 				if(hname == NIL)
@@ -1743,7 +1774,7 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 
 			if(fx & (a_ACT_DUNNO | a_ACT_VERIFY)){
 				if(fb & a_RM_MASK){
-					for(rmt = 0; rmt < a_RM_HEAD_MAX; ++rmt)
+					for(rmt = 0; rmt < a_RM_HEAD_USER_MAX; ++rmt)
 						if(!su_cs_cmp_case(a_rm_head_names[rmt], &mip->mi_buf[1])){
 							fh |= a_FH_RM;
 							break;
@@ -1753,7 +1784,9 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 
 			if(fh == a_FH_NONE)
 				goto jheader_done;
-
+#if a_AUTO_RM
+jheader_step:
+#endif
 			if(!(fx & a_SETUP) && !a_dkim_setup(mip->mi_dkim, FAL0, pdp, &mip->mi_bag, mip->mi_log_id)){
 				/* xxx does not happen */
 				rv = su_EX_UNAVAILABLE;
@@ -1794,9 +1827,10 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 				}
 			}
 
-			if(fh & a_FH_RM){
-				ASSERT((fx & (a_ACT_DUNNO | a_ACT_VERIFY)) &&
-					!((fx & a_ACT_MASK) & ~(a_ACT_DUNNO | a_ACT_VERIFY)));
+			if(fh & (a_FH_RM | a_FH_RM_AUTO)){
+				ASSERT(!(fh & a_FH_RM) ||
+					((fx & (a_ACT_DUNNO | a_ACT_VERIFY)) &&
+					!((fx & a_ACT_MASK) & ~(a_ACT_DUNNO | a_ACT_VERIFY))));
 				rv = a_milter__rm_parse(mip, rmt, &mip->mi_buf[i]);
 				if(rv != su_EX_OK){
 					fx &= ~a_ACT_MASK;
@@ -2304,7 +2338,7 @@ jleave:
 } /* }}} */
 
 static s32
-a_milter__rm_parse(struct a_milter *mip, ZIPENUM(u8,enum a_rm_head_type) rmt, char *dp){ /* {{{ */
+a_milter__rm_parse(struct a_milter *mip, ZIPENUM(u8,enum a_rm_head_type) rmt, char *dp){ /* {{{ xxx split up in 3/4 */
 	s32 mse;
 	uz dl, l;
 	char *dat, sbuf[256];
@@ -2327,7 +2361,12 @@ a_milter__rm_parse(struct a_milter *mip, ZIPENUM(u8,enum a_rm_head_type) rmt, ch
 	LCTAV(a_RM_HEAD_TOP_MATCHED > a_RM_HEAD_TOP_TOKEN_MATCH);
 	LCTAV(a_RM_HEAD_TOP_TOKEN_MATCH < a_RM_HEAD_TOP_D_SEARCH);
 	LCTAV(a_RM_HEAD_TOP_MATCHED >= a_RM_HEAD_TOP_D_SEARCH);
+
 	mse = TRU1;
+	if(rmt >= a_RM_HEAD_USER_MAX){
+		emsg = "automatic header removal";
+		goto jmark;
+	}
 	if(rmt > a_RM_HEAD_TOP_MATCHED || (pdp->pd_flags & a_RM_HEAD_TYPE_TO_ANY_FLAG(rmt))){
 		emsg = "super-wildcard or spec-less match";
 		goto jmark;
@@ -2419,6 +2458,8 @@ jeparse_invalid:
 		}
 	}
 
+	ASSERT(rmt < a_RM_HEAD_USER_MAX); /* (jumped to jmark:) */
+	LCTAV(NELEM(pdp->pd_rm) == a_RM_HEAD_USER_MAX);
 	cp = pdp->pd_rm[rmt];
 	if(cp == NIL){
 		cp = mip->mi_macro_j;
@@ -2525,75 +2566,27 @@ jmark:
 } /* }}} */
 
 static s32
-a_milter__verify(struct a_milter *mip){ /* {{{ */
-	u32 i;
-	struct a_pd *pdp;
+a_milter__verify(struct a_milter *mip){ /* {{{ TODO stub */
 	s32 rv;
 	NYD_IN;
 
-	rv = su_EX_OK;
-	pdp = mip->mi_pdp;
+	rv = a_milter__rm_heads(mip, FAL0);
 
-	for(i = 0; i < a_RM_HEAD_MAX; ++i){
-		struct a_rm_head *rmhp;
-
-		if((rmhp = mip->mi_rm_head[i]) != NIL && (*rmhp->rmh_bits & 1u)){
-			u32 mpl, otc, orc;
-
-			if(UNLIKELY(pdp->pd_flags & a_F_VVV))
-				su_log_write(su_LOG_INFO, "%sremoving: %s", mip->mi_log_id, a_rm_head_names[i]);
-
-			UNINIT(mpl, 0);
-			if(LIKELY(!(pdp->pd_flags & (a_F_REPRO | a_F_DBG)))){
-				char *cp;
-
-				mip->mi_buf[0] = a_SMFIR_CHGHEADER;
-				cp = su_cs_pcopy(&mip->mi_buf[5], a_rm_head_names[i]);
-				*++cp = '\0'; /* name\0[value]\0 */
-				mpl = S(u32,P2UZ(++cp - &mip->mi_buf[0]));
-			}
-
-			for(otc = rmhp->rmh_cnt, orc = 0; otc > 0; --otc){
-				/* 1-based */
-				if(!su_bits_array_test(rmhp->rmh_bits, otc))
-					continue;
-				++orc;
-
-				if(LIKELY(!(pdp->pd_flags & (a_F_REPRO | a_F_DBG)))){
-					u32 bs;
-
-					bs = su_boswap_net_32(otc);
-					su_mem_copy(&mip->mi_buf[1], &bs, sizeof bs);
-					rv = a_milter__write(mip, mpl);
-					if(rv != su_EX_OK)
-						goto jleave;
-
-					if(LIKELY(!(pdp->pd_flags & a_F_VVV)))
-						continue;
-				}else if(UNLIKELY(pdp->pd_flags & a_F_REPRO))
-					printf("SMFIR CHGHEADER %s %u\n", a_rm_head_names[i], otc);
-
-				if(UNLIKELY(pdp->pd_flags & a_F_VVV))
-					su_log_write(su_LOG_INFO, "%s%s: removed %u",
-						mip->mi_log_id, a_rm_head_names[i], otc);
-			}
-
-			if(UNLIKELY(orc > 0 && (pdp->pd_flags & a_F_VV)))
-				su_log_write(su_LOG_INFO, "%sremoved %u of %u %s headers",
-					mip->mi_log_id, orc, rmhp->rmh_cnt, a_rm_head_names[i]);
-		}
-	}
-
-jleave:
 	NYD_OU;
 	return rv;
 } /* }}} */
 
 static s32
 a_milter__sign(struct a_milter *mip){ /* {{{ */
-	s32 rv;
 	struct a_pd *pdp;
+	s32 rv;
 	NYD_IN;
+
+#if a_AUTO_RM
+	rv = a_milter__rm_heads(mip, TRU1);
+	if(rv != su_EX_OK)
+		goto jleave;
+#endif
 
 	pdp = mip->mi_pdp;
 
@@ -2635,6 +2628,71 @@ a_milter__sign(struct a_milter *mip){ /* {{{ */
 	}else{
 		su_log_write(su_LOG_CRIT, _("%serror creating DKIM signature, message unchanged"), mip->mi_log_id);
 		rv = su_EX_TEMPFAIL;
+	}
+
+jleave:
+	NYD_OU;
+	return rv;
+} /* }}} */
+
+static s32
+a_milter__rm_heads(struct a_milter *mip, boole only_autos){ /* {{{ */
+	u32 i;
+	struct a_pd *pdp;
+	s32 rv;
+	NYD_IN;
+
+	rv = su_EX_OK;
+	pdp = mip->mi_pdp;
+
+	for(i = (only_autos ? a_RM_HEAD_USER_MAX : 0); i < a_RM_HEAD_MAX; ++i){
+		struct a_rm_head *rmhp;
+
+		if((rmhp = mip->mi_rm_head[i]) != NIL && (*rmhp->rmh_bits & 1u)){
+			u32 mpl, otc, orc;
+
+			if(UNLIKELY(pdp->pd_flags & a_F_VVV))
+				su_log_write(su_LOG_INFO, "%sremoving: %s", mip->mi_log_id, a_rm_head_names[i]);
+
+			UNINIT(mpl, 0);
+			if(LIKELY(!(pdp->pd_flags & (a_F_REPRO | a_F_DBG)))){
+				char *cp;
+
+				mip->mi_buf[0] = a_SMFIR_CHGHEADER;
+				cp = su_cs_pcopy(&mip->mi_buf[5], a_rm_head_names[i]);
+				*++cp = '\0'; /* name\0[value]\0 */
+				mpl = S(u32,P2UZ(++cp - &mip->mi_buf[0]));
+			}
+
+			for(otc = rmhp->rmh_cnt, orc = 0; otc > 0; --otc){
+				/* 1-based */
+				if(!su_bits_array_test(rmhp->rmh_bits, otc))
+					continue;
+				++orc;
+
+				if(LIKELY(!(pdp->pd_flags & (a_F_REPRO | a_F_DBG)))){
+					u32 bs;
+
+					bs = su_boswap_net_32(otc);
+					su_mem_copy(&mip->mi_buf[1], &bs, sizeof bs);
+					rv = a_milter__write(mip, mpl);
+					if(rv != su_EX_OK)
+						goto jleave;
+
+					if(LIKELY(!(pdp->pd_flags & a_F_VVV)))
+						continue;
+				}else if(UNLIKELY(pdp->pd_flags & a_F_REPRO))
+					printf("SMFIR CHGHEADER %s %u\n", a_rm_head_names[i], otc);
+
+				if(UNLIKELY(pdp->pd_flags & a_F_VVV))
+					su_log_write(su_LOG_INFO, "%s%s: removed %u",
+							mip->mi_log_id, a_rm_head_names[i], otc);
+			}
+
+			if(UNLIKELY(orc > 0 && (pdp->pd_flags & a_F_VV)))
+				su_log_write(su_LOG_INFO, "%sremoved %u of %u %s headers",
+						mip->mi_log_id, orc, rmhp->rmh_cnt, a_rm_head_names[i]);
+		}
 	}
 
 jleave:
@@ -3565,7 +3623,7 @@ a_conf_finish(struct a_pd *pdp){ /* {{{ */
 		}
 	}
 
-	/* test mode shortcut */
+	/* non-test mode shortcut */
 	if(LIKELY(!(pdp->pd_flags & a_F_MODE_TEST)))
 		goto jleave;
 
@@ -3641,7 +3699,7 @@ a_conf_cleanup(struct a_pd *pdp){ /* {{{ */
 	if(pdp->pd_flags & a_F_RM_ANY){
 		u32 i;
 
-		for(i = 0; i < a_RM_HEAD_MAX; ++i)
+		for(i = 0; i < NELEM(pdp->pd_rm); ++i)
 			if(pdp->pd_rm[i] != NIL)
 				su_FREE(pdp->pd_rm[i]);
 	}
@@ -3878,7 +3936,7 @@ jhredo:
 		fprintf(stdout, "ttl %lu\n", S(ul,pdp->pd_dkim_sig_ttl));
 
 	if(pdp->pd_flags & a_F_RM_ANY){
-		for(i = 0; i < a_RM_HEAD_MAX; ++i)
+		for(i = 0; i < NELEM(pdp->pd_rm); ++i)
 			if((cp = pdp->pd_rm[i]) != NIL)
 				a_conf__list_cpxarr("remove ", a_rm_head_ids[i], cp, TRU1);
 	}
@@ -4321,7 +4379,8 @@ jon_error_arg_nul:
 		rv = -su_EX_DATAERR;
 		goto jleave;
 	}
-	*store = vp = su_TALLOC(char, i + (xarg != NIL ? i + a_HEADER_SIGSEA_MAX : 0) +1 +1); /* \0\0 */
+	/* Note that store MUST be \0\0 terminated if returned! */
+	*store = vp = su_TALLOC(char, i + (xarg != NIL ? i + a_HEADER_SIGSEA_MAX : 0) +1+1);
 	from = FAL0;
 
 	/* If we modify the default list the way is longer; practically no validity tests <> manual! */
@@ -4371,10 +4430,29 @@ jxt_next:
 	}
 
 	while((cp = su_cs_sep_c(&arg, ',', TRU1)) != NIL){
+		boole ck;
+
 		if(xarg != NIL && *cp == '!')
 			continue;
-		if(!from)
+
+		ck = TRU1;
+		if(!from){
 			from = (su_cs_cmp(cp, "from") == 0);
+			ck = !from;
+		}
+
+		if(ck){
+#if a_AUTO_RM
+			for(i = a_RM_HEAD_USER_MAX; i < a_RM_HEAD_MAX; ++i)
+				if(UNLIKELY(!su_cs_cmp(a_rm_head_names[i], cp))){
+					a_conf__err(pdp, _("--header-(sign|seal): cannot sign/seal: %s\n"), cp);
+					rv = -su_EX_DATAERR;
+					*vp = '\0'; /* \0\0 */
+					goto jleave;
+				}
+#endif
+		}
+
 		vp = su_cs_pcopy(vp, cp) +1;
 	}
 	*vp = '\0';
@@ -4699,7 +4777,7 @@ a_conf__r(struct a_pd *pdp, char *arg){ /* {{{ */
 					mac = &pdp->pd_rm[ftyp];
 					break;
 				}
-				if(++ftyp == a_RM_HEAD_MAX){
+				if(++ftyp == NELEM(pdp->pd_rm)){
 					a_conf__err(pdp, _("--remove: unknown type: %s\n"), x.cp);
 					rv = -su_EX_DATAERR;
 					goto jleave;
@@ -5238,6 +5316,9 @@ a_misc_usage(FILE *fp){
 
 	for(katp = a_kata; katp < &a_kata[NELEM(a_kata)]; ++katp)
 		fprintf(fp, "%s%s-%s", (katp == a_kata ? su_empty : ", "), katp->kat_name, katp->kat_md_name);
+#if a_AUTO_RM
+	putc('.', fp); /* <> "test-script-uses" for matching <> have_auto_rm! */
+#endif
 
 	fprintf(fp, V_(a_2), a_CONTACT);
 

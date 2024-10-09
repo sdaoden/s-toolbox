@@ -155,10 +155,11 @@ _EOT
 ### }}}
 
 algos=$(${PD} -h 2>/dev/null | grep -F Algorithms:)
-algo_ed25519_sha256= algo_rsa_sha256= algo_rsa_sha1=
-[ "$algos" != "${algos#* ed25519-sha256}" ] && algo_ed25519_sha256=y
+algo_ed25519_sha256= algo_rsa_sha256= algo_rsa_sha1= have_auto_rm=
+[ "$algos" != "${algos#* adaed25519-sha256}" ] && algo_ed25519_sha256=y
 [ "$algos" != "${algos#* rsa-sha256}" ] && algo_rsa_sha256=y
 [ "$algos" != "${algos#* rsa-sha1}" ] && algo_rsa_sha1=y
+[ "$algos" != "${algos%*.}" ] && have_auto_rm=y # <> "test-script-uses" comment in C source!
 
 ka= kf= k= kR= k2a= k2f= k2= k2R=
 # we cannot do "x=y z=$x" due to {Free,Net}BSD sh(1)
