@@ -4374,7 +4374,7 @@ jon_error_arg_nul:
 
 	/* We need temporary storage in xarg!=NIL case, and we have nothing but plain HEAP here anyway,
 	 * and the string is usually pretty short..: just place it at end */
-	if(UZ_MAX - a_HEADER_SIGSEA_MAX <= i || UZ_MAX - a_HEADER_SIGSEA_MAX - i <= i){
+	if(U32_MAX - a_HEADER_SIGSEA_MAX <= i || U32_MAX - a_HEADER_SIGSEA_MAX - i <= i){
 		a_conf__err(pdp, _("--header-(sign|seal): argument too long: %s\n"), arg);
 		rv = -su_EX_DATAERR;
 		goto jleave;
