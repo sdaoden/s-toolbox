@@ -172,10 +172,10 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 	static int f_saved;
 
 	char uidbuf[sizeof "../.18446744073709551615"],
-			xbuf[((sizeof("XDG_RUNTIME_DIR=") + sizeof(a_RUNTIME_DIR_OUTER) +
-				sizeof(a_RUNTIME_DIR_BASE) + sizeof("../.18446744073709551615")) |
-				(sizeof("XDG_CONFIG_DIRS=") + PATH_MAX)
-			) +1];
+		xbuf[((sizeof("XDG_RUNTIME_DIR=") + sizeof(a_RUNTIME_DIR_OUTER) +
+			sizeof(a_RUNTIME_DIR_BASE) + sizeof("../.18446744073709551615")) |
+			(sizeof("XDG_CONFIG_DIRS=") + PATH_MAX)
+		) +1];
 	struct a_dirtree dt_user;
 	struct a_dirtree const *dtp;
 	struct passwd *pwp;
@@ -455,14 +455,37 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 
 		if(/*!isopen &&*/ sessions == 0){
 			/* Ridiculously simple, but everything else would be the opposite.
-			 * Ie, E[MN]FILE failures, ordering issues, mode changes, mounts, subvolumes.. */
-			static char const cmd[] = "rm -rf " a_RUNTIME_DIR_OUTER "/" a_RUNTIME_DIR_BASE "/";
+			 * Ie, E[MN]FILE failures, ordering issues, mode changes, mounts, subvolumes..
+			 * This used to use system(3) because session opener programs were expected not to fiddle
+			 * with $PATH in a way that would make this exploitable, but was then changed */
+			static char const path[] = a_RUNTIME_DIR_OUTER "/" a_RUNTIME_DIR_BASE "/",
+				rm[] = "/usr/bin/rm", *xargv[4] = {NULL, "-rf", NULL, NULL};
+			pid_t xpid;
 
-			memcpy(xbuf, cmd, sizeof(cmd) -1);
-			memcpy(&xbuf[sizeof(cmd) -1], &uidbuf[4], uidbuflen +1);
+			if(access((emsg = &rm[sizeof("/usr") -1]), X_OK) && access((emsg = &rm[0]), X_OK)){
+				emsg = "(/usr)?/bin/rm inaccessible, unable to rm(1) -rf per user XDG_RUNTIME_DIR";
+				errno = EINVAL;
+				goto jerr;
+			}
+			xargv[0] = emsg;
 
-			res = system(xbuf);
+			memcpy(&xbuf[0], path, sizeof(path) -1);
+			memcpy(&xbuf[sizeof(path) -1], &uidbuf[4], uidbuflen +1);
+			xargv[2] = &xbuf[0];
+
+			xpid = fork();
+			if(xpid == -1)
+				goto jeexec;
+			if(xpid == 0){
+				extern char **environ;
+
+				execve(xargv[0], (char *const*)xargv, environ);
+				exit(1);
+			}
+
+			waitpid(xpid, &res, 0);
 			if(!WIFEXITED(res) || WEXITSTATUS(res) != 0){
+jeexec:
 				emsg = "unable to rm(1) -rf per user XDG_RUNTIME_DIR";
 				errno = EINVAL;
 				goto jerr;

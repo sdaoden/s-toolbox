@@ -32,7 +32,7 @@ CFLAGS = -DNDEBUG \
 	-fstack-protector-strong \
 	-D_FORTIFY_SOURCE=3 \
 	-fcf-protection=full \
-	-fPIE
+	-fPIE -fPIC
 LDF_SUN=
 LDF_X=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed -Wl,--enable-new-dtags -fPIE -pie
 LDFLAGS=$$(x=$$(uname); [ "$${x}" = "$${x\#Sun*}" ] && echo "$(SULDF_X)" || echo "$(SULDF_SUN)") -shared

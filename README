@@ -1,14 +1,16 @@
 A repo of some small tools
 ==========================
 
-pam_xdg.c (plus support) v0.8.4 (2024-05-29):
+pam_xdg.c (plus support) v0.8.5 (2024-11-27):
   XDG Base Directories support via PAM: creation of $XDG_RUNTIME_DIRs,
   injection of environment variables into sessions. libpam and OpenPAM.
+  (Despite the name this is not the later FreeBSD pam_xdg.)
   [.]
   [- port to OpenPAM (BSD). (Jan Beich)]
   [- Allow non-XDG-standard paths via make options. (Jan Beich)]
-  [- With "notroot", unsetenv(3) all XDG variables for root.  v0.8.3.]
-  - Fix: pam_get_item() may return NULL (Andre Albsmeier).  [v0.8.4]
+  [- With "notroot", unsetenv(3) all XDG variables for root. v0.8.3]
+  [- Fix: pam_get_item() may return NULL (Andre Albsmeier). v0.8.4]
+  - Do not use system(3) to rm(1), but unroll. [v0.8.5]
 
 s-cdda.c (plus support) v0.8.5 (2021-01-28):
   Access digital audio CDs (TOC, MCN, ISRC, CD-TEXT, audio tracks).
