@@ -287,6 +287,7 @@ NSPC_USE(su)
  * 0x08	SMFIF_DELRCPT		Remove recipients (SMFIR_DELRCPT)
  * 0x10	SMFIF_CHGHDRS		Change or delete headers (SMFIR_CHGHEADER)
  * 0x20	SMFIF_QUARANTINE	Quarantine message (SMFIR_QUARANTINE)
+ * [0x40 SMFIF_CHGFROM		Change envelope from (SMFIR_CHGFROM)]
  *
  * (XXX: SMFIF_DELRCPT has an impact on how address rewriting affects
  * addresses sent in the SMFIC_RCPT phase.  This will be described in a
@@ -523,6 +524,14 @@ NSPC_USE(su)
  *
  * (Note that message processing MAY continue afterwards, but the mail will
  * not be delivered even if accepted with SMFIR_ACCEPT.)
+ *
+ * **
+ *
+ *[ 'e'	SMFIR_CHGFROM	Change MAIL FROM:<> envelope
+ *
+ * char	args[][]	Array of strings, NUL terminated (address at index 0).
+ * 			args[0] is new MAIL envelope from.
+ * 			args[1] and beyond are ESMTP arguments, if any.]
  *
  * **
  *
