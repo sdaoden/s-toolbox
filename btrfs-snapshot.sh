@@ -349,9 +349,9 @@ mymail() {
 }
 
 syno() {
-	echo 'Synopsis: btrfs-snapshot.sh create-dir-tree'
-	echo 'Synopsis: btrfs-snapshot.sh create|trim|trim-ival|setvols'
-	echo 'Synopsis: btrfs-snapshot.sh clone-to-cwd|sync-to-cwd'
+	echo '  btrfs-snapshot.sh create-dir-tree'
+	echo '  btrfs-snapshot.sh create|trim|trim-ival|setvols'
+	echo '  btrfs-snapshot.sh clone-to-cwd|sync-to-cwd'
 	echo
 	echo 'See script head for documentation: '$0
 	exit $1

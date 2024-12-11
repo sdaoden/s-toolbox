@@ -117,8 +117,8 @@ jleave:
 
 jesyn:
 	fprintf(stderr,
-		"Synopsis: %s [-v] server port cmd-path prikey allowed-sigs-db\n"
-		"Synopsis: %s client port host enckey encsig\n",
+		"  %s [-v] server port cmd-path prikey allowed-sigs-db\n"
+		"  %s client port host enckey encsig\n",
 		prog, prog);
 	goto jleave;
 }

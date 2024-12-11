@@ -1,7 +1,7 @@
 #!/bin/sh -
 #@ s-dkim-sign-key-create.sh: create keys for DKIM usage.
 syno() {
-	echo >&2 'SYNOPSIS: '$0' [ed25519|rsa[:BITS]] FILENAME-PREFIX'
+	echo >&2 '  '$0' [ed25519|rsa[:BITS]] FILENAME-PREFIX'
 	echo >&2
 	echo >&2 'Please see manual for more.'
 	exit 64 # EX_USAGE

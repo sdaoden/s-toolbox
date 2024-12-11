@@ -109,8 +109,7 @@ sub command_line{ # {{{
 jdocu:
 	print STDERR "!PANIC $emsg\n\n" if defined $emsg;
 	print STDERR <<__EOT__;
-${INTRO}Synopsis:
-  $SELF [:-v|--verbose:] [--git=PATH] [--rebase] \
+${INTRO}  $SELF [:-v|--verbose:] [--git=PATH] [--rebase] \
       [--nodelete] ONTO REV-SPEC
   $SELF [:-v|--verbose:] [--git=PATH] --delete-topics
 
