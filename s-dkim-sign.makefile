@@ -29,6 +29,9 @@ SULIB_BLD=
 #SULIB_BLD=src/su/.clib.a
 SUINC=
 #SUINC=-I./include
+
+# smake predefines this (cannot handle # in variables)
+NUMBER_SIGN?=\#
 SUFLVLC=-std=c99
 SUFDEVEL=-Dsu_HAVE_DEBUG -Dsu_HAVE_DEVEL -Dsu_NYD_ENABLE -g
 #SUFDEVEL=-DNDEBUG
@@ -36,11 +39,11 @@ SUFOPT?=-O1
 #SUFOPT?=-O2
 SULDF_SUN=
 SULDF_X=-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed -Wl,--enable-new-dtags -fPIE -pie
-SULDF=$$(x=$$(uname); [ "$${x}" = "$${x\#Sun*}" ] && echo "$(SULDF_X)" || echo "$(SULDF_SUN)")
+SULDF=$$(x=$$(uname); [ "$${x}" = "$${x$(NUMBER_SIGN)Sun*}" ] && echo "$(SULDF_X)" || echo "$(SULDF_SUN)")
 SULDFOPT_SUN=
 SULDFOPT_X=
 #SULDFOPT_X=-Wl,-O1 -Wl,--sort-common
-SULDFOPT=$$(x=$$(uname); [ "$${x}" = "$${x\#Sun*}" ] && echo "$(SULDFOPT_X)" || echo "$(SULDFOPT_SUN)")
+SULDFOPT=$$(x=$$(uname); [ "$${x}" = "$${x$(NUMBER_SIGN)Sun*}" ] && echo "$(SULDFOPT_X)" || echo "$(SULDFOPT_SUN)")
 SUSTRIP=
 #SUSTRIP=strip
 
@@ -70,7 +73,7 @@ SUFS = -fPIE \
 	-fstrict-aliasing -fstrict-overflow \
 	-fstack-protector-strong \
 	-D_FORTIFY_SOURCE=3 \
-	$$(x=$$(uname -m); [ "$${x}" != "$${x\#x86*}" ] && echo -fcf-protection=full) \
+	$$(x=$$(uname -m); [ "$${x}" != "$${x$(NUMBER_SIGN)x86*}" ] && echo -fcf-protection=full) \
 	\
 #	-DHAVE_SANITIZER \
 #		-fsanitize=undefined \
