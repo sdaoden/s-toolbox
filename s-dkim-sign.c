@@ -13,7 +13,7 @@
  *@ - Assumes header "name" values do not end with whitespace (search @HVALWS).
  *@   (Header body values are trimmed.)
  *
- * Copyright (c) 2024 Steffen Nurpmeso <steffen@sdaoden.eu>.
+ * Copyright (c) 2024 - 2025 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -3427,7 +3427,7 @@ a_dkim_sign(struct a_dkim *dkp, char *mibuf, struct su_mem_bag *membp){ /* {{{ *
 						!EVP_DigestUpdate(mdcp->mdc_md_ctx, dp, dl) ||
 						!EVP_DigestFinal(mdcp->mdc_md_ctx, b64sigp, &a.sl32)){
 					su_log_write(su_LOG_CRIT,
-						_("%scannot ed25519 double-EVP_Digest*(3) %s-%s(=%s=%s): %s\n"),
+						_("%scannot handle non-adaptive EVP_Digest*(3) %s-%s(=%s=%s): %s\n"),
 						dkp->d_log_id, kp->k_katp->kat_name, kp->k_katp->kat_md_name,
 						kp->k_sel, kp->k_file, ERR_error_string(ERR_get_error(), NIL));
 					goto jleave;

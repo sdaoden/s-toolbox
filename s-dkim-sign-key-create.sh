@@ -7,7 +7,7 @@ syno() {
 	exit 64 # EX_USAGE
 }
 #
-# 2024 Steffen Nurpmeso <steffen@sdaoden.eu>
+# 2024 - 2025 Steffen Nurpmeso <steffen@sdaoden.eu>
 # Public Domain
 
 RSA_DEFBITS=2048
