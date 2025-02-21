@@ -12,6 +12,12 @@
  *@ - xxx With multiple keys, cannot include elder generated D-S in newer ones.
  *@ - Assumes header "name" values do not end with whitespace (search @HVALWS).
  *@   (Header body values are trimmed.)
+ */
+#define a_COPYRIGHT \
+	VAL_NAME a__COPYRIGHT_X " is\n" \
+	"\tCopyright (c) 2024 - 2025 Steffen Nurpmeso\n" \
+	"\tSPDX-License-Identifier: ISC\n"
+/*@ S-dkim-sign copyright:
  *
  * Copyright (c) 2024 - 2025 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -31,7 +37,7 @@
 #define su_FILE s_dkim_sign
 
 /* */
-#define a_VERSION "0.6.2"
+#define a_VERSION "0.6.3"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* --sign max selectors (<> manual) */
@@ -50,6 +56,12 @@
 # define a_NYD_FILE "/tmp/" VAL_NAME ".dat"
 
 /* -- >8 -- 8< -- */
+
+#if VAL_NAME_IS_MYNAME
+# define a__COPYRIGHT_X
+#else
+# define a__COPYRIGHT_X " (S-dkim-sign)"
+#endif
 
 /*
 #define _POSIX_C_SOURCE 200809L
@@ -1122,6 +1134,7 @@ static char const * const a_lopts[] = {
 	/**/
 	"test-mode;#;" N_("[*] check and list configuration, exit according status"),
 
+	"copyright;-42;" N_("[*] show copyright"),
 	"long-help;H;" N_("[*] this listing"),
 	"help;h;" N_("[*] short help"),
 	NIL
@@ -5503,6 +5516,10 @@ jhss_redo:
 			mpv = su_EX_OK;
 			}goto jleave;
 
+		case -42:
+			fprintf(stdout, a_COPYRIGHT);
+			mpv = su_EX_OK;
+			goto jleave;
 		case 'H':
 		case 'h':
 			a_misc_usage(stdout);
