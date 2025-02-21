@@ -29,9 +29,10 @@ are "not handled".
 RELEASES
 --------
 
-v0.8.4, 2025-??-??:
+v0.8.4, 202?-??-??:
   - Change *msg-defer* default, the old one is misinterpreted by some.
   - Add --focus-domain/-F mode.
+  - Add --copyright.
 
   + Linux (musl, glibc), *BSD:
     As above.

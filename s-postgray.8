@@ -15,8 +15,9 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd February 20, 2025
-.ds VV \\%v0.8.4
+.\" ["make d-release"-managed]
+.Dd June 23, 2024
+.ds VV \\%v0.8.3
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
 .ds xx \\%s-postgray
@@ -347,6 +348,10 @@ Add a blacklist entry, syntax identical to
 Entries are rejected with
 .Fl Fl msg-block .
 (Blocking should possibly be done earlier in the processing chain.)
+.
+.Mx Fl copyright
+.It Fl Fl copyright
+Show copyright information.
 .
 .Mx Fl count
 .It Fl Fl count Ar no , Fl c Ar no

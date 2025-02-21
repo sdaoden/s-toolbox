@@ -34,6 +34,12 @@
  *@		* BIT 0-15 (0x0000FFFF): minutes relative to base epoch when seen last;
  *@		  with gc-timeout==0 S16_MIN means "timed out beyond representability"
  *@	  + DATA TUPLE or TRIPLE: [recipient/]sender/client_address
+ */
+#define a_COPYRIGHT \
+	VAL_NAME a__COPYRIGHT_X " is\n" \
+	"\tCopyright (c) 2022 - 2025 Steffen Nurpmeso\n" \
+	"\tSPDX-License-Identifier: ISC\n"
+/*@ S-postgray copyright:
  *
  * Copyright (c) 2022 - 2025 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
@@ -98,6 +104,12 @@
 # define a_NYD_FILE /* Must be in store-path on at least FreeBSD "/tmp/" */ VAL_NAME ".dat"
 
 /* -- >8 -- 8< -- */
+
+#if VAL_NAME_IS_MYNAME
+# define a__COPYRIGHT_X
+#else
+# define a__COPYRIGHT_X " (S-postgray)"
+#endif
 
 /*
 #define _POSIX_C_SOURCE 200809L
@@ -475,6 +487,7 @@ static char const * const a_lopts[] = {
 	"status;%;" N_("[*] exit status 0 or 1 state whether server runs; otherwise error"),
 	"test-mode;#;" N_("[*] check and list configuration, exit according status"),
 
+	"copyright;-42;" N_("[*] show copyright"),
 	"long-help;H;" N_("[*] this listing"),
 	"help;h;" N_("[*] short help"),
 	NIL
@@ -4377,6 +4390,10 @@ jreavo:
 			}
 			break;
 
+		case -42:
+			fprintf(stdout, a_COPYRIGHT);
+			mpv = su_EX_OK;
+			goto jleave;
 		case 'H':
 		case 'h':
 			a_misc_usage(stdout);
