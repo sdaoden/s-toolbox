@@ -1,6 +1,6 @@
 .\"@ s-postgray - postfix policy (graylisting) server.
 .\"
-.\" Copyright (c) 2022 - 2024 Steffen Nurpmeso <steffen@sdaoden.eu>.
+.\" Copyright (c) 2022 - 2025 Steffen Nurpmeso <steffen@sdaoden.eu>.
 .\" SPDX-License-Identifier: ISC
 .\"
 .\" Permission to use, copy, modify, and/or distribute this software for any
@@ -15,8 +15,8 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd June 23, 2024
-.ds VV \\%v0.8.3
+.Dd February 20, 2025
+.ds VV \\%v0.8.4
 .ds XX \\%S-POSTGRAY
 .ds Xx \\%S-postgray
 .ds xx \\%s-postgray
@@ -127,7 +127,10 @@ may be used.)
 As recommendet by RFC 6647 messages are identified by their recipient /
 sender / client_address value triple; in
 .Fl Fl focus-sender
-mode recipients are ignored (see there).
+mode recipients are ignored, in
+.Fl Fl focus-domain
+mode address local-parts are ignored, only domain names are inspected;
+see the respective notes below.
 Here is an excessively lengthy but minimal
 .Xr postconf 5
 example.
@@ -327,20 +330,8 @@ and inspect the log in order to create a whitelist.
 Some MTAs are picky, so driving for a while with a low count and in
 .Fl Fl verbose
 mode to collect more data before increasing count etc. is worthwhile.
-.Pp
-It should be noted that only the two VERP (variable envelope return path
-addresses) delimiters plus sign
-.Ql +
-and equal sign
-.Ql =
-are understood \(em mailing list software which chooses the hyphen-minus
-.Ql -
-as a VERP delimiter (ezmlm instances are known which do) make
-a particularly bad choice because many mailing-lists have a hyphen-minus
-as a regular part of their name, so no automatic differentiation in
-between the customized address part and the regular address is possible:
-such addresses can only be placed in the whitelist, otherwise each and
-every received message will be graylisted.
+Please read about VERP for
+.Fl Fl focus-domain .
 .
 .Mx Fl block-file
 .It Fl Fl block-file Ar path , Fl B Ar path
@@ -392,6 +383,32 @@ This mode asserts that the maximum delay
 is smaller than
 .Fl Fl delay-max .
 .
+.Mx Fl focus-domain
+.It Fl Fl focus-domain , F
+By default the entirety of an email address is used for identification
+purposes, the local-part and the domain: like this a spammer which
+addresses multiple local users does not pass graylisting simply by
+sending an email to another local user.
+However, several mailing-list software implementations implement VERP
+(Variable Envelope Return Paths) in a way that does not allow
+differentiation of the variable and the user part, which are usually
+separated by one of the delimiters plus sign
+.Ql +
+and equal sign
+.Ql =
+\(em mailing list software that uses the hyphen-minus
+.Ql -
+as a delimiter makes a particularly bad choice because hyphen-minus
+occurs regulary in list names:
+domains of such software can only be placed in the whitelist to avoid
+that each and every received message is graylisted individually.
+Alternatively
+.Fl Fl \&\&focus-domain
+can be set to ignore local-parts of sender addresses,
+which can be acceptible in the context of a configuration.
+An existing DB can be reused: the next load removes local-parts: one-way
+(and the last loaded entry of a domain will be used: simple).
+.
 .Mx Fl focus-sender
 .It Fl Fl focus-sender , f
 By default all of recipient (email address), sender (email address) and
@@ -414,9 +431,7 @@ senders that passed the test, and
 might be sufficient.
 This setting cannot be changed at runtime, and it should be ensured all
 instances use the same one.
-An existing DB can be reused: the next load removes recipients, so this
-is one way (DB remains
-.Dq compatible ) .
+An existing DB can be reused: the next load removes recipients: one-way.
 .
 .Mx Fl gc-linger
 .It Fl Fl gc-linger

@@ -38,7 +38,7 @@ VAL_OS_SANDBOX = 1
 # Our name (test script and manual do not adapt!)
 VAL_NAME = s-postgray
 
-##
+## [Note: test not isolated against most default-value changes -- check this!]
 
 # --[46]-mask
 VAL_4_MASK = 24

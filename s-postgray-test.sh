@@ -902,10 +902,12 @@ fi
 # }}}
 
 ##
-echo '=7: gray --focus-sender=' # {{{
+echo '=7: gray --focus-*=' # {{{
 if [ -n "$s7" ]; then
 	echo 'skipping 7'
 else
+
+## --focus-sender
 
 rm -f *.db
 
@@ -955,6 +957,110 @@ cmp -s ./7.2 ./7.xx || exit 101
 
 eval $PG -R ./x.rc --shutdown $REDIR
 [ $? -eq 0 ] || exit 101
+
+## --focus-domain
+
+rm -f *.db
+
+# Without -F!
+cat <<'_EOT' | eval $PG -R ./x.rc > ./7.3 $REDIR; cat > ./7.x <<_EOT
+recipient=x1@y
+sender=y1@z
+client_address=127.1.2.2
+client_name=xy
+
+recipient=x2@y
+sender=y1@z
+client_address=127.1.2.3
+client_name=xy
+
+_EOT
+action=$MSG_DEFER
+
+action=$MSG_DEFER
+
+_EOT
+
+cmp -s ./7.3 ./7.x || exit 101
+[ -n "$REDIR" ] || echo ok 7.3
+
+# save+reload (without -F still!)
+eval $PG -R ./x.rc --shutdown $REDIR
+[ $? -eq 0 ] || exit 101
+
+xsleep 1
+printf 'action=%s\n\n' "$MSG_DEFER" > 7.xx
+
+printf \
+'recipient=x2@y\nsender=y2@z\nclient_address=127.1.2.4\nclient_name=xy\n\n'\
+	| eval $PG -F -R ./x.rc > ./7.4 $REDIR
+cmp -s ./7.4 ./7.xx || exit 101
+[ -n "$REDIR" ] || echo ok 7.4
+
+eval $PG -R ./x.rc --shutdown $REDIR
+xsleep 1
+printf 'action=%s\n\n' "DUNNO" > 7.xx
+
+printf \
+'recipient=x2@y\nsender=y3@z\nclient_address=127.1.2.5\nclient_name=xy\n\n'\
+	| eval $PG -F -R ./x.rc > ./7.5 $REDIR
+cmp -s ./7.5 ./7.xx || exit 101
+[ -n "$REDIR" ] || echo ok 7.5
+
+eval $PG -R ./x.rc --shutdown $REDIR
+[ $? -eq 0 ] || exit 101
+
+## --focus-domain --focus-sender
+
+rm -f *.db
+
+# Without -Ff!
+cat <<'_EOT' | eval $PG -R ./x.rc > ./7.6 $REDIR; cat > ./7.x <<_EOT
+recipient=x1@y
+sender=y1@z
+client_address=127.1.2.2
+client_name=xy
+
+recipient=x2@y
+sender=y2@z
+client_address=127.1.2.3
+client_name=xy
+
+_EOT
+action=$MSG_DEFER
+
+action=$MSG_DEFER
+
+_EOT
+
+cmp -s ./7.6 ./7.x || exit 101
+[ -n "$REDIR" ] || echo ok 7.6
+
+# save+reload (without -Ff still!)
+eval $PG -R ./x.rc --shutdown $REDIR
+[ $? -eq 0 ] || exit 101
+
+xsleep 1
+printf 'action=%s\n\n' "$MSG_DEFER" > 7.xx
+
+printf \
+'recipient=x3@y\nsender=y3@z\nclient_address=127.1.2.4\nclient_name=xy\n\n'\
+	| eval $PG -Ff -R ./x.rc > ./7.7 $REDIR
+cmp -s ./7.7 ./7.xx || exit 101
+[ -n "$REDIR" ] || echo ok 7.7
+
+xsleep 1
+printf 'action=%s\n\n' "DUNNO" > 7.xx
+
+printf \
+'recipient=x4@y\nsender=y4@z\nclient_address=127.1.2.5\nclient_name=xy\n\n'\
+	| eval $PG -Ff -R ./x.rc > ./7.8 $REDIR
+cmp -s ./7.8 ./7.xx || exit 101
+[ -n "$REDIR" ] || echo ok 7.8
+
+eval $PG -R ./x.rc --shutdown $REDIR
+[ $? -eq 0 ] || exit 101
+
 fi
 # }}}
 

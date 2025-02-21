@@ -35,7 +35,7 @@
  *@		  with gc-timeout==0 S16_MIN means "timed out beyond representability"
  *@	  + DATA TUPLE or TRIPLE: [recipient/]sender/client_address
  *
- * Copyright (c) 2022 - 2024 Steffen Nurpmeso <steffen@sdaoden.eu>.
+ * Copyright (c) 2022 - 2025 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -53,7 +53,7 @@
 #define su_FILE s_postgray
 
 /* */
-#define a_VERSION "0.8.3"
+#define a_VERSION "0.8.4"
 #define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* Maximum accept(2) backlog */
@@ -280,15 +280,16 @@ enum a_flags{
 	a__F_MODE_MASK = a_F_MODE_SHUTDOWN | a_F_MODE_STARTUP | a_F_MODE_STATUS | a_F_MODE_TEST,
 
 	a_F_CLIENT_ONCE = 1u<<5, /* -o */
-	a_F_FOCUS_SENDER = 1u<<6, /* -f */
-	a_F_UNTAMED = 1u<<7, /* -u */
+	a_F_FOCUS_DOMAIN = 1u<<6, /* -F */
+	a_F_FOCUS_SENDER = 1u<<7, /* -f */
+	a_F_UNTAMED = 1u<<8, /* -u */
 
 	/* */
-	a_F_TEST_ERRORS = 1u<<8,
-	a_F_NOFREE_MSG_ALLOW = 1u<<9,
-	a_F_NOFREE_MSG_BLOCK = 1u<<10,
-	a_F_NOFREE_MSG_DEFER = 1u<<11,
-	a_F_NOFREE_STORE_PATH = 1u<<12,
+	a_F_TEST_ERRORS = 1u<<11,
+	a_F_NOFREE_MSG_ALLOW = 1u<<12,
+	a_F_NOFREE_MSG_BLOCK = 1u<<13,
+	a_F_NOFREE_MSG_DEFER = 1u<<14,
+	a_F_NOFREE_STORE_PATH = 1u<<15,
 
 	/* Client */
 	a_F_CLIENT_NONE,
@@ -427,7 +428,7 @@ struct a_pg{
 	char pg_buf[ALIGN_Z(a_BUF_SIZE)];
 };
 
-static char const a_sopts[] = "4:6:" "A:a:B:b:" "c:D:d:pfG:g:L:l:" "m:~:!:" "o" "R:" "q:t:" "s:" "u" "v" ".@%#" "Hh";
+static char const a_sopts[] = "4:6:" "A:a:B:b:" "c:D:d:pFfG:g:L:l:" "m:~:!:" "o" "R:" "q:t:" "s:" "u" "v" ".@%#" "Hh";
 static char const * const a_lopts[] = {
 	/* long option order */
 	"4-mask:;4;" N_("IPv4 mask to strip off addresses before match"),
@@ -442,6 +443,7 @@ static char const * const a_lopts[] = {
 	"delay-max:;D;" N_("until an email \"is not a retry\" but new (minutes)"),
 	"delay-min:;d;" N_("before an email \"is a retry\" (minutes)"),
 	"delay-progressive;p;" N_("double delay-min per retry until count is reached"),
+	"focus-domain;F;" N_("ignore local-parts, only look at domains (see manual)"),
 	"focus-sender;f;" N_("ignore recipient data (see manual)"),
 	"gc-rebalance:;G;" N_("no of GC DB cleanup runs before rebalance"),
 	"gc-timeout:;g;" N_("until gray DB entry classified unused (minutes)"),
@@ -482,7 +484,7 @@ static char const * const a_lopts[] = {
 #define a_AVOPT_CASES \
 	case '4': case '6':\
 	case 'A': case 'a': case 'B': case 'b':\
-	case 'c': case 'D': case 'd': case 'p': case 'f': case 'G': case 'g': case -1: case 'L': case 'l':\
+	case 'c': case 'D': case 'd': case 'p': case 'F': case 'f': case 'G': case 'g': case -1: case 'L': case 'l':\
 	case '~': case '!': case 'm':\
 	/**/\
 	case 'o':\
@@ -2280,16 +2282,59 @@ a_server__gray_load(struct a_pg *pgp){ /* {{{ */
 			s16 nmin;
 			up d;
 
-			/* skip a possible recipient then */
-			if(pgp->pg_flags & a_F_FOCUS_SENDER){
-				while(*base != '/'){
-					if(--u.z == 0)
-						goto jerr;
-					++base;
+			if(!(pgp->pg_flags & (a_F_FOCUS_DOMAIN | a_F_FOCUS_SENDER))){
+				su_mem_copy(key, base, u.z);
+				key[u.z] = '\0';
+			}else{
+				char *kp, *xkp, c;
+
+				kp = key;
+				nmin = ((pgp->pg_flags & a_F_FOCUS_SENDER) == 0);
+
+				/* skip a possible recipient */
+				if(nmin == 0){
+					for(;;){
+						if(u.z-- == 0)
+							goto jerr;
+						if(*base++ == '/')
+							break;
+					}
+					*kp++ = '/';
 				}
+
+				/* possibly trim local-part(s), and ensure we have a sender */
+				while(nmin-- >= 0){
+					c = '\0';
+					if(pgp->pg_flags & a_F_FOCUS_DOMAIN){
+						for(xkp = kp;;){
+							if(u.z-- == 0)
+								goto jerr;
+							if((*xkp++ = c = *base++) == '@')
+								break;
+							if(c == '/'){
+								if(nmin < 0 && ++kp == xkp)
+									goto jerr;
+								kp = xkp;
+								break;
+							}
+						}
+					}
+					if(c != '/')
+						for(xkp = kp;;){
+							if(u.z-- == 0)
+								goto jerr;
+							if((*kp++ = *base++) == '/'){
+								if(nmin < 0 && ++xkp == kp)
+									goto jerr;
+								break;
+							}
+						}
+				}
+
+				if(u.z > 0)
+					su_mem_copy(kp, base, u.z);
+				kp[u.z] = '\0';
 			}
-			su_mem_copy(key, base, u.z);
-			key[u.z] = '\0';
 
 			d = S(up,ibuf);
 			nmin = S(s16,d & U16_MAX);
@@ -2704,7 +2749,7 @@ jdel:
 			if(c - c_gray_c1 <= xlimit)
 				goto jgc2;
 		}
-/* FIXME maybe an else close with FORCE ??*/
+		/* XXX maybe an else close with FORCE?? */
 		f |= a_GC2_DEL_GRAY;
 		c -= c_gray;
 		if(c <= xlimit)
@@ -3119,6 +3164,7 @@ a_conf_list_values(struct a_pg *pgp){
 			"%s"
 			"%s"
 			"%s"
+			"%s"
 			"gc-rebalance %lu\n"
 			"gc-timeout %lu\n"
 			"limit %lu\n"
@@ -3136,6 +3182,7 @@ a_conf_list_values(struct a_pg *pgp){
 		S(ul,pgp->pg_4_mask), S(ul,pgp->pg_6_mask),
 		S(ul,pgp->pg_count), S(ul,pgp->pg_delay_max), S(ul,pgp->pg_delay_min),
 			(pgp->pg_flags & a_F_DELAY_PROGRESSIVE ? "delay-progressive\n" : su_empty),
+			(pgp->pg_flags & a_F_FOCUS_DOMAIN ? "focus-domain\n" : su_empty),
 			(pgp->pg_flags & a_F_FOCUS_SENDER ? "focus-sender\n" : su_empty),
 			(pgp->pg_flags & a_F_GC_LINGER ? "gc-linger\n" : su_empty),
 			S(ul,pgp->pg_gc_rebalance), S(ul,pgp->pg_gc_timeout),
@@ -3211,6 +3258,7 @@ a_conf_arg(struct a_pg *pgp, s32 o, char const *arg, BITENUM(u32,a_avo_flags) f)
 	case 'D': p.i16 = &pgp->pg_delay_max; goto ji16;
 	case 'd': p.i16 = &pgp->pg_delay_min; goto ji16;
 	case 'p': pgp->pg_flags |= a_F_DELAY_PROGRESSIVE; break;
+	case 'F': pgp->pg_flags |= a_F_FOCUS_DOMAIN; break;
 	case 'f': pgp->pg_flags |= a_F_FOCUS_SENDER; break;
 	case 'G': p.i16 = &pgp->pg_gc_rebalance; goto ji16;
 	case 'g': p.i16 = &pgp->pg_gc_timeout; goto ji16;
@@ -3668,11 +3716,14 @@ a_norm_triple_r(struct a_pg *pgp){ /* XXX-3 should normalize addresses */
 	}
 
 	/* "Normalize" domain */
-	ue = cp;
+	ue = ++cp;
 	while((c = *cp) != '\0')
 		*cp++ = S(char,su_cs_to_lower(c));
 
-	if(&ue[1] >= cp)
+	if(ue < cp){
+		if(pgp->pg_flags & a_F_FOCUS_DOMAIN)
+			r = ue;
+	}else
 		r = NIL;
 
 jleave:
@@ -3684,6 +3735,7 @@ jleave:
 
 static boole
 a_norm_triple_s(struct a_pg *pgp){ /* XXX-3 should normalize addresses */
+	boole focus_domain;
 	char *s, *cp, c, *ue, *d;
 	NYD2_IN;
 
@@ -3701,6 +3753,7 @@ a_norm_triple_s(struct a_pg *pgp){ /* XXX-3 should normalize addresses */
 
 	cp = s;
 	ue = NIL;
+	focus_domain = ((pgp->pg_flags & a_F_FOCUS_DOMAIN) != 0);
 
 	/* Skip over local-part.
 	 * XXX-1 We take anything to the first VERP delimiter or start of domain
@@ -3710,8 +3763,7 @@ a_norm_triple_s(struct a_pg *pgp){ /* XXX-3 should normalize addresses */
 	 * that is, numeric IDs etc after the VERP delimiter: do not care.
 	 * Note openwall (ezmlm)
 	 *   oss-security-return-27633-steffen=sdaoden.eu@lists.openwall.com
-	 * It is not possible to deal with that but on a per-message base.
-	 */
+	 * It is not possible to deal with that but on a per-message base */
 	for(;; ++cp){
 		if((c = *cp) == '\0'){
 			s = NIL;
@@ -3720,7 +3772,7 @@ a_norm_triple_s(struct a_pg *pgp){ /* XXX-3 should normalize addresses */
 
 		if(c == '@')
 			break;
-		if(c == '+' || c == '='){
+		if(!focus_domain && (c == '+' || c == '=')){
 			if(ue == NIL)
 				*(ue = cp) = '@';
 		}
@@ -3734,8 +3786,10 @@ a_norm_triple_s(struct a_pg *pgp){ /* XXX-3 should normalize addresses */
 
 	/* Now fill the hole */
 	if(d < cp){
+		if(focus_domain)
+			s = d;
 		/* To avoid overzealous fortify implementations, use _move() */
-		if(ue != NIL)
+		else if(ue != NIL)
 			su_mem_move(&ue[1], d, P2UZ(++cp - d));
 	}else
 		s = NIL;
