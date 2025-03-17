@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 #@ Create and update OAuth2 access tokens (for S-nail).
 #
-# 2022 - 2024 Steffen Nurpmeso <steffen@sdaoden.eu>
+# 2022 - 2025 Steffen Nurpmeso <steffen@sdaoden.eu>
 # Public Domain
 
 SELF = 'oauth-helper.py'
-VERSION = '0.8.0'
+VERSION = '0.8.1'
 CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>'
 
 # Empty and no builtin configs
@@ -449,7 +449,7 @@ def act_authorize(args, cfg, dt): #{{{
 		else:
 			print('   %s' % u, file=sys.stderr)
 
-		print('\nPlease enter authorization [URI?code=]token: ', end='', file=sys.stderr)
+		print('\nPlease enter authorization [URI?code=]token (empty: exit): ', end='', file=sys.stderr)
 		try:
 			auth_code = input()
 		except KeyboardInterrupt:
