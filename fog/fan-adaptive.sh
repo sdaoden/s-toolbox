@@ -27,7 +27,7 @@
 #@ TODO When calculating sleeps, adaptions etc. we should pay
 #@ TODO attention to the overall temperature percentage.
 #
-# 2018 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
+# 2018 - 2022, 2025 Steffen Nurpmeso <steffen@sdaoden.eu>.
 # Public Domain
 
 # Predefined models; see MACBOOK_AIR_2011 set for an example.
@@ -437,7 +437,7 @@ while :; do
 
    # The way the shell handles signals is complicated, only mksh was able
    # to always honour signals regardless of what.  bash(1) documents the
-   # following approach to always work, and that seems to be portable behaviour
+   # following approach to always work, and that seems to be portable behavior
    [ $MODEL = SIM ] && continue
    sleep $fc_sleep_curr &
    wait
