@@ -1,7 +1,8 @@
 #!/bin/sh -
 #@ s-dkim-sign-key-create.sh: create keys for DKIM usage.
 syno() {
-	echo >&2 '  '$0' [ed25519|rsa[:BITS]] FILENAME-PREFIX'
+	echo >&2 $0' [ed25519|rsa[:BITS]] FILENAME-PREFIX'
+	echo >&2 $0' -h  |  --help'
 	echo >&2
 	echo >&2 'Please see manual for more.'
 	exit 64 # EX_USAGE
@@ -50,7 +51,7 @@ else
 fi
 
 off=0
-case $algo in
+case "$algo" in
 ed25519) opt= off=16;; # skip ASN.1 structure (Hanno Böck - thanks!)
 rsa|rsa:*)
 	bits=${algo##*:}
@@ -82,7 +83,7 @@ esac
 
 x=
 while :; do
-	$OPENSSL genpkey -out "$prefix"-dkim-pri-$algo.pem -outform PEM -algorithm $algo $opt
+	"$OPENSSL" genpkey -out "$prefix"-dkim-pri-$algo.pem -outform PEM -algorithm $algo $opt
 	[ $? -eq 0 ] && break
 
 	echo >&2
@@ -97,7 +98,7 @@ while :; do
 		x=/opt/csw/bin/openssl
 	fi
 	if [ x = x"$x" ] || [ x"$x" = x"$OPENSSL" ]; then
-		echo >&2 'Please place version >= 1.1.0 (early) in $PATH, or $OPENSSL=, rerun.'
+		echo >&2 'Please place version >= 1.1.0 (early) in $PATH, or set $OPENSSL=, rerun.'
 		exit $EX_DATAERR
 	fi
 	OPENSSL=$x
@@ -105,8 +106,8 @@ while :; do
 	echo >&2
 done
 
-$OPENSSL pkey -pubout -outform PEM < "$prefix"-dkim-pri-$algo.pem |
-$AWK -v off=$off '
+"$OPENSSL" pkey -pubout -outform PEM < "$prefix"-dkim-pri-$algo.pem |
+"$AWK" -v off=$off '
 	BEGIN{on=0}
 	/^-+BEGIN PUBLIC KEY-+$/{on=1;next}
 	/^-+END PUBLIC KEY-+$/{exit}
