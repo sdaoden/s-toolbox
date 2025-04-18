@@ -7,18 +7,19 @@
  *@	s-dkim-sign: [15506][info]: start.gursama.com [185.28.39.97] (may be forged): no --client's match: "pass, ."
  *@ - TODO Would like to have "sender localhost && rcpt localhost && pass".
  *@ - TODO internationalized selectors are missing (a_key.k_sel).
- *@ - TODO server mode missing -- must be started by spawn(8).
+ *@ - TODO server mode missing -- must be started by spawn(8); then no more postfix-only.
  *@ - We have some excessively spaced base64 buffers.
  *@ - xxx With multiple keys, cannot include elder generated D-S in newer ones.
  *@ - Assumes header "name" values do not end with whitespace (search @HVALWS).
  *@   (Header body values are trimmed.)
  */
+#define a_VERSION "0.6.3"
+#define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 #define a_COPYRIGHT \
-	VAL_NAME a__COPYRIGHT_X " is\n" \
-	"\tCopyright (c) 2024 - 2025 Steffen Nurpmeso\n" \
+	VAL_NAME a__COPYRIGHT_X "\n" \
+	"\tCopyright (c) 2024 - 2025 " a_CONTACT ".\n" \
 	"\tSPDX-License-Identifier: ISC\n"
-/*@ S-dkim-sign copyright:
- *
+/*
  * Copyright (c) 2024 - 2025 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
  *
@@ -36,10 +37,6 @@
  */
 #define su_FILE s_dkim_sign
 
-/* */
-#define a_VERSION "0.6.3"
-#define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
-
 /* --sign max selectors (<> manual) */
 #define a_SIGN_MAX_SELECTORS 5
 
@@ -49,7 +46,7 @@
 /**/
 #define a_OPENLOG_FLAGS (LOG_NDELAY)
 
-/* xxx but NYD almost unused here; DBGIF: su_STATE_GUT_MEM_TRACE (needs SANITIZER=y for test) */
+/* xxx except for NYD almost unused here; DBGIF: su_STATE_GUT_MEM_TRACE (needs SANITIZER=y for test) */
 #define a_DBGIF 0
 # define a_DBG(X)
 # define a_DBG2(X)

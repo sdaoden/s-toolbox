@@ -35,12 +35,13 @@
  *@		  with gc-timeout==0 S16_MIN means "timed out beyond representability"
  *@	  + DATA TUPLE or TRIPLE: [recipient/]sender/client_address
  */
+#define a_VERSION "0.8.4"
+#define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 #define a_COPYRIGHT \
-	VAL_NAME a__COPYRIGHT_X " is\n" \
-	"\tCopyright (c) 2022 - 2025 Steffen Nurpmeso\n" \
+	VAL_NAME a__COPYRIGHT_X "\n" \
+	"\tCopyright (c) 2022 - 2025 " a_CONTACT ".\n" \
 	"\tSPDX-License-Identifier: ISC\n"
-/*@ S-postgray copyright:
- *
+/*
  * Copyright (c) 2022 - 2025 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
  *
@@ -57,10 +58,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #define su_FILE s_postgray
-
-/* */
-#define a_VERSION "0.8.4"
-#define a_CONTACT "Steffen Nurpmeso <steffen@sdaoden.eu>"
 
 /* Maximum accept(2) backlog */
 #define a_SERVER_LISTEN (VAL_SERVER_QUEUE / 2)
