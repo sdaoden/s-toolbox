@@ -360,6 +360,7 @@ reduce_expand() {
 xgc() {
     GCT= gcmode= gcarg=
     [ "$MODE" = fullgc ] && GCT=--aggressive
+    command -v time >/dev/null 2>&1 && TIME=time || TIME=
     for CURRD in $PARAMS
     do
         bname
@@ -377,7 +378,7 @@ xgc() {
         intro "$CURRD: performing $gcmode"
         pipefail_on
         (   cd "$CURRD" || exit 1
-            </dev/null time git gc $gcarg --prune='10 seconds ago'
+            </dev/null $TIME git gc $gcarg --prune='10 seconds ago'
         ) 2>&1 | tee -a "$LOGFILE"
         final $? "$CURRD"
         pipefail_off
