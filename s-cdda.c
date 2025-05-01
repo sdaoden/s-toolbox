@@ -5,7 +5,7 @@
  *@ Use s-cdda.makefile for compilation: $ make -f s-cdda.makefile
  *@ TODO de-preemphasis, handling of SCSI sense states? It is half assed.
  *
- * Copyright (c) 2020 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
+ * Copyright (c) 2020 - 2025 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -377,7 +377,7 @@ static struct a_cdtext_lang const a_cdtext_langa[] = {
 	{0x69, "Japanese"},
 	{0x68, "Kannada"}, {0x67, "Kazakh"}, {0x66, "Khmer"}, {0x65, "Korean"},
 	{0x64, "Laotian"}, {0x16, "Lappish"}, {0x17, "Latin"}, {0x18, "Latvian"}, {0x1a, "Lithuanian"},
-		{0x19, "Luxembourgian\0"},
+		{0x19, "Luxembourgian"},
 	{0x63, "Macedonian"}, {0x62, "Malagasay"}, {0x61, "Malaysian"}, {0x1c, "Maltese"}, {0x5f, "Marathi"},
 		{0x60, "Moldavian"},
 	{0x5e, "Ndebele"}, {0x5d, "Nepali"}, {0x1e, "Norwegian"},
@@ -777,7 +777,7 @@ jtick:
 
 static int
 a_read(struct a_data *dp, u8 tno){
-	static char const wavhead[44] =
+	static char const wavhead[44 +1] =
 			/* Canonical WAVE format: RIFF header.. */
 			"RIFF" /* ChunkID */
 			"...." /* ChunkSize: 36 (in effect) + Subchunk2Size */
