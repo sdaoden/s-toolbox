@@ -44,6 +44,7 @@ providers = { #{{{
 		'redirect_uri': 'urn:ietf:wg:oauth:2.0:oob',
 		'tenant': None,
 		'scope': 'https://mail.google.com/',
+		'scope_fixed': None,
 		'flow': 'redirect',
 		'flow_redirect_uri_port_fixed': None,
 		'refresh_needs_authorize': None
@@ -60,6 +61,7 @@ providers = { #{{{
 				'https://outlook.office.com/POP.AccessAsUser.All '
 				'https://outlook.office.com/SMTP.Send'
 			),
+		'scope_fixed': 'y',
 		'flow': 'redirect',
 		'flow_redirect_uri_port_fixed': None,
 		'refresh_needs_authorize': None
@@ -72,6 +74,7 @@ providers = { #{{{
 		'redirect_uri': 'https://oauth.yandex.com/verification_code',
 		'tenant': None,
 		'scope': 'mail:imap_full mail:imap_ro mail:smtp',
+		'scope_fixed': None,
 		'flow': 'redirect',
 		'flow_redirect_uri_port_fixed': 'port_number_to_use',
 		'refresh_needs_authorize': None
@@ -298,15 +301,16 @@ def config_save_head(f, args): #{{{
 	f.write('#   that is, including the port number.\n')
 	f.write('#   Use this key to set the used port number, then (eg 33100)\n')
 	f.write('#\n')
-	f.write('# . [login_hint= user; multi-account support convenience]\n')
+	f.write('# . [login_hint= email-address; multi-account support convenience]\n')
 	f.write('#\n')
 	f.write('# . [scope= resources the application shall access at provider]\n')
-	f.write('#   Value content is highly provider dependent\n')
+	f.write('#\n')
+	f.write('# . [scope_fixed= any value: do not update scope= from provider responses]\n')
 	f.write('#\n')
 	f.write('# . [tenant= directory tenant of the application]\n')
 	f.write('#\n')
 	f.write('# . [refresh_needs_authorize= any value: always authorize\n]\n')
-	f.write('#   A provider may impolitely forbit RFC 6749, 6. Refreshing an Access Token,\n')
+	f.write('#   A provider may impolitely forbid RFC 6749, 6. Refreshing an Access Token,\n')
 	f.write('#   but always require RFC 6749, 4.1.1. Authorization Request\n')
 	f.write('#   To avoid the script stumbling on this, set this non-empty\n')
 
@@ -341,7 +345,7 @@ def response_check_and_config_save(args, cfg, dt, resp): #{{{
 	# OPTIONAL
 	if resp.get('refresh_token'):
 		cfg['refresh_token'] = resp.get('refresh_token')
-	if resp.get('scope'):
+	if not cfg.get('scope_fixed') and resp.get('scope'):
 		cfg['scope'] = resp.get('scope')
 
 	print('%s' % cfg['access_token'])
