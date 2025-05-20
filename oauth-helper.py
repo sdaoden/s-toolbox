@@ -739,7 +739,7 @@ def main(): #{{{
 			if i < j:
 				if args.debug:
 					print('# Timeout not yet reached (%s/%s secs/mins to go)' %
-						(j - i), ((j - i) / 60), file=sys.stderr)
+						((j - i), ((j - i) / 60)), file=sys.stderr)
 				print('%s' % cfg['access_token'])
 				return EX_OK
 		except Exception as e:
