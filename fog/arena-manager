@@ -11,7 +11,7 @@
 #@ FIXME - when updating, check that the working tree is expanded (and we're
 #@ FIXME   on the right branch) for vcs which don't work otherwise, e.g., svn
 #
-# Copyright (c) 2011 - 2022 Steffen Nurpmeso <steffen@sdaoden.eu>.
+# Copyright (c) 2011 - 2025 Steffen Nurpmeso <steffen@sdaoden.eu>.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -432,9 +432,20 @@ update() {
             case "$CURRD" in
             *.git*)
                 #$GIT pull -v --ff-only --stat --prune
-                $GIT fetch --verbose --prune
-                es=$?
-                [ $es -eq 0 ] &&
+                e=0 x=0
+                for r in $(git show-ref |
+                        sed -E -e '/\/remotes\//b rem' -e d \
+                            -e ':rem s/^.+\/remotes\/([^\/]+)\/.*/\1/' |
+                        uniq); do
+                    echo '.. remote '$r
+                    $GIT fetch --verbose --prune $r
+                    if [ $? -ne 0 ]; then
+                        logerr '!! '$r' failed!'
+                        e=$((e + 1))
+                    fi
+                    x=$((x + 1))
+                done
+                [ $e -ne $x ] &&
                     git_ref_check_gc_update "$CURRD" "$ARENA/$AUTOGCFILE"
                 ;;
             *.update_bomb_git*)
@@ -678,6 +689,8 @@ if [ -f "$LOGFILE" ]; then
     done
     mv "$LOGFILE" "$LOGFILE".1
 fi
+
+LOGFILE=$ARENA/$LOGFILE
 
 [ -z "$MODE" ] && MODE=autoup
 log "$0: script startup, mode $MODE"
