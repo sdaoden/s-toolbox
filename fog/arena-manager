@@ -1,6 +1,7 @@
 #!/bin/sh -
 #@ arena-manager for dummies (should work with sh(1), bash(1); and ksh(1)).
-#@ Setup your repos once, read this script, and let it do updates in the future
+#@ Setup your repos once, read this script, and let it do updates in the
+#@ future.  Remotes branches must live under refs/remotes/origin.*/!
 #@ TODO In fact we don't need an arena-manager2, but instead should offer
 #@ TODO a mode that allows a user to create a mapping in between a local branch
 #@ TODO and a ORIGIN BRANCH, which are both somehow name mangled into a single
@@ -239,7 +240,7 @@ git_ref_check_gc_update() {
         my $es = 41;
         die "Cannot open append-write $agcf: $!" unless open AGCF, ">>", $agcf;
         foreach (keys %remotes) {
-            (my $lr = $_) =~ s/^origin\///;
+            (my $lr = $_) =~ s/^origin[^\/]*\///;
             next unless exists $heads{$lr};
             next if $heads{$lr} eq $remotes{$_};
             $es = 42;
@@ -584,7 +585,7 @@ automerge() {
 
                 my $es = 0;
                 foreach (keys %remotes) {
-                    (my $lr = $_) =~ s/^origin\///;
+                    (my $lr = $_) =~ s/^origin[^\/]*\///;
                     next unless exists $heads{$lr};
                     next if $heads{$lr} eq $remotes{$_};
                     if ($is_svn) {
