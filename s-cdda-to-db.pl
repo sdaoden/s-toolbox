@@ -357,7 +357,7 @@ __EOT
 	}
 
 	print $FH "\n! $emsg\n" if defined $emsg;
-	exit defined $emsg ? 1 : 0
+	exit(defined $emsg ? 1 : 0)
 }
 
 sub parse_formats{
