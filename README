@@ -76,6 +76,7 @@ oauth-helper.py:
   Handles OAuth 2.0 credentials.  Supports Google, Microsoft, Yandex.
   [.]
   2024-06-01: handle INT from keyboard specifically.
+  2025-05-19: add scope_fixed= option, FIXes Microsoft! (Stephen Isard)
 
 s-port-knock.README (etc) v0.8.1 (2024-07-19):
   A simple port knock via SSH signatures.
