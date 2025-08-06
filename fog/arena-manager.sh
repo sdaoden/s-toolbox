@@ -4,6 +4,7 @@
 #@ Setup your repos once via `setup' mode ($ arena-manager.sh setup).
 #
 # Copyright (c) 2011 - 2022 Steffen (Daode) Nurpmeso <steffen@sdaoden.eu>.
+# SPDX-License-Identifier: ISC
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
