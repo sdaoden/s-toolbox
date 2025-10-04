@@ -1,6 +1,12 @@
 A repo of some small tools
 ==========================
 
+oauth-helper.py:
+  Handles OAuth 2.0 credentials.  Supports Google, Microsoft, Yandex.
+  [.]
+  2025-05-19: add scope_fixed= option, FIXes Microsoft! (Stephen Isard)
+  2025-10-05: require interactivity only for authorize; v0.8.2
+
 pam_xdg.c (plus support) v0.8.5 (2024-11-27):
   XDG Base Directories support via PAM: creation of $XDG_RUNTIME_DIRs,
   injection of environment variables into sessions. libpam and OpenPAM.
@@ -71,12 +77,6 @@ s-postgray.c (plus support) v0.8.3 (2024-06-23):
 
 Not for the masses:
 -------------------
-
-oauth-helper.py:
-  Handles OAuth 2.0 credentials.  Supports Google, Microsoft, Yandex.
-  [.]
-  2024-06-01: handle INT from keyboard specifically.
-  2025-05-19: add scope_fixed= option, FIXes Microsoft! (Stephen Isard)
 
 s-port-knock.README (etc) v0.8.1 (2024-07-19):
   A simple port knock via SSH signatures.

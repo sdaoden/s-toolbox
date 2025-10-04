@@ -5,7 +5,7 @@
 # Public Domain
 
 SELF = 'oauth-helper.py'
-VERSION = '0.8.1'
+VERSION = '0.8.2'
 CONTACT = 'Steffen Nurpmeso <steffen@sdaoden.eu>'
 
 # Empty and no builtin configs
