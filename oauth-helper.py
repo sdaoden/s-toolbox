@@ -404,6 +404,10 @@ auth_code = None
 def act_authorize(args, cfg, dt): #{{{
 	if args.automatic:
 		return EX_NOINPUT
+	if not sys.stdin.isatty():
+		print('! Standard input is not a terminal; as we need input now, this is unsupported',
+			file=sys.stderr)
+		return EX_USAGE
 
 	global auth_code
 	print('* OAuth 2.0 RFC 6749, 4.1.1. Authorization Request', file=sys.stderr)
@@ -719,11 +723,6 @@ def main(): #{{{
 
 	if args.action == 'template':
 		return act_template(args, dt)
-
-	if not sys.stdin.isatty():
-		print('! Standard input is not a terminal; as we may need input now, this is unsupported',
-			file=sys.stderr)
-		return EX_USAGE
 
 	cfg = config_load(args, dt)
 	if not isinstance(cfg, dict):
