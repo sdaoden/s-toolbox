@@ -164,24 +164,24 @@ pipefail_off() {
 
 # Does $1 contain any substring that matches $2[-$X]?
 matches() {
-    var=${1} i=
+    var=$1 i=
     shift
 
-    # Take care for older shells which don't suppor ${//}
-    if [ -z "${__matchsubst}" ]; then
+    # Take care for older shells which do not support ${//}
+    if [ -z "$__matchsubst" ]; then
         i=zauberberg
         ( eval "test \${i/ber/} = zauberg" ) >/dev/null 2>&1 &&
             __matchsubst=1 || __matchsubst=0
     fi
-    if [ ${__matchsubst} -ne 0 ]; then
+    if [ $__matchsubst -ne 0 ]; then
         for i
         do
-            [ "${var}" != "${var/${i}/}" ] && return 0
+            [ "$var" != "${var/${i}/}" ] && return 0
         done
     else
         for i
         do
-            echo ${var} | grep "${i}" >/dev/null 2>&1 && return 0
+            echo "$var" | grep "$i" >/dev/null 2>&1 && return 0
         done
     fi
     return 1
@@ -189,7 +189,7 @@ matches() {
 # Same as "! matches" except that old shells gobble it
 nmatches() {
     matches ${@+"$@"}
-    [ ${?} -eq 0 ] && return 1 || return 0
+    [ $? -eq 0 ] && return 1 || return 0
 }
 
 ## git(1) stuff: all called from within subshell with -o pipefail
@@ -546,7 +546,7 @@ automerge() {
         logerr 'Necessary information for automerge is missing'
         exit 1
     fi
-    for CURRD in `cat "$AUTOGCFILE"`
+    for CURRD in $(cat "$AUTOGCFILE")
     do
         if nmatches "$CURRD" git; then
             log ''
@@ -561,8 +561,8 @@ automerge() {
             # This works with our hackish approach, but is rather unnecessary;
             # if we would have configuration files, it would be so clear!
             # arena-manager.pl could do a much better job!
-            master=`$GIT rev-parse --symbolic-full-name HEAD | \
-                     sed -e 's/^refs\/heads\///'`
+            master=$($GIT rev-parse --symbolic-full-name HEAD | \
+                    sed -e 's/^refs\/heads\///')
             matches "$CURRD" .svn_git && issvn=1 || issvn=0
             perl -e "\$git = \"$GIT\"; \$is_svn = $issvn;" -e '
                 my (%remotes, %heads, @reflines);
@@ -570,39 +570,41 @@ automerge() {
                     unless open RLPIPE, "$git show-ref |";
                 @reflines = <RLPIPE>;
                 close RLPIPE;
-                while (@reflines) {
+                while(@reflines){
                     my $l = pop @reflines;
                     chomp $l;
                     my ($sha, $ref) = split /\s+/, $l;
                     $ref =~ s/^refs\/(.+)/$1/;
-                    if ($ref =~ s/^remotes\///) {
-                        $remotes{$ref} = $sha;
-                    } elsif ($ref =~ s/^heads\///) {
-                        $heads{$ref} = $sha;
-                    } elsif ($ref !~ /^tags/) {
-                        print STDERR "Skipping unrecognized ref $ref\n";
+                    if($ref =~ s/^remotes\///){
+                        $remotes{$ref} = $sha
+                    }elsif($ref =~ s/^heads\///){
+                        $heads{$ref} = $sha
+                    }elsif($ref !~ /^tags/){
+                        print STDERR "Skipping unrecognized ref $ref\n"
                     }
                 }
 
                 my $es = 0;
-                foreach (keys %remotes) {
+                foreach(keys %remotes){
                     (my $lr = $_) =~ s/^origin[^\/]*\///;
                     next unless exists $heads{$lr};
                     next if $heads{$lr} eq $remotes{$_};
-                    if ($is_svn) {
-                        print "\n... git-svn performs automerge, ",
-                              "so update-ref $lr\n";
+                    print "\n... will try automerge for " .
+                        "refs/heads/${lr}..refs/remotes/$_\n";
+                    system("git log --oneline " .
+                        "refs/heads/${lr}..refs/remotes/$_");
+                    if($is_svn){
+                        print "... (git-svn, so only update-ref $lr)\n";
                         system("$git update-ref " .
                                "refs/heads/$lr refs/remotes/$_");
-                        $es |= $?;
-                    } else {
-                        print "\n... Performing automerge from $_ to $lr\n";
+                        $es |= $?
+                    }else{
                         system("$git checkout -q -f $lr; " .
                                "$git merge --ff-only $_");
-                        $es |= $?;
+                        $es |= $?
                     }
                 } 
-                exit $es;
+                exit $es
             '
             es=$?
             git_checkout "$master"
