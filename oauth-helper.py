@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #@ Create and update OAuth2 access tokens (for S-nail).
 #
-# 2022 - 2025 Steffen Nurpmeso <steffen@sdaoden.eu>
+# 2022 - 2026 Steffen Nurpmeso <steffen@sdaoden.eu>
 # Public Domain
 
 SELF = 'oauth-helper.py'
@@ -14,10 +14,12 @@ VAL_NAME = 'S-nail'
 import argparse
 import base64
 from datetime import datetime as dati
+import hashlib
 import http.server
 import json
 import os
 import pickle
+import secrets
 import socket
 import subprocess
 import sys
@@ -439,7 +441,16 @@ def act_authorize(args, cfg, dt): #{{{
 
 	print('  . To create an authorization code, please visit the shown URL:\n', file=sys.stderr)
 
+	if cfg['flow'] == 'devicecode':
+		return act__authorize_devicecode(args, cfg, dt, b, p)
+
 	b = os.getenv('BROWSER')
+
+	# Add RFC 7636 "Proof Key for Code Exchange by OAuth Public Clients"
+	cod_ver = secrets.token_urlsafe(84)
+	p['code_challenge'] = base64.urlsafe_b64encode(hashlib.sha256(cod_ver.encode()).digest())[:-1]
+	p['code_challenge_method'] = 'S256'
+
 	if not cfg.get('flow') or cfg['flow'] == 'auth':
 		p = urlencode(p)
 		u = cfg['authorize_endpoint'] + '?' + p
@@ -527,8 +538,6 @@ def act_authorize(args, cfg, dt): #{{{
 				print('PANIC: HTTP server handle: %s' % e, file=sys.stderr)
 				return EX_NOINPUT
 
-	elif cfg['flow'] == 'devicecode':
-		return act__authorize_devicecode(args, cfg, dt, b, p)
 	else:
 		print('PANIC: IMPLERR', file=sys.stderr)
 		return EX_SOFTWARE
@@ -545,6 +554,7 @@ def act_authorize(args, cfg, dt): #{{{
 	p['grant_type'] = 'authorization_code'
 	p['client_id'] = cfg['client_id']
 	p['code'] = auth_code
+	p['code_verifier'] = cod_ver
 	if redir:
 		p['redirect_uri'] = redir
 	# Not according to RFC, but pass if available
