@@ -449,6 +449,7 @@ update() {
                 done
                 [ $e -ne $x ] &&
                     git_ref_check_gc_update "$CURRD" "$ARENA/$AUTOGCFILE"
+                true
                 ;;
             *.update_bomb_git*)
                 xy_bomb_git_update "$SH -c ./update.sh" 'update.sh'
