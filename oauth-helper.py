@@ -36,6 +36,9 @@ EX_SOFTWARE = 70
 EX_CANTCREAT = 73
 EX_TEMPFAIL = 75
 
+# (default)
+DEVICECODE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
+
 # Note: we use .keys() for configuration checks: all providers need _all_ keys.
 providers = { #{{{
 	'Google': {
@@ -100,8 +103,8 @@ def arg_parser(): #{{{
 			epilog='''
 Create a new --resource for --provider via --action=template, fill in
 client_id=, maybe login_hint= (contains documentation!), and all other
-provider needs (alos see according --provider specific --action=manual).
-Run --action=access; at least the first run actually is --action=authorize!
+provider needs (also see according --provider specific --action=manual).
+Run --action=access; at least the first run really is --action=authorize!
 Force an access token --action=update even for non-expired timeouts.
 (For S-nail one might get away with --action=access --provider=X --resource=Y.)''' +
 '  Bugs/Contact via ' + CONTACT)
@@ -110,10 +113,10 @@ Force an access token --action=update even for non-expired timeouts.
 		help='no interactivity, exit error if that would happen')
 	p.add_argument('-a', '--action', dest='action',
 		choices=('access', 'authorize', 'manual', 'template', 'update'), default='access',
-		help='the action to perform'),
+		help='action to perform'),
 	p.add_argument('-H', '--hook', dest='hook', metavar='X', default=None, help='''
-a configuration load/save hook script may be used; invoked via "load|save"
-plus --resource  argument, data format is the same. (Note: values not quoted!)
+a configuration load/save hook script may be used; invoked via "load" or "save"
+plus given --resource argument, data format is the same. (Note: values not quoted!)
 		'''),
 	p.add_argument('-p', '--provider', dest='provider', choices=providers, default=None,
 		help='Technology Giant; ignored if --resource yet exists!')
@@ -441,10 +444,10 @@ def act_authorize(args, cfg, dt): #{{{
 
 	print('  . To create an authorization code, please visit the shown URL:\n', file=sys.stderr)
 
+	b = os.getenv('BROWSER')
+
 	if cfg['flow'] == 'devicecode':
 		return act__authorize_devicecode(args, cfg, dt, b, p)
-
-	b = os.getenv('BROWSER')
 
 	# Add RFC 7636 "Proof Key for Code Exchange by OAuth Public Clients"
 	cod_ver = secrets.token_urlsafe(84)
@@ -485,7 +488,7 @@ def act_authorize(args, cfg, dt): #{{{
 			print('PANIC: impossible to create/bind socket, try again later: %s' % e, file=sys.stderr)
 			return EX_TEMPFAIL
 		(sa, sp) = s.getsockname()
-		sa = 'localhost' # hm
+		sa = 'localhost' # XXX hm
 		s.close()
 
 		p['redirect_uri'] = redir = 'http://' + sa + ':' + str(sp) + '/'
@@ -497,7 +500,8 @@ def act_authorize(args, cfg, dt): #{{{
 			print("   %s '%s'" % (b, u), file=sys.stderr)
 		else:
 			print('   %s' % u, file=sys.stderr)
-		print('   [..waiting for browser to come back via redirect..]', file=sys.stderr, flush=True)
+		print('   [..waiting for browser to come back via redirect..\n    ..to %s (local :PORT number)..]' % redir,
+			file=sys.stderr, flush=True)
 
 		class django(http.server.BaseHTTPRequestHandler):
 			def __init__(self, request, client_address, server):
@@ -618,7 +622,7 @@ def act__authorize_devicecode(args, cfg, dt, b, p): #{{{
 	if cfg.get('devicecode_grant_type'):
 		p['grant_type'] = cfg['devicecode_grant_type']
 	else:
-		p['grant_type'] = 'urn:ietf:params:oauth:grant-type:device_code'
+		p['grant_type'] = DEVICECODE_GRANT_TYPE
 	# Yandex: code; just set both! 
 	p['device_code'] = p['code'] = resp['device_code']
 	p['client_id'] = cfg['client_id']
@@ -754,6 +758,8 @@ def main(): #{{{
 		except Exception as e:
 			print('! Configuration with invalid timestamp/timeout: %s' % e, file=sys.stderr)
 			cfg['timeout'] = cfg['timestamp'] = None
+	else:
+		cfg['timeout'] = cfg['timestamp'] = None
 	return act_access(args, cfg, dt)
 #}}}
 
