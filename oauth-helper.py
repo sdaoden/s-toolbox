@@ -282,7 +282,7 @@ def config_save_head(f, args): #{{{
 	f.write('# . [client_secret= the client secret of the application]\n')
 	f.write('#\n')
 	f.write('# . [devicecode_grant_type= grant type for flow=redirect]\n')
-	f.write('#   The default is urn:ietf:params:oauth:grant-type:device_code\n')
+	f.write('#   The default is ' + DEVICECODE_GRANT_TYPE + '\n')
 	f.write('#\n')
 	f.write('# . flow= auth | [devicecode |] redirect\n')
 	f.write('#   + All flows require the user to open an URL that is shown.\n')
