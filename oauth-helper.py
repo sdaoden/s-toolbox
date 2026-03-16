@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 #@ Create and update OAuth2 access tokens (for S-nail).
+#@
+#@ Lots of help and input from Stephen Isard, thank you!
 #
 # 2022 - 2026 Steffen Nurpmeso <steffen@sdaoden.eu>
 # Public Domain
@@ -47,12 +49,14 @@ providers = { #{{{
 		'devicecode_grant_type': None,
 		'token_endpoint': 'https://accounts.google.com/o/oauth2/token',
 		'redirect_uri': 'urn:ietf:wg:oauth:2.0:oob',
-		'tenant': None,
 		'scope': 'https://mail.google.com/',
-		'scope_fixed': None,
 		'flow': 'redirect',
+		# Provider hacks
+		'access_type': None,
 		'flow_redirect_uri_port_fixed': None,
-		'refresh_needs_authorize': None
+		'refresh_needs_authorize': None,
+		'scope_fixed': None,
+		'tenant': None
 	},
 	'Microsoft': {
 		'authorize_endpoint': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
@@ -60,16 +64,18 @@ providers = { #{{{
 		'devicecode_grant_type': None,
 		'token_endpoint': 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
 		'redirect_uri': 'https://login.microsoftonline.com/common/oauth2/nativeclient',
-		'tenant': 'common',
 		'scope': (
 				'offline_access https://outlook.office.com/IMAP.AccessAsUser.All '
 				'https://outlook.office.com/POP.AccessAsUser.All '
 				'https://outlook.office.com/SMTP.Send'
 			),
-		'scope_fixed': 'y',
 		'flow': 'redirect',
+		# Provider hacks
+		'access_type': None,
 		'flow_redirect_uri_port_fixed': None,
-		'refresh_needs_authorize': None
+		'refresh_needs_authorize': None,
+		'scope_fixed': 'y',
+		'tenant': 'common'
 	},
 	'Yandex': {
 		'authorize_endpoint': 'https://oauth.yandex.com/authorize',
@@ -77,12 +83,34 @@ providers = { #{{{
 		'devicecode_grant_type': 'device_code',
 		'token_endpoint': 'https://oauth.yandex.com/token',
 		'redirect_uri': 'https://oauth.yandex.com/verification_code',
-		'tenant': None,
 		'scope': 'mail:imap_full mail:imap_ro mail:smtp',
-		'scope_fixed': None,
 		'flow': 'redirect',
+		# Provider hacks
+		'access_type': None,
+		'flow_redirect_uri_port_fixed': 33333,
+		'refresh_needs_authorize': None,
+		'scope_fixed': None,
+		'tenant': None
+	},
+	'Zoho': {
+		'authorize_endpoint': 'https://accounts.zoho.com/oauth/v2/auth',
+		'devicecode_endpoint': 'https://accounts.zoho.com/oauth/v2/token',
+		'devicecode_grant_type': None,
+		'token_endpoint': 'https://accounts.zoho.com/oauth/v2/token',
+		'redirect_uri': 'http://localhost',
+		'scope': (
+			'ZohoMail.accounts.READ '
+			'ZohoMail.folders.CREATE ZohoMail.folders.READ ZohoMail.folders.UPDATE ZohoMail.folders.DELETE '
+			'ZohoMail.messages.CREATE ZohoMail.messages.READ '
+				'ZohoMail.messages.UPDATE ZohoMail.messages.DELETE'
+			),
+		'flow': 'redirect',
+		# Provider hacks
+		'access_type': 'offline',
 		'flow_redirect_uri_port_fixed': 'port_number_to_use',
-		'refresh_needs_authorize': None
+		'refresh_needs_authorize': None,
+		'scope_fixed': None,
+		'tenant': None
 	}
 }
 #}}}
@@ -438,6 +466,8 @@ def act_authorize(args, cfg, dt): #{{{
 	#	p['client_secret'] = cfg['client_secret']
 	if cfg.get('tenant'):
 		p['tenant'] = cfg['tenant']
+	if cfg.get('access_type'):
+		p['access_type'] = cfg['access_type']
 	# XXX add a 'state', and re-check that
 	if cfg.get('login_hint'):
 		p['login_hint'] = cfg['login_hint']
@@ -568,6 +598,8 @@ def act_authorize(args, cfg, dt): #{{{
 		p['scope'] = cfg['scope']
 	if cfg.get('tenant'):
 		p['tenant'] = cfg['tenant']
+	if cfg.get('access_type'):
+		p['access_type'] = cfg['access_type']
 	p = urlencode(p).encode('ascii')
 	if args.debug:
 		print('# URL is %s' % p, file=sys.stderr)
@@ -631,6 +663,8 @@ def act__authorize_devicecode(args, cfg, dt, b, p): #{{{
 		p['client_secret'] = cfg['client_secret']
 	if cfg.get('tenant'):
 		p['tenant'] = cfg['tenant']
+	if cfg.get('access_type'):
+		p['access_type'] = cfg['access_type']
 	p = urlencode(p).encode('ascii')
 
 	ival = int(resp.get('interval', '5'))
@@ -702,6 +736,8 @@ def act_access(args, cfg, dt): #{{{
 		p['client_secret'] = cfg['client_secret']
 	if cfg.get('tenant'):
 		p['tenant'] = cfg['tenant']
+	if cfg.get('access_type'):
+		p['access_type'] = cfg['access_type']
 	p = urlencode(p).encode('ascii')
 	if args.debug:
 		print('# URL is %s' % p, file=sys.stderr)
@@ -764,6 +800,8 @@ def main(): #{{{
 #}}}
 
 def act_manual(args): #{{{
+	global VAL_NAME
+
 	# (In alphabetical order)
 	if not args.provider:
 		print('! Manual for which --provider?')
