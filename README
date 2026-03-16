@@ -4,8 +4,8 @@ A repo of some small tools
 oauth-helper.py:
   Handles OAuth 2.0 credentials.  Supports Google, Microsoft, Yandex.
   [.]
-  2025-05-19: add scope_fixed= option, FIXes Microsoft! (Stephen Isard)
-  2025-10-05: require interactivity only for authorize; v0.8.2
+  [2025-05-19: add scope_fixed= option, FIXes Microsoft! (Stephen Isard)]
+  2026-03-16: add support for Zoho provider (Stephen Isard); v0.8.3
 
 pam_xdg.c (plus support) v0.8.5 (2024-11-27):
   XDG Base Directories support via PAM: creation of $XDG_RUNTIME_DIRs,
