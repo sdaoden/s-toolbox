@@ -312,40 +312,42 @@ def config_save_head(f, args): #{{{
 	f.write('# . [devicecode_grant_type= grant type for flow=redirect]\n')
 	f.write('#   The default is ' + DEVICECODE_GRANT_TYPE + '\n')
 	f.write('#\n')
-	f.write('# . flow= auth | [devicecode |] redirect\n')
-	f.write('#   + All flows require the user to open an URL that is shown.\n')
-	f.write('#     And follow the instructions of the used provider in the\n')
-	f.write('#     browser window; Javascript capability is a requirement?!\n')
-	f.write('#     - auth: browser goes web, user oks + copy+paste a token.\n')
-	f.write('#       The token is usually shown as a HTML document, but some\n')
-	f.write('#       providers only redirect the browser to an empty document,\n')
-	f.write('#       the token is part of the URL, then: http://BLA?code=TOKEN\n')
-	f.write('#     - devicecode: browser goes web, user oks, script polls web\n')
-	f.write('#       periodically until the token is granted\n')
-	f.write('#     - redirect: browser goes web, user oks, browser redirects\n')
-	f.write('#       to localhost URL with token, scripts reads that.\n')
-	f.write('#       This requires that browser and script run on the same box\n')
-	f.write('#       and even in the same namespace/container/sandbox (script\n')
-	f.write('#       temporarily acts as a HTTP server, it must be reachable)!\n')
-	f.write('#\n')
-	f.write('# . [flow_redirect_uri_port_fixed= fixed port number to use]\n')
-	f.write('#   For flow=redirect some providers match redirect_uri against\n')
-	f.write('#   the complete redirect URL, eg, "http://localhost:33100",\n')
-	f.write('#   that is, including the port number.\n')
-	f.write('#   Use this key to set the used port number, then (eg 33100)\n')
+	f.write('# . flow= auth | devicecode | redirect\n')
+	f.write('#   All flows require the user to open an URL that is shown,\n')
+	f.write('#   and follow the instructions of the used provider in the browser window.\n')
+	f.write('#   Javascript capability is a requirement?!\n')
+	f.write('#   - auth: browser goes web, user oks + copy+paste a token.\n')
+	f.write('#     The token is usually shown as a HTML document, but some providers\n')
+	f.write('#     only redirect the browser to an empty document, the token is then part\n')
+	f.write('#     of the URL, then: http://BLA?code=TOKEN\n')
+	f.write('#   - devicecode: browser goes web, user oks, script polls web periodically\n')
+	f.write('#   - redirect: browser goes web, user oks, browser redirects to localhost URL.\n')
+	f.write('#     Note: requires that browser and script run on the same box, and even\n')
+	f.write('#     in the same namespace/container/sandbox, because the script temporarily\n')
+	f.write('#     acts as a HTTP server, and must be reachable!\n')
 	f.write('#\n')
 	f.write('# . [login_hint= email-address; multi-account support convenience]\n')
 	f.write('#\n')
 	f.write('# . [scope= resources the application shall access at provider]\n')
 	f.write('#\n')
-	f.write('# . [scope_fixed= any value: do not update scope= from provider responses]\n')
+	f.write('# Provider hacks:\n')
+	f.write('# Unfortunately one to multiple of the following "hacks" may be required:\n')
 	f.write('#\n')
-	f.write('# . [tenant= directory tenant of the application]\n')
+	f.write('# . access_type= desired access type (online, offline)\n')
 	f.write('#\n')
-	f.write('# . [refresh_needs_authorize= any value: always authorize\n]\n')
+	f.write('# . flow_redirect_uri_port_fixed= fixed port number to use\n')
+	f.write('#   For flow=redirect providers may match redirect_uri against a complete URL\n')
+	f.write('#   including port number, for example, "http://localhost:33333".\n')
+	f.write('#   If set the HTTP server uses this port exclusively: it MUST be accessible\n')
+	f.write('#   from the outside, and it MUST be accessible by normal users\n')
+	f.write('#\n')
+	f.write('# . scope_fixed= any value; do not update scope= from provider responsese\n')
+	f.write('#\n')
+	f.write('# . tenant= directory tenant of the application\n')
+	f.write('#\n')
+	f.write('# . refresh_needs_authorize= any value: always authorize\n')
 	f.write('#   A provider may impolitely forbid RFC 6749, 6. Refreshing an Access Token,\n')
 	f.write('#   but always require RFC 6749, 4.1.1. Authorization Request\n')
-	f.write('#   To avoid the script stumbling on this, set this non-empty\n')
 
 	if VAL_NAME:
 		f.write('#\n')
@@ -835,15 +837,10 @@ chosen.]
  - Back at console.developers.google.com, choose Credentials
  - At top, choose Create Credentials / OAuth2 client iD
 	- Application type is "Desktop app"
-
 ]
 For Google we need a client_id= and a client_secret=.
-As of 2023-04-27 authorization requests require flow=redirect (reminder that
-script and browser must run in same namespace/container/sandbox for this).
+As of 2026-03-16 authorization requests require flow=redirect.
 			''')
-		if VAL_NAME:
-			print('For %s we have a built-in configuration for this provider' % VAL_NAME)
-
 	elif args.provider == 'Microsoft':
 		print('''[From mutt.org, contrib/mutt_oauth2.py.README,
 by Alexander Perlis, 2020-07-15
@@ -880,31 +877,38 @@ End users who aren't able to get to the app registration screen within
 portal.azure.com for their work/school account can temporarily use an
 incognito browser window to create a free outlook.com account and use that
 to create the app registration.
-
 ]
 For Microsoft we need a client_id=, and (optionally?) a tenant=.
 Thanks to Ian Collier of Oxford University on mutt-dev@ one solution
 for problems may be to say tenant=common instead of using the tenant ID.
-flow=auth works as of 2023-04-27.
+Thanks to Stephen Isard for the scope_fixed hack!
 			''')
-		if VAL_NAME:
-			print('For %s we have a built-in configuration for this provider' % VAL_NAME)
-
 	elif args.provider == 'Yandex':
 		print('''
 -- How to create a Yandex registration --
 
 Yandex has a clear, clean and logical documentation at oauth.yandex.com.
 Note that for flow=redirect you need to add the http://localhost:PORT
-URL, _including_ PORT (best outside the "user-inaccessible" port numbers
-0-1024) in the GUI, and flow_redirect_uri_port_fixed=THAT-PORT must be set!
-Also devicecode_grant_type=device_code.  Works just fine as of 2023-04-27.
+URL (PORT best outside the "user-inaccessible" port numbers 0-1024).
+Configure flow_redirect_uri_port_fixed=PORT and
+devicecode_grant_type=device_code.
 			''')
-		if VAL_NAME:
-			print('For %s we have a built-in configuration for this provider' % VAL_NAME)
+	elif args.provider == 'Zoho':
+		print('''
+Go to https://www.zoho.com/mail/help/api/using-oauth-2.html and register
+a "non-browser mobile application" with a redirect http://localhost:PORT
+URL (PORT best outside the "user-inaccessible" port numbers 0-1024).
+Configure set flow_redirect_uri_port_fixed=PORT.
+			''')
+		VAL_NAME = None
+	else:
+		VAL_NAME = None
 
-	print('Thereafter run "--action=template --provider=%s", and fill it in.' % args.provider)
-	print('Finally run "--action=authorize" with --resourcee to go.')
+	if VAL_NAME:
+		print('For %s we have a built-in configuration for this provider' % VAL_NAME)
+
+	print('Run "--action=template --provider=%s", and fill it in.' % args.provider)
+	print('Finally run "--action=authorize" with --resource to go.')
 	return EX_OK
 if VAL_NAME:
 	bfgw = (b'gASVaAEAAAAAAAB9lCiMBkdvb2dsZZR9lCiMCWNsaWVudF9pZJSMSDE2NzMyMjcw'
