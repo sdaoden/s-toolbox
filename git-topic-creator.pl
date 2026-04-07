@@ -6,7 +6,7 @@ require 5.008_001;
 my $SELF = 'git-topic-creator.pl';
 my $VERSION = 'v0.2.1-dirty';
 my $COPYRIGHT =<<__EOT__;
-Copyright (c) 2012 - 2022 Steffen Nurpmeso <steffen\@sdaoden.eu>.
+Copyright (c) 2012 - 2026 Steffen Nurpmeso <steffen\@sdaoden.eu>.
 This software is provided under the terms of the ISC license.
 __EOT__
 # SPDX-License-Identifier: ISC
@@ -136,7 +136,7 @@ It requires the first line of each commit message to start off with a special
 TOPIC-TAG: "[topic-0123_branch-name] Mandatory normal commit message".
 The special tag "[-]" is an unnamed topic that is cherry-picked not merged.
 __EOT__
-    exit defined $emsg ? 1 : 0
+    exit (defined $emsg ? 1 : 0)
 } # }}}
 
 sub verb1{
@@ -292,10 +292,10 @@ sub explode_topics{ # {{{
 		if($REBASE || $SEEN_ANON){
 			panic(1, "Cannot rebase $br onto $ONTO")
 				unless system("$GIT rebase $ONTO $TOPICDIR/$br $REDIR") == 0;
-			panic(1, "Cannot re-checkout $ONTO") unless system("$GIT checkout -f $ONTO $REDIR") == 0;
+			panic(1, "Cannot re-checkout $ONTO") unless system("$GIT checkout -f $ONTO $REDIR") == 0
 		}
 		panic(1, "Cannot merge $br into $ONTO")
-			unless system("$GIT merge -n --no-ff --commit --log=1000 $TOPICDIR/$br $REDIR") == 0;
+			unless system("$GIT merge -n --no-ff --commit --log=1000 $TOPICDIR/$br $REDIR") == 0
 	}
 } # }}}
 
@@ -317,7 +317,7 @@ sub delete_topics{
 	foreach(@TOPICS){
 		verb1("Deleting topic-branch $_");
 		panic(1, "Cannot delete topic-branch $TOPICPATH/$_")
-			unless system("$GIT update-ref -d $TOPICPATH/$_ $REDIR") == 0;
+			unless system("$GIT update-ref -d $TOPICPATH/$_ $REDIR") == 0
 	}
 }
 
