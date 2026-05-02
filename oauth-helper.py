@@ -174,7 +174,7 @@ def config_load(args, dt): #{{{
 
 	#
 	try:
-		s = os.stat(args.resource).st_mode 
+		s = os.stat(args.resource).st_mode
 		if s & 0o0177:
 			s &= 0o0777
 			print('! Warning: --resource mode permissions other than '
@@ -657,7 +657,7 @@ def act__authorize_devicecode(args, cfg, dt, b, p): #{{{
 		p['grant_type'] = cfg['devicecode_grant_type']
 	else:
 		p['grant_type'] = DEVICECODE_GRANT_TYPE
-	# Yandex: code; just set both! 
+	# Yandex: code; just set both!
 	p['device_code'] = p['code'] = resp['device_code']
 	p['client_id'] = cfg['client_id']
 	# Not according to RFC, but pass if available
