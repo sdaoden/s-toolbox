@@ -431,6 +431,7 @@ update() {
             # git(1) and related
             git_check_status
 
+            es=0
             case "$CURRD" in
             *.git*)
                 #$GIT pull -v --ff-only --stat --prune
