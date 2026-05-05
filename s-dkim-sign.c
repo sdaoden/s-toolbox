@@ -875,7 +875,7 @@ struct a_rm_head{
 
 struct a_milter{
 	s32 mi_sock;
-	u32 mi_len; /* Payload in .pd_buf */
+	u32 mi_len; /* Payload in .mi_buf */
 	struct a_pd *mi_pdp;
 	struct a_dkim *mi_dkim;
 	char const *mi_log_id; /* queue id (macro i) or whatever ID we yet have */
@@ -1013,7 +1013,7 @@ struct a_pd{
 static struct a_key_algo_tuple const a_kata[] = {
 #ifndef OPENSSL_NO_SHA256
 # ifndef OPENSSL_NO_ECX
-	{a_PKEY_ADAED25519, a_MD_SHA256, FAL0, FAL0, FAL0, FAL0, "adaed25519\0", "adaed25519\0", "sha256\0"},
+	{a_PKEY_ADAED25519, a_MD_SHA256, FAL0, FAL0, FAL0, FAL0, "adaed25519", "adaed25519", "sha256"},
 	{a_PKEY_BIG_ED, a_MD_SHA256, FAL0, FAL0, FAL0, TRU1, "big_ed", "ed25519", "sha256"},
 # endif
 # ifndef OPENSSL_NO_RSA
@@ -1425,8 +1425,8 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 		}
 
 		if(UNLIKELY(fb & a_VVV))
-			su_log_write(su_LOG_INFO, "%sCMD %c/%d, %zu data bytes",
-				mip->mi_log_id, mip->mi_buf[0], mip->mi_buf[0], mip->mi_len);
+			su_log_write(su_LOG_INFO, "%sCMD %c/%d, %lu data bytes",
+				mip->mi_log_id, mip->mi_buf[0], mip->mi_buf[0], S(ul,mip->mi_len));
 
 		switch(mip->mi_buf[0]){
 		case a_SMFIC_QUIT:
@@ -1527,8 +1527,8 @@ a_milter__loop(struct a_milter *mip){ /* XXX too big: split up {{{ */
 
 			/* We are only interested in some macros */
 			if(UNLIKELY(fb & a_VVV))
-				su_log_write(su_LOG_INFO, "%smacros for cmd %c/%d: %u bytes",
-					mip->mi_log_id, cmd, cmd, mip->mi_len);
+				su_log_write(su_LOG_INFO, "%smacros for cmd %c/%d: %lu bytes",
+					mip->mi_log_id, cmd, cmd, S(ul,mip->mi_len));
 			else if(cmd != a_SMFIC_CONNECT && (fx & (a_LOG_ID | a_MYHOSTNAME)) == (a_LOG_ID | a_MYHOSTNAME))
 				break;
 
@@ -3592,10 +3592,11 @@ a_conf_finish(struct a_pd *pdp){ /* {{{ */
 	struct su_cs_dict_view dv;
 	s32 rv;
 	NYD_IN;
+	ASSERT(((su_state_has(su_STATE_REPRODUCIBLE) == 0) ^ ((pdp->pd_flags & a_F_REPRO) == 0)) == 0);
 
 	rv = su_EX_OK;
 
-	if(pdp->pd_keys == NIL && !su_state_has(su_STATE_REPRODUCIBLE)){
+	if(pdp->pd_keys == NIL && !(pdp->pd_flags & a_F_REPRO)){
 		a_conf__err(pdp, _("At least one --key is required\n"));
 		pdp->pd_flags |= a_F_TEST_ERRORS;
 		rv = su_EX_CONFIG;
@@ -5398,6 +5399,7 @@ a_misc_oncrash(int signo){
 	su_nyd_dump(&a_misc_oncrash__dump, S(uz,S(u32,fd)));
 
 	write(fd, _X("-----\nCome up to the lab and see what's on the slab\n"));
+# undef _X
 
 	/* C99 */{
 		struct sigaction xact;
