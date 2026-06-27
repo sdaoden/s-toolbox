@@ -323,7 +323,8 @@ clone_to_cwd() {
 		( set -o pipefail ) >/dev/null 2>&1 && set -o pipefail
 		trap _remit EXIT
 		act btrfs send $parent $1 '|' \
-			'('cd "$CLONEDIR"/snapshots/"$d" '&&' btrfs receive . '&&' btrfs filesystem sync .')'
+			'('cd "$CLONEDIR"/snapshots/"$d" '&&' btrfs receive . '&&' \
+			 btrfs filesystem sync . '&&' btrfs subvolume sync .')'
 		trap '' EXIT
 		) || exit $?
 	done
