@@ -35,10 +35,10 @@
 #include <time.h>
 #include <unistd.h>
 
-/* Largest possible pubkey encryption + 1 + 1 + SSH signature (ED25519=~295+, RSA=~1560+) + 1 +1; packet is
+/* Largest possible pubkey encryption + 1 + 1 + SSH signature (mldsa44-ed25519=~1900+) + 1 +1; packet is
  *	1. password encrypted by X509 pubkey (base64) + LF
  *	3. SSH signature cipher-encrypted with password in 1. (base64) + LF */
-#define a_BUF_LEN (2048 + 1024)
+#define a_BUF_LEN (2048 + 7168)
 
 /* Minimum bytes the encrypted SSH signature should have (do not even try to decrypt it, block sender).
  * ED25519 encrypted with -aes256 is 273 bytes */
