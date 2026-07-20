@@ -356,7 +356,7 @@ verify)
 		if [ $? -ne 0 ]; then
 			act_block "$2"
 		else
-			echo "$es" | ossl enc -aes256 -pass "pass:$dk" -pbkdf2 -a -d | {
+			echo "$es" | ossl enc -aes256 -pass "pass:$dk" -pbkdf2 -A -a -d | {
 				printf '%s\n' '-----BEGIN SSH SIGNATURE-----'
 				cat
 				printf '\n%s\n' '-----END SSH SIGNATURE-----'
