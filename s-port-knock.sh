@@ -5,7 +5,7 @@
 # (Do not change these, the makefile watches out)
 : ${PORT_KNOCK_BIN:=/usr/sbin/s-port-knock-bin}
 SELF=s-port-knock.sh
-VERSION=0.8.1
+VERSION=0.8.2
 CONTACT='Steffen Nurpmeso <steffen@sdaoden.eu>'
 #
 syno() {
@@ -36,7 +36,7 @@ syno() {
 	exit 64 # EX_USAGE
 }
 #
-# 2020 - 2024 Steffen Nurpmeso <steffen@sdaoden.eu>
+# 2020 - 2026 Steffen Nurpmeso <steffen@sdaoden.eu>.
 # SPDX-License-Identifier: ISC
 #
 # Permission to use, copy, modify, and/or distribute this software for any

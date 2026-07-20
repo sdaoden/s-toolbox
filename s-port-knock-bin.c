@@ -1,7 +1,7 @@
 /*@ s-port-knock-bin.c: C backend for s-port-knock.sh; please see there.
  *@ TODO - capsicum / pledge/unveil (fork from server a forker process that forks+execv the command)
  *
- * Copyright (c) 2020 - 2024 Steffen Nurpmeso <steffen@sdaoden.eu>.
+ * Copyright (c) 2020 - 2026 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
  *
  * Permission to use, copy, modify, and/or distribute this software for any

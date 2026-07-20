@@ -78,16 +78,11 @@ s-postgray.c (plus support) v0.8.3 (2024-06-23):
 Not for the masses:
 -------------------
 
-s-port-knock.README (etc) v0.8.1 (2024-07-19):
+s-port-knock.README (etc) v0.8.2 (2026-07-20):
   A simple port knock via SSH signatures.
   It requires modern OpenSSH (ssh-keygen(1)), openssl(1) and sh(1).
   [.]
-  - Review iteration that FIXes a false #ifdef, an uninit strerror(),
-    and in the script broken passing/usage of $PORT_KNOCK_SHELL.
-    We also skip select(2) path entirely if a_DISTINCT_SOCKS is unset.
-    (It was borked.)
-  - Change packet format (no separating newline).
-  - Add simplemost manual.
+  - Support huge (encrypted) mldsa44-ed25119 SSH signatures.
 
 Misc:
 -----

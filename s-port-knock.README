@@ -12,6 +12,12 @@ Build and Install
 RELEASES
 --------
 
+v0.8.2, 2026-07-20:
+  - Increase buffer size to accommodate for mldsa44-ed25519 keys.
+  - Use -A for openssl-enc(1) not only for -e(ncrypt), but also
+    for -d(ecrypt).
+    (Was broken for lengthy output sofar thus.)
+
 v0.8.1, 2024-07-19:
   - Review iteration that FIXes a false #ifdef, an uninit strerror(),
     and in the script broken passing/usage of $PORT_KNOCK_SHELL.
