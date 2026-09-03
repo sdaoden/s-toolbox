@@ -11,7 +11,7 @@
  *@	Jan Beich	(jbeich at FreeBSD dot org)
  *@	Andre Albsmeier	(mail at fbsd2 dot e4m dot org)
  *
- * Copyright (c) 2021 - 2024 Steffen Nurpmeso <steffen@sdaoden.eu>.
+ * Copyright (c) 2021 - 2026 Steffen Nurpmeso <steffen@sdaoden.eu>.
  * SPDX-License-Identifier: ISC
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -60,6 +60,11 @@
 #define a_LOCK_TRIES 10
 
 #define a_DAT_FILE "." a_XDG ".dat"
+
+/* CGROUP support 0/1 stuff (on Linux), only used with per_user_cgroup=/X/Y/DIR_BASE/..user.. */
+#define a_CGROUP 1
+#define a_CGROUP_DIR_BASE_MODE 0755
+#define a_CGROUP_PROCS_FILE "cgroup.procs"
 
 /* >8 -- 8< */
 
@@ -138,6 +143,14 @@
 # define a_GET_ITEM_ARG_CAST(X) (void const**)X
 #endif
 
+#if a_CGROUP && (defined __linux__ || defined __linux)
+# undef a_CGROUP
+# define a_CGROUP 1
+#else
+# undef a_CGROUP
+# define a_CGROUP 0
+#endif
+
 /* Just put it all in one big fun, use two exec paths */
 static int a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv);
 
@@ -150,6 +163,9 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 		a_NOTROOT = 1u<<1,
 		a_SESSIONS = 1u<<2,
 		a_USER_LOCK = 1u<<3,
+#if a_CGROUP
+		a_USER_CGROUP = 1u<<4,
+#endif
 
 		a_SKIP_XDG = 1u<<15, /* We shall not act */
 
@@ -172,6 +188,9 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 	static int f_saved;
 
 	char uidbuf[sizeof "../.18446744073709551615"],
+#if a_CGROUP
+		pidbuf[sizeof "18446744073709551615\n"],
+#endif
 		xbuf[((sizeof("XDG_RUNTIME_DIR=") + sizeof(a_RUNTIME_DIR_OUTER) +
 			sizeof(a_RUNTIME_DIR_BASE) + sizeof("../.18446744073709551615")) |
 			(sizeof("XDG_CONFIG_DIRS=") + PATH_MAX)
@@ -180,13 +199,17 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 	struct a_dirtree const *dtp;
 	struct passwd *pwp;
 	int cwdfd, cntrlfd, datfd, f, res, uidbuflen;
-	char const *user, *emsg;
+	char const *user, *emsg
+#if a_CGROUP
+		, *cgroup, *cgroup_end
+#endif
+		;
 
 	user = "<unset>";
 	cwdfd = AT_FDCWD;
 	datfd = cntrlfd = -1;
 
-	/* Command line */
+	/* {{{ Command line */
 	if(isopen){
 		f = a_NONE;
 
@@ -199,6 +222,32 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 				f |= a_SESSIONS;
 			else if(!strcmp(argv[0], "per_user_lock"))
 				f |= a_USER_LOCK;
+#if a_CGROUP
+			else if(!strncmp(argv[0], "per_user_cgroup=", sizeof("per_user_cgroup=") -1)){
+				size_t i;
+
+				f |= a_USER_CGROUP;
+				cgroup = &argv[0][sizeof("per_user_cgroup=") -1];
+				i = strlen(cgroup);
+				cgroup_end = &cgroup[i] - 1;
+
+				if(i == 0 || *cgroup != '/'){
+					emsg = "per_user_cgroup= empty or not absolute path";
+					f ^= a_USER_CGROUP;
+				}else if(i >= sizeof(xbuf) -1 - sizeof(uidbuf) -1 - 1 - sizeof(a_CGROUP_PROCS_FILE) -1){
+					emsg = "per_user_cgroup= argument too long";
+					f ^= a_USER_CGROUP;
+				}else if(*cgroup_end == '/'){
+					emsg = "per_user_cgroup= must not end with directory separator";
+					f ^= a_USER_CGROUP;
+				}
+
+				if(!(f & a_USER_CGROUP)){
+					errno = EINVAL;
+					goto jerr;
+				}
+			}
+#endif /* a_CGROUP */
 			else if(!(flags & PAM_SILENT)){
 				emsg = "command line";
 				errno = EINVAL;
@@ -212,7 +261,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 		f = f_saved;
 		if(f & a_SKIP_XDG)
 			goto jok;
-	}
+	} /* }}} */
 
 	/* We need the user we go for */
 	if((res = pam_get_item(pamh, PAM_USER, a_GET_ITEM_ARG_CAST(&user))) != PAM_SUCCESS || user == NULL || *user == '\0'){
@@ -263,7 +312,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 	dt_user.name = &uidbuf[4];
 	dt_user.mode = 0700; /* XDG implied */
 
-	/* Handle tree, go to user runtime.  On *BSD outermost may not exist! */
+	/* {{{ Handle tree, go to user runtime.  On *BSD outermost may not exist! */
 	for(/*f &= ~a_MPV,*/ dtp = a_dirtree;;){
 		int e;
 		gid_t oegid;
@@ -314,16 +363,17 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 		}else if(cwdfd == AT_FDCWD)
 			a_LOG(pamh, a_LOG_NOTICE, a_XDG ": " a_RUNTIME_DIR_OUTER " did not exist, but should be "
 				"(a mount point of) volatile storage!");
-		/* Just chown it! */
+		/* Simply chown it! */
 		else if(dtp == &dt_user &&
 				fchownat(cwdfd, &uidbuf[4], pwp->pw_uid, pwp->pw_gid, AT_SYMLINK_NOFOLLOW) == -1){
 			emsg = "cannot chown(2) per user XDG_RUNTIME_DIR";
 			goto jerr;
 		}
-	}
+	} /* }}} */
 
-	/* When opening, put environment.  Ignore (but log) putenv() failures, even
-	 * if session handling is not enabled: very unlikely, and non-critical */
+	/* {{{ When opening, put environment, handle cgroup.  Ignore (but log) putenv() failures, even
+	 * if session handling is not enabled: very unlikely, and non-critical.
+	 * Also handle cgroup; failures here are non-fatal */
 	if(isopen){
 		char *cp;
 
@@ -339,7 +389,7 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 		if((res = pam_putenv(pamh, xbuf)) != PAM_SUCCESS)
 			a_LOG(pamh, a_LOG_ERR, a_XDG ": user %s: pam_putenv(): %s\n", user, pam_strerror(pamh, res));
 
-		/* And the rest unless disallowed */
+		/* {{{ And the rest unless runtime disallowed */
 		if(!(f & a_RUNTIME)){
 			struct a_dir{
 				char const *name;
@@ -378,10 +428,77 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 					a_LOG(pamh, a_LOG_ERR, a_XDG ": user %s: pam_putenv(): %s\n",
 						user, pam_strerror(pamh, res));
 			}
-		}
-	}
+		} /* }}} */
 
-	/* In session mode we have to manage the counter file */
+#if a_CGROUP /* {{{ */
+		if(f & a_USER_CGROUP){
+			int mode, e;
+			size_t i;
+
+			i = (size_t)(++cgroup_end - cgroup);
+			memcpy(xbuf, cgroup, i);
+			xbuf[i++] = '/';
+			memcpy(&xbuf[i], &uidbuf[4], uidbuflen);
+
+			if((res = openat(AT_FDCWD, xbuf, (a_O_SEARCH | O_DIRECTORY | O_NOFOLLOW))) != -1)
+				close(res);
+			/* See above for logic */
+			else for(mode = 0700;;){
+				gid_t oegid;
+				mode_t oumask;
+
+				oumask = umask(0000);
+				oegid = getegid();
+				setegid(0);
+					res = mkdirat(AT_FDCWD, xbuf, mode);
+					e = (res == -1) ? errno : 0;
+				setegid(oegid);
+				umask(oumask);
+
+				if(res != -1){
+					if(xbuf[i - 1] != '\0'){
+						/* Simply chown it! */
+						fchownat(AT_FDCWD, xbuf, pwp->pw_uid, pwp->pw_gid, AT_SYMLINK_NOFOLLOW);
+						break;
+					}
+					xbuf[i - 1] = '/';
+					mode = 0700;
+				}else{
+					if(xbuf[i - 1] == '\0')
+						goto jcgroup_err;
+					if(e != ENOENT){
+jcgroup_err:
+						a_LOG(pamh, a_LOG_ERR,
+							a_XDG ": user %s: per_user_cgroup= unhandled: %s\n",
+							user, strerror(e));
+						goto jcgroup_done;
+					}
+
+					xbuf[i - 1] = '\0';
+					mode = a_CGROUP_DIR_BASE_MODE;
+				}
+			}
+
+			/* And write our PID */
+			i += uidbuflen - 1;
+			xbuf[i++] = '/';
+			memcpy(&xbuf[i], a_CGROUP_PROCS_FILE, sizeof(a_CGROUP_PROCS_FILE));
+
+			if((res = openat(AT_FDCWD, xbuf, (O_WRONLY | O_NOFOLLOW | O_NOCTTY))) == -1){
+				e = errno;
+				goto jcgroup_err;
+			}
+
+			snprintf(pidbuf, sizeof pidbuf, "%lld\n", (long long int)getpid()); /* xxx error? */
+			write(res, pidbuf, strlen(pidbuf) -1);
+
+			close(res);
+jcgroup_done:;
+		}
+#endif /* a_CGROUP }}} */
+	} /* }}} */
+
+	/* In session mode we have to manage the counter file {{{ */
 	if(f & a_SESSIONS){
 		unsigned long long int sessions;
 
@@ -509,7 +626,7 @@ jecnt:
 			close(datfd);
 			datfd = -1;
 		}
-	}
+	} /* }}} */
 
 jok:
 	res = PAM_SUCCESS;

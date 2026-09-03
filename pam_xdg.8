@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .
-.Dd Nov 27, 2024
+.Dd Sep 3, 2026
 .Dt PAM_XDG 8
 .Os
 .
@@ -31,6 +31,7 @@
 .Op Ar runtime
 .Op Ar notroot
 .Op Ar track_sessions Op Ar per_user_lock
+.Op Ar per_user_cgroup=/path/to/BASE
 .
 .
 .Sh DESCRIPTION
@@ -44,27 +45,48 @@ directories specified by the
 spec/\:basedir-\:spec-\:latest.html \
 "XDG Base Directory Specification 0.8" ,
 into user sessions.
-.
-.Pp
 When linked into the PAM session system the runtime directory will be
 created once a user creates his or her first login session.
-Unless
-.Ar runtime
-was given all XDG related environment variables will be created in all
-user sessions with their default or computed values, otherwise only
-.Ev XDG_RUNTIME_DIR .
+On Linux it can optionally place sessions in dedicated per-user cgroups.
+.
+.Pp
 If
 .Ar notroot
 was given the module will bypass itself for root account logins and
 perform no actions for root, except removing any possibly existing XDG
 environment variable.
-Lastly
+.
+.Pp
+Unless
+.Ar runtime
+was given all XDG related environment variables will be created in all
+user sessions with their default or computed values, otherwise only
+.Ev XDG_RUNTIME_DIR .
+.
+.Pp
 .Ar track_sessions
 will enable session tracking: once the last session ends, the user's
 .Ev XDG_RUNTIME_DIR
 will be recursively removed; on high-load servers then setting
 .Ar per_user_lock
 will reduce lock file lock contention.
+.
+.Pp
+.Ar per_user_cgroup=/path/to/BASE
+can be set on Linux (if so compiled) to a directory within a mounted
+.Ql cgroup2
+filesystem, one element of which,
+.Ar BASE ,
+will be automatically created as necessary.
+For example,
+.Ql per_user_cgroup=/sys/fs/cgroup/_user
+will try to create the
+.Ql _user
+directory when yet non-existent;
+within this directory, per-user directories will be created, like
+.Ql /sys/fs/cgroup/_user/1000 ,
+and the entire user session be moved to that cgroup.
+(Errors in doing any of this is logged but ignored.)
 .
 .Pp
 In order to make use of this module, place the following in the
