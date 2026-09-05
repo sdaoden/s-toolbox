@@ -264,7 +264,8 @@ a_xdg(int isopen, pam_handle_t *pamh, int flags, int argc, char const **argv){
 	} /* }}} */
 
 	/* We need the user we go for */
-	if((res = pam_get_item(pamh, PAM_USER, a_GET_ITEM_ARG_CAST(&user))) != PAM_SUCCESS || user == NULL || *user == '\0'){
+	if((res = pam_get_item(pamh, PAM_USER, a_GET_ITEM_ARG_CAST(&user))) != PAM_SUCCESS ||
+			user == NULL || *user == '\0'){
 		user = "<lookup failed>";
 		emsg = "cannot query PAM_USER name";
 		goto jepam;
@@ -484,15 +485,15 @@ jcgroup_err:
 			xbuf[i++] = '/';
 			memcpy(&xbuf[i], a_CGROUP_PROCS_FILE, sizeof(a_CGROUP_PROCS_FILE));
 
-			if((res = openat(AT_FDCWD, xbuf, (O_WRONLY | O_NOFOLLOW | O_NOCTTY))) == -1){
+			e = 0;
+			if((res = openat(AT_FDCWD, xbuf, (O_WRONLY | O_NOFOLLOW | O_NOCTTY))) == -1 ||
+					(mode = snprintf(pidbuf, sizeof pidbuf, "%lld\n", (long long int)getpid())
+							) < 0 || write(res, pidbuf, (size_t)mode) == -1)
 				e = errno;
+			if(res != -1)
+				close(res);
+			if(e != 0)
 				goto jcgroup_err;
-			}
-
-			snprintf(pidbuf, sizeof pidbuf, "%lld\n", (long long int)getpid()); /* xxx error? */
-			write(res, pidbuf, strlen(pidbuf) -1);
-
-			close(res);
 jcgroup_done:;
 		}
 #endif /* a_CGROUP }}} */

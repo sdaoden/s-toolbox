@@ -50,6 +50,26 @@ created once a user creates his or her first login session.
 On Linux it can optionally place sessions in dedicated per-user cgroups.
 .
 .Pp
+To make use of this module, place for example the following in the
+.Ql session
+part of the control file of desire under
+.Pa /etc/pam.d ,
+on Linux it may be
+.Pa /etc/pam.d/common-session
+if that exists, on BSD's the files
+.Pa /etc/pam.d/system
+as well as
+.Pa /etc/pam.d/login ,
+.Pa /etc/pam.d/sshd
+and
+.Pa /etc/pam.d/su
+may be desirable, adjusting paths as necessary:
+.
+.Bd -literal -offset indent
+session optional pam_xdg.so notroot track_sessions
+.Ed
+.
+.Pp
 If
 .Ar notroot
 was given the module will bypass itself for root account logins and
@@ -73,7 +93,7 @@ will reduce lock file lock contention.
 .
 .Pp
 .Ar per_user_cgroup=/path/to/BASE
-can be set on Linux (if so compiled) to a directory within a mounted
+can be set on Linux to a directory within a mounted
 .Ql cgroup2
 filesystem, one element of which,
 .Ar BASE ,
@@ -87,26 +107,6 @@ within this directory, per-user directories will be created, like
 .Ql /sys/fs/cgroup/_user/1000 ,
 and the entire user session be moved to that cgroup.
 (Errors in doing any of this is logged but ignored.)
-.
-.Pp
-In order to make use of this module, place the following in the
-.Ql session
-part of the control file of desire under
-.Pa /etc/pam.d ,
-on Linux it may be
-.Pa /etc/pam.d/common-session
-if that exists, on BSD's the files
-.Pa /etc/pam.d/system
-as well as
-.Pa /etc/pam.d/login ,
-.Pa /etc/pam.d/sshd
-and
-.Pa /etc/pam.d/su
-may be desirable, adjusting paths as necessary:
-.
-.Bd -literal -offset indent
-session optional pam_xdg.so notroot track_sessions
-.Ed
 .
 .
 .Sh "SEE ALSO"
@@ -132,5 +132,8 @@ seems thus unwise.
 Since so many PAM modules do support session tracking and cleanup
 .Nm
 readded optional support for this.
+On Linux the
+.Ar per_user_cgroup
+mechanism accesses an hierarchical grouping that cannot be escaped.
 .
 .\" s-ts-mode
